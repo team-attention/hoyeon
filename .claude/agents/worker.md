@@ -71,31 +71,42 @@ hooks:
 
 ## Output Format
 
-작업 완료 시 다음 형식으로 보고하세요:
+작업 완료 시 **반드시** 아래 JSON 형식으로 보고하세요:
 
+```json
+{
+  "outputs": {
+    "file_path": "src/auth/middleware.ts",
+    "exported_name": "authMiddleware"
+  },
+  "learnings": [
+    "이 프로젝트는 ESM만 사용",
+    "테스트 파일은 .test.ts 확장자"
+  ],
+  "issues": [
+    "require() 사용 시 ESM 에러 발생"
+  ],
+  "decisions": [
+    "에러 응답은 기존 errorHandler 패턴 따름"
+  ],
+  "verification": {
+    "build": "PASS",
+    "tests": "PASS",
+    "lint": "PASS"
+  }
+}
 ```
-## COMPLETED
-- [x] 완료한 항목 1
-- [x] 완료한 항목 2
 
-## FILES MODIFIED
-- `path/to/file.ts` - 변경 내용 요약
+**필드 설명:**
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| `outputs` | ✅ | EXPECTED OUTCOME의 Outputs에 정의된 값들 |
+| `learnings` | ❌ | 발견한 패턴/관례 (없으면 빈 배열) |
+| `issues` | ❌ | 문제점/주의사항 (없으면 빈 배열) |
+| `decisions` | ❌ | 내린 결정과 이유 (없으면 빈 배열) |
+| `verification` | ✅ | 빌드/테스트/린트 결과 |
 
-## LEARNINGS
-프로젝트에서 발견한 패턴이나 주의사항:
-- 이 프로젝트는 ESM만 사용함
-- 테스트 파일은 `.test.ts` 확장자 사용
-
-## ISSUES (있는 경우)
-작업 중 발견한 문제점:
-- 관련 없지만 발견한 버그: ...
-- 개선이 필요한 부분: ...
-
-## VERIFICATION
-- Build: PASS/FAIL
-- Tests: PASS/FAIL (해당되는 경우)
-- Lint: PASS/FAIL (해당되는 경우)
-```
+**⚠️ Orchestrator가 이 JSON을 파싱해서 context 파일에 저장합니다.**
 
 ## Important Notes
 
