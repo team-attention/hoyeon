@@ -18,26 +18,6 @@ hooks:
       hooks:
         - type: command
           command: ".claude/scripts/orchestrator-guard.sh"
-  Stop:
-    - hooks:
-        - type: prompt
-          prompt: |
-            Check if all TODOs and Acceptance Criteria are completed AND Final Report was output.
-
-            EVALUATION CRITERIA:
-            1. Are there any unchecked TODOs? (### [ ] TODO N: ...)
-            2. Are there any unchecked Acceptance Criteria? (- [ ] within TODO sections)
-            3. Was the Final Report output? (═══ ORCHESTRATION COMPLETE ═══)
-
-            DECISION LOGIC:
-            - If unchecked TODOs exist (### [ ] TODO N:) -> Return: {"ok": false, "reason": "Unchecked TODOs remain. Continue working on: [list TODO titles]"}
-            - If unchecked Acceptance Criteria exist -> Return: {"ok": false, "reason": "Unchecked Acceptance Criteria remain. Verify and check: [list items]"}
-            - If Git commits were NOT created -> Return: {"ok": false, "reason": "Must delegate to git-master before stopping"}
-            - If Final Report was NOT output -> Return: {"ok": false, "reason": "Must output Final Report before stopping"}
-            - If all complete AND commits created AND Final Report output -> Return: {"ok": true, "reason": "All tasks and criteria verified. Orchestration complete."}
-
-            Return ONLY valid JSON with ok and reason fields. No other text.
-          
   # prompt type은 PostToolUse를 지원하지 않음
   # PostToolUse:
   #   - matcher: "Task"
@@ -267,6 +247,23 @@ mkdir -p ".dev/specs/{name}/context"
 **초기화:**
 - `outputs.json` → `{}`
 - 나머지 `.md` 파일들 → 빈 파일
+- `execute-state.local.md` → Stop Hook용 상태 파일 (아래 참조)
+
+**Stop Hook 상태 파일 생성:**
+
+```markdown
+# .dev/specs/{name}/execute-state.local.md
+---
+iteration: 0
+max_iterations: 30
+plan_path: .dev/specs/{name}/PLAN.md
+mode: local
+started_at: 2026-01-22T18:30:00
+---
+```
+
+⚠️ **중요**: 이 파일이 존재하는 동안 Stop Hook이 완료 여부를 검증합니다.
+모든 TODO, Acceptance Criteria, Git 커밋, Final Report가 완료되어야 종료할 수 있습니다.
 
 > 📖 파일별 상세 용도는 하단 **Context System Details** 참조
 

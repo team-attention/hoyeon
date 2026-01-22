@@ -1,6 +1,28 @@
 # Plan Template
 
-> Reference document for plan file structure. Use this as a guide when generating plans.
+> Reference document for plan file structure. Designed for Orchestrator-Worker pattern where each TODO is executed by an isolated Worker agent.
+
+**Schema Version**: 1.0
+
+---
+
+## Architecture Overview
+
+```
+Orchestrator (reads full PLAN)
+    │
+    ├── Worker 1 → TODO 1 only (isolated)
+    ├── Worker 2 → TODO 2 only (isolated)
+    │   ...
+    └── Worker Final → Verification (read-only)
+```
+
+**Key Principles**:
+- Each TODO must be **self-contained** (Worker sees only its TODO)
+- **Inputs/Outputs** enable dependency between TODOs (with explicit types)
+- Orchestrator handles **substitution**: `${todo-1.outputs.config_path}` → actual value
+- Orchestrator handles **all commits** (Workers do NOT commit)
+- **Verification** runs once after all TODOs complete (read-only)
 
 ---
 
@@ -50,193 +72,496 @@
 - [Scope boundary]
 ```
 
+---
+
+## Orchestrator Section
+
+> **For Orchestrator only** - Workers do not see this section.
+
 ### 4. Task Flow
 
 ```markdown
 ## Task Flow
 
 ```
-Task 1 → Task 2 → Task 3
-              ↘ Task 4 (parallel)
+TODO-1 → TODO-2 → TODO-Final
 ```
 ```
 
-### 5. Parallelization
+### 5. Dependency Graph
+
+```markdown
+## Dependency Graph
+
+| TODO | Requires (Inputs) | Produces (Outputs) | Type |
+|------|-------------------|-------------------|------|
+| 1 | - | `config_path` (file) | work |
+| 2 | `todo-1.config_path` | `api_module` (file) | work |
+| Final | all outputs | - | verification |
+```
+
+### 6. Parallelization
 
 ```markdown
 ## Parallelization
 
-| Group | Tasks | Reason |
+| Group | TODOs | Reason |
 |-------|-------|--------|
-| A | 2, 3 | Independent files |
-| B | 4, 5 | No shared state |
-```
-
-### 6. TODOs
-
-```markdown
-## TODOs
-
-- [ ] **1. {Task Title}**
-
-  **What to do**:
-  - [Clear implementation step]
-  - [Another step]
-
-  **Must NOT do**:
-  - [Specific exclusion]
-
-  **Parallelizable**: YES (with 2, 3) | NO (depends on 0)
-
-  **References**:
-  - `path/to/file.ts:45-78` - [Why this reference matters]
-  - `docs/spec.md#section` - [What to extract from here]
-
-  **Acceptance Criteria**:
-  - [ ] [Verifiable condition]
-  - [ ] [Test command] → [Expected result]
-
-  **Commit**: YES | NO
-  - Message: `type(scope): description`
+| - | - | (define if parallel tasks exist) |
 ```
 
 ### 7. Commit Strategy
 
+> **Orchestrator commits on behalf of Workers** - Workers do NOT touch git.
+
 ```markdown
 ## Commit Strategy
 
-| After Task | Message | Files |
-|------------|---------|-------|
-| 1 | `feat(scope): add X` | `path/file.ts` |
-| 2, 3 | `feat(scope): add Y and Z` | `path/y.ts`, `path/z.ts` |
+| After TODO | Message | Files | Condition |
+|------------|---------|-------|-----------|
+| 1 | `chore(setup): initialize config` | `config/*` | always |
+| 2 | `feat(api): add main module` | `src/api/*` | always |
+
+> **Note**: No commit after Final (Verification is read-only). Final cleanup commit only if Orchestrator detects uncommitted changes before verification.
 ```
 
-### 8. Completion Protocol
-
-> **Purpose**: Plan-level quality gate. Run after ALL TODOs are completed, before final submission.
+### 8. Error Handling
 
 ```markdown
-## Completion Protocol
+## Error Handling
 
-> 모든 TODO 완료 후 실행. 전부 통과해야 "작업 완료".
-
-### Quality Checks
-- [ ] **Type Check**: `{type-check command}` → exit 0
-- [ ] **Lint**: `{lint command}` → no errors
-- [ ] **Test**: `{test command}` → all pass (or N/A if no tests)
-- [ ] **Unused Files**: 변경으로 인해 미사용된 파일 확인 및 정리
-
-### Final Commit
-- [ ] 모든 Quality Checks 통과 후 최종 커밋
+| Scenario | Action |
+|----------|--------|
+| Worker fails Acceptance Criteria | Retry up to 2 times, then halt |
+| Worker times out | Halt and report |
+| Verification fails | Report failures, do NOT auto-fix |
+| Missing Input (previous TODO failed) | Skip dependent TODOs, halt |
 ```
 
-**Customize per project**:
-- Type Check: `tsc --noEmit`, `npm run type-check`, etc.
-- Lint: `npm run lint`, `eslint .`, etc.
-- Test: `npm test`, `bun test`, `pytest`, etc.
-
-### 9. Success Criteria
+### 9. Runtime Contract
 
 ```markdown
-## Success Criteria
+## Runtime Contract
 
-### Verification Commands
-```bash
-command  # Expected: output
-```
-
-### Final Checklist
-- [ ] All deliverables present
-- [ ] All Acceptance Criteria met
-- [ ] All Completion Protocol checks passed
-- [ ] All "Must NOT Do" items absent
+| Aspect | Specification |
+|--------|---------------|
+| Working Directory | Repository root |
+| Network Access | Allowed (for API calls, downloads) |
+| Package Install | Denied (use existing deps only) |
+| File Access | Repository only (no system files) |
+| Max Execution Time | 5 minutes per TODO |
+| Git Operations | Denied (Orchestrator handles) |
 ```
 
 ---
 
-## Worker Completion Flow
+## TODO Section
 
-Worker agent는 다음 흐름으로 작업을 완료합니다:
+> **For Workers** - Each Worker receives only its assigned TODO.
 
-```
-1. Task Loop: 각 TODO 순회
-   ├─ 작업 수행
-   ├─ Acceptance Criteria 검증 ("이 기능이 동작하나?")
-   ├─ Commit (if marked YES)
-   └─ 다음 TODO로 이동
-
-2. Finalization: 모든 TODO 완료 후
-   ├─ Completion Protocol 실행 ("머지해도 되나?")
-   ├─ 모든 Quality Checks 통과
-   └─ "작업 완료" 선언
-```
-
-**중요**: Acceptance Criteria와 Completion Protocol은 목적이 다릅니다.
-
-| | Acceptance Criteria | Completion Protocol |
-|---|---|---|
-| **질문** | "이 기능이 동작하나?" | "머지해도 되나?" |
-| **범위** | Task별 (개별 TODO) | Plan 전체 (공통) |
-| **성격** | 기능적 검증 | 품질 검증 |
-| **예시** | "401 반환", "더블클릭시 편집" | "type-check", "lint" |
-
----
-
-## Parallelizable Field Values
-
-Each TODO MUST include a `**Parallelizable**:` line with one of:
-
-- `YES (with N, M)` - Can run in parallel with tasks N and M
-- `YES (independent)` - Can run in parallel with any task
-- `NO (depends on N)` - Must wait for task N to complete
-- `NO (foundation)` - Other tasks depend on this
-
----
-
-## Example TODO
+### 10. TODOs
 
 ```markdown
-- [ ] **2. Add authentication middleware**
+## TODOs
 
-  **What to do**:
-  - Create `src/middleware/auth.ts`
-  - Implement JWT validation using existing pattern
-  - Add to Express router chain
+### [ ] TODO 1: {Task Title}
 
-  **Must NOT do**:
-  - Don't modify existing auth logic
-  - Don't add new dependencies
+**Type**: work
 
-  **Parallelizable**: YES (with 3)
+**Required Tools**: (none)
 
-  **References**:
-  - `src/middleware/logging.ts:10-25` - Middleware pattern to follow
-  - `src/utils/jwt.ts:verify()` - Use this for token validation
+**Inputs**: (none - first task)
 
-  **Acceptance Criteria**:
-  - [ ] File exists: `src/middleware/auth.ts`
-  - [ ] `bun test src/middleware/` → All tests pass
-  - [ ] Unauthorized request returns 401
+**Outputs**:
+- `config_path` (file): `./config/app.json` - Application configuration file
 
-  **Commit**: YES
-  - Message: `feat(auth): add JWT validation middleware`
-```
+**Steps**:
+- [ ] Create config directory structure
+- [ ] Generate initial configuration file
+- [ ] Validate config schema
+
+**Must NOT do**:
+- Do not modify existing configs
+- Do not add external dependencies
+- Do not run git commands
+
+**References**:
+- `src/types/config.ts:10-30` - Config type definitions
+- `docs/config-spec.md` - Configuration requirements
+
+**Acceptance Criteria**:
+- [ ] File exists: `./config/app.json`
+- [ ] `cat ./config/app.json` → Valid JSON (parseable)
+- [ ] Config contains required fields: `name`, `version`
 
 ---
 
-## Example Completion Protocol
+### [ ] TODO 2: {Task Title}
 
-```markdown
-## Completion Protocol
+**Type**: work
 
-> 모든 TODO 완료 후 실행.
+**Required Tools**: (none)
 
-### Quality Checks
+**Inputs**:
+- `config_path` (file): `${todo-1.outputs.config_path}` - Configuration file from TODO 1
+
+**Outputs**:
+- `api_module` (file): `src/api/index.ts` - Main API module
+
+**Steps**:
+- [ ] Read configuration from `${config_path}`
+- [ ] Create API module structure at `src/api/`
+- [ ] Implement endpoints based on config
+- [ ] Export module
+
+**Must NOT do**:
+- Do not hardcode config values (read from input)
+- Do not modify the input config file
+- Do not install new packages
+- Do not run git commands
+
+**References**:
+- `src/api/template.ts:1-50` - API pattern to follow
+
+**Acceptance Criteria**:
+- [ ] File exists: `src/api/index.ts`
+- [ ] File is valid TypeScript (no syntax errors)
+- [ ] Module exports `api` function
+
+---
+
+### [ ] TODO Final: Verification
+
+**Type**: verification (read-only)
+
+**Required Tools**: `npm` (for type-check, lint, test)
+
+**Inputs**:
+- `config_path` (file): `${todo-1.outputs.config_path}`
+- `api_module` (file): `${todo-2.outputs.api_module}`
+
+**Outputs**: (none - verification only)
+
+**Steps**:
 - [ ] **Type Check**: `npm run type-check` → exit 0
 - [ ] **Lint**: `npm run lint` → no errors
 - [ ] **Test**: `npm test` → all pass
-- [ ] **Unused Files**: 미사용 파일 없음 확인
+- [ ] **Deliverables Check**: Verify all outputs from previous TODOs exist
 
-### Final Commit
-- [ ] Quality Checks 통과 후 최종 정리 커밋 (필요시)
+**Must NOT do**:
+- Do not modify any files
+- Do not add new features
+- Do not fix errors (report only)
+- Do not run git commands
+
+**Acceptance Criteria**:
+- [ ] All commands exit with code 0
+- [ ] No new lint warnings introduced
+- [ ] All deliverables from Work Objectives exist
+```
+
+---
+
+## Worker Output Protocol
+
+> How Workers report results to Orchestrator.
+
+### Success Report
+
+Worker outputs to **stdout** (JSON format):
+
+```json
+{
+  "status": "success",
+  "todo_id": "todo-1",
+  "outputs": {
+    "config_path": "./config/app.json"
+  },
+  "artifacts": [
+    "./config/app.json"
+  ],
+  "steps_completed": [
+    "Create config directory structure",
+    "Generate initial configuration file",
+    "Validate config schema"
+  ],
+  "acceptance_criteria_passed": [
+    "File exists: ./config/app.json",
+    "Valid JSON",
+    "Config contains required fields"
+  ]
+}
+```
+
+### Failure Report
+
+```json
+{
+  "status": "failure",
+  "todo_id": "todo-1",
+  "failed_at": "step" | "acceptance_criteria",
+  "error": {
+    "step": "Validate config schema",
+    "message": "Missing required field: version",
+    "details": "..."
+  },
+  "partial_outputs": {
+    "config_path": "./config/app.json"
+  },
+  "steps_completed": [
+    "Create config directory structure",
+    "Generate initial configuration file"
+  ]
+}
+```
+
+---
+
+## Field Specifications
+
+### Type Field
+
+Declares the nature of the TODO.
+
+| Type | Description | Can Modify Files? |
+|------|-------------|-------------------|
+| `work` | Implementation task | Yes |
+| `verification` | Quality gate (read-only) | No |
+
+### Required Tools Field
+
+Explicit declaration of environment dependencies.
+
+```markdown
+**Required Tools**: `npm`, `jq`, `curl`
+```
+
+If a tool is not available, Worker should fail immediately with clear error.
+
+### Inputs Field
+
+Declares dependencies on outputs from previous TODOs. **Keys must match output names exactly.**
+
+```markdown
+**Inputs**:
+- `{output_name}` ({type}): `${todo-N.outputs.output_name}` - Description
+```
+
+**Types**:
+- `file` - File path
+- `json` - JSON object/value
+- `string` - Plain string
+- `list` - Array of values
+
+**Examples**:
+```markdown
+**Inputs**:
+- `config_path` (file): `${todo-1.outputs.config_path}` - Config file path
+- `api_spec` (json): `${todo-1.outputs.api_spec}` - API specification object
+```
+
+### Outputs Field
+
+Declares what this TODO produces. **Orchestrator collects these after Worker completes.**
+
+```markdown
+**Outputs**:
+- `{output_name}` ({type}): `{value}` - Description
+```
+
+**Examples**:
+```markdown
+**Outputs**:
+- `config_path` (file): `./config/app.json` - Generated config file
+- `test_report` (json): `coverage/report.json` - Test coverage data
+- `files_created` (list): `["src/a.ts", "src/b.ts"]` - List of created files
+```
+
+### Steps Field
+
+Actionable items the Worker must complete. **All items must be checkboxes.**
+
+```markdown
+**Steps**:
+- [ ] Clear action 1
+- [ ] Clear action 2
+- [ ] Clear action 3
+```
+
+### Acceptance Criteria Field
+
+Verifiable conditions that prove the TODO is complete. **No external tool dependencies unless declared in Required Tools.**
+
+```markdown
+**Acceptance Criteria**:
+- [ ] Condition 1 (existence check, output validation, etc.)
+- [ ] `command` → expected result
+- [ ] Functional requirement met
+```
+
+---
+
+## Worker Execution Flow
+
+Each Worker follows this flow for its assigned TODO:
+
+```
+1. Validate Environment
+   └─ Check Required Tools are available
+
+2. Receive TODO
+   └─ Orchestrator has already substituted ${...} references
+
+3. Validate Inputs
+   └─ Check all input files/values exist
+
+4. Execute Steps
+   ├─ Work through each checkbox
+   └─ Mark completed as done
+
+5. Verify Acceptance Criteria
+   ├─ Run each verification
+   └─ All must pass
+
+6. Report Results
+   └─ Output JSON to stdout (success or failure)
+
+(Worker does NOT commit - Orchestrator handles git)
+```
+
+---
+
+## Orchestrator Execution Flow
+
+```
+1. Parse PLAN
+   └─ Validate Dependency Graph consistency
+
+2. For each TODO (respecting dependencies):
+   ├─ Substitute ${...} references with actual values
+   ├─ Dispatch to Worker
+   ├─ Collect Worker output (stdout JSON)
+   ├─ If success: store outputs, commit if specified
+   └─ If failure: apply Error Handling rules
+
+3. After all work TODOs:
+   └─ Dispatch TODO Final (verification)
+
+4. If verification passes:
+   └─ Report success
+
+5. If verification fails:
+   └─ Report failures (do NOT auto-fix)
+```
+
+---
+
+## Verification Details
+
+The final TODO runs after all work TODOs complete.
+
+| Aspect | Description |
+|--------|-------------|
+| **Purpose** | Quality gate - "Is this mergeable?" |
+| **Type** | `verification` (read-only) |
+| **Timing** | After ALL work TODOs complete |
+| **Scope** | Entire project, not individual features |
+| **On Failure** | Report to Orchestrator, do NOT auto-fix |
+
+### Quality Checks (customize per project)
+
+| Check | Common Commands |
+|-------|-----------------|
+| Type Check | `tsc --noEmit`, `npm run type-check`, `mypy .` |
+| Lint | `npm run lint`, `eslint .`, `ruff check .` |
+| Test | `npm test`, `bun test`, `pytest`, `go test ./...` |
+| Build | `npm run build`, `go build ./...` |
+
+---
+
+## Acceptance Criteria vs Verification
+
+| | Acceptance Criteria | Verification (TODO Final) |
+|---|---|---|
+| **Question** | "Does this feature work?" | "Is this mergeable?" |
+| **Scope** | Per TODO (individual) | Entire Plan (global) |
+| **Nature** | Functional verification | Quality verification |
+| **Examples** | "File exists", "Returns 401" | "Type check passes", "All tests green" |
+| **When** | After each TODO | After ALL TODOs |
+| **Can Modify?** | N/A (already done) | NO (read-only) |
+
+---
+
+## Example: Complete TODO
+
+```markdown
+### [ ] TODO 2: Add authentication middleware
+
+**Type**: work
+
+**Required Tools**: (none)
+
+**Inputs**:
+- `config_path` (file): `${todo-1.outputs.config_path}` - JWT configuration
+
+**Outputs**:
+- `middleware_path` (file): `src/middleware/auth.ts` - Auth middleware module
+
+**Steps**:
+- [ ] Read JWT settings from `${config_path}`
+- [ ] Create `src/middleware/auth.ts`
+- [ ] Implement token validation using existing pattern from references
+- [ ] Add middleware to Express router chain
+- [ ] Export middleware function
+
+**Must NOT do**:
+- Do not modify existing auth logic in other files
+- Do not add new npm dependencies
+- Do not change the JWT secret handling
+- Do not run git commands
+
+**References**:
+- `src/middleware/logging.ts:10-25` - Middleware pattern to follow
+- `src/utils/jwt.ts:verify()` - Use this for token validation
+
+**Acceptance Criteria**:
+- [ ] File exists: `src/middleware/auth.ts`
+- [ ] File exports `authMiddleware` function
+- [ ] Request without token → 401 Unauthorized
+- [ ] Request with valid token → Passes to next handler
+```
+
+---
+
+## Example: Verification
+
+```markdown
+### [ ] TODO Final: Verification
+
+**Type**: verification (read-only)
+
+**Required Tools**: `npm`
+
+**Inputs**:
+- `middleware_path` (file): `${todo-2.outputs.middleware_path}`
+- `routes_path` (file): `${todo-3.outputs.routes_path}`
+
+**Outputs**: (none)
+
+**Steps**:
+- [ ] **Type Check**: `npm run type-check` → exit 0
+- [ ] **Lint**: `npm run lint` → no errors
+- [ ] **Test**: `npm test` → all pass
+- [ ] **Integration**: Verify middleware is imported in routes file
+
+**Must NOT do**:
+- Do not modify any files
+- Do not add new features
+- Do not fix lint errors (report only)
+- Do not run git commands
+
+**Acceptance Criteria**:
+- [ ] All commands exit with code 0
+- [ ] No new lint warnings introduced
+- [ ] All deliverables from Work Objectives exist
 ```
