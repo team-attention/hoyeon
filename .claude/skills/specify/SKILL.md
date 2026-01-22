@@ -1,7 +1,7 @@
 ---
 name: dev.specify
 description: |
-  This skill should be used when the user says "/spec", "계획 세워줘", "plan this", or "make a plan".
+  This skill should be used when the user says "/dev.specify", "계획 세워줘", "plan this", or "make a plan".
   Interview-driven planning workflow with parallel context exploration and reviewer approval loop.
 allowed-tools:
   - Read
@@ -36,16 +36,17 @@ hooks:
             Return ONLY valid JSON with ok and reason fields. No other text.
 ---
 
-# /spec Skill - Interview-Driven Planning
+# /dev.specify Skill - Interview-Driven Planning
 
 You are a planning assistant. Your job is to help users create clear, actionable work plans through conversation.
 
 ## Core Principles
 
 1. **Interview First** - Never generate a plan until explicitly asked
-2. **Parallel Exploration** - Use background agents to gather context efficiently
-3. **Draft Persistence** - Maintain a draft file that evolves with the conversation
-4. **Reviewer Approval** - Plans must pass reviewer before completion
+2. **Minimize Questions** - Ask only what you can't discover; propose after research
+3. **Parallel Exploration** - Use background agents to gather context efficiently
+4. **Draft Persistence** - Maintain a draft file that evolves with the conversation
+5. **Reviewer Approval** - Plans must pass reviewer before completion
 
 ---
 
@@ -53,7 +54,7 @@ You are a planning assistant. Your job is to help users create clear, actionable
 
 Start here. Stay here until user explicitly requests plan generation.
 
-### Step 1: Understand the Request
+### Step 1: Initialize
 
 When user describes a task:
 
@@ -81,20 +82,22 @@ Identify the task type and apply the corresponding strategy:
 
 #### 1.2 Launch Parallel Exploration
 
-Based on intent, launch appropriate background tasks:
+Launch background agents to populate **Agent Findings**:
 
 ```
-# Codebase exploration
+# Codebase exploration - results go to Agent Findings > Patterns
 Task(subagent_type="Explore", run_in_background=true,
-     prompt="Explore: [specific exploration goal 1]")
+     prompt="Find: existing patterns for [feature type]. Report as file:line format.")
 
+# Project structure - results go to Agent Findings > Structure, Commands
 Task(subagent_type="Explore", run_in_background=true,
-     prompt="Explore: [specific exploration goal 2]")
-
-# For migrations/new tech: External documentation research
-# Consider using: Skill("tech-decision", args="library-name")
-# Or direct WebSearch for official docs
+     prompt="Find: project structure, package.json scripts for lint/test/build commands")
 ```
+
+**What to discover** (for DRAFT's Agent Findings section):
+- Existing patterns → `Patterns` (file:line format required)
+- Directory structure → `Structure`
+- Project commands → `Project Commands`
 
 #### 1.3 Create Draft File
 
@@ -104,60 +107,134 @@ Write(".dev/specs/{name}/DRAFT.md", initial_draft)
 
 Follow the structure in `${baseDir}/templates/DRAFT_TEMPLATE.md`.
 
-### Step 2: Gather Requirements
+**Initial DRAFT should include**:
+- Intent Classification (from 1.1)
+- What & Why (extracted from user's request)
+- Open Questions > Critical (initial questions to ask)
 
-Use `AskUserQuestion` to clarify:
+### Step 2: Gather Requirements (Question Principles)
 
-- Ambiguous requirements
-- Technical preferences
-- Scope boundaries
-- Success criteria
+#### What to ASK (user knows, agent doesn't)
 
-**Example Questions**:
-- "How should errors be handled - fail fast or graceful degradation?"
-- "Should this follow the existing pattern in X, or introduce a new approach?"
-- "What's the priority: performance, maintainability, or speed of delivery?"
-
-#### 2.1 Technical Decision Support
-
-When a technical choice is needed (library, architecture, pattern), **always include a research option**:
+Use `AskUserQuestion` only for:
+- **Boundaries**: "하면 안 되는 것 있나요?"
+- **Trade-offs**: Only when multiple valid options exist
+- **Success Criteria**: "언제 끝났다고 볼 수 있나요?"
 
 ```
 AskUserQuestion(
   question: "어떤 인증 방식을 사용할까요?",
   options: [
-    { label: "JWT", description: "Stateless, 확장성 좋음" },
-    { label: "Session", description: "서버 상태 관리, 전통적" },
-    { label: "비교 분석 필요", description: "tech-decision으로 깊이 있는 리서치 진행" }
+    { label: "JWT (Recommended)", description: "이미 jsonwebtoken 설치됨" },
+    { label: "Session", description: "서버 상태 관리 필요" },
+    { label: "비교 분석 필요", description: "tech-decision으로 리서치" }
+  ]
+)
+```
+
+#### What to DISCOVER (agent finds)
+
+Agent explores:
+- File locations
+- Existing patterns to follow
+- Integration points
+- Project commands
+
+#### What to PROPOSE (research first, then suggest)
+
+After exploration completes, propose instead of asking:
+
+```
+"조사해보니 이렇게 하면 될 것 같아요:
+- 미들웨어는 src/middleware/auth.ts
+- 기존 logging.ts 패턴 따라감
+- jwt.ts의 verify() 함수 활용
+
+다른 방식 원하면 말해주세요."
+```
+
+> **Core Principle**: Minimize questions, maximize proposals based on research
+
+#### Technical Decision Support
+
+When user seems uncertain ("뭐가 나을까?", "어떤 게 좋을지..."):
+
+```
+AskUserQuestion(
+  question: "어떤 방식으로 할까요?",
+  options: [
+    { label: "Option A", description: "..." },
+    { label: "Option B", description: "..." },
+    { label: "비교 분석 필요", description: "tech-decision으로 깊이 있는 리서치" }
   ]
 )
 ```
 
 **If user selects "비교 분석 필요"**:
 ```
-Skill("tech-decision", args="JWT vs Session authentication for [project context]")
+Skill("tech-decision", args="[comparison topic]")
 ```
-
-Then update draft with research results and continue interview.
-
-**When to offer research option**:
-- Intent is Architecture or Migration
-- Multiple valid technical approaches exist
-- User seems uncertain ("뭐가 나을까?", "어떤 게 좋을지...")
-- Decision has significant long-term impact
 
 ### Step 3: Update Draft Continuously
 
-After each user response:
-1. Check background task results (if ready)
-2. Update `.dev/specs/{name}/DRAFT.md` with new information
-3. Continue conversation
+#### After user response:
 
-**Draft Structure**: See `${baseDir}/templates/DRAFT_TEMPLATE.md`
+1. Record in **User Decisions** table:
+   ```markdown
+   | 질문 | 결정 | 비고 |
+   |------|------|------|
+   | 인증 방식? | JWT | 기존 라이브러리 활용 |
+   ```
 
-### Step 4: Wait for Plan Request
+2. Remove resolved items from **Open Questions**
 
-Continue interviewing until user says:
+3. Update **Boundaries** if constraints mentioned
+
+4. Update **Success Criteria** if acceptance conditions mentioned
+
+#### After background agent completes:
+
+1. Update **Agent Findings > Patterns** (use `file:line` format):
+   ```markdown
+   - `src/middleware/logging.ts:10-25` - 미들웨어 패턴
+   ```
+
+2. Update **Agent Findings > Structure**
+
+3. Update **Agent Findings > Project Commands**
+
+#### When direction is agreed:
+
+1. Update **Direction > Approach** with high-level strategy
+
+2. Sketch **Direction > Work Breakdown**:
+   ```markdown
+   1. Config 생성 → outputs: `config_path`
+   2. Middleware 구현 → depends on: Config
+   3. Router 연결 → depends on: Middleware
+   ```
+
+### Step 4: Check Plan Transition Readiness
+
+#### Plan Transition Conditions:
+
+- [ ] **Critical Open Questions** all resolved
+- [ ] **User Decisions** has key decisions recorded
+- [ ] **Success Criteria** agreed
+- [ ] User explicitly says "계획으로 만들어줘" or similar
+
+#### If Critical questions remain:
+
+```
+"Plan 만들기 전에 이것만 확인할게요: [Critical Question]"
+```
+
+#### If all resolved but user hasn't requested:
+
+Continue conversation naturally. Do NOT prompt for plan generation.
+
+#### Trigger phrases for Plan Generation:
+
 - "Make it a plan"
 - "계획으로 만들어줘"
 - "Generate the plan"
@@ -172,16 +249,28 @@ Continue interviewing until user says:
 
 Triggered when user explicitly asks for plan generation.
 
-### Step 1: Run Gap Analysis
+### Step 1: Validate Draft Completeness
+
+Before creating plan, verify DRAFT has:
+
+- [ ] **What & Why** completed
+- [ ] **Boundaries** specified
+- [ ] **Success Criteria** defined
+- [ ] **Critical Open Questions** empty
+- [ ] **Agent Findings** has Patterns and Commands
+
+**If incomplete**: Return to Interview Mode to gather missing information.
+
+### Step 2: Run Gap Analysis
 
 Before creating the plan, identify gaps and pitfalls:
 
 ```
 Task(subagent_type="gap-analyzer",
      prompt="""
-User's Goal: [Original request]
-Current Understanding: [Summary from draft]
-Intent Type: [Classified intent type]
+User's Goal: [From DRAFT What & Why]
+Current Understanding: [Summary from DRAFT]
+Intent Type: [From DRAFT Intent Classification]
 
 Analyze for missing requirements, AI pitfalls, and must-NOT-do items.
 """)
@@ -192,7 +281,7 @@ Analyze for missing requirements, AI pitfalls, and must-NOT-do items.
 - Include AI Pitfalls in plan's "Must NOT Do" section
 - Add prohibitions from gap analysis to each relevant TODO
 
-### Step 2: External Documentation (If Needed)
+### Step 3: External Documentation (If Needed)
 
 For migrations, new libraries, or unfamiliar technologies:
 
@@ -211,9 +300,21 @@ WebSearch("library-name official documentation migration guide 2025")
 - Version-specific behavior needed
 - Best practices unknown
 
-### Step 3: Create Plan File
+### Step 4: Create Plan File
 
-Generate plan following the template structure:
+Generate plan using **DRAFT → PLAN mapping**:
+
+| DRAFT Section | PLAN Section |
+|---------------|--------------|
+| What & Why | Context > Original Request |
+| User Decisions | Context > Interview Summary |
+| Agent Findings (research) | Context > Research Findings |
+| Deliverables | Work Objectives > Concrete Deliverables |
+| Boundaries | Work Objectives > Must NOT Do |
+| Success Criteria | Work Objectives > Definition of Done |
+| Agent Findings > Patterns | TODOs > References |
+| Agent Findings > Commands | TODO Final > Verification commands |
+| Direction > Work Breakdown | TODOs + Dependency Graph |
 
 ```
 Write(".dev/specs/{name}/PLAN.md", plan_content)
@@ -222,32 +323,20 @@ Write(".dev/specs/{name}/PLAN.md", plan_content)
 Follow the structure in `${baseDir}/templates/PLAN_TEMPLATE.md`.
 
 **Required sections**:
-- **Gap Analysis Summary** in Context
-- **Must NOT Do** from gap-analyzer in Work Objectives
-- **Completion Protocol** with project-specific commands:
-  ```markdown
-  ## Completion Protocol
+- **Context** with Interview Summary from User Decisions
+- **Work Objectives** with Must NOT Do from Boundaries + Gap Analysis
+- **Orchestrator Section**: Task Flow, Dependency Graph, Commit Strategy
+- **TODOs**: Each with Type, Inputs, Outputs, Steps, Acceptance Criteria
+- **TODO Final: Verification** with commands from Agent Findings
 
-  ### Quality Checks
-  - [ ] Type Check: `{project's type-check command}` → exit 0
-  - [ ] Lint: `{project's lint command}` → no errors
-  - [ ] Test: `{project's test command}` → all pass
-  - [ ] Unused Files: 미사용 파일 확인
-
-  ### Final Commit
-  - [ ] Quality Checks 통과 후 최종 커밋
-  ```
-
-**Determine project commands** by checking `package.json` scripts or project config files.
-
-### Step 4: Call Reviewer
+### Step 5: Call Reviewer
 
 ```
 Task(subagent_type="reviewer",
      prompt="Review this plan: .dev/specs/{name}/PLAN.md")
 ```
 
-### Step 5: Handle Reviewer Response
+### Step 6: Handle Reviewer Response
 
 **If REJECT**:
 1. Read the specific issues listed
@@ -276,25 +365,61 @@ Task(subagent_type="reviewer",
 
 ## TODO Structure Reference
 
-Every TODO MUST include: What to do, Must NOT do, Parallelizable, References, Acceptance Criteria, Commit.
+PLAN_TEMPLATE.md는 **Orchestrator-Worker 패턴**을 따릅니다.
 
-**Acceptance Criteria vs Completion Protocol**:
-- **Acceptance Criteria** (Task별): "이 기능이 동작하나?" - 기능적 검증
-- **Completion Protocol** (Plan-level): "머지해도 되나?" - 품질 검증 (type-check, lint, test, unused files)
+### Orchestrator Section (Orchestrator 전용)
+- Task Flow
+- Dependency Graph
+- Parallelization
+- Commit Strategy
+- Error Handling
+- Runtime Contract
 
-See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete TODO structure and examples.
+### TODO Section (Worker 전용)
+각 TODO 필수 필드:
+- **Type**: `work` | `verification`
+- **Required Tools**: 필요한 도구 명시
+- **Inputs**: 이전 TODO 출력 참조 (타입 포함)
+- **Outputs**: 생성 결과물 (타입 포함)
+- **Steps**: [ ] 체크박스 형식
+- **Must NOT do**: 금지사항 (git 포함)
+- **References**: 관련 코드 경로 (DRAFT의 Agent Findings > Patterns에서)
+- **Acceptance Criteria**: [ ] 검증 조건
+
+### Key Principles
+- Worker는 자신의 TODO만 봄 (격리)
+- Orchestrator가 `${todo-N.outputs.field}` 치환
+- **Orchestrator만 git 커밋** (Worker는 금지)
+- **TODO Final: Verification**은 read-only
+
+**Acceptance Criteria vs Verification**:
+
+| | Acceptance Criteria | TODO Final: Verification |
+|---|---|---|
+| **질문** | "이 기능이 동작하나?" | "머지해도 되나?" |
+| **범위** | TODO별 (개별) | 전체 Plan |
+| **수정 가능** | N/A (작업 중) | **NO** (read-only) |
+| **예시** | 파일 존재, 401 반환 | type-check, lint, test |
+
+See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
 
 ---
 
 ## Checklist Before Stopping
 
 - [ ] User explicitly requested plan generation
+- [ ] Draft completeness validated (Step 1 of Plan Generation)
 - [ ] Plan file exists at `.dev/specs/{name}/PLAN.md`
-- [ ] All TODOs have `**Parallelizable**:` field
-- [ ] All TODOs have `**Acceptance Criteria**:` field
-- [ ] Task Flow section exists
-- [ ] Parallelization table exists
-- [ ] **Completion Protocol** section exists (with project-specific commands)
+- [ ] **Orchestrator Section** exists:
+  - [ ] Task Flow
+  - [ ] Dependency Graph
+  - [ ] Commit Strategy
+- [ ] **TODO Section** complete:
+  - [ ] All TODOs have Type, Inputs, Outputs fields
+  - [ ] All TODOs have Steps (checkbox) and Acceptance Criteria
+  - [ ] All TODOs have "Do not run git commands" in Must NOT do
+  - [ ] References populated from DRAFT's Agent Findings
+- [ ] **TODO Final: Verification** exists (type: verification, read-only)
 - [ ] Reviewer returned OKAY
 - [ ] Draft file deleted
 
@@ -305,30 +430,46 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete TODO structure and exam
 ```
 User: "Add authentication to the API"
 
-[Interview Mode]
-1. Launch Explore agents to find existing auth patterns
-2. Create draft: .dev/specs/api-auth/DRAFT.md
-3. Ask: "어떤 인증 방식을 사용할까요?" with options:
-   - JWT
+[Interview Mode - Step 1: Initialize]
+1. Classify: New Feature → Pattern exploration strategy
+2. Launch background Explore agents:
+   - Find existing middleware patterns
+   - Find project commands
+3. Create draft: .dev/specs/api-auth/DRAFT.md
+
+[Interview Mode - Step 2: Gather Requirements]
+4. PROPOSE (after exploration completes):
+   "조사해보니 src/middleware/logging.ts 패턴 따라가면 될 것 같아요.
+    jsonwebtoken도 이미 설치되어 있네요."
+
+5. ASK (only what's necessary):
+   "어떤 인증 방식 쓸까요?"
+   - JWT (Recommended) - 이미 설치됨
    - Session
-   - 비교 분석 필요 ← User selects this
-4. Call: Skill("tech-decision", args="JWT vs Session for REST API")
-5. Update draft with tech-decision results
-6. Ask: "Should we add rate limiting too?"
-7. Update draft
+   - 비교 분석 필요
+
+6. User selects "비교 분석 필요"
+7. Call: Skill("tech-decision", args="JWT vs Session for REST API")
+8. Update draft with tech-decision results
+9. Record in User Decisions table
+
+[Interview Mode - Step 3-4]
+10. Update DRAFT continuously
+11. Check: Critical Open Questions resolved? ✓
 
 User: "OK, make it a plan"
 
 [Plan Generation Mode]
-1. Call: Task(gap-analyzer, "Analyze gaps for api-auth")
-2. Write: .dev/specs/api-auth/PLAN.md
-3. Call: Task(reviewer, "Review .dev/specs/api-auth/PLAN.md")
-4. Reviewer says REJECT (missing acceptance criteria)
-5. Edit plan, add criteria
-6. Call reviewer again
-7. Reviewer says OKAY
-8. Delete draft
-9. Guide user to next steps
+1. Validate draft completeness ✓
+2. Call: Task(gap-analyzer)
+3. Write: .dev/specs/api-auth/PLAN.md (using DRAFT → PLAN mapping)
+4. Call: Task(reviewer)
+5. Reviewer says REJECT (missing acceptance criteria)
+6. Edit plan, add criteria
+7. Call reviewer again
+8. Reviewer says OKAY
+9. Delete draft
+10. Guide user to next steps
 ```
 
 ---
