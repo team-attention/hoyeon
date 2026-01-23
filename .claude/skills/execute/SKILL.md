@@ -13,11 +13,6 @@ allowed-tools:
   - TodoWrite
   - Edit
 hooks:
-  PreToolUse:
-    - matcher: "Edit|Write"
-      hooks:
-        - type: command
-          command: ".claude/scripts/orchestrator-guard.sh"
   # prompt type은 PostToolUse를 지원하지 않음
   # PostToolUse:
   #   - matcher: "Task"
@@ -236,15 +231,28 @@ GitHub PR과 연동. 협업 및 자동화에 적합.
    }])
    ```
 
-### STEP 2: Initialize Context
+### STEP 2: Initialize or Resume Context
 
-**첫 실행 시 context 폴더 생성:**
+**Context 폴더 확인:**
 
 ```bash
-mkdir -p ".dev/specs/{name}/context"
+CONTEXT_DIR=".dev/specs/{name}/context"
 ```
 
-**초기화할 파일들:**
+**첫 실행 vs 재개 판단:**
+
+```
+if context 폴더가 없으면:
+    → 첫 실행: 폴더 생성 + 파일 초기화
+else:
+    → 재개: 기존 파일 유지 + outputs.json 로드
+```
+
+**첫 실행 시:**
+
+```bash
+mkdir -p "$CONTEXT_DIR"
+```
 
 | 파일 | 초기값 |
 |------|--------|
@@ -253,6 +261,12 @@ mkdir -p ".dev/specs/{name}/context"
 | `issues.md` | 빈 파일 |
 | `decisions.md` | 빈 파일 |
 | `verification.md` | 빈 파일 |
+
+**재개 시 (context 폴더가 이미 존재):**
+
+1. `outputs.json` 읽어서 메모리에 로드 (3a 변수 치환용)
+2. 다른 파일들은 그대로 유지 (append 방식이므로)
+3. Plan 파일의 checkbox로 진행 상태 파악 (STEP 1에서 이미 수행)
 
 > 📖 파일별 상세 용도는 하단 **Context System Details** 참조
 
@@ -445,20 +459,53 @@ Read("files that should NOT be modified")
 **검증 결과 기록**: 각 Acceptance Criteria의 통과/실패를 기록해두고,
 다음 단계(3f)에서 통과한 항목만 체크합니다.
 
-**검증 실패 시:**
+---
+
+**VERIFY Retry Loop (최대 3회):**
+
 ```
-Task(
-  subagent_type="worker",
-  description="Fix: {문제 설명}",
-  prompt="## 이전 작업 검증 실패\n\n[실패 내용]\n\n## 수정 필요 사항\n..."
-)
+retry_count = 0
+
+VERIFY_LOOP:
+  검증 수행 (위 체크리스트)
+
+  if 모두 통과:
+      → 3e (Save to Context)로 진행
+  else:
+      retry_count++
+      if retry_count < 3:
+          Task(worker, "Fix: {실패 항목}")
+          → 3c (Collect Worker Output)로 돌아가기
+             (새 JSON 파싱 → VERIFY_LOOP 재진입)
+      else:
+          → VERIFY 실패 처리 (아래)
 ```
 
-**최대 3회 재시도 후:**
+**흐름도:**
+```
+3b. Delegate → 3c. Collect → 3d. VERIFY
+                    ↑              ↓
+                    │         [통과] → 3e. Save
+                    │              ↓
+                    │         [실패, retry < 3]
+                    │              ↓
+                    │         Task(worker, "Fix...")
+                    │              ↓
+                    └────────── 3c로 복귀 (새 output 파싱)
+
+                          [실패, retry >= 3]
+                               ↓
+                          VERIFY 실패 처리
+```
+
+---
+
+**VERIFY 실패 처리 (3회 재시도 후):**
 
 **로컬 모드:**
 - `issues.md`에 미해결 항목으로 기록 (`- [ ] 문제 내용`)
-- 사용자에게 보고 후 대기
+- 사용자에게 보고: "TODO N 검증 실패. 수동 개입이 필요합니다."
+- **선택지 제시**: 계속 진행 / 중단
 
 **PR 모드 (자동 pause):**
 - **`/dev.state pause <PR#> "<reason>"`** 호출

@@ -16,21 +16,11 @@ allowed-tools:
   - WebFetch
 disallowed-tools:
   - Task
-hooks:
-  Stop:
-    - hooks:
-        - type: prompt
-          prompt: |
-            작업 완료 전 확인:
-            - EXPECTED OUTCOME의 모든 항목을 충족했는지 확인
-            - 빌드/테스트가 통과하는지 확인 (해당되는 경우)
-            - MUST NOT DO 항목을 위반하지 않았는지 확인
-
-            결과 반환:
-            - 모든 조건 충족: return {"ok": true, "reason": "[완료된 작업 요약]"}
-            - 미충족 항목 있음: return {"ok": false, "reason": "[미충족 사유]"} 후 계속 작업
-        - type: command
-          command: ".claude/scripts/capture-learnings.sh"
+validation_prompt: |
+  Must complete the delegated task and report in JSON format:
+  - outputs: EXPECTED OUTCOME에 정의된 결과물
+  - verification: build/test/lint 결과 (PASS/FAIL/SKIP)
+  - learnings/issues/decisions: 발견한 패턴이나 문제점
 ---
 
 # Worker Agent

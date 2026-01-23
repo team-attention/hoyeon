@@ -7,15 +7,10 @@ disallowed-tools:
   - Edit
   - Bash
   - Task
-hooks:
-  Stop:
-    - hooks:
-        - type: prompt
-          prompt: |
-            Check if you provided a final verdict.
-            - If you said "OKAY" with clear justification, return {"ok": true, "reason": "[Justification]"}
-            - If you said "REJECT" with specific improvements needed, return {"ok": false, "reason": "[Justification]"}
-            - If neither, return {"ok": false, "reason": "Must provide OKAY or REJECT verdict"}
+validation_prompt: |
+  Must contain a clear verdict: "OKAY" or "REJECT"
+  - OKAY: with justification explaining why plan is ready
+  - REJECT: with specific improvements needed
 ---
 
 # Plan Reviewer Agent

@@ -1,0 +1,4 @@
+# Legacy files (no longer used, kept for cleanup)
+.dev-agents/
+specify-active.lock
+dev-agent-validation.log

@@ -1,12 +1,13 @@
 #!/bin/bash
-# plan-guard.sh - PreToolUse[Edit|Write] hook for /dev.specify skill
+# dev-plan-guard.sh - PreToolUse[Edit|Write] hook for /dev.specify skill
 #
 # Purpose: Block file modifications outside .dev/ directory during planning
-# Activation: Only when .claude/specify-active.lock exists (set by specify-init-hook.sh)
+# Activation: Session exists in state.local.json without execute field (specify mode)
 #
 # Hook Input Fields (PreToolUse):
 #   - tool_name: string (Edit, Write, etc.)
 #   - tool_input: object (file_path, content, etc.)
+#   - session_id: current session
 #   - cwd: string (current working directory)
 
 set -euo pipefail
@@ -14,26 +15,32 @@ set -euo pipefail
 # Read JSON input from stdin
 INPUT=$(cat)
 
-# Extract cwd and file path
+# Extract fields
 CWD=$(echo "$INPUT" | jq -r '.cwd')
+SESSION_ID=$(echo "$INPUT" | jq -r '.session_id')
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty')
 
-# Check if specify mode is active (state file exists)
-STATE_FILE="$CWD/.claude/specify-active.lock"
+# State file path
+STATE_FILE="$CWD/.dev/state.local.json"
 
 if [[ ! -f "$STATE_FILE" ]]; then
-  # No active specify session - allow all operations
+  # No state file - allow all operations
   exit 0
 fi
 
-# Validate session_id to handle stale locks from crashed sessions
-CURRENT_SESSION=$(echo "$INPUT" | jq -r '.session_id')
-LOCK_SESSION=$(grep 'session_id:' "$STATE_FILE" 2>/dev/null | sed 's/session_id: *//' || echo "")
+# Check if this session exists
+SESSION_DATA=$(jq -r --arg sid "$SESSION_ID" '.[$sid] // empty' "$STATE_FILE")
 
-if [[ -n "$LOCK_SESSION" ]] && [[ "$LOCK_SESSION" != "$CURRENT_SESSION" ]]; then
-  # Stale lock from different session - remove and allow
-  rm "$STATE_FILE"
-  echo "📋 Specify mode: Removed stale lock (session mismatch)" >&2
+if [[ -z "$SESSION_DATA" ]] || [[ "$SESSION_DATA" == "null" ]]; then
+  # Session not found - allow all operations
+  exit 0
+fi
+
+# Check if this is specify mode (no execute field)
+HAS_EXECUTE=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute // empty' "$STATE_FILE")
+
+if [[ -n "$HAS_EXECUTE" ]] && [[ "$HAS_EXECUTE" != "null" ]]; then
+  # Has execute field - not specify mode, let orchestrator-guard handle it
   exit 0
 fi
 

@@ -1,7 +1,7 @@
 ---
-name: dev.specify
+name: specify
 description: |
-  This skill should be used when the user says "/dev.specify", "계획 세워줘", "plan this", or "make a plan".
+  This skill should be used when the user says "/specify", "계획 세워줘", "plan this", or "make a plan".
   Interview-driven planning workflow with parallel context exploration and reviewer approval loop.
 allowed-tools:
   - Read
@@ -31,7 +31,7 @@ hooks:
             Return ONLY valid JSON with ok and reason fields. No other text.
 ---
 
-# /dev.specify Skill - Interview-Driven Planning
+# /specify Skill - Interview-Driven Planning
 
 You are a planning assistant. Your job is to help users create clear, actionable work plans through conversation.
 

@@ -6,19 +6,12 @@ disallowed-tools:
   - Write
   - Edit
   - Bash
-hooks:
-  Stop:
-    - hooks:
-        - type: prompt
-          prompt: |
-            Check if you provided a complete gap analysis with all 4 sections:
-            1. Missing Requirements
-            2. AI Pitfalls (common mistakes AI makes)
-            3. Must NOT Do list
-            4. Recommended Questions
-
-            If all sections complete, return {"ok": true, "reason":"[Justification]"}
-            If any section missing or incomplete, return {"ok": false, "reason": "Missing section: [name]"}
+validation_prompt: |
+  Must contain all 4 sections of Gap Analysis Report:
+  1. Missing Requirements - gaps in requirements/context
+  2. AI Pitfalls - common mistakes AI makes on this type of task
+  3. Must NOT Do - explicit prohibitions
+  4. Recommended Questions - clarifying questions to ask
 ---
 
 # Gap Analyzer Agent

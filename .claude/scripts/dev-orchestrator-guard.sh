@@ -1,8 +1,8 @@
 #!/bin/bash
-# orchestrator-guard.sh - PreToolUse[Edit|Write] hook for /dev.execute skill
+# dev-orchestrator-guard.sh - PreToolUse[Edit|Write] hook for /dev.execute skill
 #
 # Purpose: Warn when Orchestrator tries to modify files directly
-# Activation: execute-state.local.md exists + session_id matches
+# Activation: Session exists in state.local.json with execute field
 #
 # Orchestrator should DELEGATE implementation to SubAgents, not write code directly.
 # This hook allows the action but warns the user to use Task() instead.
@@ -18,22 +18,22 @@ INPUT=$(cat)
 
 # Extract fields
 CWD=$(echo "$INPUT" | jq -r '.cwd')
-CURRENT_SESSION=$(echo "$INPUT" | jq -r '.session_id')
+SESSION_ID=$(echo "$INPUT" | jq -r '.session_id')
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty')
 
-# Check if execute mode is active (reuse execute state file)
-STATE_FILE=$(find "$CWD/.dev/specs" -name "execute-state.local.md" 2>/dev/null | head -1 || echo "")
+# State file path
+STATE_FILE="$CWD/.dev/state.local.json"
 
-if [[ -z "$STATE_FILE" ]] || [[ ! -f "$STATE_FILE" ]]; then
-  # No active execute session - allow all operations
+if [[ ! -f "$STATE_FILE" ]]; then
+  # No state file - allow all operations
   exit 0
 fi
 
-# Validate session_id
-LOCK_SESSION=$(grep 'session_id:' "$STATE_FILE" 2>/dev/null | sed 's/session_id: *//' || echo "")
+# Check if this session has execute field
+HAS_EXECUTE=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute // empty' "$STATE_FILE")
 
-if [[ -n "$LOCK_SESSION" ]] && [[ "$LOCK_SESSION" != "$CURRENT_SESSION" ]]; then
-  # Different session - not our execute, allow
+if [[ -z "$HAS_EXECUTE" ]] || [[ "$HAS_EXECUTE" == "null" ]]; then
+  # No execute field - not execute mode
   exit 0
 fi
 

@@ -14,16 +14,12 @@ disallowed-tools:
   - Task
   - Write
   - Edit
-hooks:
-  Stop:
-    - hooks:
-        - type: prompt
-          prompt: |
-            Verify that commits were created successfully:
-            - Did you run `git status` to confirm clean state?
-            - Did you output the COMMIT SUMMARY?
-
-            Return: {"ok": true, "reason": "Commits created"} or {"ok": false, "reason": "..."}
+validation_prompt: |
+  Must create atomic commits and output COMMIT SUMMARY:
+  - STYLE DETECTION RESULT: detected language + style from git log
+  - COMMIT PLAN: files grouped into logical commits
+  - COMMIT SUMMARY: list of created commits with hashes
+  - Working directory should be clean (git status)
 ---
 
 # Git Master Agent

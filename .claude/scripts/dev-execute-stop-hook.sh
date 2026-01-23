@@ -1,7 +1,7 @@
 #!/bin/bash
-
-# Execute Stop Hook
-# Prevents session exit when orchestration is incomplete
+# dev-execute-stop-hook.sh - Stop hook
+#
+# Purpose: Prevents session exit when orchestration is incomplete
 # Verifies: TODOs, Acceptance Criteria, Git commits, Final Report
 #
 # Hook Input Fields (Stop):
@@ -14,62 +14,67 @@ set -euo pipefail
 # Read hook input from stdin
 HOOK_INPUT=$(cat)
 
-# Extract paths from hook input
+# Extract fields
 TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path')
 CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd')
-CURRENT_SESSION=$(echo "$HOOK_INPUT" | jq -r '.session_id')
+SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id')
 
-# State file pattern: .dev/specs/{name}/execute-state.local.md
-# Find active state file
-STATE_FILE=$(find "$CWD/.dev/specs" -name "execute-state.local.md" 2>/dev/null | head -1 || echo "")
+# State file path
+STATE_FILE="$CWD/.dev/state.local.json"
 
-if [[ -z "$STATE_FILE" ]] || [[ ! -f "$STATE_FILE" ]]; then
-  # No active execution - allow exit
+if [[ ! -f "$STATE_FILE" ]]; then
+  # No state file - allow exit
   exit 0
 fi
 
-# Parse YAML frontmatter
-FRONTMATTER=$(sed -n '/^---$/,/^---$/{ /^---$/d; p; }' "$STATE_FILE")
-ITERATION=$(echo "$FRONTMATTER" | grep '^iteration:' | sed 's/iteration: *//' || echo "0")
-MAX_ITERATIONS=$(echo "$FRONTMATTER" | grep '^max_iterations:' | sed 's/max_iterations: *//' || echo "20")
-PLAN_PATH=$(echo "$FRONTMATTER" | grep '^plan_path:' | sed 's/plan_path: *//' || echo "")
-MODE=$(echo "$FRONTMATTER" | grep '^mode:' | sed 's/mode: *//' || echo "local")
-LOCK_SESSION=$(echo "$FRONTMATTER" | grep '^session_id:' | sed 's/session_id: *//' || echo "")
+# Clean up stale sessions (older than 24 hours)
+CUTOFF=$(date -u -v-24H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
+if [[ -n "$CUTOFF" ]]; then
+  TEMP_FILE="${STATE_FILE}.tmp.$$"
+  jq --arg cutoff "$CUTOFF" '
+    to_entries | map(select(.value.created_at > $cutoff or .value.created_at == null)) | from_entries
+  ' "$STATE_FILE" > "$TEMP_FILE" 2>/dev/null && mv "$TEMP_FILE" "$STATE_FILE" || true
+fi
 
-# Validate session_id - handle stale locks from crashed sessions
-if [[ -n "$LOCK_SESSION" ]] && [[ "$LOCK_SESSION" != "$CURRENT_SESSION" ]]; then
-  # Different session - stale state file, remove and allow exit
-  rm "$STATE_FILE"
-  echo "📋 Execute hook: Removed stale state (session mismatch)" >&2
+# Check if this session has execute state
+EXECUTE_STATE=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute // empty' "$STATE_FILE")
+
+if [[ -z "$EXECUTE_STATE" ]] || [[ "$EXECUTE_STATE" == "null" ]]; then
+  # No execute state for this session - allow exit
   exit 0
 fi
+
+# Extract execute fields
+ITERATION=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute.iteration // 0' "$STATE_FILE")
+MAX_ITERATIONS=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute.max_iterations // 30' "$STATE_FILE")
+PLAN_PATH=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute.plan_path // empty' "$STATE_FILE")
 
 # Validate numeric fields
 if [[ ! "$ITERATION" =~ ^[0-9]+$ ]]; then
-  echo "⚠️  Execute hook: State file corrupted (invalid iteration: '$ITERATION')" >&2
-  rm "$STATE_FILE"
-  exit 0
+  ITERATION=0
 fi
 
 if [[ ! "$MAX_ITERATIONS" =~ ^[0-9]+$ ]]; then
-  echo "⚠️  Execute hook: State file corrupted (invalid max_iterations: '$MAX_ITERATIONS')" >&2
-  rm "$STATE_FILE"
-  exit 0
+  MAX_ITERATIONS=30
 fi
 
 # Check max iterations
 if [[ $MAX_ITERATIONS -gt 0 ]] && [[ $ITERATION -ge $MAX_ITERATIONS ]]; then
   echo "🛑 Execute hook: Max iterations ($MAX_ITERATIONS) reached." >&2
   echo "   Forcing stop to prevent infinite loop." >&2
-  rm "$STATE_FILE"
+  # Remove session from state file
+  TEMP_FILE="${STATE_FILE}.tmp.$$"
+  jq --arg sid "$SESSION_ID" 'del(.[$sid])' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
   exit 0
 fi
 
-# Validate plan path (convert to absolute)
+# Validate plan path
 PLAN_PATH_ABS="$CWD/$PLAN_PATH"
 if [[ -z "$PLAN_PATH" ]] || [[ ! -f "$PLAN_PATH_ABS" ]]; then
-  echo "⚠️  Execute hook: Plan file not found (path: '$PLAN_PATH_ABS')" >&2
-  rm "$STATE_FILE"
+  echo "⚠️ Execute hook: Plan file not found (path: '$PLAN_PATH_ABS')" >&2
+  # Remove session from state file
+  TEMP_FILE="${STATE_FILE}.tmp.$$"
+  jq --arg sid "$SESSION_ID" 'del(.[$sid])' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
   exit 0
 fi
 
@@ -87,7 +92,6 @@ if [[ "$UNCHECKED_TODOS" -gt 0 ]]; then
 fi
 
 # 2. Check for unchecked Acceptance Criteria
-# Only count unchecked items that are indented (inside TODO sections)
 UNCHECKED_AC=$(grep -cE '^\s+- \[ \]' "$PLAN_PATH_ABS" 2>/dev/null) || UNCHECKED_AC=0
 if [[ "$UNCHECKED_AC" -gt 0 ]]; then
   ERRORS+=("Unchecked Acceptance Criteria: $UNCHECKED_AC items")
@@ -95,7 +99,6 @@ fi
 
 # 3. Check for Final Report in transcript
 if [[ -f "$TRANSCRIPT_PATH" ]]; then
-  # Look for the Final Report marker in assistant messages
   FINAL_REPORT_FOUND=$(grep -l "ORCHESTRATION COMPLETE" "$TRANSCRIPT_PATH" 2>/dev/null || echo "")
   if [[ -z "$FINAL_REPORT_FOUND" ]]; then
     ERRORS+=("Final Report not output yet")
@@ -104,7 +107,7 @@ else
   ERRORS+=("Transcript file not found")
 fi
 
-# 4. Check for uncommitted changes (git commits should be done)
+# 4. Check for uncommitted changes
 if command -v git &> /dev/null && [[ -d "$CWD/.git" ]]; then
   UNCOMMITTED=$(cd "$CWD" && git status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo "0")
   if [[ "$UNCOMMITTED" -gt 0 ]]; then
@@ -119,17 +122,19 @@ fi
 if [[ ${#ERRORS[@]} -eq 0 ]]; then
   # All checks passed - allow exit and cleanup
   echo "✅ Execute hook: All verifications passed." >&2
-  rm "$STATE_FILE"
+  # Remove session from state file
+  TEMP_FILE="${STATE_FILE}.tmp.$$"
+  jq --arg sid "$SESSION_ID" 'del(.[$sid])' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
   exit 0
 fi
 
 # Not complete - continue execution
 NEXT_ITERATION=$((ITERATION + 1))
 
-# Update iteration in state file
+# Update iteration in state file (atomic write)
 TEMP_FILE="${STATE_FILE}.tmp.$$"
-sed "s/^iteration: .*/iteration: $NEXT_ITERATION/" "$STATE_FILE" > "$TEMP_FILE"
-mv "$TEMP_FILE" "$STATE_FILE"
+jq --arg sid "$SESSION_ID" --argjson iter "$NEXT_ITERATION" \
+  '.[$sid].execute.iteration = $iter' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
 
 # Build error summary
 ERROR_SUMMARY=$(printf '%s\n' "${ERRORS[@]}" | sed 's/^/- /')
@@ -144,7 +149,6 @@ $ERROR_SUMMARY
 **Current Progress:**
 - Iteration: $NEXT_ITERATION / $MAX_ITERATIONS
 - Plan: $PLAN_PATH
-- Mode: $MODE
 
 **Next Actions:**
 1. If TODOs remain: Continue with next unchecked TODO
