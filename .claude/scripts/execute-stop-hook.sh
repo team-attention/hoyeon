@@ -3,6 +3,11 @@
 # Execute Stop Hook
 # Prevents session exit when orchestration is incomplete
 # Verifies: TODOs, Acceptance Criteria, Git commits, Final Report
+#
+# Hook Input Fields (Stop):
+#   - session_id: current session
+#   - transcript_path: conversation log path
+#   - cwd: current working directory
 
 set -euo pipefail
 
@@ -12,6 +17,7 @@ HOOK_INPUT=$(cat)
 # Extract paths from hook input
 TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path')
 CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd')
+CURRENT_SESSION=$(echo "$HOOK_INPUT" | jq -r '.session_id')
 
 # State file pattern: .dev/specs/{name}/execute-state.local.md
 # Find active state file
@@ -28,6 +34,15 @@ ITERATION=$(echo "$FRONTMATTER" | grep '^iteration:' | sed 's/iteration: *//' ||
 MAX_ITERATIONS=$(echo "$FRONTMATTER" | grep '^max_iterations:' | sed 's/max_iterations: *//' || echo "20")
 PLAN_PATH=$(echo "$FRONTMATTER" | grep '^plan_path:' | sed 's/plan_path: *//' || echo "")
 MODE=$(echo "$FRONTMATTER" | grep '^mode:' | sed 's/mode: *//' || echo "local")
+LOCK_SESSION=$(echo "$FRONTMATTER" | grep '^session_id:' | sed 's/session_id: *//' || echo "")
+
+# Validate session_id - handle stale locks from crashed sessions
+if [[ -n "$LOCK_SESSION" ]] && [[ "$LOCK_SESSION" != "$CURRENT_SESSION" ]]; then
+  # Different session - stale state file, remove and allow exit
+  rm "$STATE_FILE"
+  echo "📋 Execute hook: Removed stale state (session mismatch)" >&2
+  exit 0
+fi
 
 # Validate numeric fields
 if [[ ! "$ITERATION" =~ ^[0-9]+$ ]]; then

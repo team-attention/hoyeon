@@ -3,6 +3,12 @@
 # Execute Init Hook (PreToolUse)
 # Automatically creates execute-state.local.md when /dev.execute is called
 # This ensures the Stop hook can track orchestration state
+#
+# Hook Input Fields (PreToolUse):
+#   - tool_input.skill: skill name
+#   - tool_input.args: skill arguments
+#   - session_id: current session
+#   - cwd: current working directory
 
 set -euo pipefail
 
@@ -13,13 +19,14 @@ HOOK_INPUT=$(cat)
 SKILL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_input.skill // empty')
 
 # Only process execute skill
-if [[ "$SKILL_NAME" != "execute" ]]; then
+if [[ "$SKILL_NAME" != "dev.execute" ]]; then
   exit 0
 fi
 
-# Extract args and cwd
+# Extract args, cwd, and session_id
 ARGS=$(echo "$HOOK_INPUT" | jq -r '.tool_input.args // empty')
 CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd')
+SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id')
 
 # Determine plan name from args or git branch
 if [[ -n "$ARGS" ]]; then
@@ -48,6 +55,7 @@ iteration: 0
 max_iterations: 30
 plan_path: .dev/specs/$PLAN_NAME/PLAN.md
 mode: local
+session_id: $SESSION_ID
 started_at: $TIMESTAMP
 ---
 
@@ -59,6 +67,7 @@ It is automatically created and managed by hooks.
 ## Status
 - Created by: execute-init-hook.sh
 - Plan: $PLAN_NAME
+- Session: $SESSION_ID
 EOF
 
   echo "📋 Execute init: Created state file for plan '$PLAN_NAME'" >&2

@@ -244,26 +244,15 @@ GitHub PR과 연동. 협업 및 자동화에 적합.
 mkdir -p ".dev/specs/{name}/context"
 ```
 
-**초기화:**
-- `outputs.json` → `{}`
-- 나머지 `.md` 파일들 → 빈 파일
-- `execute-state.local.md` → Stop Hook용 상태 파일 (아래 참조)
+**초기화할 파일들:**
 
-**Stop Hook 상태 파일 생성:**
-
-```markdown
-# .dev/specs/{name}/execute-state.local.md
----
-iteration: 0
-max_iterations: 30
-plan_path: .dev/specs/{name}/PLAN.md
-mode: local
-started_at: 2026-01-22T18:30:00
----
-```
-
-⚠️ **중요**: 이 파일이 존재하는 동안 Stop Hook이 완료 여부를 검증합니다.
-모든 TODO, Acceptance Criteria, Git 커밋, Final Report가 완료되어야 종료할 수 있습니다.
+| 파일 | 초기값 |
+|------|--------|
+| `outputs.json` | `{}` |
+| `learnings.md` | 빈 파일 |
+| `issues.md` | 빈 파일 |
+| `decisions.md` | 빈 파일 |
+| `verification.md` | 빈 파일 |
 
 > 📖 파일별 상세 용도는 하단 **Context System Details** 참조
 
@@ -392,23 +381,41 @@ When this task is DONE, the following MUST be true:
 )
 ```
 
-#### 3c. Collect Worker Output & Save to Context
+#### 3c. Collect Worker Output (파싱만, 저장은 3e에서)
 
-Worker가 반환한 JSON을 context 파일들에 저장합니다.
+Worker가 반환한 JSON을 파싱합니다. **아직 저장하지 않습니다.**
 
-**Worker 출력 형식**: `worker.md` 참조 (JSON 형식)
+**1. Worker 출력에서 JSON 추출:**
 
-**저장 규칙:**
+```
+Worker 출력 텍스트에서 ```json ... ``` 블록을 찾아 파싱
+```
 
-| Worker JSON 필드 | → | Context 파일 |
-|------------------|---|--------------|
-| `outputs` | → | `outputs.json` (merge) |
-| `learnings` | → | `learnings.md` (append) |
-| `issues` | → | `issues.md` (append) |
-| `decisions` | → | `decisions.md` (append) |
-| `verification` | → | `verification.md` (append) |
+**2. JSON 파싱 실패 시:**
 
-**⚠️ 중요**: 저장 후 VERIFY 단계에서 outputs의 실제 존재 여부를 검증합니다.
+Worker가 JSON을 반환하지 않았거나 형식이 잘못된 경우:
+```
+Task(
+  subagent_type="worker",
+  description="Fix: JSON 형식 오류",
+  prompt="이전 작업은 완료되었으나 결과 JSON이 누락되었습니다.\n\n반드시 ```json 블록으로 결과를 반환하세요.\n\n[worker.md의 Output Format 참조]"
+)
+```
+
+**3. 파싱 성공 시:**
+
+JSON 객체를 메모리에 보관하고 다음 단계(VERIFY)로 진행합니다.
+
+```json
+{
+  "outputs": {"config_path": "./config.json"},
+  "learnings": ["ESM 사용"],
+  "issues": ["타입 정의 불완전"],
+  "verification": {"build": "PASS", "tests": "PASS"}
+}
+```
+
+**⚠️ 중요**: VERIFY 통과 후에만 context에 저장합니다 (재시도 시 중복 방지).
 
 #### 3d. VERIFY (직접 검증!)
 
@@ -436,7 +443,7 @@ Read("files that should NOT be modified")
 ```
 
 **검증 결과 기록**: 각 Acceptance Criteria의 통과/실패를 기록해두고,
-다음 단계(3e)에서 통과한 항목만 체크합니다.
+다음 단계(3f)에서 통과한 항목만 체크합니다.
 
 **검증 실패 시:**
 ```
@@ -459,7 +466,39 @@ Task(
   - "Blocked" Comment 기록
 - 실행 중단, 사용자 개입 대기
 
-#### 3e. Update Plan Checkboxes
+#### 3e. Save to Context (VERIFY 통과 시에만)
+
+VERIFY를 통과한 경우에만 Worker JSON을 context 파일들에 저장합니다.
+
+**저장 규칙:**
+
+| 필드 | 파일 | 저장 형식 |
+|------|------|----------|
+| `outputs` | `outputs.json` | `existing["todo-N"] = outputs` 후 Write |
+| `learnings` | `learnings.md` | `## TODO N\n- 항목1\n- 항목2` append |
+| `issues` | `issues.md` | `## TODO N\n- [ ] 항목1` append (미해결) |
+| `decisions` | `decisions.md` | `## TODO N\n- 항목1` append |
+| `verification` | `verification.md` | `## TODO N\n- build: PASS` append |
+
+**주의사항:**
+- 현재 처리 중인 TODO 번호(N)를 사용
+- 빈 배열(`[]`)인 필드는 스킵 (헤더만 추가하지 않음)
+- **병렬 실행 시 outputs.json은 순차 저장** (동시 쓰기 금지)
+
+**저장 예시:**
+
+→ `outputs.json`:
+```json
+{"todo-1": {"config_path": "./config.json"}}
+```
+
+→ `learnings.md`:
+```markdown
+## TODO 1
+- ESM 사용
+```
+
+#### 3f. Update Plan Checkboxes
 
 1. **Plan 파일의 TODO 체크박스 업데이트**
    ```
@@ -478,7 +517,7 @@ Task(
    - SubAgent 보고만으로 체크하지 마세요
    - 검증 실패한 항목은 `- [ ]`로 유지
 
-#### 3f. Next TODO
+#### 3g. Next TODO
 다음 미완료 TODO로 반복합니다.
 
 ---
@@ -573,10 +612,10 @@ Push after commit: {YES | NO}
 | 파일 | 작성자 | 용도 | 예시 |
 |------|--------|------|------|
 | **outputs.json** | Worker → Orchestrator 저장 | TODO의 Output 값 (다음 TODO의 Input) | `{"todo-1": {"config_path": "./config.json"}}` |
-| learnings.md | Worker → Orchestrator 저장 | 발견한 패턴, 성공 사례 | "이 프로젝트는 camelCase 사용" |
-| issues.md | Worker + Orchestrator | 문제점 (`[x]` 해결, `[ ]` 미해결) | `- [x] ESM 에러 → import로 해결` |
-| decisions.md | Worker → Orchestrator 저장 | 결정과 이유 | "JWT 대신 Session 선택 - 이유: ..." |
-| verification.md | Worker → Orchestrator 저장 | 빌드/테스트 결과 | `{"build": "PASS", "tests": "PASS"}` |
+| learnings.md | Worker → Orchestrator 저장 | 발견하고 **적용한** 패턴 | `- 이 프로젝트는 ESM 사용` |
+| issues.md | Worker → Orchestrator 저장 | **미해결** 문제 (항상 `- [ ]`로 저장) | `- [ ] 타입 정의 불완전` |
+| decisions.md | Worker → Orchestrator 저장 | 결정과 이유 | `- JWT 대신 Session 선택` |
+| verification.md | Worker → Orchestrator 저장 | 빌드/테스트 결과 | `- build: PASS\n- tests: PASS` |
 
 ### Context 생명주기
 

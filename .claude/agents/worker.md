@@ -98,18 +98,31 @@ hooks:
 ```
 
 **필드 설명:**
+
 | 필드 | 필수 | 설명 |
 |------|------|------|
 | `outputs` | ✅ | EXPECTED OUTCOME의 Outputs에 정의된 값들 |
-| `learnings` | ❌ | 발견한 패턴/관례 (없으면 빈 배열) |
-| `issues` | ❌ | 문제점/주의사항 (없으면 빈 배열) |
-| `decisions` | ❌ | 내린 결정과 이유 (없으면 빈 배열) |
-| `verification` | ✅ | 빌드/테스트/린트 결과 |
+| `learnings` | ❌ | 발견하고 **적용한** 패턴/관례 |
+| `issues` | ❌ | 발견했지만 **해결하지 않은** 문제 (범위 외/미해결) |
+| `decisions` | ❌ | 내린 결정과 이유 |
+| `verification` | ✅ | 빌드/테스트/린트 결과 (`PASS` / `FAIL` / `SKIP`) |
 
-**⚠️ Orchestrator가 이 JSON을 파싱해서 context 파일에 저장합니다.**
+**learnings vs issues 구분:**
+```
+learnings = "이렇게 하면 된다" (해결됨, 다음 Worker에게 팁)
+issues    = "이런 문제가 있다" (미해결, 주의 필요)
+```
+
+**⚠️ Orchestrator가 이 JSON을 파싱해서 context 파일에 저장합니다:**
+- `outputs` → `outputs.json`
+- `learnings` → `learnings.md`
+- `issues` → `issues.md` (미해결 항목 `- [ ]`로 저장됨)
+- `decisions` → `decisions.md`
+- `verification` → `verification.md`
 
 ## Important Notes
 
 1. **다른 에이전트 호출 금지**: Task 도구는 사용할 수 없습니다
-2. **범위 외 작업 금지**: 위임받지 않은 작업은 ISSUES에 기록만 하세요
+2. **범위 외 작업 금지**: 위임받지 않은 작업은 `issues`에 기록만 하세요
 3. **CONTEXT의 Inherited Wisdom 활용**: 이전 Task에서 배운 내용을 참고하세요
+4. **JSON 형식 필수**: 작업 완료 시 반드시 ```json 블록으로 결과 반환

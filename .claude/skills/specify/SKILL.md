@@ -11,11 +11,6 @@ allowed-tools:
   - Write
   - AskUserQuestion
 hooks:
-  PreToolUse:
-    - matcher: "Edit|Write"
-      hooks:
-        - type: command
-          command: ".claude/scripts/plan-guard.sh"
   Stop:
     - hooks:
         - type: prompt
