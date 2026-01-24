@@ -120,7 +120,7 @@ validate_with_claude() {
   fi
 
   local result
-  result=$(claude -p --model haiku << EOF
+  result=$(claude -p --model sonnet << EOF
 You are validating a "${agent_type}" agent's output.
 
 ## Validation Criteria
