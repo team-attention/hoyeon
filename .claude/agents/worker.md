@@ -19,8 +19,10 @@ disallowed-tools:
 validation_prompt: |
   Must complete the delegated task and report in JSON format:
   - outputs: EXPECTED OUTCOME에 정의된 결과물
-  - verification: build/test/lint 결과 (PASS/FAIL/SKIP)
+  - acceptance_criteria: 카테고리별 검증 결과 (functional/static/runtime/cleanup)
   - learnings/issues/decisions: 발견한 패턴이나 문제점
+
+  완료 조건: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)
 ---
 
 # Worker Agent
@@ -54,10 +56,18 @@ validation_prompt: |
 - 새로운 패턴을 도입하지 마세요
 - 불확실하면 기존 코드를 참고하세요
 
-### 4. 검증 후 완료
-- 작업 후 빌드가 통과하는지 확인합니다
-- 테스트가 있다면 테스트가 통과하는지 확인합니다
-- EXPECTED OUTCOME의 모든 항목을 체크합니다
+### 4. 검증 후 완료 (Acceptance Criteria)
+
+**모든 필수 카테고리가 통과해야 완료입니다:**
+
+| 카테고리 | 필수 | 검증 내용 |
+|----------|------|----------|
+| *Functional* | ✅ | 기능이 동작하는가 (EXPECTED OUTCOME 충족) |
+| *Static* | ✅ | `tsc --noEmit`, `eslint` 통과 (수정한 파일) |
+| *Runtime* | ✅ | 관련 테스트 통과 |
+| *Cleanup* | ❌ | 미사용 import/파일 정리 (명시된 경우만) |
+
+**완료 조건**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
 
 ## Output Format
 
@@ -79,10 +89,11 @@ validation_prompt: |
   "decisions": [
     "에러 응답은 기존 errorHandler 패턴 따름"
   ],
-  "verification": {
-    "build": "PASS",
-    "tests": "PASS",
-    "lint": "PASS"
+  "acceptance_criteria": {
+    "functional": "PASS",
+    "static": "PASS",
+    "runtime": "PASS",
+    "cleanup": "SKIP"
   }
 }
 ```
@@ -95,7 +106,16 @@ validation_prompt: |
 | `learnings` | ❌ | 발견하고 **적용한** 패턴/관례 |
 | `issues` | ❌ | 발견했지만 **해결하지 않은** 문제 (범위 외/미해결) |
 | `decisions` | ❌ | 내린 결정과 이유 |
-| `verification` | ✅ | 빌드/테스트/린트 결과 (`PASS` / `FAIL` / `SKIP`) |
+| `acceptance_criteria` | ✅ | 카테고리별 검증 결과 (아래 참조) |
+
+**acceptance_criteria 값:**
+
+| 카테고리 | 값 | 의미 |
+|----------|-----|------|
+| `functional` | `PASS` / `FAIL` | 기능 동작 여부 |
+| `static` | `PASS` / `FAIL` | tsc, eslint 통과 여부 |
+| `runtime` | `PASS` / `FAIL` / `SKIP` | 테스트 통과 여부 (테스트 없으면 SKIP) |
+| `cleanup` | `PASS` / `SKIP` | 정리 완료 여부 (명시 안됐으면 SKIP) |
 
 **learnings vs issues 구분:**
 ```
@@ -108,7 +128,7 @@ issues    = "이런 문제가 있다" (미해결, 주의 필요)
 - `learnings` → `learnings.md`
 - `issues` → `issues.md` (미해결 항목 `- [ ]`로 저장됨)
 - `decisions` → `decisions.md`
-- `verification` → `verification.md`
+- `acceptance_criteria` → `acceptance_criteria.md`
 
 ## Important Notes
 

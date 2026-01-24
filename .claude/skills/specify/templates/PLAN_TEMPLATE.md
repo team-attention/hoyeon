@@ -2,7 +2,7 @@
 
 > Reference document for plan file structure. Designed for Orchestrator-Worker pattern where each TODO is executed by an isolated Worker agent.
 
-**Schema Version**: 1.0
+**Schema Version**: 1.1
 
 ---
 
@@ -190,9 +190,16 @@ TODO-1 → TODO-2 → TODO-Final
 - `docs/config-spec.md` - Configuration requirements
 
 **Acceptance Criteria**:
+
+*Functional:*
 - [ ] File exists: `./config/app.json`
-- [ ] `cat ./config/app.json` → Valid JSON (parseable)
 - [ ] Config contains required fields: `name`, `version`
+
+*Static:*
+- [ ] `cat ./config/app.json` → Valid JSON (parseable)
+
+*Runtime:*
+- [ ] (no tests for config-only task)
 
 ---
 
@@ -224,9 +231,16 @@ TODO-1 → TODO-2 → TODO-Final
 - `src/api/template.ts:1-50` - API pattern to follow
 
 **Acceptance Criteria**:
+
+*Functional:*
 - [ ] File exists: `src/api/index.ts`
-- [ ] File is valid TypeScript (no syntax errors)
 - [ ] Module exports `api` function
+
+*Static:*
+- [ ] `tsc --noEmit src/api/index.ts` → exit 0
+
+*Runtime:*
+- [ ] `npm test -- api.test.ts` → passes
 
 ---
 
@@ -277,19 +291,15 @@ Worker outputs to **stdout** (JSON format):
   "outputs": {
     "config_path": "./config/app.json"
   },
-  "artifacts": [
-    "./config/app.json"
-  ],
-  "steps_completed": [
-    "Create config directory structure",
-    "Generate initial configuration file",
-    "Validate config schema"
-  ],
-  "acceptance_criteria_passed": [
-    "File exists: ./config/app.json",
-    "Valid JSON",
-    "Config contains required fields"
-  ]
+  "acceptance_criteria": {
+    "functional": "PASS",
+    "static": "PASS",
+    "runtime": "SKIP",
+    "cleanup": "SKIP"
+  },
+  "learnings": ["Config uses JSON schema validation"],
+  "issues": [],
+  "decisions": ["Used standard JSON format over YAML"]
 }
 ```
 
@@ -299,19 +309,23 @@ Worker outputs to **stdout** (JSON format):
 {
   "status": "failure",
   "todo_id": "todo-1",
-  "failed_at": "step" | "acceptance_criteria",
-  "error": {
-    "step": "Validate config schema",
-    "message": "Missing required field: version",
-    "details": "..."
-  },
-  "partial_outputs": {
+  "outputs": {
     "config_path": "./config/app.json"
   },
-  "steps_completed": [
-    "Create config directory structure",
-    "Generate initial configuration file"
-  ]
+  "acceptance_criteria": {
+    "functional": "PASS",
+    "static": "FAIL",
+    "runtime": "SKIP",
+    "cleanup": "SKIP"
+  },
+  "failed_category": "static",
+  "error": {
+    "category": "static",
+    "message": "tsc --noEmit failed: Type error in config.json",
+    "details": "..."
+  },
+  "learnings": [],
+  "issues": ["Type definition incomplete"]
 }
 ```
 
@@ -390,13 +404,36 @@ Actionable items the Worker must complete. **All items must be checkboxes.**
 
 ### Acceptance Criteria Field
 
-Verifiable conditions that prove the TODO is complete. **No external tool dependencies unless declared in Required Tools.**
+Verifiable conditions that prove the TODO is complete. **All required categories must pass for completion.**
+
+**Categories:**
+
+| Category | Required | Description |
+|----------|----------|-------------|
+| *Functional* | ✅ | Feature works as expected (business logic) |
+| *Static* | ✅ | Type check, lint pass for modified files |
+| *Runtime* | ✅ | Related tests pass |
+| *Cleanup* | ❌ | Unused imports/files removed (when applicable) |
+
+**Worker Completion Rule**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
 
 ```markdown
 **Acceptance Criteria**:
-- [ ] Condition 1 (existence check, output validation, etc.)
-- [ ] `command` → expected result
-- [ ] Functional requirement met
+
+*Functional:*
+- [ ] Feature behavior check (e.g., "Returns 401 without token")
+- [ ] Output exists and is valid
+
+*Static:*
+- [ ] `tsc --noEmit` passes for modified files
+- [ ] `eslint` passes for modified files
+
+*Runtime:*
+- [ ] `npm test -- <related-test>` passes
+
+*Cleanup:* (optional)
+- [ ] No unused imports in modified files
+- [ ] Removed deprecated files listed in Outputs
 ```
 
 ---
@@ -419,13 +456,16 @@ Each Worker follows this flow for its assigned TODO:
    ├─ Work through each checkbox
    └─ Mark completed as done
 
-5. Verify Acceptance Criteria
-   ├─ Run each verification
-   └─ All must pass
+5. Verify Acceptance Criteria (ALL required categories must pass)
+   ├─ Functional: Feature works as specified
+   ├─ Static: tsc, eslint pass for modified files
+   ├─ Runtime: Related tests pass
+   └─ Cleanup (if specified): Unused code removed
 
 6. Report Results
    └─ Output JSON to stdout (success or failure)
 
+Completion Rule: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅)
 (Worker does NOT commit - Orchestrator handles git)
 ```
 
@@ -481,14 +521,14 @@ The final TODO runs after all work TODOs complete.
 
 ## Acceptance Criteria vs Verification
 
-| | Acceptance Criteria | Verification (TODO Final) |
+| | Acceptance Criteria (per TODO) | Verification (TODO Final) |
 |---|---|---|
-| **Question** | "Does this feature work?" | "Is this mergeable?" |
+| **Question** | "Is this TODO complete?" | "Is the entire plan mergeable?" |
 | **Scope** | Per TODO (individual) | Entire Plan (global) |
-| **Nature** | Functional verification | Quality verification |
-| **Examples** | "File exists", "Returns 401" | "Type check passes", "All tests green" |
+| **Categories** | Functional + Static + Runtime (+ Cleanup) | Full project type-check, lint, test |
+| **Examples** | "Returns 401", "tsc passes for this file" | "All tests green", "No lint warnings" |
 | **When** | After each TODO | After ALL TODOs |
-| **Can Modify?** | N/A (already done) | NO (read-only) |
+| **Completion Rule** | All required categories must pass | All checks must pass |
 
 ---
 
@@ -525,10 +565,19 @@ The final TODO runs after all work TODOs complete.
 - `src/utils/jwt.ts:verify()` - Use this for token validation
 
 **Acceptance Criteria**:
+
+*Functional:*
 - [ ] File exists: `src/middleware/auth.ts`
 - [ ] File exports `authMiddleware` function
 - [ ] Request without token → 401 Unauthorized
 - [ ] Request with valid token → Passes to next handler
+
+*Static:*
+- [ ] `tsc --noEmit src/middleware/auth.ts` → exit 0
+- [ ] `eslint src/middleware/auth.ts` → no errors
+
+*Runtime:*
+- [ ] `npm test -- auth.test.ts` → passes
 ```
 
 ---

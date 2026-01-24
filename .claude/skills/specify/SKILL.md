@@ -379,7 +379,18 @@ PLAN_TEMPLATE.md는 **Orchestrator-Worker 패턴**을 따릅니다.
 - **Steps**: [ ] 체크박스 형식
 - **Must NOT do**: 금지사항 (git 포함)
 - **References**: 관련 코드 경로 (DRAFT의 Agent Findings > Patterns에서)
-- **Acceptance Criteria**: [ ] 검증 조건
+- **Acceptance Criteria**: 카테고리별 검증 조건 (아래 참조)
+
+### Acceptance Criteria 카테고리
+
+| Category | Required | Description |
+|----------|----------|-------------|
+| *Functional* | ✅ | 기능 동작 검증 (비즈니스 로직) |
+| *Static* | ✅ | 타입체크, 린트 통과 (수정한 파일) |
+| *Runtime* | ✅ | 관련 테스트 통과 |
+| *Cleanup* | ❌ | 미사용 import/파일 정리 (필요시만) |
+
+**Worker 완료 조건**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
 
 ### Key Principles
 - Worker는 자신의 TODO만 봄 (격리)
@@ -389,12 +400,13 @@ PLAN_TEMPLATE.md는 **Orchestrator-Worker 패턴**을 따릅니다.
 
 **Acceptance Criteria vs Verification**:
 
-| | Acceptance Criteria | TODO Final: Verification |
+| | Acceptance Criteria (per TODO) | TODO Final: Verification |
 |---|---|---|
-| **질문** | "이 기능이 동작하나?" | "머지해도 되나?" |
-| **범위** | TODO별 (개별) | 전체 Plan |
-| **수정 가능** | N/A (작업 중) | **NO** (read-only) |
-| **예시** | 파일 존재, 401 반환 | type-check, lint, test |
+| **질문** | "이 TODO가 완료됐나?" | "전체 Plan이 머지 가능한가?" |
+| **범위** | TODO별 (개별) | 전체 Plan (글로벌) |
+| **카테고리** | Functional + Static + Runtime (+ Cleanup) | 전체 프로젝트 type-check, lint, test |
+| **예시** | "401 반환", "이 파일 tsc 통과" | "모든 테스트 통과", "린트 경고 없음" |
+| **완료 조건** | 필수 카테고리 모두 PASS | 모든 체크 통과 |
 
 See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
 

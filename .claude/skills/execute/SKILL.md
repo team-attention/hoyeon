@@ -12,37 +12,6 @@ allowed-tools:
   - Bash
   - TodoWrite
   - Edit
-hooks:
-  # prompt type은 PostToolUse를 지원하지 않음
-  # PostToolUse:
-  #   - matcher: "Task"
-  #     hooks:
-  #       - type: prompt
-  #         prompt: |
-  #           ## ⚠️ MANDATORY VERIFICATION - SUBAGENTS LIE
-
-  #           SubAgent가 작업 완료를 보고했습니다. **절대 믿지 마세요.**
-
-  #           SubAgent는 자주 완료를 주장하지만:
-  #           - 테스트가 실제로 FAILING
-  #           - 타입/린트 에러 존재
-  #           - 구현이 불완전
-  #           - 패턴을 따르지 않음
-
-  #           **직접 확인하세요:**
-  #           1. 빌드/타입체크 실행 → 에러 없어야 함
-  #           2. 테스트 직접 실행 → 통과해야 함
-  #           3. 변경된 코드 직접 읽기 → 요구사항 충족해야 함
-  #           4. MUST NOT DO 위반 확인 → 위반 없어야 함
-
-  #           **검증 실패 시:**
-  #           Task(worker)로 즉시 수정 위임:
-  #           ```
-  #           Task(subagent_type="worker", prompt="fix: [구체적 실패 사항]")
-  #           ```
-
-  #           **모두 통과 시:**
-  #           Plan 파일에서 해당 TODO 및 Acceptance Criteria 체크 → 다음 작업 진행
 ---
 
 # /dev.execute - Orchestrator Mode
@@ -260,7 +229,6 @@ mkdir -p "$CONTEXT_DIR"
 | `learnings.md` | 빈 파일 |
 | `issues.md` | 빈 파일 |
 | `decisions.md` | 빈 파일 |
-| `verification.md` | 빈 파일 |
 
 **재개 시 (context 폴더가 이미 존재):**
 
@@ -425,7 +393,7 @@ JSON 객체를 메모리에 보관하고 다음 단계(VERIFY)로 진행합니�
   "outputs": {"config_path": "./config.json"},
   "learnings": ["ESM 사용"],
   "issues": ["타입 정의 불완전"],
-  "verification": {"build": "PASS", "tests": "PASS"}
+  "acceptance_criteria": {"functional": "PASS", "static": "PASS", "runtime": "PASS", "cleanup": "SKIP"}
 }
 ```
 
@@ -435,28 +403,30 @@ JSON 객체를 메모리에 보관하고 다음 단계(VERIFY)로 진행합니�
 
 **⚠️ SUBAGENTS LIE. Trust but verify.**
 
-Plan 파일의 **Acceptance Criteria**를 하나씩 직접 검증합니다:
+Plan 파일의 **Acceptance Criteria**를 카테고리별로 직접 검증합니다:
 
 ```bash
-# Acceptance Criteria 예시:
-# - [ ] `src/types/todo.ts` 파일 존재
-# - [ ] `npm run build` 성공
-# - [ ] 테스트 통과
+# *Functional:* (기능 동작 검증)
+Read("path/to/expected/file.ts")  # 파일 존재 확인
+# 기능 요구사항 직접 테스트
 
-# 1. 파일 존재 확인 → Acceptance Criteria 체크 가능
-Read("path/to/expected/file.ts")
+# *Static:* (정적 분석)
+Bash("tsc --noEmit src/modified/file.ts")  # 타입체크
+Bash("eslint src/modified/file.ts")         # 린트
 
-# 2. 빌드 확인 → Acceptance Criteria 체크 가능
-Bash("npm run build")  # 또는 tsc, go build 등
+# *Runtime:* (테스트 실행)
+Bash("npm test -- related.test.ts")  # 관련 테스트
 
-# 3. 테스트 확인 → Acceptance Criteria 체크 가능
-Bash("npm test")  # 또는 해당 테스트 명령
+# *Cleanup:* (정리 - 명시된 경우만)
+# 미사용 import 확인, 삭제된 파일 확인
 
-# 4. MUST NOT DO 위반 확인
+# MUST NOT DO 위반 확인
 Read("files that should NOT be modified")
 ```
 
-**검증 결과 기록**: 각 Acceptance Criteria의 통과/실패를 기록해두고,
+**완료 조건**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
+
+**검증 결과 기록**: 각 카테고리의 통과/실패를 기록해두고,
 다음 단계(3f)에서 통과한 항목만 체크합니다.
 
 ---
@@ -525,7 +495,7 @@ VERIFY를 통과한 경우에만 Worker JSON을 context 파일들에 저장합�
 | `learnings` | `learnings.md` | `## TODO N\n- 항목1\n- 항목2` append |
 | `issues` | `issues.md` | `## TODO N\n- [ ] 항목1` append (미해결) |
 | `decisions` | `decisions.md` | `## TODO N\n- 항목1` append |
-| `verification` | `verification.md` | `## TODO N\n- build: PASS` append |
+| `acceptance_criteria` | (저장 안함) | Orchestrator 검증용으로만 사용, context에 저장하지 않음 |
 
 **주의사항:**
 - 현재 처리 중인 TODO 번호(N)를 사용
@@ -642,9 +612,10 @@ Push after commit: {YES | NO}
 ⚠️  ISSUES DISCOVERED:
    - 기존 코드에서 발견한 문제점 (범위 외라 수정 안 함)
 
-✅ VERIFICATION:
-   - Build: PASS
-   - Tests: PASS
+✅ ACCEPTANCE CRITERIA:
+   - Functional: PASS (all TODOs)
+   - Static: PASS (all TODOs)
+   - Runtime: PASS (all TODOs)
 
 ═══════════════════════════════════════════════════════════
 ```
@@ -662,7 +633,6 @@ Push after commit: {YES | NO}
 | learnings.md | Worker → Orchestrator 저장 | 발견하고 **적용한** 패턴 | `- 이 프로젝트는 ESM 사용` |
 | issues.md | Worker → Orchestrator 저장 | **미해결** 문제 (항상 `- [ ]`로 저장) | `- [ ] 타입 정의 불완전` |
 | decisions.md | Worker → Orchestrator 저장 | 결정과 이유 | `- JWT 대신 Session 선택` |
-| verification.md | Worker → Orchestrator 저장 | 빌드/테스트 결과 | `- build: PASS\n- tests: PASS` |
 
 ### Context 생명주기
 
