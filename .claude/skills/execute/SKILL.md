@@ -89,6 +89,32 @@ TaskList에서 `blockedBy`가 없는 pending Task들을 자동으로 병렬 실�
                                     └─────────────┘
 ```
 
+### ⚠️ Task Persistence 주의사항
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  PRIMARY SOURCE OF TRUTH: Plan checkbox (### [x] TODO N:)   │
+│  SECONDARY: Task 시스템 (세션 내 orchestration용)            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**왜 Plan checkbox가 primary인가?**
+- Task 시스템의 세션 간 persistence가 보장되지 않을 수 있음
+- Plan 파일은 git으로 버전 관리되어 영구 보존
+- 세션 재개 시 Plan checkbox로 상태 복구 가능
+
+**세션 재개 시 동기화 로직:**
+```
+1. Plan 파일의 checkbox 상태 확인
+2. TaskList() 호출
+3. IF Task 없음 AND Plan에 unchecked TODO 있음:
+   → 첫 실행 또는 Task 휘발됨
+   → Plan의 unchecked TODO만 TaskCreate
+4. IF Task 있음:
+   → Plan checkbox와 Task 상태 비교
+   → 불일치 시 Plan 기준으로 Task 상태 조정
+```
+
 ### Dependencies via Task System
 
 ```
@@ -255,18 +281,25 @@ GitHub PR과 연동. 협업 및 자동화에 적합.
 
    **Plan → Task 변환:**
 
-   Plan 파일에서 `### [ ] TODO N:` 패턴을 찾아 각각 TaskCreate 호출:
+   Plan 파일에서 `### [ ] TODO N:` 패턴을 찾아 **순차적으로** TaskCreate 호출:
 
    ```
-   FOR EACH "### [ ] TODO N: {title}" in Plan:
-     TaskCreate(
+   task_id_map = {}  # TODO 번호 → Task ID 매핑
+
+   FOR EACH "### [ ] TODO N: {title}" in Plan (순서대로):
+     result = TaskCreate(
        subject="TODO {N}: {title}",
        description="""
        {TODO 섹션의 전체 내용: Steps, Acceptance Criteria, Outputs 등}
        """,
-       activeForm="TODO {N} 실행 중"
+       activeForm="TODO {N} 실행 중",
+       metadata={"todo_number": N}  # TODO 번호 저장
      )
+     task_id_map[N] = result.task_id  # 예: task_id_map[1] = "5"
    ```
+
+   ⚠️ **주의**: TaskCreate는 순차 실행하여 ID 순서 보장.
+   병렬 TaskCreate 시 ID 순서가 보장되지 않음.
 
    **Dependency 설정:**
 
@@ -277,7 +310,12 @@ GitHub PR과 연동. 협업 및 자동화에 적합.
      IF row.Requires != "-":
        producer_todo = parse(row.Requires)  # e.g., "todo-1.config_path" → 1
        consumer_todo = row.TODO
-       TaskUpdate(taskId={producer_todo}, addBlocks=[{consumer_todo}])
+
+       # task_id_map을 사용하여 실제 Task ID로 변환
+       producer_task_id = task_id_map[producer_todo]
+       consumer_task_id = task_id_map[consumer_todo]
+
+       TaskUpdate(taskId=producer_task_id, addBlocks=[consumer_task_id])
    ```
 
    **초기화 완료 확인:**
@@ -604,6 +642,25 @@ VERIFY를 통과한 경우에만 Worker JSON을 context 파일들에 저장합�
 - 빈 배열(`[]`)인 필드는 스킵 (헤더만 추가하지 않음)
 - **병렬 실행 시 outputs.json은 순차 저장** (동시 쓰기 금지)
 
+**병렬 실행 시 Context 저장 순서:**
+```
+# 병렬로 TODO 1, 3 실행 완료 후
+
+# 1. 모든 병렬 Task 완료 대기
+results = await Promise.all([task1, task3])
+
+# 2. outputs.json 순차 저장 (race condition 방지)
+FOR EACH result in results (순차):
+  current = Read("outputs.json")
+  current[f"todo-{result.todo_number}"] = result.outputs
+  Write("outputs.json", current)
+
+# 3. 다른 context 파일은 append이므로 병렬 가능
+FOR EACH result in results (병렬 가능):
+  Append("learnings.md", result.learnings)
+  Append("issues.md", result.issues)
+```
+
 **저장 예시:**
 
 → `outputs.json`:
@@ -825,37 +882,61 @@ Task(subagent_type="worker", prompt="TODO 2...")
 
 ### 세션 중단 후 재개
 
-Task 시스템은 세션이 끊겨도 상태를 유지합니다:
+**Primary Source: Plan checkbox** (Task가 휘발될 수 있으므로)
 
 ```
-# 이전 세션에서 중단된 상태
-TaskList()
-→ #1 [completed] TODO 1: Config setup
-→ #2 [in_progress] TODO 2: API implementation  ← 중단됨
-→ #3 [completed] TODO 3: Utils
-→ #4 [pending] TODO 4: Integration [blocked by #2]
+# Plan 파일 상태 확인
+### [x] TODO 1: Config setup       ← 완료
+### [ ] TODO 2: API implementation ← 미완료 (여기서 중단됨)
+### [x] TODO 3: Utils              ← 완료
+### [ ] TODO 4: Integration        ← 미완료
 
-# 재개 시
-1. TaskList로 상태 확인
-2. in_progress Task 발견 → 이전 세션 중단점
-3. 해당 Task부터 다시 시작 (worker 재위임)
+# TaskList() 결과 (세션 유지된 경우)
+→ #1 [completed] TODO 1
+→ #2 [in_progress] TODO 2  ← 중단됨
+→ #3 [completed] TODO 3
+→ #4 [pending] TODO 4 [blocked by #2]
+
+# TaskList() 결과 (Task 휘발된 경우)
+→ (빈 목록)
 ```
 
-### 재개 로직
+### 재개 로직 (Plan 기준)
 
 ```
-in_progress_tasks = TaskList().filter(status == 'in_progress')
+# 1. Plan checkbox 상태 파싱
+unchecked_todos = parse_plan("### [ ] TODO N:")  # [2, 4]
+checked_todos = parse_plan("### [x] TODO N:")   # [1, 3]
 
-IF in_progress_tasks:
-    # 이전 세션에서 중단된 Task가 있음
-    FOR EACH task in in_progress_tasks:
-        # Worker 재위임 (처음부터 다시)
-        execute_task(task)
+# 2. TaskList 확인
+existing_tasks = TaskList()
+
+# 3. 상황별 처리
+IF existing_tasks is empty:
+    # Task 휘발됨 → Plan 기준으로 재생성
+    FOR EACH todo_num in unchecked_todos:
+        TaskCreate(subject=f"TODO {todo_num}: ...", ...)
+    # 의존성 재설정
+    setup_dependencies_from_plan()
+
 ELSE:
-    # 정상적인 실행
-    runnable = TaskList().filter(status == 'pending' AND blockedBy == empty)
-    FOR EACH task in runnable:
-        execute_task(task)
+    # Task 유지됨 → 상태 동기화
+    FOR EACH task in existing_tasks:
+        todo_num = parse_todo_number(task.subject)
+        IF todo_num in checked_todos AND task.status != 'completed':
+            # Plan은 완료인데 Task는 아님 → Task 상태 수정
+            TaskUpdate(taskId=task.id, status='completed')
+
+# 4. 실행 재개
+in_progress = existing_tasks.filter(status == 'in_progress')
+IF in_progress:
+    # 중단된 Task부터 재시작
+    FOR EACH task in in_progress:
+        execute_task(task)  # 처음부터 다시
+ELSE:
+    # pending + unblocked Task 실행
+    runnable = TaskList().filter(pending AND not blocked)
+    execute_parallel(runnable)
 ```
 
 ---
