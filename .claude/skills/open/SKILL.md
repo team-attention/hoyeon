@@ -1,97 +1,87 @@
 ---
 name: dev.open
 description: |
-  "dev.open", "PR 생성", "PR 열기", "spec 기반 PR 만들어", "Draft PR 생성"
-  Spec 기반 Draft PR 생성. SDD (Spec Driven Development) 워크플로우의 시작점.
+  "dev.open", "create PR", "open PR", "create PR from spec", "Draft PR creation"
+  Spec-based Draft PR creation. Starting point for SDD (Spec Driven Development) workflow.
 allowed-tools:
   - Bash
   - Read
   - Glob
 ---
 
-# dev.open - Spec 기반 Draft PR 생성
+# dev.open - Spec-based Draft PR Creation
 
 ## Purpose
 
-Spec 문서를 기반으로 Draft PR을 생성한다. **PR = Single Source of Truth** 원칙에 따라 PR이 모든 작업 상태의 중심이 된다.
+Create Draft PR based on Spec document. Following **PR = Single Source of Truth** principle, PR becomes the center of all work state.
 
 ---
 
-## 참조 문서
+## Reference
 
-- **PR Body 템플릿**: `${baseDir}/references/pr-body-template.md`
+- **PR Body template**: `${baseDir}/references/pr-body-template.md`
 
 ---
 
 ## Input
 
-| Input | 동작 |
+| Input | Action |
 |-------|------|
-| `/dev.open user-auth` | `specs/user-auth.md` 기반 PR 생성 |
-| `/dev.open` | 가장 최근 spec 또는 사용자에게 질문 |
+| `/dev.open user-auth` | Create PR based on `specs/user-auth.md` |
+| `/dev.open` | Use most recent spec or ask user |
 
 ---
 
 ## Prerequisites
 
-1. Spec 파일 존재: `specs/<name>.md`
-2. gh CLI 인증: `gh auth status`
+1. Spec file exists: `specs/<name>.md`
+2. gh CLI authenticated: `gh auth status`
 
 ---
 
 ## Workflow
 
-### Step 1: Spec 존재 확인
-
+### Step 1: Verify Spec Exists
 ```
-specs/<name>.md 파일이 존재하는지 확인
-없으면 → Error: "Spec not found. Run '/specify <name>' first."
-```
-
-### Step 2: 기존 PR 확인
-
-```
-feat/<name> 브랜치로 열린 PR이 있는지 확인
-있으면 → Error: "PR already exists for feat/<name>"
+Check if specs/<name>.md exists
+If not → Error: "Spec not found. Run '/specify <name>' first."
 ```
 
-### Step 3: 브랜치 생성 및 푸시
-
+### Step 2: Check Existing PR
 ```
-main에서 feat/<name> 브랜치 생성 → 원격에 푸시
+Check if PR exists for feat/<name> branch
+If exists → Error: "PR already exists for feat/<name>"
 ```
 
-### Step 4: Draft PR 생성
+### Step 3: Create and Push Branch
+```
+Create feat/<name> branch from main → Push to remote
+```
 
-`pr-body-template.md` 참조하여 Draft PR 생성:
-- **Body** → YAML frontmatter + Summary + Spec Reference
-- **Draft** → true
+### Step 4: Create Draft PR
+Reference `pr-body-template.md` to create Draft PR.
 
 ---
 
 ## Output
 
-**성공**:
+**Success**:
 ```
 ✅ PR #123 created successfully
    View: gh pr view 123 --web
 ```
 
-**실패**:
+**Failure**:
 ```
 Error: Spec not found at specs/user-auth.md
-```
-또는
-```
-Error: PR already exists for feat/user-auth
 ```
 
 ---
 
 ## Related Commands
 
-| Command | 설명 |
+| Command | Description |
 |---------|------|
-| `/dev.specify <name>` | Spec 문서 작성 (open 전에 실행) |
-| `/dev.state queue <PR#>` | 자동 실행 대기열에 추가 |
-| `/dev.execute <PR#>` | 구현 시작 |
+| `/dev.specify <name>` | Write Spec document (run before open) |
+| `/dev.state queue <PR#>` | Add to auto-execution queue |
+| `/dev.execute <PR#>` | Start implementation |

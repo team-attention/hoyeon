@@ -1,133 +1,133 @@
-# 평가 기준 가이드
+# Evaluation Criteria Guide
 
-의사결정 유형별 권장 평가 기준.
+Recommended evaluation criteria by decision type.
 
-## 라이브러리/프레임워크 선택
+## Library/Framework Selection
 
-| 기준 | 설명 | 측정 방법 |
+| Criteria | Description | Measurement Method |
 |------|------|-----------|
-| **성능** | 속도, 메모리 사용량, 번들 크기 | 벤치마크, 공식 문서 |
-| **학습 곡선** | 팀이 익히는 데 걸리는 시간 | 문서 품질, 튜토리얼 양, 개념 복잡도 |
-| **생태계** | 플러그인, 확장, 서드파티 도구 | npm 패키지 수, GitHub stars |
-| **커뮤니티** | 활성도, 질문 답변 속도 | Stack Overflow 질문 수, Discord/Slack 활성도 |
-| **유지보수성** | 장기 지원, 업데이트 빈도 | 릴리스 주기, 이슈 해결 속도 |
-| **타입 지원** | TypeScript 지원 수준 | 내장 타입, @types 품질 |
-| **문서화** | 공식 문서 품질 | 예제 풍부함, 최신성, 검색 가능성 |
-| **채택률** | 업계 사용 현황 | npm 다운로드, 기업 사용 사례 |
+| **Performance** | Speed, memory usage, bundle size | Benchmarks, official documentation |
+| **Learning Curve** | Time required for team to learn | Documentation quality, tutorial quantity, concept complexity |
+| **Ecosystem** | Plugins, extensions, third-party tools | npm package count, GitHub stars |
+| **Community** | Activity level, Q&A response speed | Stack Overflow question count, Discord/Slack activity |
+| **Maintainability** | Long-term support, update frequency | Release cycle, issue resolution speed |
+| **Type Support** | TypeScript support level | Built-in types, @types quality |
+| **Documentation** | Official documentation quality | Example richness, recency, searchability |
+| **Adoption Rate** | Industry usage status | npm downloads, enterprise use cases |
 
-### 가중치 예시
+### Weighting Examples
 
-**스타트업 (빠른 개발 중시)**:
-- 학습 곡선: 30%
-- 생태계: 25%
-- 문서화: 20%
-- 성능: 15%
-- 유지보수성: 10%
+**Startup (Fast Development Focus)**:
+- Learning Curve: 30%
+- Ecosystem: 25%
+- Documentation: 20%
+- Performance: 15%
+- Maintainability: 10%
 
-**엔터프라이즈 (안정성 중시)**:
-- 유지보수성: 30%
-- 타입 지원: 20%
-- 커뮤니티: 20%
-- 성능: 15%
-- 문서화: 15%
+**Enterprise (Stability Focus)**:
+- Maintainability: 30%
+- Type Support: 20%
+- Community: 20%
+- Performance: 15%
+- Documentation: 15%
 
 ---
 
-## 아키텍처 패턴 결정
+## Architecture Pattern Decision
 
-| 기준 | 설명 | 측정 방법 |
+| Criteria | Description | Measurement Method |
 |------|------|-----------|
-| **확장성** | 부하 증가 시 대응 용이성 | 수평/수직 확장 가능 여부 |
-| **복잡도** | 구현 및 운영 복잡도 | 필요한 인프라, 학습 비용 |
-| **팀 규모 적합성** | 팀 크기에 맞는지 | Conway's Law 고려 |
-| **배포 용이성** | CI/CD 복잡도 | 파이프라인 단계 수 |
-| **장애 격리** | 부분 장애 시 전체 영향 | 독립 배포 가능 여부 |
-| **데이터 일관성** | 트랜잭션 처리 | ACID vs Eventually Consistent |
-| **운영 비용** | 인프라 및 인력 비용 | 서버 수, DevOps 필요 인력 |
-| **개발 속도** | 초기 개발 ~ MVP | 보일러플레이트, 설정 복잡도 |
+| **Scalability** | Ease of handling increased load | Horizontal/vertical scaling capability |
+| **Complexity** | Implementation and operational complexity | Required infrastructure, learning cost |
+| **Team Size Fit** | Suitability for team size | Conway's Law consideration |
+| **Deployment Ease** | CI/CD complexity | Number of pipeline stages |
+| **Failure Isolation** | Overall impact during partial failures | Independent deployment capability |
+| **Data Consistency** | Transaction handling | ACID vs Eventually Consistent |
+| **Operational Cost** | Infrastructure and personnel costs | Number of servers, required DevOps personnel |
+| **Development Speed** | Initial development ~ MVP | Boilerplate, configuration complexity |
 
-### 가중치 예시
+### Weighting Examples
 
-**초기 스타트업 (MVP)**:
-- 개발 속도: 35%
-- 복잡도: 25%
-- 운영 비용: 20%
-- 확장성: 10%
-- 기타: 10%
+**Early Startup (MVP)**:
+- Development Speed: 35%
+- Complexity: 25%
+- Operational Cost: 20%
+- Scalability: 10%
+- Others: 10%
 
-**성장기 (스케일업)**:
-- 확장성: 30%
-- 장애 격리: 20%
-- 팀 규모 적합성: 20%
-- 배포 용이성: 15%
-- 운영 비용: 15%
+**Growth Stage (Scale-up)**:
+- Scalability: 30%
+- Failure Isolation: 20%
+- Team Size Fit: 20%
+- Deployment Ease: 15%
+- Operational Cost: 15%
 
 ---
 
-## 구현 방식 결정
+## Implementation Approach Decision
 
-| 기준 | 설명 | 측정 방법 |
+| Criteria | Description | Measurement Method |
 |------|------|-----------|
-| **구현 복잡도** | 코드 양, 난이도 | LoC, 추상화 수준 |
-| **테스트 용이성** | 단위/통합 테스트 작성 난이도 | 모킹 필요성, 의존성 |
-| **디버깅 용이성** | 문제 추적 난이도 | 로깅, 트레이싱 지원 |
-| **성능 특성** | 지연시간, 처리량 | 벤치마크 |
-| **리소스 사용** | CPU, 메모리, 네트워크 | 프로파일링 |
-| **기존 코드 호환** | 현재 아키텍처와 맞는지 | 리팩토링 필요량 |
-| **유지보수성** | 장기 관리 용이성 | 코드 가독성, 문서화 |
+| **Implementation Complexity** | Code volume, difficulty | LoC, abstraction level |
+| **Testability** | Difficulty of writing unit/integration tests | Mocking needs, dependencies |
+| **Debuggability** | Difficulty of tracking issues | Logging, tracing support |
+| **Performance Characteristics** | Latency, throughput | Benchmarks |
+| **Resource Usage** | CPU, memory, network | Profiling |
+| **Existing Code Compatibility** | Fit with current architecture | Amount of refactoring needed |
+| **Maintainability** | Ease of long-term management | Code readability, documentation |
 
 ---
 
-## 데이터베이스 선택
+## Database Selection
 
-| 기준 | 설명 | 측정 방법 |
+| Criteria | Description | Measurement Method |
 |------|------|-----------|
-| **데이터 모델** | 관계형/문서형/그래프/키-값 | 요구사항 매칭 |
-| **쿼리 유연성** | 복잡한 쿼리 지원 | SQL/NoSQL 기능 |
-| **확장성** | 수평 확장 용이성 | 샤딩, 레플리케이션 |
-| **일관성** | ACID vs BASE | 트랜잭션 요구사항 |
-| **성능** | 읽기/쓰기 속도 | 벤치마크 |
-| **운영 복잡도** | 관리 오버헤드 | 백업, 모니터링, 마이그레이션 |
-| **비용** | 라이선스, 인프라 | TCO 계산 |
-| **에코시스템** | ORM, 드라이버, 도구 | 지원 언어/프레임워크 |
+| **Data Model** | Relational/document/graph/key-value | Requirements matching |
+| **Query Flexibility** | Support for complex queries | SQL/NoSQL capabilities |
+| **Scalability** | Ease of horizontal scaling | Sharding, replication |
+| **Consistency** | ACID vs BASE | Transaction requirements |
+| **Performance** | Read/write speed | Benchmarks |
+| **Operational Complexity** | Management overhead | Backup, monitoring, migration |
+| **Cost** | License, infrastructure | TCO calculation |
+| **Ecosystem** | ORM, drivers, tools | Supported languages/frameworks |
 
 ---
 
-## 상황별 추천 기준
+## Recommended Criteria by Situation
 
-### "빠르게 MVP 만들어야 해"
-우선순위: 학습 곡선 > 개발 속도 > 문서화 > 나머지
+### "Need to build MVP quickly"
+Priority: Learning Curve > Development Speed > Documentation > Others
 
-### "대규모 트래픽 예상"
-우선순위: 성능 > 확장성 > 운영 비용 > 나머지
+### "Expecting large-scale traffic"
+Priority: Performance > Scalability > Operational Cost > Others
 
-### "팀이 작아 (1-3명)"
-우선순위: 복잡도 낮음 > 문서화 > 커뮤니티 > 나머지
+### "Small team (1-3 people)"
+Priority: Low Complexity > Documentation > Community > Others
 
-### "엔터프라이즈 환경"
-우선순위: 보안 > 유지보수성 > 타입 지원 > 나머지
+### "Enterprise environment"
+Priority: Security > Maintainability > Type Support > Others
 
-### "레거시 시스템 통합"
-우선순위: 기존 코드 호환 > 마이그레이션 용이성 > 나머지
+### "Legacy system integration"
+Priority: Existing Code Compatibility > Migration Ease > Others
 
 ---
 
-## 신뢰도 평가 기준
+## Reliability Assessment Criteria
 
-정보 출처별 신뢰도:
+Reliability by information source:
 
-| 출처 | 신뢰도 | 비고 |
+| Source | Reliability | Notes |
 |------|--------|------|
-| 공식 문서 | 높음 | 정확하나 편향 가능 |
-| 벤치마크 (독립) | 높음 | 조건 확인 필요 |
-| GitHub Issues | 중간-높음 | 실제 사용 경험 |
-| Stack Overflow | 중간 | 날짜 확인 필요 |
-| Reddit/HN | 중간 | 다양한 관점, 노이즈 있음 |
-| 블로그 | 낮음-중간 | 작성자 배경 확인 |
-| 마케팅 자료 | 낮음 | 편향됨 |
+| Official documentation | High | Accurate but may be biased |
+| Benchmarks (independent) | High | Conditions need verification |
+| GitHub Issues | Medium-High | Real usage experience |
+| Stack Overflow | Medium | Date verification needed |
+| Reddit/HN | Medium | Diverse perspectives, some noise |
+| Blogs | Low-Medium | Check author background |
+| Marketing materials | Low | Biased |
 
-**신뢰도 높이는 방법**:
-- 여러 출처에서 동일한 정보 확인
-- 최신 날짜 우선
-- 실제 사용 경험 기반 의견 우선
-- 벤치마크는 조건/환경 확인
+**Ways to increase reliability**:
+- Verify same information from multiple sources
+- Prioritize recent dates
+- Prioritize opinions based on actual usage experience
+- Verify conditions/environment for benchmarks

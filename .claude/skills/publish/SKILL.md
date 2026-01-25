@@ -1,68 +1,68 @@
 ---
 name: dev.publish
 description: |
-  "/dev.publish", "publish PR", "PR ready", "PR 퍼블리시", "Draft 해제"
-  Draft PR을 Ready로 전환하여 리뷰 가능 상태로 만듦
+  "/dev.publish", "publish PR", "PR ready", "publish PR", "remove Draft"
+  Convert Draft PR to Ready for review
 allowed-tools:
   - Bash
   - Read
   - Glob
 ---
 
-# dev.publish - PR Ready 처리
+# dev.publish - PR Ready Processing
 
 ## Purpose
 
-Draft PR을 Ready로 전환하여 리뷰 가능 상태로 만든다.
+Convert Draft PR to Ready state for review.
 
 ---
 
 ## Input
 
-| Input | 동작 |
+| Input | Action |
 |-------|------|
-| `/dev.publish` | 현재 브랜치에서 PR 자동 감지 |
-| `/dev.publish 123` | PR #123 publish |
-| `/dev.publish <PR URL>` | URL에서 PR# 추출 |
+| `/dev.publish` | Auto-detect PR from current branch |
+| `/dev.publish 123` | Publish PR #123 |
+| `/dev.publish <PR URL>` | Extract PR# from URL |
 
 ---
 
-## 실행 조건
+## Execution Conditions
 
-- PR이 `state:executing` 상태여야 함
-- `state:blocked` 상태면 → `/dev.state continue` 먼저 실행 필요
-- 이미 Ready 상태면 에러
+- PR must be in `state:executing` state
+- If `state:blocked` → Run `/dev.state continue` first
+- Error if already Ready
 
-**상태 검증**: `/dev.state status`로 확인
+**State verification**: Check with `/dev.state status`
 
 ---
 
 ## Workflow
 
-### STEP 1: PR 정보 확인
+### STEP 1: Check PR Info
 
-1. 인자 파싱 (없으면 현재 브랜치에서 PR 찾기)
-2. `/dev.state status <PR#>`로 현재 상태 확인
+1. Parse argument (find PR from current branch if none)
+2. Check current state with `/dev.state status <PR#>`
 
-### STEP 2: 상태 검증
+### STEP 2: Validate State
 
-| 조건 | 결과 |
+| Condition | Result |
 |------|------|
-| `state:executing` | ✅ 진행 |
+| `state:executing` | ✅ Proceed |
 | `state:blocked` | ❌ "Run '/dev.state continue' first" |
-| Label 없음 (created) | ❌ "아직 execute 되지 않음" |
-| isDraft = false | ❌ "이미 publish 됨" |
+| No label (created) | ❌ "Not executed yet" |
+| isDraft = false | ❌ "Already published" |
 
-### STEP 3: Publish 실행
+### STEP 3: Execute Publish
 
-**`/dev.state complete <PR#>` 호출:**
-- `state:executing` Label 제거
-- Draft → Ready 전환
-- "Published" Comment 기록
+**Call `/dev.state complete <PR#>`:**
+- Remove `state:executing` label
+- Convert Draft → Ready
+- Record "Published" comment
 
-### STEP 4: 결과 출력
+### STEP 4: Output Result
 
-**성공**:
+**Success**:
 ```
 ✅ PR #123 published successfully
    URL: https://github.com/owner/repo/pull/123
@@ -73,12 +73,12 @@ Draft PR을 Ready로 전환하여 리뷰 가능 상태로 만든다.
 
 ## Error Handling
 
-| 에러 상황 | 메시지 |
-|-----------|--------|
-| PR 없음 | "No PR found for current branch" |
-| created 상태 | "Run '/dev.execute {PR#}' first" |
-| blocked 상태 | "Run '/dev.state continue {PR#}' first" |
-| 이미 ready | "Already published (not a draft)" |
+| Error | Message |
+|-------|--------|
+| No PR | "No PR found for current branch" |
+| Created state | "Run '/dev.execute {PR#}' first" |
+| Blocked state | "Run '/dev.state continue {PR#}' first" |
+| Already ready | "Already published (not a draft)" |
 
 ---
 
@@ -88,4 +88,4 @@ Draft PR을 Ready로 전환하여 리뷰 가능 상태로 만든다.
 executing → ready  (via /dev.state complete)
 ```
 
-**Note**: `blocked` 상태에서는 먼저 `/dev.state continue`로 `executing`으로 전이 필요
+**Note**: From `blocked`, first transition to `executing` with `/dev.state continue`

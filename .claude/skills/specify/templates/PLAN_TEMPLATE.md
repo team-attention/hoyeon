@@ -248,19 +248,19 @@ TODO-1 → TODO-2 → TODO-Final
 
 **Type**: verification (read-only)
 
-**Required Tools**: `npm` (for type-check, lint, test)
+**Required Tools**: (from DRAFT's Agent Findings > Project Commands)
 
 **Inputs**:
 - `config_path` (file): `${todo-1.outputs.config_path}`
 - `api_module` (file): `${todo-2.outputs.api_module}`
 
-**Outputs**: (none - verification only)
+**Outputs**: (none)
 
 **Steps**:
-- [ ] **Type Check**: `npm run type-check` → exit 0
-- [ ] **Lint**: `npm run lint` → no errors
-- [ ] **Test**: `npm test` → all pass
-- [ ] **Deliverables Check**: Verify all outputs from previous TODOs exist
+- [ ] Run type check (if applicable)
+- [ ] Run lint (if applicable)
+- [ ] Run tests
+- [ ] Verify all deliverables exist
 
 **Must NOT do**:
 - Do not modify any files
@@ -269,9 +269,20 @@ TODO-1 → TODO-2 → TODO-Final
 - Do not run git commands
 
 **Acceptance Criteria**:
-- [ ] All commands exit with code 0
-- [ ] No new lint warnings introduced
+
+> Use commands from DRAFT's Agent Findings > Project Commands
+
+*Functional:*
 - [ ] All deliverables from Work Objectives exist
+- [ ] `config_path` file exists and is valid
+- [ ] `api_module` file exists and exports expected functions
+
+*Static:*
+- [ ] `{type-check-command}` → exit 0 (e.g., `tsc --noEmit`, `mypy .`, `go vet ./...`)
+- [ ] `{lint-command}` → no errors (e.g., `eslint .`, `ruff check .`, `golangci-lint run`)
+
+*Runtime:*
+- [ ] `{test-command}` → all pass (e.g., `npm test`, `pytest`, `go test ./...`)
 ```
 
 ---
@@ -554,42 +565,6 @@ Completion Rule: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅)
 
 ---
 
-## Verification Details
-
-The final TODO runs after all work TODOs complete.
-
-| Aspect | Description |
-|--------|-------------|
-| **Purpose** | Quality gate - "Is this mergeable?" |
-| **Type** | `verification` (read-only) |
-| **Timing** | After ALL work TODOs complete |
-| **Scope** | Entire project, not individual features |
-| **On Failure** | Report to Orchestrator, do NOT auto-fix |
-
-### Quality Checks (customize per project)
-
-| Check | Common Commands |
-|-------|-----------------|
-| Type Check | `tsc --noEmit`, `npm run type-check`, `mypy .` |
-| Lint | `npm run lint`, `eslint .`, `ruff check .` |
-| Test | `npm test`, `bun test`, `pytest`, `go test ./...` |
-| Build | `npm run build`, `go build ./...` |
-
----
-
-## Acceptance Criteria vs Verification
-
-| | Acceptance Criteria (per TODO) | Verification (TODO Final) |
-|---|---|---|
-| **Question** | "Is this TODO complete?" | "Is the entire plan mergeable?" |
-| **Scope** | Per TODO (individual) | Entire Plan (global) |
-| **Categories** | Functional + Static + Runtime (+ Cleanup) | Full project type-check, lint, test |
-| **Examples** | "Returns 401", "tsc passes for this file" | "All tests green", "No lint warnings" |
-| **When** | After each TODO | After ALL TODOs |
-| **Completion Rule** | All required categories must pass | All checks must pass |
-
----
-
 ## Example: Complete TODO
 
 ```markdown
@@ -640,14 +615,16 @@ The final TODO runs after all work TODOs complete.
 
 ---
 
-## Example: Verification
+## Example: TODO Final
+
+> This example uses Node.js commands. Replace with project-specific commands from DRAFT's Agent Findings > Project Commands.
 
 ```markdown
 ### [ ] TODO Final: Verification
 
 **Type**: verification (read-only)
 
-**Required Tools**: `npm`
+**Required Tools**: (per project - e.g., npm, cargo, go, pytest)
 
 **Inputs**:
 - `middleware_path` (file): `${todo-2.outputs.middleware_path}`
@@ -656,19 +633,28 @@ The final TODO runs after all work TODOs complete.
 **Outputs**: (none)
 
 **Steps**:
-- [ ] **Type Check**: `npm run type-check` → exit 0
-- [ ] **Lint**: `npm run lint` → no errors
-- [ ] **Test**: `npm test` → all pass
-- [ ] **Integration**: Verify middleware is imported in routes file
+- [ ] Run type check (if applicable)
+- [ ] Run lint (if applicable)
+- [ ] Run tests
+- [ ] Verify middleware is imported in routes file
 
 **Must NOT do**:
 - Do not modify any files
 - Do not add new features
-- Do not fix lint errors (report only)
+- Do not fix errors (report only)
 - Do not run git commands
 
 **Acceptance Criteria**:
-- [ ] All commands exit with code 0
-- [ ] No new lint warnings introduced
+
+*Functional:*
 - [ ] All deliverables from Work Objectives exist
+- [ ] `middleware_path` file exists
+- [ ] `routes_path` file imports middleware
+
+*Static:*
+- [ ] Type check passes (e.g., `tsc --noEmit`, `mypy .`, `go vet ./...`)
+- [ ] Lint passes (e.g., `eslint .`, `ruff check .`, `golangci-lint run`)
+
+*Runtime:*
+- [ ] Tests pass (e.g., `npm test`, `pytest`, `go test ./...`, `cargo test`)
 ```

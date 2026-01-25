@@ -1,7 +1,7 @@
 ---
 name: specify
 description: |
-  This skill should be used when the user says "/specify", "계획 세워줘", "plan this", or "make a plan".
+  This skill should be used when the user says "/specify", "plan this", or "make a plan".
   Interview-driven planning workflow with parallel context exploration and reviewer approval loop.
 allowed-tools:
   - Read
@@ -18,7 +18,7 @@ hooks:
             Check if the user explicitly requested plan generation AND the reviewer approved it.
 
             EVALUATION CRITERIA:
-            1. Did the user say "make it a plan", "계획으로 만들어줘", or similar?
+            1. Did the user say "make it a plan", or similar?
             2. If YES to #1: Was Task(subagent_type="reviewer") called?
             3. Did the reviewer return "OKAY"?
 
@@ -59,13 +59,13 @@ Identify the task type and apply the corresponding strategy:
 
 | Intent Type | Keywords | Strategy | Key Questions |
 |-------------|----------|----------|---------------|
-| **Refactoring** | "리팩토링", "정리", "개선", "migrate" | Safety first, regression prevention | "기존 테스트 있나요?", "점진적 vs 한번에?" |
-| **New Feature** | "추가", "새로운", "구현", "add" | Pattern exploration, integration points | "비슷한 기능이 있나요?", "어디에 연결?" |
-| **Bug Fix** | "버그", "오류", "안됨", "fix" | Reproduce → Root cause → Fix | "재현 단계는?", "언제부터 발생?" |
-| **Architecture** | "설계", "구조", "아키텍처" | Trade-off analysis, oracle consultation | "확장성 vs 단순성?", "제약 조건?" |
-| **Research** | "조사", "분석", "이해", "파악" | Investigation only, NO implementation | "결과물 형태는?", "범위 제한?" |
-| **Migration** | "마이그레이션", "업그레이드", "전환" | Phased approach, rollback plan | "다운타임 허용?", "롤백 가능?" |
-| **Performance** | "성능", "최적화", "느림" | Measure first, profile → optimize | "현재 측정값?", "목표 수치?" |
+| **Refactoring** | "refactoring", "cleanup", "improve", "migrate" | Safety first, regression prevention | "Existing tests?", "Gradual vs all-at-once?" |
+| **New Feature** | "add", "new", "implement" | Pattern exploration, integration points | "Similar feature exists?", "Where to integrate?" |
+| **Bug Fix** | "bug", "error", "broken", "fix" | Reproduce → Root cause → Fix | "Reproduction steps?", "When did it start?" |
+| **Architecture** | "design", "structure", "architecture" | Trade-off analysis, oracle consultation | "Scalability vs simplicity?", "Constraints?" |
+| **Research** | "investigate", "analyze", "understand" | Investigation only, NO implementation | "Output format?", "Scope limits?" |
+| **Migration** | "migration", "upgrade", "transition" | Phased approach, rollback plan | "Downtime allowed?", "Rollback possible?" |
+| **Performance** | "performance", "optimize", "slow" | Measure first, profile → optimize | "Current measurements?", "Target metrics?" |
 
 **Intent-Specific Actions**:
 
@@ -112,17 +112,17 @@ Follow the structure in `${baseDir}/templates/DRAFT_TEMPLATE.md`.
 #### What to ASK (user knows, agent doesn't)
 
 Use `AskUserQuestion` only for:
-- **Boundaries**: "하면 안 되는 것 있나요?"
+- **Boundaries**: "Any restrictions on what not to do?"
 - **Trade-offs**: Only when multiple valid options exist
-- **Success Criteria**: "언제 끝났다고 볼 수 있나요?"
+- **Success Criteria**: "When is this considered complete?"
 
 ```
 AskUserQuestion(
-  question: "어떤 인증 방식을 사용할까요?",
+  question: "Which authentication method should we use?",
   options: [
-    { label: "JWT (Recommended)", description: "이미 jsonwebtoken 설치됨" },
-    { label: "Session", description: "서버 상태 관리 필요" },
-    { label: "비교 분석 필요", description: "tech-decision으로 리서치" }
+    { label: "JWT (Recommended)", description: "jsonwebtoken already installed" },
+    { label: "Session", description: "Requires server state management" },
+    { label: "Need comparison", description: "Research with tech-decision" }
   ]
 )
 ```
@@ -140,32 +140,32 @@ Agent explores:
 After exploration completes, propose instead of asking:
 
 ```
-"조사해보니 이렇게 하면 될 것 같아요:
-- 미들웨어는 src/middleware/auth.ts
-- 기존 logging.ts 패턴 따라감
-- jwt.ts의 verify() 함수 활용
+"Based on my investigation, this approach should work:
+- Middleware at src/middleware/auth.ts
+- Following existing logging.ts pattern
+- Using jwt.ts verify() function
 
-다른 방식 원하면 말해주세요."
+Let me know if you prefer a different approach."
 ```
 
 > **Core Principle**: Minimize questions, maximize proposals based on research
 
 #### Technical Decision Support
 
-When user seems uncertain ("뭐가 나을까?", "어떤 게 좋을지..."):
+When user seems uncertain ("which is better?", "what should I use?"):
 
 ```
 AskUserQuestion(
-  question: "어떤 방식으로 할까요?",
+  question: "Which approach should we take?",
   options: [
     { label: "Option A", description: "..." },
     { label: "Option B", description: "..." },
-    { label: "비교 분석 필요", description: "tech-decision으로 깊이 있는 리서치" }
+    { label: "Need comparison", description: "Deep research with tech-decision" }
   ]
 )
 ```
 
-**If user selects "비교 분석 필요"**:
+**If user selects "Need comparison"**:
 ```
 Skill("tech-decision", args="[comparison topic]")
 ```
@@ -176,9 +176,9 @@ Skill("tech-decision", args="[comparison topic]")
 
 1. Record in **User Decisions** table:
    ```markdown
-   | 질문 | 결정 | 비고 |
-   |------|------|------|
-   | 인증 방식? | JWT | 기존 라이브러리 활용 |
+   | Question | Decision | Notes |
+   |----------|----------|-------|
+   | Auth method? | JWT | Using existing library |
    ```
 
 2. Remove resolved items from **Open Questions**
@@ -191,7 +191,7 @@ Skill("tech-decision", args="[comparison topic]")
 
 1. Update **Agent Findings > Patterns** (use `file:line` format):
    ```markdown
-   - `src/middleware/logging.ts:10-25` - 미들웨어 패턴
+   - `src/middleware/logging.ts:10-25` - Middleware pattern
    ```
 
 2. Update **Agent Findings > Structure**
@@ -204,9 +204,9 @@ Skill("tech-decision", args="[comparison topic]")
 
 2. Sketch **Direction > Work Breakdown**:
    ```markdown
-   1. Config 생성 → outputs: `config_path`
-   2. Middleware 구현 → depends on: Config
-   3. Router 연결 → depends on: Middleware
+   1. Create Config → outputs: `config_path`
+   2. Implement Middleware → depends on: Config
+   3. Connect Router → depends on: Middleware
    ```
 
 ### Step 4: Check Plan Transition Readiness
@@ -216,12 +216,12 @@ Skill("tech-decision", args="[comparison topic]")
 - [ ] **Critical Open Questions** all resolved
 - [ ] **User Decisions** has key decisions recorded
 - [ ] **Success Criteria** agreed
-- [ ] User explicitly says "계획으로 만들어줘" or similar
+- [ ] User explicitly says "make it a plan" or similar
 
 #### If Critical questions remain:
 
 ```
-"Plan 만들기 전에 이것만 확인할게요: [Critical Question]"
+"Before creating the Plan, I need to confirm: [Critical Question]"
 ```
 
 #### If all resolved but user hasn't requested:
@@ -231,7 +231,6 @@ Continue conversation naturally. Do NOT prompt for plan generation.
 #### Trigger phrases for Plan Generation:
 
 - "Make it a plan"
-- "계획으로 만들어줘"
 - "Generate the plan"
 - "Create the work plan"
 - Similar explicit requests
@@ -360,9 +359,9 @@ Task(subagent_type="reviewer",
 
 ## TODO Structure Reference
 
-PLAN_TEMPLATE.md는 **Orchestrator-Worker 패턴**을 따릅니다.
+PLAN_TEMPLATE.md follows the **Orchestrator-Worker pattern**.
 
-### Orchestrator Section (Orchestrator 전용)
+### Orchestrator Section (Orchestrator only)
 - Task Flow
 - Dependency Graph
 - Parallelization
@@ -370,43 +369,39 @@ PLAN_TEMPLATE.md는 **Orchestrator-Worker 패턴**을 따릅니다.
 - Error Handling
 - Runtime Contract
 
-### TODO Section (Worker 전용)
-각 TODO 필수 필드:
+### TODO Section (Worker only)
+Required fields for each TODO:
 - **Type**: `work` | `verification`
-- **Required Tools**: 필요한 도구 명시
-- **Inputs**: 이전 TODO 출력 참조 (타입 포함)
-- **Outputs**: 생성 결과물 (타입 포함)
-- **Steps**: [ ] 체크박스 형식
-- **Must NOT do**: 금지사항 (git 포함)
-- **References**: 관련 코드 경로 (DRAFT의 Agent Findings > Patterns에서)
-- **Acceptance Criteria**: 카테고리별 검증 조건 (아래 참조)
+- **Required Tools**: Specify needed tools
+- **Inputs**: Reference to previous TODO outputs (with types)
+- **Outputs**: Generated deliverables (with types)
+- **Steps**: [ ] Checkbox format
+- **Must NOT do**: Prohibitions (including git)
+- **References**: Related code paths (from DRAFT's Agent Findings > Patterns)
+- **Acceptance Criteria**: Verification conditions by category (see below)
 
-### Acceptance Criteria 카테고리
+### Acceptance Criteria Categories
 
 | Category | Required | Description |
 |----------|----------|-------------|
-| *Functional* | ✅ | 기능 동작 검증 (비즈니스 로직) |
-| *Static* | ✅ | 타입체크, 린트 통과 (수정한 파일) |
-| *Runtime* | ✅ | 관련 테스트 통과 |
-| *Cleanup* | ❌ | 미사용 import/파일 정리 (필요시만) |
+| *Functional* | ✅ | Feature functionality verification (business logic) |
+| *Static* | ✅ | Type check, lint pass (modified files) |
+| *Runtime* | ✅ | Related tests pass |
+| *Cleanup* | ❌ | Unused import/file cleanup (only when needed) |
 
-**Worker 완료 조건**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
+**Worker completion condition**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
 
 ### Key Principles
-- Worker는 자신의 TODO만 봄 (격리)
-- Orchestrator가 `${todo-N.outputs.field}` 치환
-- **Orchestrator만 git 커밋** (Worker는 금지)
-- **TODO Final: Verification**은 read-only
+- Worker sees only its own TODO (isolation)
+- Orchestrator substitutes `${todo-N.outputs.field}`
+- **Only Orchestrator commits to git** (Worker is prohibited)
+- **TODO Final uses same Acceptance Criteria structure** (unified verification)
 
-**Acceptance Criteria vs Verification**:
-
-| | Acceptance Criteria (per TODO) | TODO Final: Verification |
-|---|---|---|
-| **질문** | "이 TODO가 완료됐나?" | "전체 Plan이 머지 가능한가?" |
-| **범위** | TODO별 (개별) | 전체 Plan (글로벌) |
-| **카테고리** | Functional + Static + Runtime (+ Cleanup) | 전체 프로젝트 type-check, lint, test |
-| **예시** | "401 반환", "이 파일 tsc 통과" | "모든 테스트 통과", "린트 경고 없음" |
-| **완료 조건** | 필수 카테고리 모두 PASS | 모든 체크 통과 |
+**TODO Final**:
+- Type: `verification` (read-only, cannot modify files)
+- Same categories: Functional, Static, Runtime
+- Same Hook verification process
+- Difference: scope is "entire project"
 
 See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
 
@@ -426,7 +421,7 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
   - [ ] All TODOs have Steps (checkbox) and Acceptance Criteria
   - [ ] All TODOs have "Do not run git commands" in Must NOT do
   - [ ] References populated from DRAFT's Agent Findings
-- [ ] **TODO Final: Verification** exists (type: verification, read-only)
+- [ ] **TODO Final: Verification** exists (type: verification, read-only, same Acceptance Criteria structure)
 - [ ] Reviewer returned OKAY
 - [ ] Draft file deleted
 
@@ -446,16 +441,16 @@ User: "Add authentication to the API"
 
 [Interview Mode - Step 2: Gather Requirements]
 4. PROPOSE (after exploration completes):
-   "조사해보니 src/middleware/logging.ts 패턴 따라가면 될 것 같아요.
-    jsonwebtoken도 이미 설치되어 있네요."
+   "Based on my investigation, src/middleware/logging.ts pattern should work.
+    jsonwebtoken is already installed."
 
 5. ASK (only what's necessary):
-   "어떤 인증 방식 쓸까요?"
-   - JWT (Recommended) - 이미 설치됨
+   "Which auth method should we use?"
+   - JWT (Recommended) - already installed
    - Session
-   - 비교 분석 필요
+   - Need comparison
 
-6. User selects "비교 분석 필요"
+6. User selects "Need comparison"
 7. Call: Skill("tech-decision", args="JWT vs Session for REST API")
 8. Update draft with tech-decision results
 9. Record in User Decisions table
@@ -486,8 +481,8 @@ User: "OK, make it a plan"
 After plan approval, inform the user of available options:
 
 ```
-Plan이 승인되었습니다! 다음 단계를 선택해주세요:
+Plan has been approved! Please select next steps:
 
-- `/dev.open` - Draft PR 생성 (리뷰어 피드백을 먼저 받고 싶을 때)
-- `/dev.execute` - 바로 구현 시작 (계획대로 즉시 실행)
+- `/dev.open` - Create Draft PR (when you want reviewer feedback first)
+- `/dev.execute` - Start implementation immediately (execute plan as-is)
 ```

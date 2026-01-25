@@ -1,7 +1,7 @@
 # Draft Template
 
 > Reference document for draft file structure during Interview Mode.
-> DRAFT = Discovery (합의 과정) - What/Why 수집 + How 방향
+> DRAFT = Discovery (consensus building) - Collecting What/Why + How direction
 
 **Schema Version**: 1.1
 
@@ -20,48 +20,48 @@
 
 ## Intent Classification
 - **Type**: [Refactoring|New Feature|Bug Fix|Architecture|Research|Migration|Performance]
-- **Strategy**: [해당 타입에 맞는 전략]
+- **Strategy**: [Strategy for this type]
 
 ## What & Why
 
-### What (목표)
-- [1-2문장: 무엇을 달성하려는지]
+### What (Goal)
+- [1-2 sentences: what to achieve]
 
-### Why (배경)
-- [왜 이게 필요한지]
-- [현재 문제점]
+### Why (Background)
+- [Why this is needed]
+- [Current problems]
 
-### Deliverables (산출물)
-- [ ] [구체적 파일/기능 1]
-- [ ] [구체적 파일/기능 2]
+### Deliverables
+- [ ] [Specific file/feature 1]
+- [ ] [Specific file/feature 2]
 
 ## Boundaries
 
 ### Must NOT Do
-- [하면 안 되는 것]
-- [범위 밖인 것]
+- [Things not allowed]
+- [Out of scope items]
 
 ### Constraints
-- [기술적 제약]
-- [비즈니스 제약]
+- [Technical constraints]
+- [Business constraints]
 
 ## Success Criteria
-- [ ] [검증 가능한 조건 1]
-- [ ] [검증 가능한 조건 2]
+- [ ] [Verifiable condition 1]
+- [ ] [Verifiable condition 2]
 
 ## User Decisions
 
-| 질문 | 결정 | 비고 |
-|------|------|------|
-| [질문 1] | [결정] | [근거/맥락] |
+| Question | Decision | Notes |
+|----------|----------|-------|
+| [Question 1] | [Decision] | [Rationale/Context] |
 
 ## Agent Findings
 
 ### Patterns
-- `file:line` - 설명
+- `file:line` - Description
 
 ### Structure
-- [파일 구조 관련 발견]
+- [File structure findings]
 
 ### Project Commands
 - Type check: `command`
@@ -70,21 +70,21 @@
 
 ## Open Questions
 
-### Critical (Plan 전 해결 필수)
-- [ ] [미해결 질문]
+### Critical (Must resolve before Plan)
+- [ ] [Unresolved question]
 
-### Nice-to-have (나중에 결정 가능)
-- [ ] [있으면 좋지만 필수 아닌 것]
+### Nice-to-have (Can decide later)
+- [ ] [Nice but not required]
 
 ## Direction
 
-### Approach (방향)
-- [큰 그림의 구현 방향]
+### Approach
+- [High-level implementation direction]
 
-### Work Breakdown (초안)
-1. [작업 1] → outputs: [산출물]
-2. [작업 2] → depends on: 작업 1
-3. [작업 3] → parallel with: 작업 2
+### Work Breakdown (Draft)
+1. [Task 1] → outputs: [deliverable]
+2. [Task 2] → depends on: Task 1
+3. [Task 3] → parallel with: Task 2
 ```
 
 ---
@@ -93,85 +93,85 @@
 
 ### Intent Classification
 
-작업 유형을 식별하고 전략을 수립한다.
+Identify task type and establish strategy.
 
 | Intent Type | Keywords | Strategy |
 |-------------|----------|----------|
-| **Refactoring** | "리팩토링", "정리", "개선", "migrate" | Safety first, regression prevention |
-| **New Feature** | "추가", "새로운", "구현", "add" | Pattern exploration, integration points |
-| **Bug Fix** | "버그", "오류", "안됨", "fix" | Reproduce → Root cause → Fix |
-| **Architecture** | "설계", "구조", "아키텍처" | Trade-off analysis, oracle consultation |
-| **Research** | "조사", "분석", "이해", "파악" | Investigation only, NO implementation |
-| **Migration** | "마이그레이션", "업그레이드", "전환" | Phased approach, rollback plan |
-| **Performance** | "성능", "최적화", "느림" | Measure first, profile → optimize |
+| **Refactoring** | "refactoring", "cleanup", "improve", "migrate" | Safety first, regression prevention |
+| **New Feature** | "add", "new", "implement" | Pattern exploration, integration points |
+| **Bug Fix** | "bug", "error", "broken", "fix" | Reproduce → Root cause → Fix |
+| **Architecture** | "design", "structure", "architecture" | Trade-off analysis, oracle consultation |
+| **Research** | "investigate", "analyze", "understand" | Investigation only, NO implementation |
+| **Migration** | "migration", "upgrade", "transition" | Phased approach, rollback plan |
+| **Performance** | "performance", "optimize", "slow" | Measure first, profile → optimize |
 
 ### What & Why
 
-**사용자 영역** - 대화를 통해 수집
+**User domain** - Collected through conversation
 
-- **What**: 무엇을 달성하려는지 (목표)
-- **Why**: 왜 이게 필요한지 (배경, 문제점)
-- **Deliverables**: 구체적으로 나와야 할 산출물
+- **What**: What to achieve (goal)
+- **Why**: Why this is needed (background, problems)
+- **Deliverables**: Specific outputs required
 
 ### Boundaries
 
-**사용자 영역** - 반드시 물어봐야 함
+**User domain** - Must ask
 
-- **Must NOT Do**: 명시적으로 하면 안 되는 것
-- **Constraints**: 기술적/비즈니스 제약
+- **Must NOT Do**: Explicitly forbidden actions
+- **Constraints**: Technical/business constraints
 
 ### Success Criteria
 
-**합의 영역** - 사용자와 합의 필요
+**Consensus domain** - Requires user agreement
 
-- 검증 가능한 조건으로 작성
-- PLAN의 Definition of Done으로 매핑됨
+- Write as verifiable conditions
+- Maps to PLAN's Definition of Done
 
 ### User Decisions
 
-**기록 영역** - 사용자가 결정한 사항 추적
+**Record domain** - Track user decisions
 
-| 컬럼 | 설명 |
-|------|------|
-| 질문 | 어떤 선택지가 있었는지 |
-| 결정 | 사용자가 선택한 것 |
-| 비고 | 선택 이유나 맥락 |
+| Column | Description |
+|--------|-------------|
+| Question | What choices existed |
+| Decision | What user selected |
+| Notes | Reason or context for selection |
 
 ### Agent Findings
 
-**Agent 영역** - 조사 결과 기록
+**Agent domain** - Investigation results
 
-- **Patterns**: 기존 코드 패턴 (`file:line` 형식 필수)
-- **Structure**: 파일/디렉토리 구조
-- **Project Commands**: lint, test 등 프로젝트 명령어
+- **Patterns**: Existing code patterns (`file:line` format required)
+- **Structure**: File/directory structure
+- **Project Commands**: lint, test, and other project commands
 
-> PLAN의 References, Completion Protocol로 매핑됨
+> Maps to PLAN's References and Completion Protocol
 
 ### Open Questions
 
-**불확실성 관리** - Plan 전환 기준
+**Uncertainty management** - Plan transition criteria
 
-| 우선순위 | 의미 | Plan 전환 |
-|----------|------|-----------|
-| **Critical** | 이거 모르면 Plan 못 만듦 | 해결 필수 |
-| **Nice-to-have** | 나중에 결정해도 됨 | 해결 불필요 |
+| Priority | Meaning | Plan Transition |
+|----------|---------|-----------------|
+| **Critical** | Can't create Plan without this | Must resolve |
+| **Nice-to-have** | Can decide later | Not required |
 
 ### Direction
 
-**How의 방향** - 상세는 PLAN에서
+**How direction** - Details go in PLAN
 
-- **Approach**: 큰 그림의 구현 방향
-- **Work Breakdown**: TODO 분할 초안 (의존성 포함)
+- **Approach**: High-level implementation direction
+- **Work Breakdown**: TODO split draft (with dependencies)
 
 ---
 
-## PLAN 매핑 관계
+## PLAN Mapping
 
-| DRAFT 섹션 | PLAN 섹션 |
-|------------|-----------|
+| DRAFT Section | PLAN Section |
+|---------------|--------------|
 | What & Why | Context > Original Request |
 | User Decisions | Context > Interview Summary |
-| Agent Findings (일부) | Context > Research Findings |
+| Agent Findings (partial) | Context > Research Findings |
 | Deliverables | Work Objectives > Concrete Deliverables |
 | Boundaries | Work Objectives > Must NOT Do |
 | Success Criteria | Work Objectives > Definition of Done |
@@ -181,44 +181,44 @@
 
 ---
 
-## 질문 원칙
+## Question Principles
 
-### 물어봐야 할 것 (사용자만 알 수 있음)
-- Boundaries (하면 안 되는 것)
-- Trade-off 결정 (A vs B)
-- 비즈니스 제약
+### What to ASK (only user knows)
+- Boundaries (things not allowed)
+- Trade-off decisions (A vs B)
+- Business constraints
 
-### 조사할 것 (Agent가 알아냄)
-- 기존 패턴, 파일 구조
-- 프로젝트 명령어
-- 영향 범위
+### What to INVESTIGATE (agent discovers)
+- Existing patterns, file structure
+- Project commands
+- Impact scope
 
-### 제안할 것 (조사 후 확인만)
-- "이렇게 하면 될 것 같아요" → Y/N
-- 기존 패턴 기반 추천
+### What to PROPOSE (confirm after investigation)
+- "This approach should work" → Y/N
+- Recommendations based on existing patterns
 
-> **핵심**: 질문은 최소화, 조사 후 제안은 최대화
+> **Key**: Minimize questions, maximize proposals after research
 
 ---
 
 ## Usage
 
-### 생성 시점
-- 사용자가 작업 요청 시
+### When to Create
+- When user requests a task
 
-### 업데이트 시점
-- 사용자 응답 후
-- Background agent 완료 후
-- 결정 사항 변경 시
+### When to Update
+- After user response
+- After background agent completes
+- When decisions change
 
-### Plan 전환 조건
-- [ ] Critical Open Questions 모두 해결
-- [ ] User Decisions에 핵심 결정 기록됨
-- [ ] Success Criteria 합의됨
-- [ ] 사용자가 "계획으로 만들어줘" 요청
+### Plan Transition Conditions
+- [ ] All Critical Open Questions resolved
+- [ ] Key decisions recorded in User Decisions
+- [ ] Success Criteria agreed
+- [ ] User requests "make it a plan"
 
-### 삭제 시점
-- Plan이 reviewer 승인 후
+### When to Delete
+- After Plan is approved by reviewer
 
 ---
 
@@ -233,51 +233,51 @@
 
 ## What & Why
 
-### What (목표)
-- API 엔드포인트에 JWT 기반 인증 추가
+### What (Goal)
+- Add JWT-based authentication to API endpoints
 
-### Why (배경)
-- 현재 모든 API가 public으로 노출됨
-- 사용자별 데이터 접근 제어 필요
+### Why (Background)
+- All APIs currently exposed as public
+- Need user-specific data access control
 
-### Deliverables (산출물)
-- [ ] `src/middleware/auth.ts` - 인증 미들웨어
-- [ ] `src/config/auth.json` - JWT 설정 파일
+### Deliverables
+- [ ] `src/middleware/auth.ts` - Authentication middleware
+- [ ] `src/config/auth.json` - JWT configuration file
 
 ## Boundaries
 
 ### Must NOT Do
-- 기존 public 엔드포인트 수정 금지
-- 새 npm 패키지 설치 금지
+- Do not modify existing public endpoints
+- Do not install new npm packages
 
 ### Constraints
-- 기존 jsonwebtoken 라이브러리 사용
-- Express 미들웨어 패턴 준수
+- Use existing jsonwebtoken library
+- Follow Express middleware pattern
 
 ## Success Criteria
-- [ ] 토큰 없는 요청 → 401 Unauthorized
-- [ ] 유효한 토큰 → 다음 핸들러로 통과
-- [ ] 기존 테스트 모두 통과
+- [ ] Request without token → 401 Unauthorized
+- [ ] Valid token → Pass to next handler
+- [ ] All existing tests pass
 
 ## User Decisions
 
-| 질문 | 결정 | 비고 |
-|------|------|------|
-| 인증 방식? | JWT | 기존 라이브러리 활용 |
-| 토큰 만료 처리? | 401 반환 | refresh token 없음 |
-| 보호할 라우트? | /api/users/* | public 제외 |
+| Question | Decision | Notes |
+|----------|----------|-------|
+| Auth method? | JWT | Using existing library |
+| Token expiry handling? | Return 401 | No refresh token |
+| Routes to protect? | /api/users/* | Excluding public |
 
 ## Agent Findings
 
 ### Patterns
-- `src/middleware/logging.ts:10-25` - 미들웨어 패턴
-- `src/middleware/error.ts:5-15` - 에러 핸들링 패턴
-- `src/utils/jwt.ts:verify()` - 토큰 검증 함수 (기존)
+- `src/middleware/logging.ts:10-25` - Middleware pattern
+- `src/middleware/error.ts:5-15` - Error handling pattern
+- `src/utils/jwt.ts:verify()` - Token verification function (existing)
 
 ### Structure
-- 미들웨어: `src/middleware/`
-- 설정: `src/config/`
-- 라우터: `src/routes/`
+- Middleware: `src/middleware/`
+- Config: `src/config/`
+- Router: `src/routes/`
 
 ### Project Commands
 - Type check: `npm run type-check`
@@ -286,22 +286,22 @@
 
 ## Open Questions
 
-### Critical (Plan 전 해결 필수)
-- (없음)
+### Critical (Must resolve before Plan)
+- (None)
 
-### Nice-to-have (나중에 결정 가능)
-- [ ] 토큰 만료 시간 설정값?
+### Nice-to-have (Can decide later)
+- [ ] Token expiration time value?
 
 ## Direction
 
-### Approach (방향)
-- 기존 logging.ts 미들웨어 패턴 따라서 auth.ts 생성
-- Express router에 미들웨어 체인으로 연결
-- 기존 jwt.ts의 verify() 함수 활용
+### Approach
+- Create auth.ts following existing logging.ts middleware pattern
+- Connect to Express router as middleware chain
+- Use existing jwt.ts verify() function
 
-### Work Breakdown (초안)
-1. JWT 설정 파일 생성 → outputs: `config_path`
-2. 인증 미들웨어 구현 → depends on: 설정 파일
-3. 라우터에 미들웨어 연결 → depends on: 미들웨어
-4. Verification → depends on: 전체 완료
+### Work Breakdown (Draft)
+1. Create JWT config file → outputs: `config_path`
+2. Implement auth middleware → depends on: config file
+3. Connect middleware to router → depends on: middleware
+4. Verification → depends on: all complete
 ```

@@ -1,223 +1,223 @@
-# 기술 의사결정 보고서 템플릿
+# Technical Decision Report Template
 
-## 전체 구조
+## Overall Structure
 
 ```markdown
-# 기술 의사결정 보고서: [주제]
+# Technical Decision Report: [Topic]
 
-**작성일**: YYYY-MM-DD
-**의사결정 유형**: [라이브러리 선택 | 아키텍처 결정 | 구현 방식 | 기술 스택]
-
----
-
-## 1. 결론 (Executive Summary)
-
-**추천: [Option Name]**
-
-[1-2문장으로 핵심 추천 이유 요약]
-
-**신뢰도**: [높음 | 중간 | 낮음] - [신뢰도 판단 근거]
+**Date**: YYYY-MM-DD
+**Decision Type**: [Library Selection | Architecture Decision | Implementation Approach | Technology Stack]
 
 ---
 
-## 2. 의사결정 맥락
+## 1. Conclusion (Executive Summary)
 
-### 2.1 문제 정의
-[무엇을 결정해야 하는지 명확히 기술]
+**Recommendation: [Option Name]**
 
-### 2.2 비교 대상
-- Option A: [이름] - [한 줄 설명]
-- Option B: [이름] - [한 줄 설명]
-- Option C: [이름] - [한 줄 설명]
+[Summarize the key reasons for recommendation in 1-2 sentences]
 
-### 2.3 프로젝트 컨텍스트
-- **프로젝트 규모**: [소규모 | 중규모 | 대규모]
-- **팀 규모**: [N명]
-- **기존 기술 스택**: [관련 기술들]
-- **특수 요구사항**: [있다면 기술]
+**Confidence Level**: [High | Medium | Low] - [Basis for confidence assessment]
 
 ---
 
-## 3. 평가 기준
+## 2. Decision Context
 
-| 기준 | 가중치 | 설명 |
+### 2.1 Problem Definition
+[Clearly describe what needs to be decided]
+
+### 2.2 Comparison Options
+- Option A: [Name] - [One-line description]
+- Option B: [Name] - [One-line description]
+- Option C: [Name] - [One-line description]
+
+### 2.3 Project Context
+- **Project Scale**: [Small | Medium | Large]
+- **Team Size**: [N people]
+- **Existing Technology Stack**: [Related technologies]
+- **Special Requirements**: [Describe if any]
+
+---
+
+## 3. Evaluation Criteria
+
+| Criteria | Weight | Description |
 |------|--------|------|
-| [기준 1] | [X%] | [왜 중요한지] |
-| [기준 2] | [X%] | [왜 중요한지] |
-| [기준 3] | [X%] | [왜 중요한지] |
-| [기준 4] | [X%] | [왜 중요한지] |
-| **합계** | **100%** | |
+| [Criteria 1] | [X%] | [Why it's important] |
+| [Criteria 2] | [X%] | [Why it's important] |
+| [Criteria 3] | [X%] | [Why it's important] |
+| [Criteria 4] | [X%] | [Why it's important] |
+| **Total** | **100%** | |
 
 ---
 
-## 4. 옵션별 상세 분석
+## 4. Detailed Analysis by Option
 
-### 4.1 Option A: [이름]
+### 4.1 Option A: [Name]
 
-**개요**: [2-3문장 설명]
+**Overview**: [2-3 sentence description]
 
-**장점**:
-- ✅ [장점 1]
-  - 출처: [공식 문서 | Reddit | HN | 전문가 의견 | 코드 분석]
-  - 신뢰도: [높음 | 중간 | 낮음]
+**Advantages**:
+- ✅ [Advantage 1]
+  - Source: [Official Documentation | Reddit | HN | Expert Opinion | Code Analysis]
+  - Confidence: [High | Medium | Low]
 
-- ✅ [장점 2]
-  - 출처: [...]
-  - 신뢰도: [...]
+- ✅ [Advantage 2]
+  - Source: [...]
+  - Confidence: [...]
 
-**단점**:
-- ❌ [단점 1]
-  - 출처: [...]
-  - 신뢰도: [...]
+**Disadvantages**:
+- ❌ [Disadvantage 1]
+  - Source: [...]
+  - Confidence: [...]
 
-**적합한 경우**:
-- [시나리오 1]
-- [시나리오 2]
+**Suitable Cases**:
+- [Scenario 1]
+- [Scenario 2]
 
-**부적합한 경우**:
-- [시나리오 1]
-- [시나리오 2]
-
----
-
-### 4.2 Option B: [이름]
-[동일 구조로 반복]
+**Unsuitable Cases**:
+- [Scenario 1]
+- [Scenario 2]
 
 ---
 
-### 4.3 Option C: [이름]
-[동일 구조로 반복]
+### 4.2 Option B: [Name]
+[Repeat with same structure]
 
 ---
 
-## 5. 종합 비교표
+### 4.3 Option C: [Name]
+[Repeat with same structure]
 
-### 5.1 기준별 점수 (5점 만점)
+---
 
-| 기준 (가중치) | Option A | Option B | Option C |
+## 5. Comprehensive Comparison Table
+
+### 5.1 Score by Criteria (out of 5)
+
+| Criteria (Weight) | Option A | Option B | Option C |
 |---------------|----------|----------|----------|
-| [기준 1] (X%) | ⭐⭐⭐⭐ (4) | ⭐⭐⭐ (3) | ⭐⭐⭐⭐⭐ (5) |
-| [기준 2] (X%) | ⭐⭐⭐ (3) | ⭐⭐⭐⭐⭐ (5) | ⭐⭐ (2) |
-| [기준 3] (X%) | ⭐⭐⭐⭐ (4) | ⭐⭐⭐⭐ (4) | ⭐⭐⭐ (3) |
-| **가중 평균** | **X.X** | **X.X** | **X.X** |
+| [Criteria 1] (X%) | ⭐⭐⭐⭐ (4) | ⭐⭐⭐ (3) | ⭐⭐⭐⭐⭐ (5) |
+| [Criteria 2] (X%) | ⭐⭐⭐ (3) | ⭐⭐⭐⭐⭐ (5) | ⭐⭐ (2) |
+| [Criteria 3] (X%) | ⭐⭐⭐⭐ (4) | ⭐⭐⭐⭐ (4) | ⭐⭐⭐ (3) |
+| **Weighted Average** | **X.X** | **X.X** | **X.X** |
 
 ### 5.2 Quick Comparison
 
-| 측면 | Option A | Option B | Option C |
+| Aspect | Option A | Option B | Option C |
 |------|----------|----------|----------|
-| 학습 곡선 | 가파름 | 완만함 | 보통 |
-| 커뮤니티 | 매우 활발 | 성장 중 | 안정적 |
-| 성숙도 | 성숙 | 신생 | 성숙 |
-| 번들 크기 | 큼 | 작음 | 보통 |
+| Learning Curve | Steep | Gentle | Moderate |
+| Community | Very Active | Growing | Stable |
+| Maturity | Mature | Nascent | Mature |
+| Bundle Size | Large | Small | Medium |
 
 ---
 
-## 6. 추천 근거
+## 6. Recommendation Rationale
 
-### 6.1 핵심 근거
+### 6.1 Key Rationale
 
-1. **[근거 1 제목]**
-   - 설명: [상세 설명]
-   - 출처: [구체적 출처]
+1. **[Rationale 1 Title]**
+   - Description: [Detailed description]
+   - Source: [Specific source]
 
-2. **[근거 2 제목]**
-   - 설명: [상세 설명]
-   - 출처: [구체적 출처]
+2. **[Rationale 2 Title]**
+   - Description: [Detailed description]
+   - Source: [Specific source]
 
-3. **[근거 3 제목]**
-   - 설명: [상세 설명]
-   - 출처: [구체적 출처]
+3. **[Rationale 3 Title]**
+   - Description: [Detailed description]
+   - Source: [Specific source]
 
-### 6.2 프로젝트 맥락 기반 판단
+### 6.2 Project Context-Based Judgment
 
-[현재 프로젝트 상황에 비추어 왜 이 선택이 적합한지 설명]
+[Explain why this choice is appropriate in light of the current project situation]
 
 ---
 
-## 7. 리스크 및 주의사항
+## 7. Risks and Considerations
 
-### 7.1 채택 시 리스크
+### 7.1 Risks of Adoption
 
-| 리스크 | 영향도 | 발생 가능성 | 완화 방안 |
+| Risk | Impact | Likelihood | Mitigation Strategy |
 |--------|--------|-------------|-----------|
-| [리스크 1] | [높음|중간|낮음] | [높음|중간|낮음] | [방안] |
-| [리스크 2] | [...] | [...] | [...] |
+| [Risk 1] | [High|Medium|Low] | [High|Medium|Low] | [Strategy] |
+| [Risk 2] | [...] | [...] | [...] |
 
-### 7.2 마이그레이션 고려사항
+### 7.2 Migration Considerations
 
-- [고려사항 1]
-- [고려사항 2]
+- [Consideration 1]
+- [Consideration 2]
 
-### 7.3 장기적 고려사항
+### 7.3 Long-term Considerations
 
-- [고려사항 1]
-- [고려사항 2]
-
----
-
-## 8. 대안 시나리오
-
-### 8.1 만약 [조건 A]라면?
-→ [Option Y]가 더 적합할 수 있음. 이유: [...]
-
-### 8.2 만약 [조건 B]라면?
-→ [Option Z] 고려. 이유: [...]
+- [Consideration 1]
+- [Consideration 2]
 
 ---
 
-## 9. 참고 출처
+## 8. Alternative Scenarios
 
-### 공식 문서
-- [링크 1]
-- [링크 2]
+### 8.1 If [Condition A]?
+→ [Option Y] might be more suitable. Reason: [...]
 
-### 커뮤니티 토론
-- [Reddit/HN 링크 1]
-- [Reddit/HN 링크 2]
-
-### 블로그/아티클
-- [링크 1]
-- [링크 2]
-
-### 벤치마크/비교 자료
-- [링크 1]
-- [링크 2]
+### 8.2 If [Condition B]?
+→ Consider [Option Z]. Reason: [...]
 
 ---
 
-## 10. 결론 재확인
+## 9. References
 
-**최종 추천: [Option Name]**
+### Official Documentation
+- [Link 1]
+- [Link 2]
 
-[마지막으로 한 번 더 핵심 이유 요약]
+### Community Discussion
+- [Reddit/HN Link 1]
+- [Reddit/HN Link 2]
 
-**다음 단계**:
-1. [구체적 액션 아이템 1]
-2. [구체적 액션 아이템 2]
-3. [구체적 액션 아이템 3]
+### Blog/Articles
+- [Link 1]
+- [Link 2]
+
+### Benchmark/Comparison Materials
+- [Link 1]
+- [Link 2]
+
+---
+
+## 10. Conclusion Reconfirmation
+
+**Final Recommendation: [Option Name]**
+
+[Summarize the key reasons one more time]
+
+**Next Steps**:
+1. [Specific action item 1]
+2. [Specific action item 2]
+3. [Specific action item 3]
 ```
 
-## 간소화 버전 (Quick Decision)
+## Simplified Version (Quick Decision)
 
-빠른 의사결정이 필요한 경우:
+For cases requiring quick decisions:
 
 ```markdown
-# Quick Decision: [주제]
+# Quick Decision: [Topic]
 
-## 결론
-**추천: [Option Name]** - [한 줄 이유]
+## Conclusion
+**Recommendation: [Option Name]** - [One-line reason]
 
-## 비교
+## Comparison
 | | Option A | Option B |
 |---|----------|----------|
-| 장점 | [1-2개] | [1-2개] |
-| 단점 | [1-2개] | [1-2개] |
-| 적합 | [시나리오] | [시나리오] |
+| Advantages | [1-2 items] | [1-2 items] |
+| Disadvantages | [1-2 items] | [1-2 items] |
+| Suitable for | [Scenario] | [Scenario] |
 
-## 핵심 근거
-1. [근거 1]
-2. [근거 2]
+## Key Rationale
+1. [Rationale 1]
+2. [Rationale 2]
 
-## 주의
-- [주의사항]
+## Caution
+- [Caution item]
 ```

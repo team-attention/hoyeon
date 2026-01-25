@@ -38,7 +38,7 @@ if [[ -z "$HAS_EXECUTE" ]] || [[ "$HAS_EXECUTE" == "null" ]]; then
 fi
 
 # Execute mode active - enforce orchestrator rules
-# .dev/ 내부는 허용 (Plan 체크박스 업데이트, notepad 등)
+# Allow .dev/ internal files (Plan checkbox updates, notepad, etc.)
 if [[ "$FILE_PATH" == *".dev/"* ]]; then
   cat << 'EOF'
 {
@@ -49,14 +49,14 @@ if [[ "$FILE_PATH" == *".dev/"* ]]; then
 }
 EOF
 else
-  # 그 외는 경고 (block하지 않고 allow + message)
+  # For other files, warn (allow + message, don't block)
   cat << 'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "allow"
   },
-  "systemMessage": "⚠️ ORCHESTRATOR WARNING: Orchestrator는 지휘자입니다. 직접 코드를 수정하지 마세요. 대신 Task()로 worker 에이전트에게 위임하세요."
+  "systemMessage": "⚠️ ORCHESTRATOR WARNING: Orchestrator is the conductor. Do not modify code directly. Instead, delegate to worker agent using Task()."
 }
 EOF
 fi
