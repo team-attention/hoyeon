@@ -21,7 +21,7 @@ allowed-tools:
 
 **당신은 지휘자입니다. 직접 악기를 연주하지 않습니다.**
 
-Plan 파일의 TODO를 Task 시스템으로 관리하며, 각 Task를 SubAgent에게 위임하고 결과를 검증합니다.
+Plan 파일의 TODO를 Task 시스템으로 병렬화하며, 각 Task를 SubAgent에게 위임하고 결과를 검증합니다.
 
 ---
 
@@ -37,7 +37,7 @@ Plan 파일의 TODO를 Task 시스템으로 관리하며, 각 Task를 SubAgent�
 - Run Bash (테스트 검증)          - Fix ANY bugs → worker
 - Search with Grep/Glob           - Write ANY tests → worker
 - Read/Update plan files          - Git commits → git-master
-- Track progress with Task tools  - Documentation → worker
+- Manage parallelization (Task)   - Documentation → worker
 ```
 
 ### 2. VERIFY OBSESSIVELY
@@ -58,62 +58,38 @@ TaskList에서 `blockedBy`가 없는 pending Task들을 자동으로 병렬 실�
 
 ---
 
-## Task System Overview
+## State Management
 
-### Task Tools 역할
-
-| Tool | 역할 | 사용 시점 |
-|------|------|----------|
-| **TaskCreate** | Plan TODO → Task 변환 | STEP 1 (초기화) |
-| **TaskUpdate** | 상태/의존성 관리 | 실행 전후 |
-| **TaskList** | 전체 상태 조회, 병렬화 판단 | 매 루프 시작 |
-| **TaskGet** | 개별 Task 상세 조회 | Worker 프롬프트 생성 시 |
-
-### Task Lifecycle
-
-```
-┌─────────────┐     TaskCreate      ┌─────────────┐
-│  Plan TODO  │ ─────────────────▶  │   pending   │
-└─────────────┘                     └──────┬──────┘
-                                           │
-                    TaskUpdate(in_progress)│
-                                           ▼
-                                    ┌─────────────┐
-                                    │ in_progress │
-                                    └──────┬──────┘
-                                           │
-                    TaskUpdate(completed)  │ (after VERIFY)
-                                           ▼
-                                    ┌─────────────┐
-                                    │  completed  │
-                                    └─────────────┘
-```
-
-### ⚠️ Task Persistence 주의사항
+### Source of Truth: Plan Checkbox
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  PRIMARY SOURCE OF TRUTH: Plan checkbox (### [x] TODO N:)   │
-│  SECONDARY: Task 시스템 (세션 내 orchestration용)            │
+│  ONLY SOURCE OF TRUTH: Plan checkbox (### [x] TODO N:)      │
+│  Task 시스템 = 병렬화 helper (매 세션 재생성)                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**왜 Plan checkbox가 primary인가?**
-- Task 시스템의 세션 간 persistence가 보장되지 않을 수 있음
+**Plan checkbox가 유일한 상태 관리:**
+- Task 시스템은 병렬화/의존성 계산용으로만 사용
+- 매 세션 시작 시 Plan 기준으로 Task 재생성
+- Task의 `completed` 상태만 사용 (TaskList에서 제거 목적)
+- `in_progress` 상태는 사용하지 않음 (불필요)
 - Plan 파일은 git으로 버전 관리되어 영구 보존
-- 세션 재개 시 Plan checkbox로 상태 복구 가능
 
-**세션 재개 시 동기화 로직:**
-```
-1. Plan 파일의 checkbox 상태 확인
-2. TaskList() 호출
-3. IF Task 없음 AND Plan에 unchecked TODO 있음:
-   → 첫 실행 또는 Task 휘발됨
-   → Plan의 unchecked TODO만 TaskCreate
-4. IF Task 있음:
-   → Plan checkbox와 Task 상태 비교
-   → 불일치 시 Plan 기준으로 Task 상태 조정
-```
+### Task System = Parallelization Helper
+
+Task 도구의 역할:
+
+| Tool | 역할 | 사용 시점 |
+|------|------|----------|
+| **TaskCreate** | TODO → Task 변환 | 세션 시작 시 (매번 재생성) |
+| **TaskUpdate** | 의존성 설정 (addBlocks) | TaskCreate 직후 |
+| **TaskList** | 병렬화 가능 TODO 판단 | 매 실행 루프 |
+| **TaskGet** | Task 상세 조회 | Worker 프롬프트 생성 시 |
+
+**사용 패턴:**
+- `TaskUpdate(status="completed")` - 사용 (TaskList에서 제거용)
+- `TaskUpdate(status="in_progress")` - 사용하지 않음 (불필요)
 
 ### Dependencies via Task System
 
@@ -158,7 +134,7 @@ PR 없이 빠르게 실행. 완료 후 별도로 PR 생성 가능.
 | 항목 | 동작 |
 |------|------|
 | **Spec 위치** | `.dev/specs/{name}/PLAN.md` |
-| **상태 관리** | Task System + Plan checkbox (sync) |
+| **상태 관리** | Plan checkbox only |
 | **히스토리** | Context (`context/*.md`) |
 | **막힘 처리** | Context에 기록, 사용자에게 보고 |
 | **완료 후** | git-master 커밋 → Final Report |
@@ -170,7 +146,7 @@ GitHub PR과 연동. 협업 및 자동화에 적합.
 | 항목 | 동작 |
 |------|------|
 | **Spec 위치** | PR body에서 파싱 → `.dev/specs/{name}/PLAN.md` |
-| **상태 관리** | Task System + Plan checkbox + `/dev.state` 스킬 |
+| **상태 관리** | Plan checkbox + `/dev.state` 스킬 |
 | **히스토리** | Context + PR Comments |
 | **막힘 처리** | `/dev.state pause` → blocked 전이 |
 | **완료 후** | git-master 커밋 → `/dev.state publish` |
@@ -213,9 +189,7 @@ GitHub PR과 연동. 협업 및 자동화에 적합.
               │
               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. TaskList로 기존 Task 확인                                 │
-│    → Task 있으면: 재개 모드                                   │
-│    → Task 없으면: 첫 실행, Plan → Task 변환                   │
+│ 4. Plan checkbox로 상태 파악 → Task 재생성                    │
 └─────────────────────────────────────────────────────────────┘
               │
               ▼
@@ -264,42 +238,26 @@ GitHub PR과 연동. 협업 및 자동화에 적합.
    gh pr view <PR#> --json body -q '.body' | grep -oP '(?<=→ \[)[^\]]+'
    ```
 
-4. **Task 시스템 초기화 (첫 실행 vs 재개)**
+4. **Plan → Task 변환 (매 세션 재생성)**
 
-   ```
-   TaskList()를 호출하여 기존 Task 확인
-
-   IF Task가 없으면 (첫 실행):
-       → Plan의 TODO들을 Task로 변환 (아래 "Plan → Task 변환" 참조)
-       → Dependency Graph 해석 → TaskUpdate로 의존성 설정
-
-   ELSE (재개):
-       → 기존 Task 상태 유지
-       → in_progress Task가 있으면 이전 세션에서 중단된 것
-       → pending + not blocked Task부터 계속
-   ```
-
-   **Plan → Task 변환:**
-
-   Plan 파일에서 `### [ ] TODO N:` 패턴을 찾아 **순차적으로** TaskCreate 호출:
+   Plan 파일에서 **unchecked** TODO만 Task로 변환:
 
    ```
    task_id_map = {}  # TODO 번호 → Task ID 매핑
 
-   FOR EACH "### [ ] TODO N: {title}" in Plan (순서대로):
+   # Plan에서 미완료 TODO 파싱
+   unchecked_todos = parse_plan("### [ ] TODO N:")
+
+   FOR EACH "### [ ] TODO N: {title}" in unchecked_todos (순서대로):
      result = TaskCreate(
        subject="TODO {N}: {title}",
-       description="""
-       {TODO 섹션의 전체 내용: Steps, Acceptance Criteria, Outputs 등}
-       """,
-       activeForm="TODO {N} 실행 중",
-       metadata={"todo_number": N}  # TODO 번호 저장
+       description="{TODO 섹션의 전체 내용}",
+       activeForm="TODO {N} 실행 중"
      )
-     task_id_map[N] = result.task_id  # 예: task_id_map[1] = "5"
+     task_id_map[N] = result.task_id
    ```
 
    ⚠️ **주의**: TaskCreate는 순차 실행하여 ID 순서 보장.
-   병렬 TaskCreate 시 ID 순서가 보장되지 않음.
 
    **Dependency 설정:**
 
@@ -307,7 +265,7 @@ GitHub PR과 연동. 협업 및 자동화에 적합.
 
    ```
    FOR EACH row in Plan.DependencyGraph:
-     IF row.Requires != "-":
+     IF row.Requires != "-" AND both TODOs are unchecked:
        producer_todo = parse(row.Requires)  # e.g., "todo-1.config_path" → 1
        consumer_todo = row.TODO
 
@@ -324,10 +282,9 @@ GitHub PR과 연동. 협업 및 자동화에 적합.
    TaskList()
 
    Expected output:
-   #1 [pending] TODO 1: Config setup
-   #2 [pending] TODO 2: API implementation [blocked by #1]
-   #3 [pending] TODO 3: Utils
-   #4 [pending] TODO 4: Integration [blocked by #2, #3]
+   #1 [pending] TODO 2: API implementation [blocked by #3]
+   #2 [pending] TODO 3: Utils
+   #3 [pending] TODO 4: Integration [blocked by #1, #2]
    ```
 
 ### STEP 2: Initialize or Resume Context
@@ -364,13 +321,13 @@ mkdir -p "$CONTEXT_DIR"
 
 1. `outputs.json` 읽어서 메모리에 로드 (3a 변수 치환용)
 2. 다른 파일들은 그대로 유지 (append 방식이므로)
-3. TaskList로 진행 상태 파악
+3. Plan checkbox로 진행 상태 파악
 
 > 📖 파일별 상세 용도는 하단 **Context System Details** 참조
 
 ### STEP 3: Task Execution Loop
 
-**⚠️ 핵심 변경: TaskList 기반 자동 병렬화**
+**⚠️ 핵심: TaskList 기반 자동 병렬화**
 
 ```
 WHILE TaskList() shows pending tasks:
@@ -390,13 +347,7 @@ WHILE TaskList() shows pending tasks:
 
 **execute_task(task) 상세:**
 
-#### 3a. Mark as In Progress
-
-```
-TaskUpdate(taskId={task.id}, status="in_progress")
-```
-
-#### 3b. Prepare Inputs (변수 치환)
+#### 3a. Prepare Inputs (변수 치환)
 
 Worker에게 Task를 위임하기 **전에**, Plan의 `Inputs` 필드에 정의된 `${...}` 변수를 실제 값으로 치환합니다.
 
@@ -429,7 +380,7 @@ Worker에게 Task를 위임하기 **전에**, Plan의 `Inputs` 필드에 정의�
 3. JSON에서 해당 값 추출하여 대체
 4. 치환된 값을 Worker 프롬프트에 포함
 
-#### 3c. Delegate with Prompt Template
+#### 3b. Delegate with Prompt Template
 
 **PLAN → Prompt 매핑 테이블:**
 
@@ -485,7 +436,7 @@ When this task is DONE, the following MUST be true:
 {Plan의 References 섹션}
 
 ### Dependencies (from Inputs - 치환된 값)
-{3b에서 치환된 실제 값}
+{3a에서 치환된 실제 값}
 
 ### Inherited Wisdom
 ⚠️ SubAgent는 이전 호출을 기억하지 못합니다.
@@ -502,120 +453,126 @@ When this task is DONE, the following MUST be true:
 )
 ```
 
-#### 3d. Collect Worker Output (파싱만, 저장은 3f에서)
+#### 3c. Collect Worker Output + Hook Verification
 
-Worker가 반환한 JSON을 파싱합니다. **아직 저장하지 않습니다.**
+Worker가 반환한 JSON과 **Hook의 검증 결과**를 함께 확인합니다.
 
-**1. Worker 출력에서 JSON 추출:**
+**1. Task(worker) 호출 후:**
+
+PostToolUse hook (`dev-worker-verify.sh`)이 자동으로:
+- Worker 출력에서 JSON 파싱
+- `acceptance_criteria`의 각 `command` 재실행
+- 검증 결과 출력
+
+**2. Hook 출력 확인:**
+
+Task() 결과에 Hook 출력이 포함됩니다:
 
 ```
-Worker 출력 텍스트에서 ```json ... ``` 블록을 찾아 파싱
+=== VERIFICATION RESULT ===
+status: VERIFIED          # 또는 FAILED
+pass: 4
+fail: 1
+skip: 0
+failed_items:
+  - tsc_check:static:tsc --noEmit src/auth.ts
+===========================
 ```
 
-**2. JSON 파싱 실패 시:**
-
-Worker가 JSON을 반환하지 않았거나 형식이 잘못된 경우:
-```
-Task(
-  subagent_type="worker",
-  description="Fix: JSON 형식 오류",
-  prompt="이전 작업은 완료되었으나 결과 JSON이 누락되었습니다.\n\n반드시 ```json 블록으로 결과를 반환하세요.\n\n[worker.md의 Output Format 참조]"
-)
-```
-
-**3. 파싱 성공 시:**
-
-JSON 객체를 메모리에 보관하고 다음 단계(VERIFY)로 진행합니다.
+**3. Worker JSON 구조 (새 형식):**
 
 ```json
 {
   "outputs": {"config_path": "./config.json"},
+  "acceptance_criteria": [
+    {
+      "id": "file_exists",
+      "category": "functional",
+      "description": "File exists",
+      "command": "test -f ./config.json",
+      "status": "PASS"
+    },
+    {
+      "id": "tsc_check",
+      "category": "static",
+      "description": "tsc passes",
+      "command": "tsc --noEmit",
+      "status": "FAIL",
+      "reason": "Type error in line 42"
+    }
+  ],
   "learnings": ["ESM 사용"],
   "issues": ["타입 정의 불완전"],
-  "acceptance_criteria": {"functional": "PASS", "static": "PASS", "runtime": "PASS", "cleanup": "SKIP"}
+  "decisions": ["기존 패턴 따름"]
 }
 ```
 
-**⚠️ 중요**: VERIFY 통과 후에만 context에 저장합니다 (재시도 시 중복 방지).
+#### 3d. RECONCILE (Hook 결과 기반)
 
-#### 3e. VERIFY (직접 검증!)
+**⚠️ Hook이 이미 검증을 완료했습니다. Orchestrator는 결과만 확인합니다.**
 
-**⚠️ SUBAGENTS LIE. Trust but verify.**
+Hook 출력에서 `status`를 확인:
 
-Plan 파일의 **Acceptance Criteria**를 카테고리별로 직접 검증합니다:
-
-```bash
-# *Functional:* (기능 동작 검증)
-Read("path/to/expected/file.ts")  # 파일 존재 확인
-# 기능 요구사항 직접 테스트
-
-# *Static:* (정적 분석)
-Bash("tsc --noEmit src/modified/file.ts")  # 타입체크
-Bash("eslint src/modified/file.ts")         # 린트
-
-# *Runtime:* (테스트 실행)
-Bash("npm test -- related.test.ts")  # 관련 테스트
-
-# *Cleanup:* (정리 - 명시된 경우만)
-# 미사용 import 확인, 삭제된 파일 확인
-
-# MUST NOT DO 위반 확인
-Read("files that should NOT be modified")
 ```
-
-**완료 조건**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
-
-**검증 결과 기록**: 각 카테고리의 통과/실패를 기록해두고,
-다음 단계(3g)에서 통과한 항목만 체크합니다.
+if Hook status == "VERIFIED":
+    → 3e (Save to Context)로 진행
+else:
+    → Reconciliation (재시도)
+```
 
 ---
 
-**VERIFY Retry Loop (최대 3회):**
+**Reconciliation Loop (최대 3회):**
 
 ```
 retry_count = 0
 
-VERIFY_LOOP:
-  검증 수행 (위 체크리스트)
+RECONCILE_LOOP:
+  Hook 결과 확인
 
-  if 모두 통과:
-      → 3f (Save to Context)로 진행
+  if status == "VERIFIED":
+      → 3e (Save to Context)로 진행
   else:
       retry_count++
       if retry_count < 3:
-          Task(worker, "Fix: {실패 항목}")
-          → 3d (Collect Worker Output)로 돌아가기
-             (새 JSON 파싱 → VERIFY_LOOP 재진입)
+          # 실패 항목 정보를 Worker에게 전달
+          Task(worker, "Fix: {failed_items}")
+          → RECONCILE_LOOP 재진입 (Hook이 다시 검증)
       else:
-          → VERIFY 실패 처리 (아래)
+          → RECONCILE 실패 처리 (아래)
 ```
 
-**흐름도:**
+**흐름도 (K8s Reconciliation 패턴):**
 ```
-3c. Delegate → 3d. Collect → 3e. VERIFY
-                    ↑              ↓
-                    │         [통과] → 3f. Save
-                    │              ↓
-                    │         [실패, retry < 3]
-                    │              ↓
-                    │         Task(worker, "Fix...")
-                    │              ↓
-                    └────────── 3d로 복귀 (새 output 파싱)
+┌─────────────────────────────────────────────────────────┐
+│ Desired State: 모든 acceptance_criteria PASS/SKIP       │
+└─────────────────────────────────────────────────────────┘
+                          │
+3b. Delegate ─────────────┼───────────────────────────────
+        │                 │
+        ▼                 ▼ compare
+┌─────────────────────────────────────────────────────────┐
+│ Current State: Hook 검증 결과 (VERIFIED/FAILED)         │
+└─────────────────────────────────────────────────────────┘
+        │
+        ├─── [VERIFIED] ──→ 3e. Save to Context
+        │
+        └─── [FAILED, retry < 3] ──→ Task(worker, "Fix...")
+                                          │
+                                          └──→ (Loop)
 
-                          [실패, retry >= 3]
-                               ↓
-                          VERIFY 실패 처리
+             [FAILED, retry >= 3] ──→ RECONCILE 실패 처리
 ```
 
 ---
 
-**VERIFY 실패 처리 (3회 재시도 후):**
+**RECONCILE 실패 처리 (3회 재시도 후):**
 
 **로컬 모드:**
 - `issues.md`에 미해결 항목으로 기록 (`- [ ] 문제 내용`)
 - 사용자에게 보고: "TODO N 검증 실패. 수동 개입이 필요합니다."
 - **선택지 제시**: 계속 진행 / 중단
-- Task 상태는 `in_progress` 유지 (완료 아님)
+- Plan checkbox는 `[ ]` 유지 (완료 아님)
 
 **PR 모드 (자동 pause):**
 - **`/dev.state pause <PR#> "<reason>"`** 호출
@@ -623,7 +580,7 @@ VERIFY_LOOP:
   - "Blocked" Comment 기록
 - 실행 중단, 사용자 개입 대기
 
-#### 3f. Save to Context (VERIFY 통과 시에만)
+#### 3e. Save to Context (VERIFY 통과 시에만)
 
 VERIFY를 통과한 경우에만 Worker JSON을 context 파일들에 저장합니다.
 
@@ -674,20 +631,21 @@ FOR EACH result in results (병렬 가능):
 - ESM 사용
 ```
 
-#### 3g. Update Plan Checkboxes & Task Status
+#### 3f. Update Plan Checkbox & Task Status
 
-1. **Task 상태 완료로 변경**
+1. **Task 상태를 completed로 변경**
    ```
    TaskUpdate(taskId={task.id}, status="completed")
    ```
+   → TaskList()에서 해당 Task가 제거됨
 
-2. **Plan 파일의 TODO 체크박스 업데이트** (sync)
+2. **Plan 파일의 TODO 체크박스 업데이트**
    ```
    Edit(plan_path, "### [ ] TODO N: Task 제목", "### [x] TODO N: Task 제목")
    ```
 
 3. **Acceptance Criteria 체크박스 업데이트**
-   검증(3e)에서 통과한 항목의 Acceptance Criteria도 체크합니다:
+   검증(3d)에서 통과한 항목의 Acceptance Criteria도 체크합니다:
    ```
    # 해당 TODO 섹션 내의 Acceptance Criteria 각각에 대해
    Edit(plan_path, "  - [ ] 검증된 조건", "  - [x] 검증된 조건")
@@ -698,11 +656,11 @@ FOR EACH result in results (병렬 가능):
    - SubAgent 보고만으로 체크하지 마세요
    - 검증 실패한 항목은 `- [ ]`로 유지
 
-#### 3h. Next Iteration
+#### 3g. Next Iteration
 
 ```
-TaskList()로 상태 확인
-→ pending + not blocked Task가 있으면 루프 계속
+TaskList()로 pending Task 확인
+→ pending Task가 있으면 루프 계속
 → 없으면 STEP 4로
 ```
 
@@ -750,17 +708,6 @@ Push after commit: {YES | NO}
 **PR 모드 추가 작업:**
 /dev.state publish 실행합니다.
 
-**TaskList로 최종 상태 확인:**
-```
-TaskList()
-
-Expected:
-#1 [completed] TODO 1: Config setup
-#2 [completed] TODO 2: API implementation
-#3 [completed] TODO 3: Utils
-#4 [completed] TODO 4: Integration
-```
-
 **Final Report 출력:**
 
 ```
@@ -771,13 +718,13 @@ Expected:
 📋 PLAN: .dev/specs/{name}/PLAN.md
 🔗 MODE: Local | PR #123
 
-📊 TASK SUMMARY (from TaskList):
-   Total Tasks:              8
-   Completed:                8
-   Failed:                   0
+📊 TASK SUMMARY:
+   Total TODOs:               8
+   Completed:                 8
+   Failed:                    0
 
-   Acceptance Criteria:     24
-   Verified & Checked:      24
+   Acceptance Criteria:      24
+   Verified & Checked:       24
 
 📁 FILES MODIFIED:
    - src/auth/token.ts
@@ -862,14 +809,15 @@ Round 3:
 Task(subagent_type="worker", prompt="TODO 1...")
 Task(subagent_type="worker", prompt="TODO 3...")
 
-# 두 Task 완료 후 TaskUpdate(completed)
-TaskUpdate(taskId="1", status="completed")
-TaskUpdate(taskId="3", status="completed")
+# 두 Task 완료 후 상태 업데이트
+TaskUpdate(taskId="1", status="completed")  # TaskList에서 제거
+TaskUpdate(taskId="3", status="completed")  # TaskList에서 제거
+Edit(plan, "### [ ] TODO 1:", "### [x] TODO 1:")
+Edit(plan, "### [ ] TODO 3:", "### [x] TODO 3:")
 
-# TaskList로 다음 runnable 확인
-TaskList()
-→ #2 [pending] TODO 2 (이제 blockedBy 없음)
-→ #4 [pending] TODO 4 [blocked by #2]
+# TaskList 확인 → TODO 2, 4만 남음
+# TODO 2는 blockedBy 없음 (TODO 1 completed)
+# TODO 4는 blockedBy #2 (TODO 3 completed, TODO 2 pending)
 
 # Round 2
 Task(subagent_type="worker", prompt="TODO 2...")
@@ -880,25 +828,16 @@ Task(subagent_type="worker", prompt="TODO 2...")
 
 ## Session Recovery
 
-### 세션 중단 후 재개
+### 세션 재개 = 새 세션 시작과 동일
 
-**Primary Source: Plan checkbox** (Task가 휘발될 수 있으므로)
+**Plan checkbox가 유일한 상태**이므로, 세션 재개는 간단합니다:
 
 ```
 # Plan 파일 상태 확인
-### [x] TODO 1: Config setup       ← 완료
-### [ ] TODO 2: API implementation ← 미완료 (여기서 중단됨)
-### [x] TODO 3: Utils              ← 완료
-### [ ] TODO 4: Integration        ← 미완료
-
-# TaskList() 결과 (세션 유지된 경우)
-→ #1 [completed] TODO 1
-→ #2 [in_progress] TODO 2  ← 중단됨
-→ #3 [completed] TODO 3
-→ #4 [pending] TODO 4 [blocked by #2]
-
-# TaskList() 결과 (Task 휘발된 경우)
-→ (빈 목록)
+### [x] TODO 1: Config setup       ← 완료 (Task 생성 안 함)
+### [ ] TODO 2: API implementation ← 미완료 (Task 생성)
+### [x] TODO 3: Utils              ← 완료 (Task 생성 안 함)
+### [ ] TODO 4: Integration        ← 미완료 (Task 생성)
 ```
 
 ### 재개 로직 (Plan 기준)
@@ -906,38 +845,23 @@ Task(subagent_type="worker", prompt="TODO 2...")
 ```
 # 1. Plan checkbox 상태 파싱
 unchecked_todos = parse_plan("### [ ] TODO N:")  # [2, 4]
-checked_todos = parse_plan("### [x] TODO N:")   # [1, 3]
 
-# 2. TaskList 확인
-existing_tasks = TaskList()
+# 2. unchecked TODO만 TaskCreate
+FOR EACH todo_num in unchecked_todos:
+    TaskCreate(subject=f"TODO {todo_num}: ...", ...)
 
-# 3. 상황별 처리
-IF existing_tasks is empty:
-    # Task 휘발됨 → Plan 기준으로 재생성
-    FOR EACH todo_num in unchecked_todos:
-        TaskCreate(subject=f"TODO {todo_num}: ...", ...)
-    # 의존성 재설정
-    setup_dependencies_from_plan()
+# 3. 의존성 설정 (unchecked끼리만)
+setup_dependencies_from_plan()
 
-ELSE:
-    # Task 유지됨 → 상태 동기화
-    FOR EACH task in existing_tasks:
-        todo_num = parse_todo_number(task.subject)
-        IF todo_num in checked_todos AND task.status != 'completed':
-            # Plan은 완료인데 Task는 아님 → Task 상태 수정
-            TaskUpdate(taskId=task.id, status='completed')
-
-# 4. 실행 재개
-in_progress = existing_tasks.filter(status == 'in_progress')
-IF in_progress:
-    # 중단된 Task부터 재시작
-    FOR EACH task in in_progress:
-        execute_task(task)  # 처음부터 다시
-ELSE:
-    # pending + unblocked Task 실행
-    runnable = TaskList().filter(pending AND not blocked)
-    execute_parallel(runnable)
+# 4. 실행 시작
+runnable = TaskList().filter(pending AND not blocked)
+execute_parallel(runnable)
 ```
+
+**세션 재개가 간단한 이유:**
+- Task 시스템 상태를 신경 쓸 필요 없음 (항상 재생성)
+- Plan checkbox만 보면 어디까지 완료됐는지 알 수 있음
+- outputs.json이 있으면 변수 치환도 정상 작동
 
 ---
 
@@ -949,14 +873,14 @@ ELSE:
 - [ ] `/dev.state begin <PR#>` 호출했는가? (실패 시 즉시 중단했는가?)
 
 **2. Task 초기화:**
-- [ ] TaskList로 기존 Task 확인했는가?
-- [ ] 첫 실행이면 Plan → Task 변환했는가?
-- [ ] TaskUpdate로 의존성 설정했는가?
+- [ ] Plan checkbox 상태로 unchecked TODO 파악했는가?
+- [ ] unchecked TODO만 TaskCreate 했는가?
+- [ ] TaskUpdate(addBlocks)로 의존성 설정했는가?
 
 **3. 실행 단계:**
 - [ ] TaskList에 pending Task가 없는가?
-- [ ] 모든 Task가 `[completed]` 상태인가?
-- [ ] 모든 TODO가 `### [x] TODO N:`로 체크되었는가? (Plan sync)
+- [ ] 각 Task 완료 시 `TaskUpdate(status="completed")` 호출했는가?
+- [ ] 모든 TODO가 `### [x] TODO N:`로 체크되었는가?
 - [ ] 각 TODO의 Acceptance Criteria가 검증 후 `- [x]`로 체크되었는가?
 - [ ] 각 Task 완료 후 직접 검증을 수행했는가?
 - [ ] Context에 학습 내용을 기록했는가?
@@ -971,6 +895,5 @@ ELSE:
 **예외 처리 (해당 시):**
 - [ ] 막힘 발생 시 `/dev.state pause` 호출했는가? (PR 모드)
 - [ ] 막힘 발생 시 `issues.md`에 미해결 항목으로 기록했는가? (로컬 모드)
-- [ ] Task 상태가 `in_progress`로 남아있지 않은가? (실패/중단 시)
 
 **하나라도 미완료 시 작업을 계속하세요.**

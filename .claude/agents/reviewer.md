@@ -7,10 +7,6 @@ disallowed-tools:
   - Edit
   - Bash
   - Task
-validation_prompt: |
-  Must contain a clear verdict: "OKAY" or "REJECT"
-  - OKAY: with justification explaining why plan is ready
-  - REJECT: with specific improvements needed
 ---
 
 # Plan Reviewer Agent

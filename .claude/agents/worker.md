@@ -16,13 +16,6 @@ allowed-tools:
   - WebFetch
 disallowed-tools:
   - Task
-validation_prompt: |
-  Must complete the delegated task and report in JSON format:
-  - outputs: EXPECTED OUTCOME에 정의된 결과물
-  - acceptance_criteria: 카테고리별 검증 결과 (functional/static/runtime/cleanup)
-  - learnings/issues/decisions: 발견한 패턴이나 문제점
-
-  완료 조건: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)
 ---
 
 # Worker Agent
@@ -76,9 +69,47 @@ validation_prompt: |
 ```json
 {
   "outputs": {
-    "file_path": "src/auth/middleware.ts",
+    "middleware_path": "src/auth/middleware.ts",
     "exported_name": "authMiddleware"
   },
+  "acceptance_criteria": [
+    {
+      "id": "file_exists",
+      "category": "functional",
+      "description": "File exists: src/auth/middleware.ts",
+      "command": "test -f src/auth/middleware.ts",
+      "status": "PASS"
+    },
+    {
+      "id": "exports_function",
+      "category": "functional",
+      "description": "File exports authMiddleware function",
+      "command": "grep -q 'export.*authMiddleware' src/auth/middleware.ts",
+      "status": "PASS"
+    },
+    {
+      "id": "tsc_check",
+      "category": "static",
+      "description": "tsc --noEmit passes",
+      "command": "tsc --noEmit src/auth/middleware.ts",
+      "status": "PASS"
+    },
+    {
+      "id": "eslint_check",
+      "category": "static",
+      "description": "eslint passes",
+      "command": "eslint src/auth/middleware.ts",
+      "status": "FAIL",
+      "reason": "Unexpected console.log statement (line 42)"
+    },
+    {
+      "id": "test_auth",
+      "category": "runtime",
+      "description": "npm test passes",
+      "command": "npm test -- auth.test.ts",
+      "status": "PASS"
+    }
+  ],
   "learnings": [
     "이 프로젝트는 ESM만 사용",
     "테스트 파일은 .test.ts 확장자"
@@ -88,13 +119,7 @@ validation_prompt: |
   ],
   "decisions": [
     "에러 응답은 기존 errorHandler 패턴 따름"
-  ],
-  "acceptance_criteria": {
-    "functional": "PASS",
-    "static": "PASS",
-    "runtime": "PASS",
-    "cleanup": "SKIP"
-  }
+  ]
 }
 ```
 
@@ -103,19 +128,32 @@ validation_prompt: |
 | 필드 | 필수 | 설명 |
 |------|------|------|
 | `outputs` | ✅ | EXPECTED OUTCOME의 Outputs에 정의된 값들 |
+| `acceptance_criteria` | ✅ | 검증 항목 배열 (아래 참조) |
 | `learnings` | ❌ | 발견하고 **적용한** 패턴/관례 |
 | `issues` | ❌ | 발견했지만 **해결하지 않은** 문제 (범위 외/미해결) |
 | `decisions` | ❌ | 내린 결정과 이유 |
-| `acceptance_criteria` | ✅ | 카테고리별 검증 결과 (아래 참조) |
 
-**acceptance_criteria 값:**
+**acceptance_criteria 항목 구조:**
 
-| 카테고리 | 값 | 의미 |
-|----------|-----|------|
-| `functional` | `PASS` / `FAIL` | 기능 동작 여부 |
-| `static` | `PASS` / `FAIL` | tsc, eslint 통과 여부 |
-| `runtime` | `PASS` / `FAIL` / `SKIP` | 테스트 통과 여부 (테스트 없으면 SKIP) |
-| `cleanup` | `PASS` / `SKIP` | 정리 완료 여부 (명시 안됐으면 SKIP) |
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| `id` | ✅ | 고유 식별자 (예: `tsc_check`, `test_auth`) |
+| `category` | ✅ | `functional` / `static` / `runtime` / `cleanup` |
+| `description` | ✅ | 검증 내용 설명 (사람이 읽을 용도) |
+| `command` | ✅ | 검증에 사용한 명령어 (Hook이 재실행) |
+| `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
+| `reason` | ❌ | FAIL/SKIP 시 이유 |
+
+**카테고리별 필수 여부:**
+
+| 카테고리 | 필수 | 검증 내용 |
+|----------|------|----------|
+| `functional` | ✅ | 기능이 동작하는가 (파일 존재, export 확인 등) |
+| `static` | ✅ | `tsc --noEmit`, `eslint` 통과 |
+| `runtime` | ✅ | 관련 테스트 통과 (없으면 SKIP) |
+| `cleanup` | ❌ | 미사용 import/파일 정리 (명시된 경우만) |
+
+**완료 조건**: 모든 필수 카테고리의 항목이 `PASS` 또는 `SKIP`
 
 **learnings vs issues 구분:**
 ```
@@ -123,12 +161,9 @@ learnings = "이렇게 하면 된다" (해결됨, 다음 Worker에게 팁)
 issues    = "이런 문제가 있다" (미해결, 주의 필요)
 ```
 
-**⚠️ Orchestrator가 이 JSON을 파싱해서 context 파일에 저장합니다:**
-- `outputs` → `outputs.json`
-- `learnings` → `learnings.md`
-- `issues` → `issues.md` (미해결 항목 `- [ ]`로 저장됨)
-- `decisions` → `decisions.md`
-- `acceptance_criteria` → `acceptance_criteria.md`
+**⚠️ Hook이 acceptance_criteria의 command를 재실행하여 검증합니다.**
+- Worker가 PASS라고 보고해도 Hook이 재검증
+- 불일치 시 Orchestrator가 Worker를 재실행
 
 ## Important Notes
 

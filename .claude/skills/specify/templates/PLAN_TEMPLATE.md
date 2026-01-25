@@ -280,54 +280,112 @@ TODO-1 → TODO-2 → TODO-Final
 
 > How Workers report results to Orchestrator.
 
-### Success Report
+Worker outputs **JSON** in a ```json code block. The PostToolUse hook re-executes each `command` in `acceptance_criteria` to verify Worker's report.
 
-Worker outputs to **stdout** (JSON format):
+### Output Schema
 
 ```json
 {
-  "status": "success",
-  "todo_id": "todo-1",
   "outputs": {
-    "config_path": "./config/app.json"
+    "config_path": "./config/app.json",
+    "exported_name": "configLoader"
   },
-  "acceptance_criteria": {
-    "functional": "PASS",
-    "static": "PASS",
-    "runtime": "SKIP",
-    "cleanup": "SKIP"
-  },
+  "acceptance_criteria": [
+    {
+      "id": "file_exists",
+      "category": "functional",
+      "description": "File exists: ./config/app.json",
+      "command": "test -f ./config/app.json",
+      "status": "PASS"
+    },
+    {
+      "id": "exports_function",
+      "category": "functional",
+      "description": "File exports configLoader function",
+      "command": "grep -q 'export.*configLoader' ./config/app.json",
+      "status": "PASS"
+    },
+    {
+      "id": "tsc_check",
+      "category": "static",
+      "description": "tsc --noEmit passes",
+      "command": "tsc --noEmit ./config/app.json",
+      "status": "PASS"
+    },
+    {
+      "id": "eslint_check",
+      "category": "static",
+      "description": "eslint passes",
+      "command": "eslint ./config/app.json",
+      "status": "FAIL",
+      "reason": "Unexpected console.log statement (line 42)"
+    },
+    {
+      "id": "test_config",
+      "category": "runtime",
+      "description": "Config tests pass",
+      "command": "npm test -- config.test.ts",
+      "status": "SKIP",
+      "reason": "No test file exists"
+    }
+  ],
   "learnings": ["Config uses JSON schema validation"],
-  "issues": [],
-  "decisions": ["Used standard JSON format over YAML"]
+  "issues": ["Existing type definitions incomplete (out of scope)"],
+  "decisions": ["Used standard JSON format over YAML for simplicity"]
 }
 ```
 
-### Failure Report
+### Field Specifications
 
-```json
-{
-  "status": "failure",
-  "todo_id": "todo-1",
-  "outputs": {
-    "config_path": "./config/app.json"
-  },
-  "acceptance_criteria": {
-    "functional": "PASS",
-    "static": "FAIL",
-    "runtime": "SKIP",
-    "cleanup": "SKIP"
-  },
-  "failed_category": "static",
-  "error": {
-    "category": "static",
-    "message": "tsc --noEmit failed: Type error in config.json",
-    "details": "..."
-  },
-  "learnings": [],
-  "issues": ["Type definition incomplete"]
-}
+| Field | Required | Description |
+|-------|----------|-------------|
+| `outputs` | ✅ | Key-value pairs matching TODO's **Outputs** field |
+| `acceptance_criteria` | ✅ | Array of verification items (see below) |
+| `learnings` | ❌ | Patterns discovered and **applied** (tips for next Worker) |
+| `issues` | ❌ | Problems found but **not resolved** (out of scope) |
+| `decisions` | ❌ | Decisions made and why |
+
+### acceptance_criteria Item Structure
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | ✅ | Unique identifier (e.g., `tsc_check`, `test_auth`) |
+| `category` | ✅ | `functional` / `static` / `runtime` / `cleanup` |
+| `description` | ✅ | Human-readable description |
+| `command` | ✅ | Re-executable shell command for verification |
+| `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
+| `reason` | ❌ | Required when status is `FAIL` or `SKIP` |
+
+### Category Requirements
+
+| Category | Required | What to Verify |
+|----------|----------|----------------|
+| `functional` | ✅ | Feature works (file exists, exports correct, behavior correct) |
+| `static` | ✅ | `tsc --noEmit`, `eslint` pass for modified files |
+| `runtime` | ✅ | Related tests pass (SKIP if no tests) |
+| `cleanup` | ❌ | Unused imports/files removed (only if specified in TODO) |
+
+**Completion Rule**: All required categories must have all items `PASS` or `SKIP`
+
+### Verification Flow
+
 ```
+Worker completes TODO
+        ↓
+Worker outputs JSON with acceptance_criteria
+        ↓
+PostToolUse Hook triggers (dev-worker-verify.sh)
+        ↓
+Hook re-executes each command in acceptance_criteria
+        ↓
+Hook outputs: VERIFIED (all pass) or FAILED (mismatch detected)
+        ↓
+Orchestrator receives Hook result
+        ↓
+[VERIFIED] → Mark TODO complete    [FAILED] → Retry Worker
+```
+
+⚠️ **Hook re-verifies Worker's claims.** Worker saying "PASS" is not trusted—the command is re-executed.
 
 ---
 
