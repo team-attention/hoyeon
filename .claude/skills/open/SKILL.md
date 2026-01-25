@@ -27,8 +27,8 @@ Create Draft PR based on Spec document. Following **PR = Single Source of Truth*
 
 | Input | Action |
 |-------|------|
-| `/dev.open user-auth` | Create PR based on `specs/user-auth.md` |
-| `/dev.open` | Use most recent spec or ask user |
+| `/open user-auth` | Create PR based on `specs/user-auth.md` |
+| `/open` | Use most recent spec or ask user |
 
 ---
 
@@ -82,6 +82,6 @@ Error: Spec not found at specs/user-auth.md
 
 | Command | Description |
 |---------|------|
-| `/dev.specify <name>` | Write Spec document (run before open) |
-| `/dev.state queue <PR#>` | Add to auto-execution queue |
-| `/dev.execute <PR#>` | Start implementation |
+| `/specify <name>` | Write Spec document (run before open) |
+| `/state queue <PR#>` | Add to auto-execution queue |
+| `/execute <PR#>` | Start implementation |

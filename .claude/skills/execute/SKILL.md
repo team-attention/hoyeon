@@ -1,7 +1,7 @@
 ---
-name: dev.execute
+name: execute
 description: |
-  This skill should be used when the user says "/dev.execute", "execute", "start work",
+  This skill should be used when the user says "/execute", "execute", "start work",
   "execute plan", or wants to execute a plan file.
   Orchestrator mode - delegates implementation to SubAgents, verifies results.
 allowed-tools:
@@ -17,7 +17,7 @@ allowed-tools:
   - TaskGet
 ---
 
-# /dev.execute - Orchestrator Mode
+# /execute - Orchestrator Mode
 
 **You are the conductor. You do not play instruments directly.**
 
@@ -110,10 +110,10 @@ TaskList() result:
 
 | Input | Mode | Behavior |
 |-------|------|----------|
-| `/dev.execute` | Auto-detect | Current branch → Check Draft PR → PR mode if exists, local mode otherwise |
-| `/dev.execute <name>` | Local | Execute `.dev/specs/<name>/PLAN.md` |
-| `/dev.execute <PR#>` | PR | Parse spec path from PR body and execute |
-| `/dev.execute <PR URL>` | PR | Extract PR# from URL → PR mode |
+| `/execute` | Auto-detect | Current branch → Check Draft PR → PR mode if exists, local mode otherwise |
+| `/execute <name>` | Local | Execute `.dev/specs/<name>/PLAN.md` |
+| `/execute <PR#>` | PR | Parse spec path from PR body and execute |
+| `/execute <PR URL>` | PR | Extract PR# from URL → PR mode |
 
 **Auto-detect logic:**
 ```bash
@@ -147,10 +147,10 @@ Linked with GitHub PR. Suitable for collaboration and automation.
 | Item | Behavior |
 |------|----------|
 | **Spec location** | Parse from PR body → `.dev/specs/{name}/PLAN.md` |
-| **State management** | Plan checkbox + `/dev.state` skill |
+| **State management** | Plan checkbox + `/state` skill |
 | **History** | Context + PR Comments |
-| **Block handling** | `/dev.state pause` → transition to blocked |
-| **After completion** | git-master commit → `/dev.state publish` |
+| **Block handling** | `/state pause` → transition to blocked |
+| **After completion** | git-master commit → `/state publish` |
 
 ---
 
@@ -170,7 +170,7 @@ Linked with GitHub PR. Suitable for collaboration and automation.
         │                   │
         ▼                   │
 ┌───────────────────┐       │
-│ 2. /dev.state     │       │
+│ 2. /state     │       │
 │    begin <PR#>    │       │
 └────────┬──────────┘       │
          │                  │
@@ -212,7 +212,7 @@ Linked with GitHub PR. Suitable for collaboration and automation.
 
    ℹ️ **Skip this step for Local mode and proceed to step 3.**
 
-   **Call `/dev.state begin <PR#>`:**
+   **Call `/state begin <PR#>`:**
    - Check duplicate execution (error if already executing)
    - Check blocked state (error if blocked)
    - Remove `state:queued` → Add `state:executing`
@@ -222,7 +222,7 @@ Linked with GitHub PR. Suitable for collaboration and automation.
    - ⛔ "Already executing" → **Stop immediately. Do not proceed to subsequent steps.**
      Guide user: "PR #N is already in executing state. Previous execution may be in progress or interrupted."
    - ⛔ "PR is blocked" → **Stop immediately. Do not proceed to subsequent steps.**
-     Guide user: "Please release blocked state first with `/dev.state continue <PR#>`."
+     Guide user: "Please release blocked state first with `/state continue <PR#>`."
 
 3. **Verify Plan File**
 
@@ -618,7 +618,7 @@ When halting due to `env_error` or `unknown`, log to `issues.md`:
 - Plan checkbox remains `[ ]` (not complete)
 
 **PR Mode (auto pause):**
-- **Call `/dev.state pause <PR#> "<reason>"`**
+- **Call `/state pause <PR#> "<reason>"`**
   - `state:executing` → `state:blocked` transition
   - Record "Blocked" Comment
 - Stop execution, wait for user intervention
@@ -749,7 +749,7 @@ Push after commit: {YES | NO}
 When all TODOs complete:
 
 **PR Mode Additional Work:**
-Execute /dev.state publish.
+Execute /state publish.
 
 **Output Final Report:**
 
@@ -913,7 +913,7 @@ execute_parallel(runnable)
 **⚠️ Check in Workflow order:**
 
 **1. Start Phase (PR Mode Only):**
-- [ ] Called `/dev.state begin <PR#>`? (Stopped immediately on failure?)
+- [ ] Called `/state begin <PR#>`? (Stopped immediately on failure?)
 
 **2. Task Initialization:**
 - [ ] Identified unchecked TODOs from Plan checkbox state?
@@ -936,7 +936,7 @@ execute_parallel(runnable)
 - [ ] Added completion Comment to PR?
 
 **Exception Handling (if applicable):**
-- [ ] Called `/dev.state pause` when blocked? (PR mode)
+- [ ] Called `/state pause` when blocked? (PR mode)
 - [ ] Recorded in `issues.md` as unresolved item when blocked? (Local mode)
 
 **Continue working if any item is incomplete.**

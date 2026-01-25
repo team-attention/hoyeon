@@ -1,7 +1,7 @@
 ---
-name: dev.state
+name: state
 description: |
-  "/dev.state", "dev.state", "PR status", "state change", "queue", "pause", "continue", "status", "list"
+  "/state", "dev state", "PR status", "state change", "queue", "pause", "continue", "status", "list"
   Integrated skill for PR state management - queue, pause, resume, status check, list view
 allowed-tools:
   - Bash
@@ -10,7 +10,7 @@ allowed-tools:
 context: fork
 ---
 
-# dev.state - PR State Management
+# state - PR State Management
 
 ## Purpose
 
@@ -69,7 +69,7 @@ ensure_label "auto-execute" "5319E7" "Opt-in for automatic execution"
 ## Input
 
 ```
-/dev.state <action> [PR#] [options]
+/state <action> [PR#] [options]
 
 actions:
   queue <PR#>                  # Add to queue
@@ -248,7 +248,7 @@ queued      #789   email-template    2 hours ago
 
 | Command | Description |
 |---------|-------------|
-| `/dev.specify <name>` | Write Spec document |
-| `/dev.open <name>` | Create PR based on Spec |
-| `/dev.execute <PR#>` | Execute implementation |
-| `/dev.publish <PR#>` | Convert PR to Ready |
+| `/specify <name>` | Write Spec document |
+| `/open <name>` | Create PR based on Spec |
+| `/execute <PR#>` | Execute implementation |
+| `/publish <PR#>` | Convert PR to Ready |

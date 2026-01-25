@@ -492,6 +492,6 @@ After plan approval, inform the user of available options:
 ```
 Plan has been approved! Please select next steps:
 
-- `/dev.open` - Create Draft PR (when you want reviewer feedback first)
-- `/dev.execute` - Start implementation immediately (execute plan as-is)
+- `/open` - Create Draft PR (when you want reviewer feedback first)
+- `/execute` - Start implementation immediately (execute plan as-is)
 ```
