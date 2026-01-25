@@ -1,8 +1,8 @@
 ---
 name: dev.state
 description: |
-  "/dev.state", "dev.state", "PR 상태", "상태 변경", "queue", "pause", "continue", "status", "list"
-  PR 상태 관리 통합 스킬 - 대기열 추가, 중단, 재개, 상태 조회, 목록 확인
+  "/dev.state", "dev.state", "PR status", "state change", "queue", "pause", "continue", "status", "list"
+  Integrated skill for PR state management - queue, pause, resume, status check, list view
 allowed-tools:
   - Bash
   - Read
@@ -10,31 +10,31 @@ allowed-tools:
 context: fork
 ---
 
-# dev.state - PR 상태 관리
+# dev.state - PR State Management
 
 ## Purpose
 
-PR의 상태를 관리하는 통합 스킬. 대기열 추가, 중단, 재개, 상태 조회, 목록 확인을 하나의 스킬로 처리한다.
+An integrated skill for managing PR states. Handles queue addition, pause, resume, status check, and list view in a single skill.
 
 ---
 
-## 필수 참조 문서
+## Required Reference Documents
 
-**실행 전 반드시 `${baseDir}/references/pr-as-ssot.md`를 읽어야 한다.**
+**You must read `${baseDir}/references/pr-as-ssot.md` before execution.**
 
-이 문서에서 참조할 섹션:
-- **Labels** → 상태별 Label 정의 및 규칙
-- **Comments (히스토리)** → 상태 변경 기록 포맷
-- **State Machine** → 상태 전이 규칙
-- **CLI 레퍼런스** → gh 명령어
+Sections to reference from this document:
+- **Labels** → Label definitions and rules by state
+- **Comments (History)** → State change record format
+- **State Machine** → State transition rules
+- **CLI Reference** → gh commands
 
 ---
 
-## Label 초기화 (모든 action 전에 실행)
+## Label Initialization (Run before all actions)
 
-**모든 action 실행 전**, 필요한 Label이 레포에 존재하는지 확인하고 없으면 생성한다.
+**Before executing any action**, verify that required Labels exist in the repository and create them if they don't exist.
 
-### 필수 Labels
+### Required Labels
 
 | Label | Color | Description |
 |-------|-------|-------------|
@@ -43,10 +43,10 @@ PR의 상태를 관리하는 통합 스킬. 대기열 추가, 중단, 재개, �
 | `state:blocked` | `#D93F0B` (red) | PR blocked, needs human intervention |
 | `auto-execute` | `#5319E7` (purple) | Opt-in for automatic execution |
 
-### 확인 및 생성 로직
+### Verification and Creation Logic
 
 ```bash
-# 함수 정의
+# Function definition
 ensure_label() {
   local name="$1"
   local color="$2"
@@ -57,7 +57,7 @@ ensure_label() {
   fi
 }
 
-# 모든 필수 Label 확인/생성
+# Verify/create all required Labels
 ensure_label "state:queued" "0E8A16" "PR queued for auto-execution"
 ensure_label "state:executing" "1D76DB" "PR currently being executed"
 ensure_label "state:blocked" "D93F0B" "PR blocked, needs human intervention"
@@ -72,13 +72,13 @@ ensure_label "auto-execute" "5319E7" "Opt-in for automatic execution"
 /dev.state <action> [PR#] [options]
 
 actions:
-  queue <PR#>                  # 대기열 추가
-  begin <PR#>                  # 실행 시작
-  pause <PR#> <reason>         # 블로킹
-  continue <PR#> [--run]       # 재개 (--run: 바로 실행)
-  complete <PR#>               # 실행 완료 → ready
-  status [PR#]                 # 상태 확인 (생략 시 현재 브랜치)
-  list [--queued|--executing|--blocked|--all]  # 목록
+  queue <PR#>                  # Add to queue
+  begin <PR#>                  # Start execution
+  pause <PR#> <reason>         # Block
+  continue <PR#> [--run]       # Resume (--run: execute immediately)
+  complete <PR#>               # Execution complete → ready
+  status [PR#]                 # Check status (current branch if omitted)
+  list [--queued|--executing|--blocked|--all]  # List view
 ```
 
 ---
@@ -87,17 +87,17 @@ actions:
 
 ### queue
 
-**목적**: PR을 자동 실행 대기열에 추가
+**Purpose**: Add PR to auto-execution queue
 
-**전제조건**: `created` 상태 (Label 없음, Draft)
+**Precondition**: `created` state (No Label, Draft)
 
-**상태 전이**: `created → queued`
+**State Transition**: `created → queued`
 
 **Workflow**:
-1. 현재 상태 검증 (Label 없어야 함)
-2. SSOT 참조하여 실행:
-   - **Labels** → `state:queued` 추가 (없으면 생성)
-   - **Comments** → "Queued" 템플릿 사용
+1. Verify current state (must have no Label)
+2. Execute with reference to SSOT:
+   - **Labels** → Add `state:queued` (create if not exists)
+   - **Comments** → Use "Queued" template
 
 **Output**: `✅ PR #123 queued for auto-execution`
 
@@ -105,18 +105,18 @@ actions:
 
 ### begin
 
-**목적**: 구현 실행 시작
+**Purpose**: Start implementation execution
 
-**전제조건**: `created` 또는 `queued` 상태
+**Precondition**: `created` or `queued` state
 
-**상태 전이**: `created/queued → executing`
+**State Transition**: `created/queued → executing`
 
 **Workflow**:
-1. 현재 상태 검증 (Label 없거나 `state:queued`여야 함)
-2. 중복 실행 체크 (`state:executing`이 아니어야 함)
-3. SSOT 참조하여 실행:
-   - **Labels** → `state:queued` 제거 (있으면), `state:executing` 추가 (없으면 생성)
-   - **Comments** → "Execution Started" 템플릿 사용
+1. Verify current state (must have no Label or `state:queued`)
+2. Check for duplicate execution (must not be `state:executing`)
+3. Execute with reference to SSOT:
+   - **Labels** → Remove `state:queued` (if exists), add `state:executing` (create if not exists)
+   - **Comments** → Use "Execution Started" template
 
 **Output**: `✅ PR #123 execution started`
 
@@ -124,17 +124,17 @@ actions:
 
 ### pause
 
-**목적**: 이슈 발생 시 작업 중단
+**Purpose**: Stop work when issue occurs
 
-**전제조건**: `executing` 상태
+**Precondition**: `executing` state
 
-**상태 전이**: `executing → blocked`
+**State Transition**: `executing → blocked`
 
 **Workflow**:
-1. 현재 상태 검증 (`state:executing` Label 있어야 함)
-2. SSOT 참조하여 실행:
-   - **Labels** → `state:executing` 제거, `state:blocked` 추가
-   - **Comments** → "Blocked" 템플릿 사용
+1. Verify current state (must have `state:executing` Label)
+2. Execute with reference to SSOT:
+   - **Labels** → Remove `state:executing`, add `state:blocked`
+   - **Comments** → Use "Blocked" template
 
 **Output**: `✅ PR #123 paused (reason: ...)`
 
@@ -142,38 +142,38 @@ actions:
 
 ### continue
 
-**목적**: 중단된 작업 재개
+**Purpose**: Resume paused work
 
-**전제조건**: `blocked` 상태
+**Precondition**: `blocked` state
 
-**상태 전이**:
-- 기본: `blocked → queued`
+**State Transition**:
+- Default: `blocked → queued`
 - `--run`: `blocked → executing`
 
 **Workflow**:
-1. 현재 상태 검증 (`state:blocked` Label 있어야 함)
-2. SSOT 참조하여 실행:
-   - **Labels** → `state:blocked` 제거, 대상 상태 Label 추가
-   - **Comments** → "Continued" 템플릿 사용
+1. Verify current state (must have `state:blocked` Label)
+2. Execute with reference to SSOT:
+   - **Labels** → Remove `state:blocked`, add target state Label
+   - **Comments** → Use "Continued" template
 
-**Output**: `✅ PR #123 continued → queued` (또는 `executing`)
+**Output**: `✅ PR #123 continued → queued` (or `executing`)
 
 ---
 
 ### complete
 
-**목적**: 구현 완료, PR Ready 처리
+**Purpose**: Implementation complete, convert PR to Ready
 
-**전제조건**: `executing` 상태
+**Precondition**: `executing` state
 
-**상태 전이**: `executing → ready`
+**State Transition**: `executing → ready`
 
 **Workflow**:
-1. 현재 상태 검증 (`state:executing` Label 있어야 함)
-2. SSOT 참조하여 실행:
-   - **Labels** → `state:executing` 제거 (`auto-execute`는 유지 - opt-in 설정이므로)
-   - **Draft** → Ready 전환 (`gh pr ready`)
-   - **Comments** → "Published" 템플릿 사용
+1. Verify current state (must have `state:executing` Label)
+2. Execute with reference to SSOT:
+   - **Labels** → Remove `state:executing` (keep `auto-execute` - it's an opt-in setting)
+   - **Draft** → Convert to Ready (`gh pr ready`)
+   - **Comments** → Use "Published" template
 
 **Output**: `✅ PR #123 completed → ready for review`
 
@@ -181,14 +181,14 @@ actions:
 
 ### status
 
-**목적**: PR 상태 확인
+**Purpose**: Check PR status
 
-**Input**: PR# 생략 시 현재 브랜치의 PR 자동 감지
+**Input**: Auto-detect PR from current branch if PR# is omitted
 
 **Workflow**:
-1. PR 정보 조회 (`gh pr view`)
-2. SSOT의 **State Machine** 섹션 기준으로 상태 판별
-3. 정보 출력
+1. Query PR information (`gh pr view`)
+2. Determine state based on SSOT's **State Machine** section
+3. Output information
 
 **Output**:
 ```
@@ -200,24 +200,24 @@ Draft: true
 Updated: 10 minutes ago
 ```
 
-**상태 판별**: SSOT의 "상태 정의" 테이블 참조
+**State Determination**: Refer to "State Definitions" table in SSOT
 
 ---
 
 ### list
 
-**목적**: PR 목록 조회
+**Purpose**: Query PR list
 
 **Input**:
-- `--queued`: 대기 중인 PR
-- `--executing`: 실행 중인 PR
-- `--blocked`: 막힌 PR
-- `--all` 또는 생략: 모든 워크플로우 PR
+- `--queued`: Queued PRs
+- `--executing`: Executing PRs
+- `--blocked`: Blocked PRs
+- `--all` or omitted: All workflow PRs
 
 **Workflow**:
-1. SSOT의 **Labels** 섹션의 쿼리 예시 참조
-2. 필터에 맞는 PR 목록 조회
-3. 테이블 형식 출력
+1. Reference query examples in SSOT's **Labels** section
+2. Query PR list matching filter
+3. Output in table format
 
 **Output**:
 ```
@@ -231,24 +231,24 @@ queued      #789   email-template    2 hours ago
 
 ## Error Handling
 
-| Action | 에러 상황 | 메시지 |
-|--------|-----------|--------|
-| queue | 이미 state Label 있음 | "Not in 'created' state" |
-| begin | 이미 `state:executing` | "Already executing" |
-| begin | `state:blocked` 상태 | "PR is blocked - use 'continue' first" |
-| pause | `state:executing` 아님 | "Not executing - nothing to pause" |
-| continue | `state:blocked` 아님 | "Not blocked - nothing to continue" |
-| complete | `state:executing` 아님 | "Not executing - nothing to complete" |
-| complete | 이미 Ready (Draft=false) | "Already published" |
-| status | PR 없음 | "No PR found" |
+| Action | Error Situation | Message |
+|--------|-----------------|---------|
+| queue | Already has state Label | "Not in 'created' state" |
+| begin | Already `state:executing` | "Already executing" |
+| begin | In `state:blocked` state | "PR is blocked - use 'continue' first" |
+| pause | Not `state:executing` | "Not executing - nothing to pause" |
+| continue | Not `state:blocked` | "Not blocked - nothing to continue" |
+| complete | Not `state:executing` | "Not executing - nothing to complete" |
+| complete | Already Ready (Draft=false) | "Already published" |
+| status | No PR found | "No PR found" |
 
 ---
 
 ## Related Commands
 
-| Command | 설명 |
-|---------|------|
-| `/dev.specify <name>` | Spec 문서 작성 |
-| `/dev.open <name>` | Spec 기반 PR 생성 |
-| `/dev.execute <PR#>` | 구현 실행 |
-| `/dev.publish <PR#>` | PR Ready 처리 |
+| Command | Description |
+|---------|-------------|
+| `/dev.specify <name>` | Write Spec document |
+| `/dev.open <name>` | Create PR based on Spec |
+| `/dev.execute <PR#>` | Execute implementation |
+| `/dev.publish <PR#>` | Convert PR to Ready |
