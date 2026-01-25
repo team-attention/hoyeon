@@ -371,7 +371,7 @@ PLAN_TEMPLATE.md follows the **Orchestrator-Worker pattern**.
 
 ### TODO Section (Worker only)
 Required fields for each TODO:
-- **Type**: `work` | `verification`
+- **Type**: `work` | `verification` (see Type Field below)
 - **Required Tools**: Specify needed tools
 - **Inputs**: Reference to previous TODO outputs (with types)
 - **Outputs**: Generated deliverables (with types)
@@ -379,6 +379,15 @@ Required fields for each TODO:
 - **Must NOT do**: Prohibitions (including git)
 - **References**: Related code paths (from DRAFT's Agent Findings > Patterns)
 - **Acceptance Criteria**: Verification conditions by category (see below)
+
+### Type Field
+
+| Type | Retry on Fail | Can Modify Files | Failure Handling |
+|------|---------------|------------------|------------------|
+| `work` | ✅ Up to 2x | ✅ Yes | Analyze → Fix Task or halt |
+| `verification` | ❌ No | ❌ No (read-only) | Analyze → Fix Task or halt |
+
+**Note**: Failure handling logic is unified for both types. Type only determines retry permission and file modification rights.
 
 ### Acceptance Criteria Categories
 

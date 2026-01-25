@@ -67,13 +67,53 @@ CONTEXT_DIR=".dev/specs/{name}/context"
 Files: `outputs.json`, `learnings.md`, `issues.md`, `decisions.md`
 
 ### STEP 3: Task Execution Loop
+
 ```
 WHILE pending tasks:
   1. Find runnable (pending + no blockedBy)
-  2. Execute in parallel
-  3. Verify with Hook
-  4. Save to Context
-  5. Update Plan checkbox
+  2. Execute in parallel (delegate to Worker)
+  3. Hook verifies result
+  4. If PASS:
+     - Save to Context
+     - Update Plan checkbox
+     - Mark task complete
+  5. If FAIL:
+     - [work type only] Retry up to 2 times
+     - If still failing → Analyze error
+     - Route by category:
+       ├─ env_error → halt + log to issues.md
+       ├─ code_error → Create Fix Task (depth=1)
+       └─ unknown → halt + log to issues.md
+  6. Loop continue
+```
+
+#### Failure Categories
+
+| Category | Examples | Action |
+|----------|----------|--------|
+| `env_error` | Permission denied, API key missing, network timeout | Halt + issues.md |
+| `code_error` | Type error, lint failure, test failure | Create Fix Task |
+| `unknown` | Unclassifiable | Halt + issues.md |
+
+#### Fix Task Rules
+
+- Fix Task inherits context from failed task
+- Fix Task type = `work` (can modify files)
+- Fix Task failure → Halt (no nested Fix Tasks)
+- After Fix Task completes → Original task's dependents become runnable
+
+#### issues.md Log Format
+
+When halting due to `env_error` or `unknown`, log to `issues.md`:
+
+```markdown
+## [YYYY-MM-DD HH:MM] {TODO name} Failed
+
+**Category**: env_error | unknown
+**Error**: {error message}
+**Retry Count**: {n}
+**Analysis**: {why this requires human intervention}
+**Suggestion**: {recommended manual action}
 ```
 
 ### STEP 4: Git Commit

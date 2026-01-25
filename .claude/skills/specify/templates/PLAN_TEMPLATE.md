@@ -130,12 +130,36 @@ TODO-1 → TODO-2 → TODO-Final
 ```markdown
 ## Error Handling
 
+### Failure Categories
+
+| Category | Examples | Detection Pattern |
+|----------|----------|-------------------|
+| `env_error` | API key missing, permission denied, network timeout | `/EACCES\|ECONNREFUSED\|timeout\|401\|403/i` |
+| `code_error` | Type error, lint failure, test failure | `/TypeError\|SyntaxError\|lint\|test failed/i` |
+| `unknown` | Unclassifiable errors | Default fallback |
+
+### Failure Handling Flow
+
 | Scenario | Action |
 |----------|--------|
-| Worker fails Acceptance Criteria | Retry up to 2 times, then halt |
+| work fails | Retry up to 2 times → Analyze → (see below) |
+| verification fails | Analyze immediately (no retry) → (see below) |
 | Worker times out | Halt and report |
-| Verification fails | Report failures, do NOT auto-fix |
-| Missing Input (previous TODO failed) | Skip dependent TODOs, halt |
+| Missing Input | Skip dependent TODOs, halt |
+
+### After Analyze
+
+| Category | Action |
+|----------|--------|
+| `env_error` | Halt + log to `issues.md` |
+| `code_error` | Create Fix Task (depth=1 limit) |
+| `unknown` | Halt + log to `issues.md` |
+
+### Fix Task Rules
+
+- Fix Task type is always `work`
+- Fix Task failure → Halt (no further Fix Task creation)
+- Max depth = 1 (prevents infinite loop)
 ```
 
 ### 9. Runtime Contract
