@@ -7,6 +7,11 @@ disallowed-tools:
   - Edit
   - Bash
   - Task
+validate_prompt: |
+  Verify the reviewer output contains:
+  1. OKAY or REJECT verdict
+  2. Justification section
+  Report if verdict is missing or unclear.
 ---
 
 # Plan Reviewer Agent
