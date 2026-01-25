@@ -1,8 +1,8 @@
 ---
 name: skill-session-analyzer
 description: |
-  This skill should be used when the user asks to "analyze session", "session analysis", "evaluate skill execution",
-  "skill execution verification", "check session logs", "log analysis", provides a session ID with a skill path,
+  This skill should be used when the user asks to "analyze session", "세션 분석", "evaluate skill execution",
+  "스킬 실행 검증", "check session logs", "로그 분석", provides a session ID with a skill path,
   or wants to verify that a skill executed correctly in a past session.
   Post-hoc analysis of Claude Code sessions to validate skill/agent/hook behavior against SKILL.md specifications.
 allowed-tools:
@@ -62,7 +62,7 @@ ${baseDir}/scripts/find-session-files.sh {sessionId}
 
 ### Step 1.2: Verify Files Exist
 
-Check all required files exist before proceeding.
+Check all required files exist before proceeding. If debug log is missing, analysis will be limited.
 
 ---
 
@@ -73,7 +73,7 @@ Check all required files exist before proceeding.
 Read the target SKILL.md and identify:
 
 **From YAML Frontmatter:**
-- `hooks.PreToolUse` - Expected PreToolUse hooks
+- `hooks.PreToolUse` - Expected PreToolUse hooks and matchers
 - `hooks.PostToolUse` - Expected PostToolUse hooks
 - `hooks.Stop` - Expected Stop hooks
 - `hooks.SubagentStop` - Expected SubagentStop hooks
@@ -86,6 +86,8 @@ Read the target SKILL.md and identify:
 - Workflow steps and conditions
 
 ### Step 2.2: Build Expected Behavior Checklist
+
+Create checklist from SKILL.md analysis:
 
 ```markdown
 ## Expected Behavior
@@ -103,11 +105,18 @@ Read the target SKILL.md and identify:
 - [ ] Draft file created at .dev/drafts/{name}.md
 - [ ] Plan file created at .dev/specs/{name}.md
 - [ ] Draft file deleted after OKAY
+
+### Workflow
+- [ ] Interview Mode before Plan Generation
+- [ ] User explicit request triggers plan generation
+- [ ] Reviewer REJECT causes revision loop
 ```
 
 ---
 
 ## Phase 3: Analyze Debug Log
+
+The debug log (`~/.claude/debug/{sessionId}.txt`) contains detailed execution traces.
 
 ### Step 3.1: Extract SubAgent Calls
 
@@ -126,15 +135,34 @@ ${baseDir}/scripts/extract-subagent-calls.sh {debug-log-path}
 
 Search patterns:
 ```
-Getting matching hook commands for {HookEvent}
-Matched {N} unique hooks
-Hooks: Processing prompt hook
+Getting matching hook commands for {HookEvent} with query: {tool-name}
+Matched {N} unique hooks for query "{query}"
+Hooks: Processing prompt hook with prompt: {prompt}
+Hooks: Prompt hook condition was met/not met
 permissionDecision: allow/deny
 ```
 
 Use script:
 ```bash
 ${baseDir}/scripts/extract-hook-events.sh {debug-log-path}
+```
+
+### Step 3.3: Extract Tool Calls
+
+Search patterns:
+```
+executePreToolHooks called for tool: {tool-name}
+File {path} written atomically
+```
+
+### Step 3.4: Extract Hook Results
+
+For prompt-based hooks, find the model response:
+```
+Hooks: Model response: {
+  "ok": true/false,
+  "reason": "..."
+}
 ```
 
 ---
@@ -144,7 +172,7 @@ ${baseDir}/scripts/extract-hook-events.sh {debug-log-path}
 ### Step 4.1: Check File Creation
 
 For each expected artifact:
-1. Search debug log for `FileHistory: Tracked file modification`
+1. Search debug log for `FileHistory: Tracked file modification for {path}`
 2. Search for `File {path} written atomically`
 3. Verify current filesystem state
 
@@ -152,7 +180,7 @@ For each expected artifact:
 
 For files that should be deleted:
 1. Search for `rm` commands in Bash calls
-2. Verify file no longer exists
+2. Verify file no longer exists on filesystem
 
 ---
 
@@ -167,7 +195,9 @@ For files that should be deleted:
 | gap-analyzer | Called before plan | Called at 09:43:08 | ✅ |
 | reviewer | Called after plan | 2 calls (REJECT→OKAY) | ✅ |
 | PreToolUse hook | Edit\|Write matcher | Triggered for Write | ✅ |
+| Stop hook | Validates approval | Returned ok:true | ✅ |
 | Draft file | Created then deleted | Created→Deleted | ✅ |
+| Plan file | Created | Exists (10KB) | ✅ |
 ```
 
 ### Step 5.2: Identify Deviations
@@ -206,10 +236,12 @@ Flag any mismatches:
 ### SubAgents
 | SubAgent | Expected | Actual | Time | Result |
 |----------|----------|--------|------|--------|
+| ... | ... | ... | ... | ✅/❌ |
 
 ### Hooks
 | Hook | Matcher | Triggered | Result |
 |------|---------|-----------|--------|
+| ... | ... | ... | ✅/❌ |
 
 ---
 
@@ -217,6 +249,7 @@ Flag any mismatches:
 
 | Artifact | Path | Expected State | Actual State |
 |----------|------|----------------|--------------|
+| ... | ... | ... | ✅/❌ |
 
 ---
 
@@ -224,6 +257,7 @@ Flag any mismatches:
 
 | Severity | Description | Location |
 |----------|-------------|----------|
+| ... | ... | ... |
 
 ---
 
@@ -246,8 +280,28 @@ Flag any mismatches:
 
 ---
 
+## Usage Example
+
+```
+User: "Analyze session 3cc71c9f-d27a-4233-9dbc-c4f07ea6ec5b against .claude/skills/spec/SKILL.md"
+
+1. Find session files
+2. Parse SKILL.md → Expected: Explore, gap-analyzer, reviewer, hooks
+3. Analyze debug log → Extract actual calls
+4. Verify artifacts → Check .dev/
+5. Compare → Build verification table
+6. Generate report → PASS/FAIL with details
+```
+
+---
+
 ## Additional Resources
 
 ### Reference Files
 - **`references/analysis-patterns.md`** - Detailed grep patterns for log analysis
 - **`references/common-issues.md`** - Known issues and troubleshooting
+
+### Scripts
+- **`scripts/find-session-files.sh`** - Session file locator
+- **`scripts/extract-subagent-calls.sh`** - SubAgent call extractor
+- **`scripts/extract-hook-events.sh`** - Hook event extractor
