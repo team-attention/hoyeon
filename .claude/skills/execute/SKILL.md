@@ -138,7 +138,7 @@ Execute quickly without PR. PR can be created separately after completion.
 | **State management** | Plan checkbox only |
 | **History** | Context (`context/*.md`) |
 | **Block handling** | Record in Context, report to user |
-| **After completion** | git-master commit → Final Report |
+| **After completion** | Per-TODO commits → Final Report |
 
 ### PR Mode
 
@@ -150,7 +150,7 @@ Linked with GitHub PR. Suitable for collaboration and automation.
 | **State management** | Plan checkbox + `/state` skill |
 | **History** | Context + PR Comments |
 | **Block handling** | `/state pause` → transition to blocked |
-| **After completion** | git-master commit → `/state publish` |
+| **After completion** | Per-TODO commits + push → `/state complete` |
 
 ---
 
@@ -697,7 +697,53 @@ FOR EACH result in results (can be parallel):
    - Do not check based on SubAgent report alone
    - Items that failed verification remain `- [ ]`
 
-#### 3g. Next Iteration
+#### 3g. Per-TODO Commit (Check Commit Strategy)
+
+**After each TODO completes (3f done), check if commit is needed:**
+
+1. **Parse Commit Strategy table from PLAN.md**
+   ```
+   ## Commit Strategy
+
+   | After TODO | Message | Files | Condition |
+   |------------|---------|-------|-----------|
+   | 1 | `feat(web): initialize project` | `web/*` | always |
+   | 2 | `feat(web): add component` | `web/src/*` | always |
+   ```
+
+2. **Find matching row for current TODO number**
+   - If row exists with `Condition: always` → commit needed
+   - If row exists with `Condition: {condition}` → evaluate condition
+   - If no row for this TODO → skip commit
+
+3. **If commit needed, delegate to git-master:**
+   ```
+   Task(
+     subagent_type="git-master",
+     description="Commit TODO {N}",
+     prompt="""
+   Commit TODO {N} changes.
+
+   Commit message: {Message from Commit Strategy table}
+   Files: {Files from Commit Strategy table}
+   Push after commit: {YES if PR mode, NO if Local mode}
+   """
+   )
+   ```
+
+4. **Wait for git-master to complete before next TODO**
+   - Commit must succeed before proceeding
+   - If commit fails, log to issues.md and report to user
+
+**Push Decision:**
+| Mode | Push after commit |
+|------|-------------------|
+| PR mode | YES (keep remote in sync) |
+| Local mode | NO |
+
+---
+
+#### 3h. Next Iteration
 
 ```
 Check pending Tasks with TaskList()
@@ -707,38 +753,47 @@ Check pending Tasks with TaskList()
 
 ---
 
-### STEP 4: Git Commit & Push
+### STEP 4: Final Git Verification
 
-After all TODOs complete, **before** Final Report, delegate commit to git-master:
+**After all TODOs complete**, check for any uncommitted changes not covered by per-TODO commits:
+
+```bash
+# Check for uncommitted changes
+git status --porcelain
+```
+
+**If changes exist** (output not empty):
+
+These are files modified during execution but not covered by Commit Strategy table.
+Delegate to git-master for cleanup commit:
 
 ```
 Task(
   subagent_type="git-master",
-  description="Commit: {plan-name} changes",
+  description="Commit: residual changes",
   prompt="""
-Plan execution complete. Please commit the changed files.
+Plan execution complete. Check for any uncommitted changes.
 
-Plan: {plan-name}
-Completed TODOs: {N}
+Run `git status` first.
 
-Check changed files with `git status`.
-Split into atomic commits following project conventions.
+If changes exist:
+- Commit with message: "chore({plan-name}): miscellaneous changes"
+- Push after commit: {YES if PR mode, NO if Local mode}
 
-Push after commit: {YES | NO}
+If no changes (working tree clean):
+- Report "No uncommitted changes" and exit
 """
 )
 ```
 
-**Push Option Decision:**
-| Mode | Push after commit |
-|------|-------------------|
-| PR mode | YES |
-| Local mode | NO |
+**If no changes** (output empty):
+- Skip git-master call
+- Proceed directly to STEP 5
 
 **Notes:**
-- Proceed to Final Report after git-master reports commit complete
+- Most commits should happen in 3g (per-TODO commit)
+- STEP 4 is only for edge cases (context files, unexpected changes)
 - If commit fails, report to user and request manual commit
-- If push fails, git-master reports error, guide manual push
 
 ---
 
@@ -935,9 +990,13 @@ execute_parallel(runnable)
 - [ ] All TODO Acceptance Criteria checked as `- [x]` after verification?
 - [ ] Performed direct verification after each Task completion?
 - [ ] Recorded learnings in Context?
+- [ ] **Per-TODO Commit**: Checked Commit Strategy after each TODO?
+- [ ] **Per-TODO Commit**: Called git-master for TODOs with commit specified?
+- [ ] **Per-TODO Commit**: Pushed after each commit (PR mode only)?
 
 **4. Completion Phase:**
-- [ ] Delegated commit to git-master?
+- [ ] Checked for residual uncommitted changes (`git status`)?
+- [ ] Called git-master for residual changes (if any)?
 - [ ] Output Final Report?
 
 **5. PR Mode Completion (PR Mode Only):**

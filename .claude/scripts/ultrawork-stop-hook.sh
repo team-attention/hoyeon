@@ -210,12 +210,13 @@ Execute: Skill(\"open\", args=\"$FEATURE_NAME\")" \
 
     if [[ "$PR_EXISTS" == "true" ]]; then
       update_phase "executing"
-      echo "🔀 Ultrawork: PR created → /execute" >&2
+      echo "🔀 Ultrawork: PR #$PR_NUMBER created → /execute" >&2
 
       jq -n \
-        --arg reason "Draft PR created! Start implementation.
+        --arg pr "$PR_NUMBER" \
+        --arg reason "Draft PR #$PR_NUMBER created! Start implementation.
 
-Execute: Skill(\"execute\")" \
+Execute: Skill(\"execute\", args=\"$PR_NUMBER\")" \
         '{"decision": "block", "reason": $reason}'
       exit 0
     fi
