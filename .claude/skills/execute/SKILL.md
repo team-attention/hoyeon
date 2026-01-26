@@ -170,8 +170,8 @@ Linked with GitHub PR. Suitable for collaboration and automation.
         │                   │
         ▼                   │
 ┌───────────────────┐       │
-│ 2. /state     │       │
-│    begin <PR#>    │       │
+│ 2. Skill("state", │       │
+│    args="begin")  │       │
 └────────┬──────────┘       │
          │                  │
     ┌────┴────┐             │
@@ -212,11 +212,9 @@ Linked with GitHub PR. Suitable for collaboration and automation.
 
    ℹ️ **Skip this step for Local mode and proceed to step 3.**
 
-   **Call `/state begin <PR#>`:**
-   - Check duplicate execution (error if already executing)
-   - Check blocked state (error if blocked)
-   - Remove `state:queued` → Add `state:executing`
-   - Record "Execution Started" Comment
+   ```
+   Skill("state", args="begin <PR#>")
+   ```
 
    **If state begin fails:**
    - ⛔ "Already executing" → **Stop immediately. Do not proceed to subsequent steps.**
@@ -618,7 +616,7 @@ When halting due to `env_error` or `unknown`, log to `issues.md`:
 - Plan checkbox remains `[ ]` (not complete)
 
 **PR Mode (auto pause):**
-- **Call `/state pause <PR#> "<reason>"`**
+- **Call `Skill("state", args="pause <PR#> <reason>")`**
   - `state:executing` → `state:blocked` transition
   - Record "Blocked" Comment
 - Stop execution, wait for user intervention
@@ -923,7 +921,7 @@ execute_parallel(runnable)
 **⚠️ Check in Workflow order:**
 
 **1. Start Phase (PR Mode Only):**
-- [ ] Called `/state begin <PR#>`? (Stopped immediately on failure?)
+- [ ] Called `Skill("state", args="begin <PR#>")`? (Stopped immediately on failure?)
 
 **2. Task Initialization:**
 - [ ] Identified unchecked TODOs from Plan checkbox state?
@@ -948,7 +946,7 @@ execute_parallel(runnable)
 - [ ] `state:executing` label removed?
 
 **Exception Handling (if applicable):**
-- [ ] Called `/state pause` when blocked? (PR mode)
+- [ ] Called `Skill("state", args="pause <PR#> <reason>")` when blocked? (PR mode)
 - [ ] Recorded in `issues.md` as unresolved item when blocked? (Local mode)
 
 **Continue working if any item is incomplete.**
