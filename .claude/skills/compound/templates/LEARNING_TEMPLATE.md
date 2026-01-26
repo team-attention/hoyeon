@@ -6,30 +6,30 @@ tags: [{TAGS}]
 plan_path: {PLAN_PATH}
 ---
 
-# {제목}
+# {TITLE}
 
 ## Context
-> PR #{PR_NUMBER}에서 발생
+> From PR #{PR_NUMBER}
 
-{어떤 상황이었는지}
+{Describe the situation}
 
 ## Problem
-{무엇이 문제였는지}
+{What was the problem}
 
 ## Solution
-{어떻게 해결했는지}
+{How it was solved}
 
 ## Key Decisions
-{왜 이렇게 결정했는지}
+{Why this approach was chosen}
 
 ## Learnings
-{배운 점}
+{What was learned}
 
 ## PR Feedback
-> 리뷰어들의 유용한 피드백
+> Valuable feedback from reviewers
 
-{추출된 피드백 목록}
-- @{author}: "{피드백 내용}" (file: {파일 경로})
+{Extracted feedback list}
+- @{author}: "{feedback content}" (file: {file_path})
 
 ## Related
-- {관련 문서 링크}
+- {Related document links}
