@@ -1,0 +1,16 @@
+{
+  "ecb5936c-7e3b-4252-97a2-7a24b535e994": {
+    "created_at": "2026-01-26T09:21:53Z",
+    "agents": {},
+    "ultrawork": {
+      "name": "test-feature-3",
+      "phase": "opening",
+      "iteration": 0,
+      "max_iterations": 10
+    }
+  },
+  "f055404b-3217-4f45-8ec3-959903fff9c2": {
+    "created_at": "2026-01-26T09:21:57Z",
+    "agents": {}
+  }
+}
