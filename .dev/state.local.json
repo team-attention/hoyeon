@@ -4,7 +4,7 @@
     "agents": {},
     "ultrawork": {
       "name": "test-feature-3",
-      "phase": "executing",
+      "phase": "done",
       "iteration": 0,
       "max_iterations": 10,
       "pr_number": 4
@@ -14,7 +14,7 @@
     "created_at": "2026-01-26T09:21:57Z",
     "agents": {},
     "execute": {
-      "iteration": 0,
+      "iteration": 1,
       "max_iterations": 30,
       "plan_path": ".dev/specs/test-feature-3/PLAN.md"
     }
