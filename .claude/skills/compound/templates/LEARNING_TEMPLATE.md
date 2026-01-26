@@ -29,7 +29,7 @@ plan_path: {PLAN_PATH}
 > Valuable feedback from reviewers
 
 {Extracted feedback list}
-- @{author}: "{feedback content}" (file: {file_path})
+<!-- Example: - @{author}: "{feedback content}" (file: {file_path}) -->
 
 ## Related
 - {Related document links}

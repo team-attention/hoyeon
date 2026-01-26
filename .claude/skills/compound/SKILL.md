@@ -43,11 +43,8 @@ Extracts knowledge from PR context and saves structured documentation to `docs/l
    cat .dev/specs/{name}/context/decisions.md 2>/dev/null || echo ""
    cat .dev/specs/{name}/context/issues.md 2>/dev/null || echo ""
 
-   # PR comments (only if PR number exists)
-   gh pr view {pr_number} --comments
-
-   # Review comments (gh api supports :owner/:repo auto-substitution)
-   gh api repos/:owner/:repo/pulls/{pr_number}/reviews
+   # PR comments and reviews (collect as JSON for stability)
+   gh pr view {pr_number} --json comments,reviews
    ```
 
 **Error Handling:**
