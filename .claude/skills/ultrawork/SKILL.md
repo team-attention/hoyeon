@@ -36,9 +36,10 @@ The ultrawork pipeline runs automatically through **Stop hooks**:
 ## Your Role
 
 1. **Extract the feature name** from user's request
-2. **Start the specify skill** with the feature name
-3. **Follow specify's interview process** normally
-4. The rest happens automatically via hooks
+2. **Initialize ultrawork state** (CRITICAL - must do before anything else)
+3. **Start the specify skill** with the feature name
+4. **Follow specify's interview process** normally
+5. The rest happens automatically via hooks
 
 ## Execution
 
@@ -49,7 +50,35 @@ Extract a short, kebab-case name for the feature:
 - "Implement payment processing" → `payment-processing`
 - "Fix login bug" → `fix-login-bug`
 
-### Step 2: Announce Ultrawork Mode
+### Step 2: Initialize Ultrawork State (CRITICAL)
+
+**You MUST run this Bash command BEFORE announcing or calling specify:**
+
+```bash
+mkdir -p .dev && \
+SESSION_ID="${SESSION_ID:-$(uuidgen | tr '[:upper:]' '[:lower:]')}" && \
+FEATURE_NAME="{name}" && \
+STATE_FILE=".dev/state.local.json" && \
+if [[ ! -f "$STATE_FILE" ]]; then echo '{}' > "$STATE_FILE"; fi && \
+jq --arg sid "$SESSION_ID" \
+   --arg name "$FEATURE_NAME" \
+   --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+   '.[$sid] = {
+     "created_at": $ts,
+     "agents": {},
+     "ultrawork": {
+       "name": $name,
+       "phase": "specify_interview",
+       "iteration": 0,
+       "max_iterations": 10
+     }
+   }' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE" && \
+echo "Ultrawork state initialized for $FEATURE_NAME"
+```
+
+Replace `{name}` with the actual feature name (kebab-case).
+
+### Step 3: Announce Ultrawork Mode
 
 ```
 🚀 Ultrawork Mode Activated
@@ -60,7 +89,7 @@ Pipeline: specify → open → execute
 Starting interview phase...
 ```
 
-### Step 3: Invoke Specify
+### Step 4: Invoke Specify
 
 ```
 Skill("specify", args="{name}")
@@ -73,7 +102,7 @@ The specify skill will:
 4. Run Reviewer approval
 5. **[Hook auto-triggers]** → Call /open when Plan is approved
 
-### Step 4: Let Hooks Handle the Rest
+### Step 5: Let Hooks Handle the Rest
 
 After specify completes with an approved plan:
 - `ultrawork-stop-hook.sh` detects PLAN.md with "APPROVED"
@@ -113,14 +142,18 @@ Phases: `specify_interview` → `specify_plan` → `opening` → `executing` →
 User: "/ultrawork add dark mode support"
 
 [You]
-🚀 Ultrawork Mode Activated
+1. Parse: feature name = "dark-mode"
 
-Feature: dark-mode
-Pipeline: specify → open → execute
+2. Initialize state (Bash command):
+   mkdir -p .dev && ... (run the full command)
 
-Starting interview phase...
+3. Announce:
+   🚀 Ultrawork Mode Activated
+   Feature: dark-mode
+   Pipeline: specify → open → execute
+   Starting interview phase...
 
-[Invoke Skill("specify", args="dark-mode")]
+4. Invoke: Skill("specify", args="dark-mode")
 
 [Specify Interview runs...]
 [DRAFT.md created]
@@ -135,6 +168,7 @@ Starting interview phase...
 
 ## Important Notes
 
+- **ALWAYS initialize state first** - hooks won't work without it
 - **Do NOT manually call /open or /execute** - hooks handle this
 - **Follow specify's interview process** - gather requirements properly
 - **The pipeline is autonomous** - just start it and let it run
