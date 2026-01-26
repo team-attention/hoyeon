@@ -142,7 +142,7 @@ TODO-1 (Create Button Component) → TODO-Final (Verification)
 
 ## TODOs
 
-### [ ] TODO 1: Create Button Component
+### [x] TODO 1: Create Button Component
 
 **Type**: work
 
@@ -178,24 +178,24 @@ TODO-1 (Create Button Component) → TODO-Final (Verification)
 **Acceptance Criteria**:
 
 *Functional:*
-- [ ] File exists: `test -f web/src/components/Button/Button.jsx`
-- [ ] File exists: `test -f web/src/components/Button/Button.css`
-- [ ] File exists: `test -f web/src/components/Button/index.js`
-- [ ] Button.jsx exports function: `grep -q 'export.*function Button\|export default function Button' web/src/components/Button/Button.jsx`
-- [ ] Button accepts onClick prop: `grep -q 'onClick' web/src/components/Button/Button.jsx`
-- [ ] Button renders children: `grep -q 'children' web/src/components/Button/Button.jsx`
-- [ ] CSS contains primary styling: `grep -q 'button-primary' web/src/components/Button/Button.css`
-- [ ] CSS has brand color: `grep -q '#646cff' web/src/components/Button/Button.css`
+- [x] File exists: `test -f web/src/components/Button/Button.jsx`
+- [x] File exists: `test -f web/src/components/Button/Button.css`
+- [x] File exists: `test -f web/src/components/Button/index.js`
+- [x] Button.jsx exports function: `grep -q 'export.*function Button\|export default function Button' web/src/components/Button/Button.jsx`
+- [x] Button accepts onClick prop: `grep -q 'onClick' web/src/components/Button/Button.jsx`
+- [x] Button renders children: `grep -q 'children' web/src/components/Button/Button.jsx`
+- [x] CSS contains primary styling: `grep -q 'button-primary' web/src/components/Button/Button.css`
+- [x] CSS has brand color: `grep -q '#646cff' web/src/components/Button/Button.css`
 
 *Static:*
-- [ ] `cd web && npm run lint` → exit 0
+- [x] `cd web && npm run lint` → exit 0
 
 *Runtime:*
-- [ ] (SKIP - no test framework configured)
+- [x] (SKIP - no test framework configured)
 
 ---
 
-### [ ] TODO Final: Verification
+### [x] TODO Final: Verification
 
 **Type**: verification (read-only)
 
@@ -222,13 +222,13 @@ TODO-1 (Create Button Component) → TODO-Final (Verification)
 **Acceptance Criteria**:
 
 *Functional:*
-- [ ] All deliverables exist: `test -f web/src/components/Button/Button.jsx && test -f web/src/components/Button/Button.css && test -f web/src/components/Button/index.js`
-- [ ] Button.jsx exports component: `grep -q 'export.*function Button\|export default function Button' web/src/components/Button/Button.jsx`
-- [ ] Button.css contains primary class: `grep -q '\.button-primary' web/src/components/Button/Button.css`
-- [ ] index.js re-exports Button: `grep -q "export.*from.*Button\|export.*Button" web/src/components/Button/index.js`
+- [x] All deliverables exist: `test -f web/src/components/Button/Button.jsx && test -f web/src/components/Button/Button.css && test -f web/src/components/Button/index.js`
+- [x] Button.jsx exports component: `grep -q 'export.*function Button\|export default function Button' web/src/components/Button/Button.jsx`
+- [x] Button.css contains primary class: `grep -q '\.button-primary' web/src/components/Button/Button.css`
+- [x] index.js re-exports Button: `grep -q "export.*from.*Button\|export.*Button" web/src/components/Button/index.js`
 
 *Static:*
-- [ ] `cd web && npm run lint` → exit 0
+- [x] `cd web && npm run lint` → exit 0
 
 *Runtime:*
-- [ ] (SKIP - no test framework configured)
+- [x] (SKIP - no test framework configured)
