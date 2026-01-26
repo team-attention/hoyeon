@@ -749,7 +749,17 @@ Push after commit: {YES | NO}
 When all TODOs complete:
 
 **PR Mode Additional Work:**
-Execute /state publish.
+
+Before outputting Final Report, finalize PR state:
+
+```
+Skill("state", args="complete <PR#>")
+```
+
+This will:
+- Remove `state:executing` label
+- Convert Draft → Ready (`gh pr ready`)
+- Add "Published" comment to PR
 
 **Output Final Report:**
 
@@ -933,7 +943,9 @@ execute_parallel(runnable)
 - [ ] Output Final Report?
 
 **5. PR Mode Completion (PR Mode Only):**
-- [ ] Added completion Comment to PR?
+- [ ] Called `Skill("state", args="complete <PR#>")`?
+- [ ] PR converted to Ready (`isDraft: false`)?
+- [ ] `state:executing` label removed?
 
 **Exception Handling (if applicable):**
 - [ ] Called `/state pause` when blocked? (PR mode)

@@ -1,0 +1,93 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(jq:*)",
+      "Bash(ls:*)",
+      "Bash(test:*)",
+      "Bash(chmod:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh pr list:*)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/ultrawork-prompt-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/dev-execute-init-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/dev-specify-init-hook.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/dev-plan-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/dev-orchestrator-guard.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/dev-worker-verify.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Task|Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/validate-output.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/ultrawork-stop-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/dev-execute-stop-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/dev-specify-stop-hook.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

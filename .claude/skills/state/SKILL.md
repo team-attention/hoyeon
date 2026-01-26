@@ -97,7 +97,23 @@ actions:
 1. Verify current state (must have no Label)
 2. Execute with reference to SSOT:
    - **Labels** → Add `state:queued` (create if not exists)
-   - **Comments** → Use "Queued" template
+   - **Comments** → Post comment using "Queued" template:
+     ```bash
+     # Get run info
+     if [ -n "$GITHUB_RUN_ID" ]; then
+       RUN_INFO="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+     else
+       RUN_INFO="$(hostname -s)"
+     fi
+
+     # Post comment
+     gh pr comment $PR --body "### 🤖 Queued
+
+**State**: \`created\` → \`queued\`
+**Run**: $RUN_INFO
+
+PR queued for auto-execution."
+     ```
 
 **Output**: `✅ PR #123 queued for auto-execution`
 
@@ -116,7 +132,24 @@ actions:
 2. Check for duplicate execution (must not be `state:executing`)
 3. Execute with reference to SSOT:
    - **Labels** → Remove `state:queued` (if exists), add `state:executing` (create if not exists)
-   - **Comments** → Use "Execution Started" template
+   - **Comments** → Post comment using "Execution Started" template:
+     ```bash
+     # Get spec path from PR body
+     SPEC_PATH=$(gh pr view $PR --json body -q '.body' | sed -n '/^---$/,/^---$/p' | grep '^spec:' | sed 's/spec: //')
+
+     # Get run info
+     if [ -n "$GITHUB_RUN_ID" ]; then
+       RUN_INFO="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+     else
+       RUN_INFO="$(hostname -s)"
+     fi
+
+     # Post comment
+     gh pr comment $PR --body "### 🤖 Execution Started
+
+**Plan**: $SPEC_PATH
+**Run**: $RUN_INFO"
+     ```
 
 **Output**: `✅ PR #123 execution started`
 
@@ -134,7 +167,25 @@ actions:
 1. Verify current state (must have `state:executing` Label)
 2. Execute with reference to SSOT:
    - **Labels** → Remove `state:executing`, add `state:blocked`
-   - **Comments** → Use "Blocked" template
+   - **Comments** → Post comment using "Blocked" template:
+     ```bash
+     # Get run info
+     if [ -n "$GITHUB_RUN_ID" ]; then
+       RUN_INFO="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+     else
+       RUN_INFO="$(hostname -s)"
+     fi
+
+     # Post comment (REASON is from command argument)
+     gh pr comment $PR --body "### 🚨 Blocked
+
+**Run**: $RUN_INFO
+**Reason**: $REASON
+
+Next steps:
+1. After fixing the issue, re-run \`/execute <PR#>\`
+2. Or \`/state continue <PR#>\`"
+     ```
 
 **Output**: `✅ PR #123 paused (reason: ...)`
 
@@ -154,7 +205,23 @@ actions:
 1. Verify current state (must have `state:blocked` Label)
 2. Execute with reference to SSOT:
    - **Labels** → Remove `state:blocked`, add target state Label
-   - **Comments** → Use "Continued" template
+   - **Comments** → Post comment using "Continued" template:
+     ```bash
+     # Get run info
+     if [ -n "$GITHUB_RUN_ID" ]; then
+       RUN_INFO="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+     else
+       RUN_INFO="$(hostname -s)"
+     fi
+
+     # TARGET_STATE is 'queued' or 'executing' based on --run flag
+     gh pr comment $PR --body "### 🤖 Continued
+
+**State**: \`blocked\` → \`$TARGET_STATE\`
+**Run**: $RUN_INFO
+
+Resuming work."
+     ```
 
 **Output**: `✅ PR #123 continued → queued` (or `executing`)
 
@@ -173,7 +240,22 @@ actions:
 2. Execute with reference to SSOT:
    - **Labels** → Remove `state:executing` (keep `auto-execute` - it's an opt-in setting)
    - **Draft** → Convert to Ready (`gh pr ready`)
-   - **Comments** → Use "Published" template
+   - **Comments** → Post comment using "Published" template:
+     ```bash
+     # Get run info
+     if [ -n "$GITHUB_RUN_ID" ]; then
+       RUN_INFO="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+     else
+       RUN_INFO="$(hostname -s)"
+     fi
+
+     # Post comment
+     gh pr comment $PR --body "### 🤖 Published
+
+**Run**: $RUN_INFO
+
+PR is now ready for review."
+     ```
 
 **Output**: `✅ PR #123 completed → ready for review`
 
