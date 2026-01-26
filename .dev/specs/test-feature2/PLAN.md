@@ -116,7 +116,7 @@ TODO-1 (Initialize) → TODO-2 (Component) → TODO-Final (Verify)
 
 ## TODOs
 
-### [ ] TODO 1: Initialize Vite React Project
+### [x] TODO 1: Initialize Vite React Project
 
 **Type**: work
 
@@ -160,7 +160,7 @@ TODO-1 (Initialize) → TODO-2 (Component) → TODO-Final (Verify)
 
 ---
 
-### [ ] TODO 2: Update Hello World Component
+### [x] TODO 2: Update Hello World Component
 
 **Type**: work
 
@@ -203,7 +203,7 @@ TODO-1 (Initialize) → TODO-2 (Component) → TODO-Final (Verify)
 
 ---
 
-### [ ] TODO Final: Verification
+### [x] TODO Final: Verification
 
 **Type**: verification (read-only)
 
