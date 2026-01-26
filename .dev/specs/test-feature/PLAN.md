@@ -245,7 +245,7 @@ fi
 
 ## TODOs
 
-### [ ] TODO 1: Create /generate skill
+### [x] TODO 1: Create /generate skill
 
 **Type**: work
 
@@ -297,7 +297,7 @@ fi
 
 ---
 
-### [ ] TODO Final: Verification
+### [x] TODO Final: Verification
 
 **Type**: verification (read-only)
 
