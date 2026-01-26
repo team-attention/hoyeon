@@ -1,0 +1,8 @@
+{
+  "todo-1": {
+    "component_path": "web/src/components/Button/Button.jsx"
+  },
+  "todo-2": {
+    "css_path": "web/src/components/Button/Button.css"
+  }
+}

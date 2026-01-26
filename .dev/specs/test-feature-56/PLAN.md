@@ -116,7 +116,7 @@ TODO-1 (Button.jsx) → TODO-2 (Button.css) → TODO-Final (Verification)
 
 ## TODOs
 
-### [ ] TODO 1: Update Button component with variant prop
+### [x] TODO 1: Update Button component with variant prop
 
 **Type**: work
 
@@ -158,7 +158,7 @@ TODO-1 (Button.jsx) → TODO-2 (Button.css) → TODO-Final (Verification)
 
 ---
 
-### [ ] TODO 2: Add secondary button CSS styles
+### [x] TODO 2: Add secondary button CSS styles
 
 **Type**: work
 
@@ -221,7 +221,7 @@ TODO-1 (Button.jsx) → TODO-2 (Button.css) → TODO-Final (Verification)
 
 ---
 
-### [ ] TODO Final: Verification
+### [x] TODO Final: Verification
 
 **Type**: verification (read-only)
 
