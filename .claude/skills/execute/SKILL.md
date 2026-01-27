@@ -1,9 +1,9 @@
 ---
-name: execute
+name: execute2
 description: |
-  This skill should be used when the user says "/execute", "execute", "start work",
-  "execute plan", or wants to execute a plan file.
+  This skill should be used when the user says "/execute2", "execute2".
   Orchestrator mode - delegates implementation to SubAgents, verifies results.
+  Refactored version of /execute with clearer 3-step structure.
 allowed-tools:
   - Read
   - Grep
@@ -17,384 +17,287 @@ allowed-tools:
   - TaskGet
 ---
 
-# /execute - Orchestrator Mode
+# /execute2 - Orchestrator Mode
 
 **You are the conductor. You do not play instruments directly.**
-
-Parallelize Plan TODOs through Task system, delegate to SubAgents, verify results.
-
----
-
-## Core Principles
-
-### 1. DELEGATE IMPLEMENTATION
-Code writing **must always** be delegated to worker agent.
-
-```
-✅ YOU CAN DO:                    ❌ YOU MUST DELEGATE:
-─────────────────────────────────────────────────────────
-- Read files (verification)       - Write/Edit any code → worker
-- Run Bash (test verification)    - Fix ANY bugs → worker
-- Search with Grep/Glob           - Write ANY tests → worker
-- Read/Update plan files          - Git commits → git-master
-- Manage parallelization (Task)   - Documentation → worker
-```
-
-### 2. VERIFY OBSESSIVELY
-
-⚠️ **SUBAGENTS LIE. VERIFY BEFORE MARKING COMPLETE.**
-
-After Task() delegation, **always** verify directly:
-- [ ] File existence check (Read)
-- [ ] Build passes (Bash: npm run build / tsc)
-- [ ] Tests pass (Bash: npm test)
-- [ ] No MUST NOT DO violations (read code directly)
-
-### 3. PARALLELIZE WHEN POSSIBLE
-Automatically run pending Tasks with no `blockedBy` in parallel from TaskList.
-
-### 4. ONE TASK PER CALL
-Delegate **only one TODO** per Task() call.
+Delegate to SubAgents, verify results, manage parallelization.
 
 ---
 
-## State Management
-
-### Source of Truth: Plan Checkbox
+## Golden Path (End-to-End Flow)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  ONLY SOURCE OF TRUTH: Plan checkbox (### [x] TODO N:)      │
-│  Task system = Parallelization helper (recreated each       │
-│                session)                                      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Plan checkbox is the only state management:**
-- Task system is used only for parallelization/dependency calculation
-- Tasks are recreated from Plan at each session start
-- Only use Task's `completed` status (for removal from TaskList)
-- `in_progress` status is not used (unnecessary)
-- Plan file is version controlled by git for permanent preservation
-
-### Task System = Parallelization Helper
-
-Role of Task tools:
-
-| Tool | Role | When to Use |
-|------|------|-------------|
-| **TaskCreate** | TODO → Task conversion | Session start (recreated each time) |
-| **TaskUpdate** | Dependency setting (addBlocks) | Right after TaskCreate |
-| **TaskList** | Determine parallelizable TODOs | Every execution loop |
-| **TaskGet** | Query Task details | When generating Worker prompt |
-
-**Usage patterns:**
-- `TaskUpdate(status="completed")` - Use (for removal from TaskList)
-- `TaskUpdate(status="in_progress")` - Do not use (unnecessary)
-
-### Dependencies via Task System
-
-```
-TaskUpdate(taskId="1", addBlocks=["2"])
-→ Task 1 must complete before Task 2 can run
-
-TaskList() result:
-#1 [pending] TODO 1: Config setup
-#2 [pending] TODO 2: API implementation [blocked by #1]
-#3 [pending] TODO 3: Utils (independent)
+1. Parse input → Determine mode (PR / Local)
+2. Read PLAN.md → Create ALL Tasks (Init + TODO sub-steps + Finalize) → Set dependencies
+3. Init/resume context (.dev/specs/{name}/context/)
+4. LOOP while TaskList() has pending tasks:
+   Pick runnable (pending + not blocked) → dispatch by type:
+     :State Begin      → [PR only] Skill("state", "begin") → stop on failure
+     :Worker  → Task(worker) with substituted variables
+     :Verify  → check hook result, reconcile if FAILED (max 3 retries)
+     :Context → save outputs/learnings/issues/decisions to files
+     :Commit  → Task(git-master) per Commit Strategy
+     :Checkbox → mark Plan checkbox [x] + acceptance criteria
+     :Residual Commit → git status → git-master if dirty
+     :State Complete   → [PR only] Skill("state", "complete")
+     :Report           → output final report
+5. (Init, TODO execution, and Finalize are all part of the loop)
 ```
 
 ---
 
-## Input Interpretation
+## Core Rules
+
+1. **DELEGATE** — All code writing goes to `Task(subagent_type="worker")`. You may only Read, Grep, Glob, Bash (for verification), and manage Tasks/Plan.
+2. **VERIFY** — SubAgents lie. After every `:Worker`, the `:Verify` step checks hook result. Reconcile if FAILED.
+3. **PARALLELIZE** — Run all tasks whose `blockedBy` is empty simultaneously. Sub-step chains auto-parallelize across independent TODOs.
+4. **ONE TODO PER WORKER** — Each `:Worker` Task handles exactly one TODO.
+5. **PLAN CHECKBOX = TRUTH** — `### [x] TODO N:` is the only durable state. Sub-step Tasks are recreated each session.
+6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify`, `:Context`, `:Checkbox`, `:Commit`, `:Residual Commit`, `:State Complete`, `:Report`.
+
+---
+
+## STEP 1: Initialize
+
+### 1.1 Parse Input & Determine Mode
 
 | Input | Mode | Behavior |
 |-------|------|----------|
-| `/execute` | Auto-detect | Current branch → Check Draft PR → PR mode if exists, local mode otherwise |
-| `/execute <name>` | Local | Execute `.dev/specs/<name>/PLAN.md` |
-| `/execute <PR#>` | PR | Parse spec path from PR body and execute |
-| `/execute <PR URL>` | PR | Extract PR# from URL → PR mode |
+| `/execute` | Auto-detect | Branch → Draft PR check → PR mode if exists, else Local |
+| `/execute <name>` | Local | `.dev/specs/<name>/PLAN.md` |
+| `/execute <PR#>` | PR | Parse spec path from PR body |
+| `/execute <PR URL>` | PR | Extract PR# → PR mode |
 
-**Auto-detect logic:**
+Auto-detect logic:
 ```bash
-# 1. Check Draft PR linked to current branch
 gh pr list --head $(git branch --show-current) --draft --json number
-
-# 2. If PR exists → PR mode
-# 3. If no PR → Infer spec from branch name (feat/user-auth → user-auth)
+# PR exists → PR mode | No PR → infer spec from branch name
 ```
 
----
+### 1.2 Read Plan & Create All Tasks
 
-## Execution Modes
+Read plan file:
+- Local: `.dev/specs/{name}/PLAN.md` — if name not given, use most recent plan file or ask user
+- PR: extract Spec Reference link from PR body:
+  ```bash
+  gh pr view <PR#> --json body -q '.body' | grep -oP '(?<=→ \[)[^\]]+'
+  ```
 
-### Local Mode
+⚠️ For each **unchecked** TODO, create sub-step Tasks (**sequentially** to ensure ID order):
 
-Execute quickly without PR. PR can be created separately after completion.
-
-| Item | Behavior |
-|------|----------|
-| **Spec location** | `.dev/specs/{name}/PLAN.md` |
-| **State management** | Plan checkbox only |
-| **History** | Context (`context/*.md`) |
-| **Block handling** | Record in Context, report to user |
-| **After completion** | Per-TODO commits → Final Report |
-
-### PR Mode
-
-Linked with GitHub PR. Suitable for collaboration and automation.
-
-| Item | Behavior |
-|------|----------|
-| **Spec location** | Parse from PR body → `.dev/specs/{name}/PLAN.md` |
-| **State management** | Plan checkbox + `/state` skill |
-| **History** | Context + PR Comments |
-| **Block handling** | `/state pause` → transition to blocked |
-| **After completion** | Per-TODO commits + push → `/state complete` |
-
----
-
-## Workflow
-
-### STEP 1: Session Initialization
-
-**Flowchart:**
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. Parse Input → Determine mode                             │
-└─────────────────┬───────────────────────────────────────────┘
-                  │
-        ┌─────────┴─────────┐
-        ▼                   ▼
-   [PR Mode]            [Local Mode]
-        │                   │
-        ▼                   │
-┌───────────────────┐       │
-│ 2. Skill("state", │       │
-│    args="begin")  │       │
-└────────┬──────────┘       │
-         │                  │
-    ┌────┴────┐             │
-    ▼         ▼             │
- [Success]  [Failure]       │
-    │         │             │
-    │         ▼             │
-    │    ⛔ STOP immediately│
-    │    (Do not proceed)   │
-    │                       │
-    └─────────┬─────────────┘
-              ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 3. Verify Plan file                                         │
-└─────────────────────────────────────────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 4. Determine state from Plan checkbox → Recreate Tasks      │
-└─────────────────────────────────────────────────────────────┘
-              │
-              ▼
-        (Continue to next steps...)
+# --- Init Tasks (PR only) ---
+IF pr_mode:
+  sb = TaskCreate(subject="Init:State Begin",
+                  description="Skill('state', args='begin <PR#>'). Stop on failure.",
+                  activeForm="Beginning PR state")
+
+task_ids = {}  # task_ids[N] = {worker, verify, context, commit, checkbox}
+
+FOR EACH "### [ ] TODO N: {title}" in plan (in order):
+
+  # 1. Worker — delegates implementation
+  w = TaskCreate(subject="TODO {N}:Worker — {title}",
+                 description="{full TODO section content}",
+                 activeForm="TODO {N}: Running Worker")
+  task_ids[N] = {worker: w.task_id}
+
+  # 2. Verify — checks hook result, reconciles if needed
+  v = TaskCreate(subject="TODO {N}:Verify",
+                 description="""Check hook verification result for TODO {N}.
+If VERIFIED → mark completed.
+If FAILED → reconcile via Task(subagent_type="worker") with fix prompt (max 3 retries).
+After 3 retries → categorize (env_error/code_error/unknown) → halt or Fix Task.""",
+                 activeForm="TODO {N}: Verifying")
+  task_ids[N].verify = v.task_id
+
+  # 3. Context — saves outputs/learnings/issues/decisions
+  c = TaskCreate(subject="TODO {N}:Context",
+                 description="Save Worker output to context files for TODO {N}.",
+                 activeForm="TODO {N}: Saving context")
+  task_ids[N].context = c.task_id
+
+  # 4. Checkbox — marks Plan checkbox [x] and acceptance criteria
+  cb = TaskCreate(subject="TODO {N}:Checkbox",
+                  description="Mark TODO {N} checkbox and acceptance criteria in PLAN.md.",
+                  activeForm="TODO {N}: Updating plan")
+  task_ids[N].checkbox = cb.task_id
+
+  # 5. Commit — only if Commit Strategy table has a row for this TODO
+  IF commit_strategy_has_row(N):
+    cm = TaskCreate(subject="TODO {N}:Commit",
+                    description="""Commit TODO {N} changes.
+Dispatch: Task(subagent_type="git-master")
+Message: {Message from Commit Strategy table}
+Files: {Files from Commit Strategy table}
+Push: {YES if PR mode, NO if Local mode}""",
+                    activeForm="TODO {N}: Committing")
+    task_ids[N].commit = cm.task_id
+
+  # Intra-TODO chain: Worker → Verify → Context → Checkbox → Commit
+  TaskUpdate(taskId=w.task_id, addBlocks=[v.task_id])
+  TaskUpdate(taskId=v.task_id, addBlocks=[c.task_id])
+  TaskUpdate(taskId=c.task_id, addBlocks=[cb.task_id])
+  IF task_ids[N].commit:
+    TaskUpdate(taskId=cb.task_id, addBlocks=[cm.task_id])
+
+# --- Init → TODO dependency (PR only) ---
+IF pr_mode:
+  FOR EACH unchecked TODO N:
+    TaskUpdate(taskId=sb.task_id, addBlocks=[task_ids[N].worker])
+
+# --- Finalize Tasks ---
+# Collect the last sub-step of each unchecked TODO
+all_last_steps = [task_ids[N].commit ?? task_ids[N].checkbox for each unchecked TODO N]
+
+rc = TaskCreate(subject="Finalize:Residual Commit",
+                description="""Run `git status --porcelain`.
+If dirty: Task(subagent_type="git-master") with message "chore({plan-name}): miscellaneous changes".
+Push: {YES if PR mode, NO if Local mode}.
+If clean: skip.""",
+                activeForm="Residual commit check")
+
+IF pr_mode:
+  sc = TaskCreate(subject="Finalize:State Complete",
+                  description="""Complete PR state.
+Dispatch: Skill("state", args="complete <PR#>")
+Removes state:executing label, converts Draft → Ready, adds "Published" comment.""",
+                  activeForm="Completing PR state")
+
+rp = TaskCreate(subject="Finalize:Report",
+                description="Output final orchestration report",
+                activeForm="Generating report")
+
+# All TODO chains must finish before Finalize starts
+FOR EACH last_step in all_last_steps:
+  TaskUpdate(taskId=last_step, addBlocks=[rc.task_id])
+
+# Finalize chain: Residual Commit → State Complete (PR) → Report
+IF pr_mode:
+  TaskUpdate(taskId=rc.task_id, addBlocks=[sc.task_id])
+  TaskUpdate(taskId=sc.task_id, addBlocks=[rp.task_id])
+ELSE:
+  TaskUpdate(taskId=rc.task_id, addBlocks=[rp.task_id])
 ```
 
----
+### 1.3 Set Cross-TODO Dependencies
 
-1. **Parse Input and Determine Mode**
-   ```
-   Input is number or PR URL → PR mode
-   Input is string → Local mode
-   No input → Auto-detect
-   ```
+From Plan's Dependency Graph table, link the **last sub-step** of the producer to the **Worker** of the consumer:
 
-2. **[PR Mode Only] State Transition - Duplicate Execution Check**
+```
+FOR EACH row where row.Requires != "-" AND both TODOs unchecked:
+  producer_N = parse(row.Requires)  # e.g., "todo-1.config_path" → 1
+  consumer_N = row.TODO
 
-   ⚠️ **Must execute before reading Plan file!**
+  # Last sub-step of producer = Commit (if exists) or Checkbox
+  producer_last = task_ids[producer_N].commit ?? task_ids[producer_N].checkbox
+  consumer_first = task_ids[consumer_N].worker
 
-   ℹ️ **Skip this step for Local mode and proceed to step 3.**
+  TaskUpdate(taskId=producer_last, addBlocks=[consumer_first])
+```
 
-   ```
-   Skill("state", args="begin <PR#>")
-   ```
+Verify with `TaskList()`:
+```
+Expected (PR mode, TODO 1 independent, TODO 2 depends on TODO 1):
 
-   **If state begin fails:**
-   - ⛔ "Already executing" → **Stop immediately. Do not proceed to subsequent steps.**
-     Guide user: "PR #N is already in executing state. Previous execution may be in progress or interrupted."
-   - ⛔ "PR is blocked" → **Stop immediately. Do not proceed to subsequent steps.**
-     Guide user: "Please release blocked state first with `/state continue <PR#>`."
+#1  [pending] Init:State Begin
+#2  [pending] TODO 1:Worker — Config setup  [blocked by #1]
+#3  [pending] TODO 1:Verify         [blocked by #2]
+#4  [pending] TODO 1:Context        [blocked by #3]
+#5  [pending] TODO 1:Checkbox       [blocked by #4]
+#6  [pending] TODO 1:Commit         [blocked by #5]
+#7  [pending] TODO 2:Worker — API   [blocked by #6]
+#8  [pending] TODO 2:Verify         [blocked by #7]
+#9  [pending] TODO 2:Context        [blocked by #8]
+#10 [pending] TODO 2:Checkbox       [blocked by #9]
+#11 [pending] TODO 2:Commit         [blocked by #10]
+#12 [pending] TODO 3:Worker — Utils [blocked by #1]
+#13 [pending] TODO 3:Verify         [blocked by #12]
+#14 [pending] TODO 3:Context        [blocked by #13]
+#15 [pending] TODO 3:Checkbox       [blocked by #14]
+#16 [pending] Finalize:Residual Commit [blocked by #6, #11, #15]
+#17 [pending] Finalize:State Complete  [blocked by #16]
+#18 [pending] Finalize:Report          [blocked by #17]
 
-3. **Verify Plan File**
+→ Round 0: #1 (Init:State Begin)
+→ Round 1: #2 (TODO 1:Worker), #12 (TODO 3:Worker) — parallel!
+```
 
-   **Local mode:**
-   ```
-   .dev/specs/{name}/PLAN.md
-   ```
-   - If plan name is given as argument, use that file
-   - If not, use most recent plan file or ask user
-
-   **PR mode:**
-   ```bash
-   # Extract path from Spec Reference link in PR body
-   gh pr view <PR#> --json body -q '.body' | grep -oP '(?<=→ \[)[^\]]+'
-   ```
-
-4. **Plan → Task Conversion (Recreated Each Session)**
-
-   Convert only **unchecked** TODOs from Plan file to Tasks:
-
-   ```
-   task_id_map = {}  # TODO number → Task ID mapping
-
-   # Parse incomplete TODOs from Plan
-   unchecked_todos = parse_plan("### [ ] TODO N:")
-
-   FOR EACH "### [ ] TODO N: {title}" in unchecked_todos (in order):
-     result = TaskCreate(
-       subject="TODO {N}: {title}",
-       description="{Full content of TODO section}",
-       activeForm="Executing TODO {N}"
-     )
-     task_id_map[N] = result.task_id
-   ```
-
-   ⚠️ **Note**: Execute TaskCreate sequentially to ensure ID order.
-
-   **Dependency Setup:**
-
-   Interpret the Dependency Graph table from Plan and call TaskUpdate:
-
-   ```
-   FOR EACH row in Plan.DependencyGraph:
-     IF row.Requires != "-" AND both TODOs are unchecked:
-       producer_todo = parse(row.Requires)  # e.g., "todo-1.config_path" → 1
-       consumer_todo = row.TODO
-
-       # Convert to actual Task IDs using task_id_map
-       producer_task_id = task_id_map[producer_todo]
-       consumer_task_id = task_id_map[consumer_todo]
-
-       TaskUpdate(taskId=producer_task_id, addBlocks=[consumer_task_id])
-   ```
-
-   **Verify Initialization Complete:**
-
-   ```
-   TaskList()
-
-   Expected output:
-   #1 [pending] TODO 2: API implementation [blocked by #3]
-   #2 [pending] TODO 3: Utils
-   #3 [pending] TODO 4: Integration [blocked by #1, #2]
-   ```
-
-### STEP 2: Initialize or Resume Context
-
-**Check Context folder:**
+### 1.4 Init or Resume Context
 
 ```bash
 CONTEXT_DIR=".dev/specs/{name}/context"
 ```
 
-**Determine First Run vs Resume:**
-
-```
-if context folder doesn't exist:
-    → First run: Create folder + initialize files
-else:
-    → Resume: Keep existing files + load outputs.json
-```
-
-**First Run:**
-
+**First run** (no context folder):
 ```bash
 mkdir -p "$CONTEXT_DIR"
 ```
+Create: `outputs.json` (`{}`), `learnings.md`, `issues.md`, `decisions.md` (empty).
 
-| File | Initial Value |
-|------|---------------|
-| `outputs.json` | `{}` |
-| `learnings.md` | Empty file |
-| `issues.md` | Empty file |
-| `decisions.md` | Empty file |
+**Resume** (context folder exists):
+- Read `outputs.json` into memory (for variable substitution)
+- Keep other files as-is (append mode)
+- Progress determined from Plan checkboxes
 
-**Resume (context folder already exists):**
+---
 
-1. Read `outputs.json` and load into memory (for 3a variable substitution)
-2. Keep other files as-is (append mode)
-3. Determine progress from Plan checkbox
-
-> 📖 See **Context System Details** below for detailed file purposes
-
-### STEP 3: Task Execution Loop
-
-**⚠️ Core: Automatic Parallelization Based on TaskList**
+## STEP 2: Execute Loop (Type-Based Dispatch)
 
 ```
-WHILE TaskList() shows pending tasks:
-
-  1. Identify Runnable Tasks
-     runnable = TaskList().filter(
-       status == 'pending' AND
-       blockedBy == empty
-     )
-
-  2. Execute in Parallel (if multiple runnable, run simultaneously)
-     FOR EACH task in runnable (PARALLEL):
-       execute_task(task)
-
-  3. Next Loop
+WHILE TaskList() has pending tasks:
+  runnable = TaskList().filter(status=="pending" AND blockedBy==empty)
+  FOR EACH task in runnable (PARALLEL):
+    dispatch(task)  # route by sub-step type suffix
 ```
 
-**execute_task(task) Details:**
+**Dispatch by task subject suffix:**
 
-#### 3a. Prepare Inputs (Variable Substitution)
+| Suffix | Handler | Action |
+|--------|---------|--------|
+| `:State Begin` | 2α | `Skill("state", args="begin <PR#>")` → stop on failure |
+| `:Worker` | 2a | Variable substitution → Task(worker) |
+| `:Verify` | 2b | Check hook result → reconcile if FAILED |
+| `:Context` | 2c | Save outputs/learnings/issues/decisions |
+| `:Checkbox` | 2d | Mark Plan `[x]` + acceptance criteria |
+| `:Commit` | 2e | Task(git-master) per Commit Strategy |
+| `:Residual Commit` | 2f | `git status --porcelain` → git-master if dirty |
+| `:State Complete` | 2g | `Skill("state", args="complete <PR#>")` |
+| `:Report` | 2h | Final Report output |
 
-**Before** delegating Task to Worker, substitute `${...}` variables defined in Plan's `Inputs` field with actual values.
+After each sub-step completes: `TaskUpdate(taskId, status="completed")` → removed from TaskList → dependents unblocked.
 
-**Outputs Storage: `context/outputs.json`**
+---
 
-All TODO Outputs are stored in `context/outputs.json` file.
-
-```json
-// context/outputs.json
-{
-  "todo-1": { "config_path": "./config/app.json" },
-  "todo-2": { "api_module": "src/api/index.ts" }
-}
-```
-
-**Variable Substitution Example:**
-```
-# Plan's Inputs field:
-**Inputs**:
-- `config_path` (file): `${todo-1.outputs.config_path}`
-
-# After substitution, sent to Worker:
-**Inputs**:
-- `config_path` (file): `./config/app.json`
-```
-
-**Substitution Logic:**
-1. Read `context/outputs.json` file
-2. Find `${todo-N.outputs.field}` pattern in current TODO's `Inputs` section
-3. Extract value from JSON and replace
-4. Include substituted value in Worker prompt
-
-#### 3b. Delegate with Prompt Template
-
-**PLAN → Prompt Mapping Table:**
-
-| PLAN Field | Prompt Section | Mapping Method |
-|------------|----------------|----------------|
-| TODO title + Steps | `## TASK` | Quote directly |
-| Outputs + Acceptance Criteria | `## EXPECTED OUTCOME` | Combine into checklist |
-| Required Tools | `## REQUIRED TOOLS` | Quote directly |
-| Steps | `## MUST DO` | As checkbox items |
-| Must NOT do | `## MUST NOT DO` | Quote directly |
-| References | `## CONTEXT > References` | In file:line format |
-| Inputs (after substitution) | `## CONTEXT > Dependencies` | With actual values |
+### 2α. :State Begin — [PR Mode Only] Begin PR State
 
 ```
-# Query details with TaskGet
+Skill("state", args="begin <PR#>")
+```
+
+- **Success** → `TaskUpdate(taskId, status="completed")` → all TODO `:Worker` tasks become unblocked.
+- **"Already executing"** → **STOP immediately**. Guide: "PR #N already executing."
+- **"PR is blocked"** → **STOP immediately**. Guide: "Release with `/state continue <PR#>`."
+
+> Only created in PR mode. Local mode skips this task entirely.
+
+---
+
+### 2a. :Worker — Delegate Implementation
+
+**1. Variable Substitution** — replace `${todo-N.outputs.field}` in TODO's Inputs with values from `context/outputs.json`:
+
+```
+# outputs.json: {"todo-1": {"config_path": "./config/app.json"}}
+# Plan Inputs:  config_path: ${todo-1.outputs.config_path}
+# Result:       config_path: ./config/app.json
+```
+
+> Full substitution details → REFERENCE A
+
+**2. Build prompt and delegate:**
+
+```
 task_details = TaskGet(taskId={task.id})
 
 Task(
@@ -402,7 +305,7 @@ Task(
   description="Implement: {task.subject}",
   prompt="""
 ## TASK
-{TODO title + Steps section from task_details.description}
+{TODO title + Steps from task_details.description}
 
 ## EXPECTED OUTCOME
 When this task is DONE, the following MUST be true:
@@ -435,10 +338,10 @@ When this task is DONE, the following MUST be true:
 {References section from Plan}
 
 ### Dependencies (from Inputs - substituted values)
-{Actual values from 3a substitution}
+{Actual values after substitution}
 
 ### Inherited Wisdom
-⚠️ SubAgent does not remember previous calls.
+SubAgent does not remember previous calls.
 
 **Conventions (from learnings.md):**
 {learnings.md content}
@@ -452,34 +355,39 @@ When this task is DONE, the following MUST be true:
 )
 ```
 
-#### 3c. Collect Worker Output + Hook Verification
+**PLAN field → Prompt section mapping:**
 
-Check both Worker's returned JSON and **Hook's verification result**.
+| PLAN Field | Prompt Section |
+|------------|----------------|
+| TODO title + Steps | `## TASK` |
+| Outputs + Acceptance Criteria | `## EXPECTED OUTCOME` |
+| Required Tools | `## REQUIRED TOOLS` |
+| Steps | `## MUST DO` |
+| Must NOT do | `## MUST NOT DO` |
+| References | `## CONTEXT > References` |
+| Inputs (after substitution) | `## CONTEXT > Dependencies` |
 
-**1. After Task(worker) call:**
+**3. On completion:** `TaskUpdate(taskId, status="completed")` → `:Verify` becomes runnable.
 
-PostToolUse hook (`dev-worker-verify.sh`) automatically:
-- Parses JSON from Worker output
-- Re-runs each `command` in `acceptance_criteria`
-- Outputs verification result
+---
 
-**2. Check Hook Output:**
+### 2b. :Verify — Check Hook Result & Reconcile
 
-Task() result includes Hook output:
+PostToolUse hook (`dev-worker-verify.sh`) automatically re-runs acceptance criteria commands after the `:Worker` Task.
+
+**1. Check hook output** in the preceding Task(worker) result:
 
 ```
 === VERIFICATION RESULT ===
 status: VERIFIED          # or FAILED
 pass: 4
 fail: 1
-skip: 0
 failed_items:
   - tsc_check:static:tsc --noEmit src/auth.ts
 ===========================
 ```
 
-**3. Worker JSON Structure (new format):**
-
+**Worker JSON structure** (parsed from Task result):
 ```json
 {
   "outputs": {"config_path": "./config.json"},
@@ -506,325 +414,179 @@ failed_items:
 }
 ```
 
-#### 3d. RECONCILE (Based on Hook Result)
+**2. Route by status:**
 
-**⚠️ Hook has already completed verification. Orchestrator only checks the result.**
+- **VERIFIED** → `TaskUpdate(taskId, status="completed")` → `:Context` becomes runnable.
+- **FAILED** → Reconciliation loop (below).
 
-Check `status` from Hook output:
-
-```
-if Hook status == "VERIFIED":
-    → Proceed to 3e (Save to Context)
-else:
-    → Reconciliation (retry)
-```
-
----
-
-**Reconciliation Loop (max 3 times):**
+**3. Reconciliation (max 3 retries):**
 
 ```
 retry_count = 0
-
 RECONCILE_LOOP:
-  Check Hook result
-
-  if status == "VERIFIED":
-      → Proceed to 3e (Save to Context)
+  if hook status == "VERIFIED" → mark completed, done
+  retry_count++
+  if retry_count < 3:
+    Task(worker, "Fix: {failed_items details}")
+    → re-enter RECONCILE_LOOP (hook verifies again)
   else:
-      retry_count++
-      if retry_count < 3:
-          # Pass failed item info to Worker
-          Task(worker, "Fix: {failed_items}")
-          → Re-enter RECONCILE_LOOP (Hook verifies again)
-      else:
-          → RECONCILE failure handling (below)
+    → failure handling (below)
 ```
 
-**Flowchart (K8s Reconciliation Pattern):**
-```
-┌─────────────────────────────────────────────────────────┐
-│ Desired State: All acceptance_criteria PASS/SKIP        │
-└─────────────────────────────────────────────────────────┘
-                          │
-3b. Delegate ─────────────┼───────────────────────────────
-        │                 │
-        ▼                 ▼ compare
-┌─────────────────────────────────────────────────────────┐
-│ Current State: Hook verification result (VERIFIED/FAILED)│
-└─────────────────────────────────────────────────────────┘
-        │
-        ├─── [VERIFIED] ──→ 3e. Save to Context
-        │
-        └─── [FAILED, retry < 3] ──→ Task(worker, "Fix...")
-                                          │
-                                          └──→ (Loop)
-
-             [FAILED, retry >= 3] ──→ RECONCILE failure handling
-```
-
----
-
-**RECONCILE Failure Handling (after 3 retries):**
-
-After max retries exceeded, analyze the failure and route by category:
-
-```
-Analyze failure:
-├─ env_error → halt + log to issues.md
-├─ code_error → Create Fix Task (depth=1)
-└─ unknown → halt + log to issues.md
-```
-
-#### Failure Categories
+**After 3 retries, categorize failure:**
 
 | Category | Examples | Action |
 |----------|----------|--------|
-| `env_error` | Permission denied, API key missing, network timeout | Halt + issues.md |
-| `code_error` | Type error, lint failure, test failure | Create Fix Task |
-| `unknown` | Unclassifiable | Halt + issues.md |
+| `env_error` | Permission denied, API key missing, network timeout | Halt + log to `issues.md` |
+| `code_error` | Type error, lint failure, test failure | Create Fix Task (depth=1, no nesting) |
+| `unknown` | Unclassifiable | Halt + log to `issues.md` |
 
-#### Fix Task Rules
+**Fix Task** inherits context from failed task. If Fix Task fails → halt.
 
-- Fix Task inherits context from failed task
-- Fix Task type = `work` (can modify files)
-- Fix Task failure → Halt (no nested Fix Tasks)
-- After Fix Task completes → Original task's dependents become runnable
+**Mode-specific halt behavior:**
+- **Local**: Record in `issues.md`, report to user, offer Continue/Stop. Plan checkbox stays `[ ]`.
+- **PR**: `Skill("state", args="pause <PR#> <reason>")` → `state:executing` → `state:blocked` transition, records "Blocked" comment → stop execution.
 
-#### issues.md Log Format
-
-When halting due to `env_error` or `unknown`, log to `issues.md`:
-
-```markdown
-## [YYYY-MM-DD HH:MM] {TODO name} Failed
-
-**Category**: env_error | unknown
-**Error**: {error message}
-**Retry Count**: {n}
-**Analysis**: {why this requires human intervention}
-**Suggestion**: {recommended manual action}
-```
+> Full reconciliation details → REFERENCE C
 
 ---
 
-**Mode-Specific Handling:**
+### 2c. :Context — Save to Context Files
 
-**Local Mode:**
-- Record in `issues.md` as unresolved item (`- [ ] problem content`)
-- Report to user: "TODO N verification failed. Manual intervention required."
-- **Offer choice**: Continue / Stop
-- Plan checkbox remains `[ ]` (not complete)
+Save Worker JSON fields to context files. Only runs after `:Verify` passes.
 
-**PR Mode (auto pause):**
-- **Call `Skill("state", args="pause <PR#> <reason>")`**
-  - `state:executing` → `state:blocked` transition
-  - Record "Blocked" Comment
-- Stop execution, wait for user intervention
+| Worker JSON Field | File | Format |
+|-------------------|------|--------|
+| `outputs` | `outputs.json` | `existing["todo-N"] = outputs` → Write |
+| `learnings` | `learnings.md` | `## TODO N\n- item` append |
+| `issues` | `issues.md` | `## TODO N\n- [ ] item` append |
+| `decisions` | `decisions.md` | `## TODO N\n- item` append |
+| `acceptance_criteria` | (not saved) | Used only for verification, not saved to context |
 
-#### 3e. Save to Context (Only When VERIFY Passes)
+Skip empty arrays.
 
-Save Worker JSON to context files only when VERIFY passes.
+**⚠️ `outputs.json` race condition**: When multiple `:Context` tasks run in parallel, save `outputs.json` **sequentially** (Read → merge → Write one at a time). Other context files are safe for parallel append.
 
-**Save Rules:**
-
-| Field | File | Format |
-|-------|------|--------|
-| `outputs` | `outputs.json` | `existing["todo-N"] = outputs` then Write |
-| `learnings` | `learnings.md` | `## TODO N\n- item1\n- item2` append |
-| `issues` | `issues.md` | `## TODO N\n- [ ] item1` append (unresolved) |
-| `decisions` | `decisions.md` | `## TODO N\n- item1` append |
-| `acceptance_criteria` | (not saved) | Used only for Orchestrator verification, not saved to context |
-
-**Notes:**
-- Use current TODO number (N) being processed
-- Skip fields with empty arrays (`[]`) (don't add header only)
-- **For parallel execution, save outputs.json sequentially** (no concurrent writes)
-
-**Context Save Order for Parallel Execution:**
 ```
-# After parallel TODO 1, 3 execution completes
+# Parallel TODO 1:Context and TODO 3:Context both runnable:
 
-# 1. Wait for all parallel Tasks to complete
-results = await Promise.all([task1, task3])
+# outputs.json — SEQUENTIAL:
+current = Read("outputs.json")
+current["todo-1"] = result1.outputs
+Write("outputs.json", current)
 
-# 2. Save outputs.json sequentially (prevent race condition)
-FOR EACH result in results (sequential):
-  current = Read("outputs.json")
-  current[f"todo-{result.todo_number}"] = result.outputs
-  Write("outputs.json", current)
+current = Read("outputs.json")
+current["todo-3"] = result3.outputs
+Write("outputs.json", current)
 
-# 3. Other context files can be parallel (append mode)
-FOR EACH result in results (can be parallel):
-  Append("learnings.md", result.learnings)
-  Append("issues.md", result.issues)
+# learnings.md, issues.md — PARALLEL OK (append mode)
 ```
 
-**Save Example:**
-
-→ `outputs.json`:
-```json
-{"todo-1": {"config_path": "./config.json"}}
-```
-
-→ `learnings.md`:
-```markdown
-## TODO 1
-- Uses ESM
-```
-
-#### 3f. Update Plan Checkbox & Task Status
-
-1. **Change Task status to completed**
-   ```
-   TaskUpdate(taskId={task.id}, status="completed")
-   ```
-   → Task is removed from TaskList()
-
-2. **Update Plan file's TODO checkbox**
-   ```
-   Edit(plan_path, "### [ ] TODO N: Task title", "### [x] TODO N: Task title")
-   ```
-
-3. **Update Acceptance Criteria checkboxes**
-   Check Acceptance Criteria that passed verification (3d):
-   ```
-   # For each Acceptance Criteria within that TODO section
-   Edit(plan_path, "  - [ ] verified condition", "  - [x] verified condition")
-   ```
-
-   **⚠️ Caution**:
-   - Only check items you directly verified
-   - Do not check based on SubAgent report alone
-   - Items that failed verification remain `- [ ]`
-
-#### 3g. Per-TODO Commit (Check Commit Strategy)
-
-**After each TODO completes (3f done), check if commit is needed:**
-
-1. **Parse Commit Strategy table from PLAN.md**
-   ```
-   ## Commit Strategy
-
-   | After TODO | Message | Files | Condition |
-   |------------|---------|-------|-----------|
-   | 1 | `feat(web): initialize project` | `web/*` | always |
-   | 2 | `feat(web): add component` | `web/src/*` | always |
-   ```
-
-2. **Find matching row for current TODO number**
-   - If row exists with `Condition: always` → commit needed
-   - If row exists with `Condition: {condition}` → evaluate condition
-   - If no row for this TODO → skip commit
-
-3. **If commit needed, delegate to git-master:**
-   ```
-   Task(
-     subagent_type="git-master",
-     description="Commit TODO {N}",
-     prompt="""
-   Commit TODO {N} changes.
-
-   Commit message: {Message from Commit Strategy table}
-   Files: {Files from Commit Strategy table}
-   Push after commit: {YES if PR mode, NO if Local mode}
-   """
-   )
-   ```
-
-4. **Wait for git-master to complete before next TODO**
-   - Commit must succeed before proceeding
-   - If commit fails, log to issues.md and report to user
-
-**Push Decision:**
-| Mode | Push after commit |
-|------|-------------------|
-| PR mode | YES (keep remote in sync) |
-| Local mode | NO |
+On completion: `TaskUpdate(taskId, status="completed")` → `:Checkbox` becomes runnable.
 
 ---
 
-#### 3h. Next Iteration
+### 2d. :Checkbox — Mark Plan Complete
+
+**1. Update Plan TODO checkbox:**
+```
+Edit(plan_path, "### [ ] TODO N: ...", "### [x] TODO N: ...")
+```
+
+**2. Update Acceptance Criteria checkboxes** based on `:Verify` results:
+
+The `:Verify` step produces `acceptance_criteria` with per-item `status` (PASS/FAIL). Use this to check individual items:
 
 ```
-Check pending Tasks with TaskList()
-→ If pending Tasks exist, continue loop
-→ If none, proceed to STEP 4
+FOR EACH criterion in verify_result.acceptance_criteria:
+  IF criterion.status == "PASS":
+    Edit(plan_path,
+         "- [ ] {criterion.description}",
+         "- [x] {criterion.description}")
 ```
+
+**⚠️ Caution:**
+- Only check items whose `status` is `PASS` from the `:Verify` result
+- Do not check based on SubAgent report alone — use hook verification result
+- Items with `status: FAIL` remain `- [ ]`
+- Do NOT check Steps items (`- [ ]` under `**Steps**:`) — only Acceptance Criteria
+
+On completion: `TaskUpdate(taskId, status="completed")` → `:Commit` becomes runnable (if exists), or next TODO's `:Worker` is unblocked.
 
 ---
 
-### STEP 4: Final Git Verification
+### 2e. :Commit — Per-TODO Commit via git-master
 
-**After all TODOs complete**, check for any uncommitted changes not covered by per-TODO commits:
+Find matching row in Plan's `## Commit Strategy` table:
+- `Condition: always` → commit
+- `Condition: {cond}` → evaluate condition
+- No row → this sub-step should not have been created (see 1.3)
+
+```
+Task(
+  subagent_type="git-master",
+  description="Commit TODO {N}",
+  prompt="""
+Commit TODO {N} changes.
+Commit message: {Message from Commit Strategy table}
+Files: {Files from Commit Strategy table}
+Push after commit: {YES if PR mode, NO if Local mode}
+"""
+)
+```
+
+If commit fails, log to `issues.md` and report to user.
+
+On completion: `TaskUpdate(taskId, status="completed")` → next TODO's `:Worker` is unblocked (if cross-TODO dependency exists).
+
+---
+
+### 2f. :Residual Commit — Check & Commit Remaining Changes
 
 ```bash
-# Check for uncommitted changes
 git status --porcelain
 ```
 
-**If changes exist** (output not empty):
-
-These are files modified during execution but not covered by Commit Strategy table.
-Delegate to git-master for cleanup commit:
-
+If changes exist (context files, unexpected modifications):
 ```
 Task(
   subagent_type="git-master",
   description="Commit: residual changes",
   prompt="""
-Plan execution complete. Check for any uncommitted changes.
-
-Run `git status` first.
-
-If changes exist:
-- Commit with message: "chore({plan-name}): miscellaneous changes"
-- Push after commit: {YES if PR mode, NO if Local mode}
-
-If no changes (working tree clean):
-- Report "No uncommitted changes" and exit
+Plan execution complete. Run `git status`.
+If changes: commit "chore({plan-name}): miscellaneous changes"
+Push: {YES if PR mode, NO if Local mode}
+If clean: report "No uncommitted changes" and exit.
 """
 )
 ```
 
-**If no changes** (output empty):
-- Skip git-master call
-- Proceed directly to STEP 5
-
-**Notes:**
-- Most commits should happen in 3g (per-TODO commit)
-- STEP 4 is only for edge cases (context files, unexpected changes)
-- If commit fails, report to user and request manual commit
+On completion: `TaskUpdate(taskId, status="completed")` → `:State Complete` (PR) or `:Report` becomes runnable.
 
 ---
 
-### STEP 5: Final Report
-
-When all TODOs complete:
-
-**PR Mode Additional Work:**
-
-Before outputting Final Report, finalize PR state:
+### 2g. :State Complete — [PR Mode Only] Complete PR State
 
 ```
 Skill("state", args="complete <PR#>")
 ```
+Removes `state:executing` label, converts Draft → Ready, adds "Published" comment.
 
-This will:
-- Remove `state:executing` label
-- Convert Draft → Ready (`gh pr ready`)
-- Add "Published" comment to PR
+On completion: `TaskUpdate(taskId, status="completed")` → `:Report` becomes runnable.
 
-**Output Final Report:**
+---
+
+### 2h. :Report — Final Orchestration Report
 
 ```
 ═══════════════════════════════════════════════════════════
                     ORCHESTRATION COMPLETE
 ═══════════════════════════════════════════════════════════
 
-📋 PLAN: .dev/specs/{name}/PLAN.md
-🔗 MODE: Local | PR #123
+PLAN: .dev/specs/{name}/PLAN.md
+MODE: Local | PR #123
 
-📊 TASK SUMMARY:
+TASK SUMMARY:
    Total TODOs:               8
    Completed:                 8
    Failed:                    0
@@ -832,20 +594,17 @@ This will:
    Acceptance Criteria:      24
    Verified & Checked:       24
 
-📁 FILES MODIFIED:
+FILES MODIFIED:
    - src/auth/token.ts
    - src/auth/token.test.ts
-   - src/utils/crypto.ts
 
-📚 LEARNINGS ACCUMULATED:
+LEARNINGS ACCUMULATED:
    - This project uses ESM only
-   - Test files use .test.ts extension
-   - crypto module uses Node.js built-in
 
-⚠️  ISSUES DISCOVERED:
+ISSUES DISCOVERED:
    - Issues found in existing code (not fixed, out of scope)
 
-✅ ACCEPTANCE CRITERIA:
+ACCEPTANCE CRITERIA:
    - Functional: PASS (all TODOs)
    - Static: PASS (all TODOs)
    - Runtime: PASS (all TODOs)
@@ -853,159 +612,251 @@ This will:
 ═══════════════════════════════════════════════════════════
 ```
 
+On completion: `TaskUpdate(taskId, status="completed")` → all tasks done, execution ends.
 
 ---
 
-## Context System Details
+## STEP 3: Finalize
 
-### File Purposes
-
-| File | Writer | Purpose | Example |
-|------|--------|---------|---------|
-| **outputs.json** | Worker → Orchestrator saves | TODO's Output values (Input for next TODO) | `{"todo-1": {"config_path": "./config.json"}}` |
-| learnings.md | Worker → Orchestrator saves | Patterns discovered and **applied** | `- This project uses ESM` |
-| issues.md | Worker → Orchestrator saves | **Unresolved** issues (always save as `- [ ]`) | `- [ ] Incomplete type definitions` |
-| decisions.md | Worker → Orchestrator saves | Decisions and reasons | `- Selected Session instead of JWT` |
-
-### Context Lifecycle
-
-```
-Before delegating TODO #1 → Read Context (including outputs.json) → Inject into prompt
-After TODO #1 completes → Save Output to outputs.json + Save learnings to learnings/issues
-
-Before delegating TODO #2 → Read outputs.json → Substitute ${todo-1.outputs.X}
-After TODO #2 completes → Update outputs.json + Append learnings to Context
-
-... (accumulates, preserved in files even if session disconnects)
-```
+Finalize tasks (Residual Commit, State Complete, Report) are dispatched in the execution loop as `:Residual Commit`, `:State Complete`, `:Report` handlers (2f, 2g, 2h).
 
 ---
 
-## Parallelization (Task-Based)
+## REFERENCE
 
-### Automatic Parallelization
+### A. Variable Substitution Details
 
-Task system manages dependencies automatically:
+All TODO outputs are stored in `context/outputs.json`:
 
-```
-TaskList() result:
-#1 [pending] TODO 1: Config setup
-#2 [pending] TODO 2: API implementation [blocked by #1]
-#3 [pending] TODO 3: Utils
-#4 [pending] TODO 4: Integration [blocked by #2, #3]
-```
-
-**Execution Order (auto-determined):**
-
-```
-Round 1 (parallel):
-  #1 TODO 1, #3 TODO 3  (no blockedBy)
-
-Round 2 (parallel):
-  #2 TODO 2  (unblocked after #1 completes)
-
-Round 3:
-  #4 TODO 4  (unblocked after #2, #3 complete)
+```json
+{
+  "todo-1": { "config_path": "./config/app.json" },
+  "todo-2": { "api_module": "src/api/index.ts" }
+}
 ```
 
-### Parallel Execution Example
+Substitution logic:
+1. Read `context/outputs.json`
+2. Find `${todo-N.outputs.field}` pattern in current TODO's Inputs
+3. Extract value from JSON and replace
+4. Include substituted value in Worker prompt
 
+### B. Context System
+
+| File | Writer | Purpose |
+|------|--------|---------|
+| `outputs.json` | Worker → Orchestrator saves | TODO output values (input for next TODO) |
+| `learnings.md` | Worker → Orchestrator saves | Patterns discovered and applied |
+| `issues.md` | Worker → Orchestrator saves | Unresolved issues (`- [ ]` format) |
+| `decisions.md` | Worker → Orchestrator saves | Decisions and reasons |
+
+**Context Lifecycle:**
 ```
-# Round 1: Call two Tasks simultaneously
-Task(subagent_type="worker", prompt="TODO 1...")
-Task(subagent_type="worker", prompt="TODO 3...")
-
-# Update status after both Tasks complete
-TaskUpdate(taskId="1", status="completed")  # Removed from TaskList
-TaskUpdate(taskId="3", status="completed")  # Removed from TaskList
-Edit(plan, "### [ ] TODO 1:", "### [x] TODO 1:")
-Edit(plan, "### [ ] TODO 3:", "### [x] TODO 3:")
-
-# Check TaskList → Only TODO 2, 4 remain
-# TODO 2 has no blockedBy (TODO 1 completed)
-# TODO 4 has blockedBy #2 (TODO 3 completed, TODO 2 pending)
-
-# Round 2
-Task(subagent_type="worker", prompt="TODO 2...")
-# ...
-```
-
----
-
-## Session Recovery
-
-### Session Resume = Same as New Session Start
-
-Since **Plan checkbox is the only state**, session resume is simple:
-
-```
-# Check Plan file state
-### [x] TODO 1: Config setup       ← Complete (don't create Task)
-### [ ] TODO 2: API implementation ← Incomplete (create Task)
-### [x] TODO 3: Utils              ← Complete (don't create Task)
-### [ ] TODO 4: Integration        ← Incomplete (create Task)
+Before TODO #1 → Read context → inject into prompt
+After TODO #1  → Save outputs + learnings
+Before TODO #2 → Read outputs.json → substitute ${todo-1.outputs.X}
+After TODO #2  → Update outputs.json + append learnings
+(Accumulates. Preserved in files across sessions.)
 ```
 
-### Resume Logic (Plan-Based)
+### C. Reconciliation Details
 
+**K8s-style reconciliation pattern:**
 ```
-# 1. Parse Plan checkbox state
-unchecked_todos = parse_plan("### [ ] TODO N:")  # [2, 4]
+Desired State: All acceptance_criteria PASS/SKIP
+Current State: Hook verification result
 
-# 2. TaskCreate only for unchecked TODOs
-FOR EACH todo_num in unchecked_todos:
-    TaskCreate(subject=f"TODO {todo_num}: ...", ...)
-
-# 3. Set dependencies (only between unchecked)
-setup_dependencies_from_plan()
-
-# 4. Start execution
-runnable = TaskList().filter(pending AND not blocked)
-execute_parallel(runnable)
+[VERIFIED] → Save context (2d)
+[FAILED, retry < 3] → Task(worker, "Fix...") → re-verify
+[FAILED, retry >= 3] → Categorize → Fix Task or Halt
 ```
 
-**Why session resume is simple:**
-- No need to worry about Task system state (always recreated)
+**Fix Task rules:**
+- Inherits context from failed task
+- Type = `work` (can modify files)
+- Fix Task failure → Halt (no nested Fix Tasks)
+- After Fix Task → original task's dependents become runnable
+
+**issues.md log format (on halt):**
+```markdown
+## [YYYY-MM-DD HH:MM] {TODO name} Failed
+
+**Category**: env_error | unknown
+**Error**: {error message}
+**Retry Count**: {n}
+**Analysis**: {why human intervention needed}
+**Suggestion**: {recommended action}
+```
+
+### D. Commit Strategy Details
+
+**Per-TODO commit flow:**
+1. Parse Commit Strategy table from PLAN.md
+2. Find matching row for current TODO number
+3. `Condition: always` → commit; `Condition: {cond}` → evaluate; No row → skip
+4. Delegate to `git-master` agent
+5. Wait for completion before next TODO
+
+**Push decision:**
+| Mode | Push after commit |
+|------|-------------------|
+| PR mode | YES |
+| Local mode | NO |
+
+### E. Parallelization Examples (Sub-Step Model)
+
+**Setup**: PR mode. TODO 1 (independent), TODO 2 (depends on TODO 1), TODO 3 (independent).
+TODO 1 and TODO 3 have commits; TODO 2 does not.
+
+```
+TaskList() after initialization:
+
+#1  [pending] Init:State Begin
+#2  [pending] TODO 1:Worker — Config setup  [blocked by #1]
+#3  [pending] TODO 1:Verify          [blocked by #2]
+#4  [pending] TODO 1:Context         [blocked by #3]
+#5  [pending] TODO 1:Checkbox        [blocked by #4]
+#6  [pending] TODO 1:Commit          [blocked by #5]
+#7  [pending] TODO 2:Worker — API    [blocked by #6]   ← cross-TODO dep
+#8  [pending] TODO 2:Verify          [blocked by #7]
+#9  [pending] TODO 2:Context         [blocked by #8]
+#10 [pending] TODO 2:Checkbox        [blocked by #9]
+#11 [pending] TODO 3:Worker — Utils  [blocked by #1]
+#12 [pending] TODO 3:Verify          [blocked by #11]
+#13 [pending] TODO 3:Context         [blocked by #12]
+#14 [pending] TODO 3:Checkbox        [blocked by #13]
+#15 [pending] TODO 3:Commit          [blocked by #14]
+#16 [pending] Finalize:Residual Commit [blocked by #6, #10, #15]
+#17 [pending] Finalize:State Complete  [blocked by #16]
+#18 [pending] Finalize:Report          [blocked by #17]
+```
+
+**Execution Rounds (auto-determined by TaskList):**
+
+```
+Round 0:  #1 Init:State Begin                      ← PR only
+Round 1:  #2 TODO 1:Worker, #11 TODO 3:Worker     ← PARALLEL
+Round 2:  #3 TODO 1:Verify, #12 TODO 3:Verify     ← PARALLEL
+Round 3:  #4 TODO 1:Context, #13 TODO 3:Context   ← PARALLEL (outputs.json sequential!)
+Round 4:  #5 TODO 1:Checkbox, #14 TODO 3:Checkbox ← PARALLEL
+Round 5:  #6 TODO 1:Commit, #15 TODO 3:Commit     ← PARALLEL
+Round 6:  #7 TODO 2:Worker                         ← unblocked after #6
+Round 7:  #8 TODO 2:Verify
+Round 8:  #9 TODO 2:Context
+Round 9:  #10 TODO 2:Checkbox
+Round 10: #16 Finalize:Residual Commit             ← blocked by all TODO last steps
+Round 11: #17 Finalize:State Complete              ← blocked by #16
+Round 12: #18 Finalize:Report                      ← blocked by #17
+```
+
+### F. Session Recovery
+
+Plan checkbox is the only durable state, so recovery = fresh start:
+
+```
+### [x] TODO 1: Config setup       ← skip (complete)
+### [ ] TODO 2: API implementation ← create sub-step Tasks
+### [x] TODO 3: Utils              ← skip (complete)
+### [ ] TODO 4: Integration        ← create sub-step Tasks
+```
+
+1. Parse checkboxes → only unchecked TODOs
+2. Create sub-step Tasks for each unchecked TODO (Worker, Verify, Context, Checkbox, Commit)
+3. Set intra-TODO chains + cross-TODO dependencies (only between unchecked)
+4. Load `outputs.json` (variable substitution works if prior outputs saved)
+5. Resume execution loop — dispatch picks up from where it left off
+
+**Why recovery is simple:**
+- No need to worry about Task system state (always recreated from scratch)
 - Can see progress from Plan checkbox alone
-- Variable substitution works normally if outputs.json exists
+- Variable substitution works normally if `outputs.json` exists
+- Sub-step Tasks are ephemeral — recreated each session
 
----
+### G. State & Task System
 
-## Checklist Before Stopping
+**Plan checkbox = only source of truth.** Task system = sub-step parallelization helper (recreated each session).
 
-**⚠️ Check in Workflow order:**
+**Task types**: Init (1, PR only) + per-TODO sub-steps (up to 5 each) + Finalize (2-3):
 
-**1. Start Phase (PR Mode Only):**
-- [ ] Called `Skill("state", args="begin <PR#>")`? (Stopped immediately on failure?)
+| Sub-Step | Subject Pattern | Purpose |
+|----------|----------------|---------|
+| `:State Begin` | `Init:State Begin` | [PR only] Begin PR state |
+| `:Worker` | `TODO N:Worker — {title}` | Delegate implementation to worker agent |
+| `:Verify` | `TODO N:Verify` | Check hook result, reconcile if FAILED |
+| `:Context` | `TODO N:Context` | Save outputs/learnings/issues/decisions |
+| `:Checkbox` | `TODO N:Checkbox` | Mark Plan `[x]` and acceptance criteria |
+| `:Commit` | `TODO N:Commit` | Commit via git-master (only if Commit Strategy row exists) |
+| `:Residual Commit` | `Finalize:Residual Commit` | Check & commit remaining changes |
+| `:State Complete` | `Finalize:State Complete` | [PR only] Complete PR state |
+| `:Report` | `Finalize:Report` | Output final orchestration report |
+
+**Task tools:**
+
+| Tool | Role | When |
+|------|------|------|
+| TaskCreate | TODO → sub-step Tasks | Session start |
+| TaskUpdate | Dependency (addBlocks) / completion | After create / after each sub-step |
+| TaskList | Find runnable sub-steps | Every loop iteration |
+| TaskGet | Query details | Before worker prompt |
+
+**Dependency types:**
+
+```
+# Init (PR only):
+Init:State Begin → all TODO Workers
+
+# Intra-TODO chain (always):
+Worker → Verify → Context → Checkbox → Commit
+
+# Cross-TODO (from Dependency Graph):
+TODO 1:Commit (or :Checkbox) → TODO 2:Worker
+
+# Finalize chain:
+all TODO last steps → Residual Commit → State Complete (PR) → Report
+```
+
+Usage: `TaskUpdate(status="completed")` — yes. `TaskUpdate(status="in_progress")` — not used.
+
+### H. Mode Differences (PR vs Local)
+
+| Item | Local Mode | PR Mode |
+|------|-----------|---------|
+| Spec location | `.dev/specs/{name}/PLAN.md` | Parse from PR body |
+| State management | Plan checkbox only | Plan checkbox + `/state` skill |
+| History | Context files | Context + PR Comments |
+| Block handling | Record in context, report to user | `Skill("state", args="pause")` |
+| After completion | Per-TODO commits → Report | Commits + push → `/state complete` |
+
+### I. Checklist Before Stopping
+
+**1. Init Tasks (PR Mode Only):**
+- [ ] `Init:State Begin` task created and completed?
+- [ ] Stopped immediately on failure?
 
 **2. Task Initialization:**
-- [ ] Identified unchecked TODOs from Plan checkbox state?
-- [ ] TaskCreate only for unchecked TODOs?
-- [ ] Set dependencies with TaskUpdate(addBlocks)?
+- [ ] Identified unchecked TODOs from Plan?
+- [ ] Created sub-step Tasks (Worker, Verify, Context, Checkbox, Commit) for each unchecked TODO?
+- [ ] Intra-TODO chains set (Worker→Verify→Context→Checkbox→Commit)?
+- [ ] Cross-TODO dependencies set from Dependency Graph?
 
 **3. Execution Phase:**
 - [ ] No pending Tasks in TaskList?
-- [ ] Called `TaskUpdate(status="completed")` on each Task completion?
-- [ ] All TODOs checked as `### [x] TODO N:`?
-- [ ] All TODO Acceptance Criteria checked as `- [x]` after verification?
-- [ ] Performed direct verification after each Task completion?
-- [ ] Recorded learnings in Context?
-- [ ] **Per-TODO Commit**: Checked Commit Strategy after each TODO?
-- [ ] **Per-TODO Commit**: Called git-master for TODOs with commit specified?
-- [ ] **Per-TODO Commit**: Pushed after each commit (PR mode only)?
+- [ ] TaskUpdate(status="completed") on each sub-step?
+- [ ] All `:Worker` tasks delegated to worker agent?
+- [ ] All `:Verify` tasks checked hook result + reconciled if needed?
+- [ ] All `:Context` tasks saved outputs/learnings/issues/decisions?
+- [ ] All `:Checkbox` tasks marked Plan `[x]` + acceptance criteria?
+- [ ] All `:Commit` tasks delegated to git-master?
+- [ ] Pushed after each commit (PR mode)?
 
-**4. Completion Phase:**
-- [ ] Checked for residual uncommitted changes (`git status`)?
-- [ ] Called git-master for residual changes (if any)?
-- [ ] Output Final Report?
+**4. Finalize Tasks:**
+- [ ] `Finalize:Residual Commit` task completed?
+- [ ] `Finalize:State Complete` task completed? (PR mode only)
+- [ ] `Finalize:Report` task completed?
+- [ ] All Finalize tasks dispatched through execution loop?
 
-**5. PR Mode Completion (PR Mode Only):**
-- [ ] Called `Skill("state", args="complete <PR#>")`?
-- [ ] PR converted to Ready (`isDraft: false`)?
-- [ ] `state:executing` label removed?
+**Exception Handling:**
+- [ ] `Skill("state", args="pause <PR#> <reason>")` on block? (PR)
+- [ ] `issues.md` updated on block? (Local)
 
-**Exception Handling (if applicable):**
-- [ ] Called `Skill("state", args="pause <PR#> <reason>")` when blocked? (PR mode)
-- [ ] Recorded in `issues.md` as unresolved item when blocked? (Local mode)
-
-**Continue working if any item is incomplete.**
+**Continue working if any item incomplete.**

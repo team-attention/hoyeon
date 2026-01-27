@@ -7,7 +7,6 @@ allowed-tools:
   - Bash
   - Read
   - Glob
-context: fork
 ---
 
 # state - PR State Management

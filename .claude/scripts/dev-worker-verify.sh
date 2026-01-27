@@ -97,14 +97,14 @@ for i in $(seq 0 $((AC_COUNT - 1))); do
   # Skip if no command
   if [[ -z "$COMMAND" ]] || [[ "$COMMAND" == "null" ]]; then
     echo "  [$CATEGORY] $ID: SKIP (no command)" >&2
-    ((SKIP_COUNT++))
+    (( ++SKIP_COUNT ))
     continue
   fi
 
   # Skip if worker reported SKIP
   if [[ "$WORKER_STATUS" == "SKIP" ]]; then
     echo "  [$CATEGORY] $ID: SKIP (worker reported)" >&2
-    ((SKIP_COUNT++))
+    (( ++SKIP_COUNT ))
     continue
   fi
 
@@ -120,14 +120,14 @@ for i in $(seq 0 $((AC_COUNT - 1))); do
   # Compare Worker report vs actual
   if [[ "$ACTUAL_STATUS" == "PASS" ]]; then
     echo "  [$CATEGORY] $ID: VERIFIED ✅" >&2
-    ((PASS_COUNT++))
+    (( ++PASS_COUNT ))
   else
     if [[ "$WORKER_STATUS" == "PASS" ]]; then
       echo "  [$CATEGORY] $ID: MISMATCH ❌ (Worker said PASS, actual FAIL)" >&2
     else
       echo "  [$CATEGORY] $ID: FAIL ❌" >&2
     fi
-    ((FAIL_COUNT++))
+    (( ++FAIL_COUNT ))
     FAILED_ITEMS="${FAILED_ITEMS}${ID}:${CATEGORY}:${COMMAND}\n"
   fi
 done
