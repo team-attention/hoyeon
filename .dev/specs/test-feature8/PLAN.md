@@ -111,7 +111,7 @@ TODO-1 → TODO-Final
 
 ## TODOs
 
-### [ ] TODO 1: Add variant prop to Button component
+### [x] TODO 1: Add variant prop to Button component
 
 **Type**: work
 
@@ -144,23 +144,23 @@ TODO-1 → TODO-Final
 **Acceptance Criteria**:
 
 *Functional:*
-- [ ] File exists: `web/src/components/Button/Button.jsx`
-- [ ] File exists: `web/src/components/Button/Button.css`
-- [ ] Button.jsx accepts `variant` prop with default "primary"
-- [ ] Button.jsx applies `button-primary` class when variant is "primary" or undefined
-- [ ] Button.jsx applies `button-secondary` class when variant is "secondary"
-- [ ] Button.css contains `.button-secondary` class with background `#6c757d` and color `#ffffff`
-- [ ] Button.css contains `.button-secondary:hover` rule with background `#5a6268`
+- [x] File exists: `web/src/components/Button/Button.jsx`
+- [x] File exists: `web/src/components/Button/Button.css`
+- [x] Button.jsx accepts `variant` prop with default "primary"
+- [x] Button.jsx applies `button-primary` class when variant is "primary" or undefined
+- [x] Button.jsx applies `button-secondary` class when variant is "secondary"
+- [x] Button.css contains `.button-secondary` class with background `#6c757d` and color `#ffffff`
+- [x] Button.css contains `.button-secondary:hover` rule with background `#5a6268`
 
 *Static:*
-- [ ] `cd web && npm run lint -- src/components/Button/` → no errors
+- [x] `cd web && npm run lint -- src/components/Button/` → no errors
 
 *Runtime:*
-- [ ] (No tests - test framework not configured)
+- [x] (No tests - test framework not configured)
 
 ---
 
-### [ ] TODO Final: Verification
+### [x] TODO Final: Verification
 
 **Type**: verification (read-only)
 
@@ -187,15 +187,15 @@ TODO-1 → TODO-Final
 **Acceptance Criteria**:
 
 *Functional:*
-- [ ] All deliverables from Work Objectives exist
-- [ ] `component_path` file contains `variant` prop handling
-- [ ] `component_path` file has default value "primary" for variant
-- [ ] `css_path` file contains `.button-primary` class
-- [ ] `css_path` file contains `.button-secondary` class
-- [ ] `css_path` file contains `.button-secondary:hover` rule
+- [x] All deliverables from Work Objectives exist
+- [x] `component_path` file contains `variant` prop handling
+- [x] `component_path` file has default value "primary" for variant
+- [x] `css_path` file contains `.button-primary` class
+- [x] `css_path` file contains `.button-secondary` class
+- [x] `css_path` file contains `.button-secondary:hover` rule
 
 *Static:*
-- [ ] `cd web && npm run lint` → exit 0 (no errors)
+- [x] `cd web && npm run lint` → exit 0 (no errors)
 
 *Runtime:*
-- [ ] (No tests - test framework not configured, SKIP)
+- [x] (No tests - test framework not configured, SKIP)
