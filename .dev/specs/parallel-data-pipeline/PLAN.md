@@ -114,7 +114,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 
 ## TODOs
 
-### [ ] TODO 1: Create sample data files
+### [x] TODO 1: Create sample data files
 
 **Type**: work
 
