@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "project": "Website Redesign",
+    "budget": 50000,
+    "status": "in_progress"
+  },
+  {
+    "id": 2,
+    "project": "Mobile App Development",
+    "budget": 120000,
+    "status": "completed"
+  },
+  {
+    "id": 3,
+    "project": "Data Migration",
+    "budget": 75000,
+    "status": "planning"
+  },
+  {
+    "id": 4,
+    "project": "API Integration",
+    "budget": 30000,
+    "status": "in_progress"
+  },
+  {
+    "id": 5,
+    "project": "Security Audit",
+    "budget": 45000,
+    "status": "completed"
+  }
+]
