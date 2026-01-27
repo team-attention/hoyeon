@@ -1,5 +1,9 @@
 {
   "todo-1": {
     "project_root": "/Users/hoyeonlee/team-attention/oh-my-claude-code/.playground/lol-build"
+  },
+  "todo-2": {
+    "builds_json": "/Users/hoyeonlee/team-attention/oh-my-claude-code/.playground/lol-build/src/data/builds.json",
+    "ddragon_util": "/Users/hoyeonlee/team-attention/oh-my-claude-code/.playground/lol-build/src/api/ddragon.js"
   }
 }

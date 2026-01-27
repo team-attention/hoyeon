@@ -1,0 +1,7 @@
+{
+  "todo-1": {
+    "component_path": "web/src/components/Greeting/Greeting.jsx",
+    "css_path": "web/src/components/Greeting/Greeting.css",
+    "index_path": "web/src/components/Greeting/index.js"
+  }
+}

@@ -165,7 +165,7 @@ TODO-1 (scaffold) → TODO-2 (data) → TODO-3 (components + app) → TODO-Final
 
 ---
 
-### [ ] TODO 2: Create Build Data and Data Dragon Utility
+### [x] TODO 2: Create Build Data and Data Dragon Utility
 
 **Type**: work
 
