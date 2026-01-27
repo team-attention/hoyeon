@@ -1,7 +1,7 @@
 ---
 name: gap-analyzer
 description: Gap analysis agent that identifies missing requirements, potential pitfalls, and explicit "must NOT do" items before plan generation. Inspired by Metis from oh-my-opencode.
-model: haiku
+model: sonnet
 disallowed-tools:
   - Write
   - Edit

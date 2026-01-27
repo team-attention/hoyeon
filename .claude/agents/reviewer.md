@@ -7,7 +7,7 @@ disallowed-tools:
   - Edit
   - Bash
   - Task
-validate_prompt: |
+validation_prompt: |
   Verify the reviewer output contains:
   1. OKAY or REJECT verdict
   2. Justification section

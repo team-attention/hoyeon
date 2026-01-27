@@ -41,3 +41,38 @@ validate_prompt: |
 
 - `.claude/scripts/validate-output.sh` - PostToolUse validation hook
 - `.claude/settings.local.json` - registers PostToolUse hook for Task|Skill
+
+## Hook System
+
+Hooks are registered in `.claude/settings.local.json` and automate pipeline transitions and quality enforcement.
+
+### Hook Types
+
+| Type | When it fires | Use case |
+|------|--------------|----------|
+| `UserPromptSubmit` | User submits a prompt | Initialize state, intercept slash commands |
+| `PreToolUse` | Before a tool executes | Block or modify tool calls |
+| `PostToolUse` | After a tool completes | Validate output, trigger follow-up |
+| `Stop` | Session ends | Transition to next pipeline stage |
+| `SubagentStop` | Subagent finishes | Post-agent cleanup |
+
+### Active Hooks
+
+| Script | Type | Purpose |
+|--------|------|---------|
+| `ultrawork-init-hook.sh` | UserPromptSubmit | Initialize ultrawork pipeline state when `/ultrawork` is typed |
+| `dev-specify-stop-hook.sh` | Stop | Auto-transition specify → open when plan is approved |
+| `validate-output.sh` | PostToolUse | Validate agent/skill output against `validate_prompt` frontmatter |
+| `dev-worker-verify.sh` | PostToolUse | Verify worker output (functional, static, runtime checks) |
+| `dev-execute-init-hook.sh` | PreToolUse | Initialize execution context at `/execute` start |
+
+### Hook Development Notes
+
+- Hook scripts live in `.claude/scripts/` and must be executable (`chmod +x`)
+- Register hooks in `.claude/settings.local.json` under `hooks.<EventType>.matchers[]`
+- A hook script that is not registered in settings will **not fire** — creating the file alone is not enough
+- See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for additional hook behavior gotchas
+
+## Lessons Learned
+
+See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for hook/tool behavior gotchas discovered during development.
