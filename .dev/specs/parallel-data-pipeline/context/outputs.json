@@ -18,5 +18,15 @@
     "outputs": {
       "fetch_api_path": ".playground/data-pipeline/scripts/fetch-api.sh"
     }
+  },
+  "todo-5": {
+    "outputs": {
+      "merge_path": ".playground/data-pipeline/scripts/merge-report.sh"
+    }
+  },
+  "todo-6": {
+    "outputs": {
+      "entry_path": ".playground/data-pipeline/run-pipeline.sh"
+    }
   }
 }

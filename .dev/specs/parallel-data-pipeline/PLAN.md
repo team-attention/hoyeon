@@ -289,7 +289,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 
 ---
 
-### [ ] TODO 5: Implement merge-report.sh
+### [x] TODO 5: Implement merge-report.sh
 
 **Type**: work
 
@@ -338,7 +338,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 
 ---
 
-### [ ] TODO 6: Implement run-pipeline.sh
+### [x] TODO 6: Implement run-pipeline.sh
 
 **Type**: work
 
