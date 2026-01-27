@@ -112,7 +112,7 @@ TODO-1 → TODO-Final
 
 ## TODOs
 
-### [ ] TODO 1: Create goodbye.py script
+### [x] TODO 1: Create goodbye.py script
 
 **Type**: work
 
@@ -124,7 +124,7 @@ TODO-1 → TODO-Final
 - `script_path` (file): `./goodbye.py` - Python goodbye script
 
 **Steps**:
-- [ ] Create `goodbye.py` at project root with `print("Good bye!")`
+- [x] Create `goodbye.py` at project root with `print("Good bye!")`
 
 **Must NOT do**:
 - Do not add imports, shebang, or argparse
@@ -138,18 +138,18 @@ TODO-1 → TODO-Final
 **Acceptance Criteria**:
 
 *Functional:*
-- [ ] File exists: `./goodbye.py`
-- [ ] `python3 goodbye.py` outputs "Good bye!"
+- [x] File exists: `./goodbye.py`
+- [x] `python3 goodbye.py` outputs "Good bye!"
 
 *Static:*
-- [ ] `python3 -c "import ast; ast.parse(open('./goodbye.py').read())"` → exit 0 (valid syntax)
+- [x] `python3 -c "import ast; ast.parse(open('./goodbye.py').read())"` → exit 0 (valid syntax)
 
 *Runtime:*
-- [ ] `python3 goodbye.py` → exit 0 (no runtime errors)
+- [x] `python3 goodbye.py` → exit 0 (no runtime errors)
 
 ---
 
-### [ ] TODO Final: Verification
+### [x] TODO Final: Verification
 
 **Type**: verification (read-only)
 
@@ -161,9 +161,9 @@ TODO-1 → TODO-Final
 **Outputs**: (none)
 
 **Steps**:
-- [ ] Verify script file exists
-- [ ] Run script and check output
-- [ ] Verify valid Python syntax
+- [x] Verify script file exists
+- [x] Run script and check output
+- [x] Verify valid Python syntax
 
 **Must NOT do**:
 - Do not modify any files
@@ -174,11 +174,11 @@ TODO-1 → TODO-Final
 **Acceptance Criteria**:
 
 *Functional:*
-- [ ] File exists: `./goodbye.py`
-- [ ] `python3 goodbye.py` outputs exactly "Good bye!"
+- [x] File exists: `./goodbye.py`
+- [x] `python3 goodbye.py` outputs exactly "Good bye!"
 
 *Static:*
-- [ ] `python3 -c "import ast; ast.parse(open('./goodbye.py').read())"` → exit 0
+- [x] `python3 -c "import ast; ast.parse(open('./goodbye.py').read())"` → exit 0
 
 *Runtime:*
-- [ ] `python3 goodbye.py` → exit 0
+- [x] `python3 goodbye.py` → exit 0
