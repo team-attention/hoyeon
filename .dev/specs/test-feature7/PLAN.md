@@ -107,7 +107,7 @@ TODO-1 → TODO-Final
 
 ## TODOs
 
-### [ ] TODO 1: Create Greeting component files
+### [x] TODO 1: Create Greeting component files
 
 **Type**: work
 
