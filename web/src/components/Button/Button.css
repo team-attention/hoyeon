@@ -6,3 +6,12 @@
 .button-primary:hover {
   background-color: #535bf2;
 }
+
+.button-secondary {
+  background-color: #6c757d;
+  color: #ffffff;
+}
+
+.button-secondary:hover {
+  background-color: #5a6268;
+}
