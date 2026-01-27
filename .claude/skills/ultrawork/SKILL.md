@@ -50,35 +50,9 @@ Extract a short, kebab-case name for the feature:
 - "Implement payment processing" → `payment-processing`
 - "Fix login bug" → `fix-login-bug`
 
-### Step 2: Initialize Ultrawork State (CRITICAL)
+> **Note:** State initialization is handled automatically by `UserPromptSubmit` hook (`ultrawork-init-hook.sh`).
 
-**You MUST run this Bash command BEFORE announcing or calling specify:**
-
-```bash
-mkdir -p .dev && \
-SESSION_ID="${SESSION_ID:-$(uuidgen | tr '[:upper:]' '[:lower:]')}" && \
-FEATURE_NAME="{name}" && \
-STATE_FILE=".dev/state.local.json" && \
-if [[ ! -f "$STATE_FILE" ]]; then echo '{}' > "$STATE_FILE"; fi && \
-jq --arg sid "$SESSION_ID" \
-   --arg name "$FEATURE_NAME" \
-   --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-   '.[$sid] = {
-     "created_at": $ts,
-     "agents": {},
-     "ultrawork": {
-       "name": $name,
-       "phase": "specify_interview",
-       "iteration": 0,
-       "max_iterations": 10
-     }
-   }' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE" && \
-echo "Ultrawork state initialized for $FEATURE_NAME"
-```
-
-Replace `{name}` with the actual feature name (kebab-case).
-
-### Step 3: Announce Ultrawork Mode
+### Step 2: Announce Ultrawork Mode
 
 ```
 🚀 Ultrawork Mode Activated
@@ -89,7 +63,7 @@ Pipeline: specify → open → execute
 Starting interview phase...
 ```
 
-### Step 4: Invoke Specify
+### Step 3: Invoke Specify
 
 ```
 Skill("specify", args="{name}")
@@ -102,7 +76,7 @@ The specify skill will:
 4. Run Reviewer approval
 5. **[Hook auto-triggers]** → Call /open when Plan is approved
 
-### Step 5: Let Hooks Handle the Rest
+### Step 4: Let Hooks Handle the Rest
 
 After specify completes with an approved plan:
 - `ultrawork-stop-hook.sh` detects PLAN.md with "APPROVED"
@@ -141,19 +115,18 @@ Phases: `specify_interview` → `specify_plan` → `opening` → `executing` →
 ```
 User: "/ultrawork add dark mode support"
 
+[Hook auto-initializes state for "dark-mode"]
+
 [You]
 1. Parse: feature name = "dark-mode"
 
-2. Initialize state (Bash command):
-   mkdir -p .dev && ... (run the full command)
-
-3. Announce:
+2. Announce:
    🚀 Ultrawork Mode Activated
    Feature: dark-mode
    Pipeline: specify → open → execute
    Starting interview phase...
 
-4. Invoke: Skill("specify", args="dark-mode")
+3. Invoke: Skill("specify", args="dark-mode")
 
 [Specify Interview runs...]
 [DRAFT.md created]
@@ -168,7 +141,7 @@ User: "/ultrawork add dark mode support"
 
 ## Important Notes
 
-- **ALWAYS initialize state first** - hooks won't work without it
+- **State is auto-initialized** by `UserPromptSubmit` hook - no manual setup needed
 - **Do NOT manually call /open or /execute** - hooks handle this
 - **Follow specify's interview process** - gather requirements properly
 - **The pipeline is autonomous** - just start it and let it run
