@@ -52,7 +52,7 @@ Delegate to SubAgents, verify results, manage parallelization.
 2. **VERIFY** — SubAgents lie. After every `:Worker`, the `:Verify` step checks hook result. Reconcile if FAILED.
 3. **PARALLELIZE** — Run all tasks whose `blockedBy` is empty simultaneously. Sub-step chains auto-parallelize across independent TODOs.
 4. **ONE TODO PER WORKER** — Each `:Worker` Task handles exactly one TODO.
-5. **PLAN CHECKBOX = TRUTH** — `### [x] TODO N:` is the only durable state. Sub-step Tasks are recreated each session.
+5. **PLAN CHECKBOX = TRUTH** — `### [x] TODO N:` is the only durable state. Sub-step Tasks (`{N}.1` ~ `{N}.5`) are recreated each session.
 6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify`, `:Context`, `:Checkbox`, `:Commit`, `:Residual Commit`, `:State Complete`, `:Report`.
 
 ---
@@ -97,41 +97,41 @@ task_ids = {}  # task_ids[N] = {worker, verify, context, commit, checkbox}
 FOR EACH "### [ ] TODO N: {title}" in plan (in order):
 
   # 1. Worker — delegates implementation
-  w = TaskCreate(subject="TODO {N}:Worker — {title}",
+  w = TaskCreate(subject="{N}.1:Worker — {title}",
                  description="{full TODO section content}",
-                 activeForm="TODO {N}: Running Worker")
+                 activeForm="{N}.1: Running Worker")
   task_ids[N] = {worker: w.task_id}
 
   # 2. Verify — checks hook result, reconciles if needed
-  v = TaskCreate(subject="TODO {N}:Verify",
+  v = TaskCreate(subject="{N}.2:Verify",
                  description="""Check hook verification result for TODO {N}.
 If VERIFIED → mark completed.
 If FAILED → reconcile via Task(subagent_type="worker") with fix prompt (max 3 retries).
 After 3 retries → categorize (env_error/code_error/unknown) → halt or Fix Task.""",
-                 activeForm="TODO {N}: Verifying")
+                 activeForm="{N}.2: Verifying")
   task_ids[N].verify = v.task_id
 
   # 3. Context — saves outputs/learnings/issues/decisions
-  c = TaskCreate(subject="TODO {N}:Context",
+  c = TaskCreate(subject="{N}.3:Context",
                  description="Save Worker output to context files for TODO {N}.",
-                 activeForm="TODO {N}: Saving context")
+                 activeForm="{N}.3: Saving context")
   task_ids[N].context = c.task_id
 
   # 4. Checkbox — marks Plan checkbox [x] and acceptance criteria
-  cb = TaskCreate(subject="TODO {N}:Checkbox",
+  cb = TaskCreate(subject="{N}.4:Checkbox",
                   description="Mark TODO {N} checkbox and acceptance criteria in PLAN.md.",
-                  activeForm="TODO {N}: Updating plan")
+                  activeForm="{N}.4: Updating plan")
   task_ids[N].checkbox = cb.task_id
 
   # 5. Commit — only if Commit Strategy table has a row for this TODO
   IF commit_strategy_has_row(N):
-    cm = TaskCreate(subject="TODO {N}:Commit",
+    cm = TaskCreate(subject="{N}.5:Commit",
                     description="""Commit TODO {N} changes.
 Dispatch: Task(subagent_type="git-master")
 Message: {Message from Commit Strategy table}
 Files: {Files from Commit Strategy table}
 Push: {YES if PR mode, NO if Local mode}""",
-                    activeForm="TODO {N}: Committing")
+                    activeForm="{N}.5: Committing")
     task_ids[N].commit = cm.task_id
 
   # Intra-TODO chain: Worker → Verify → Context → Checkbox → Commit
@@ -201,26 +201,26 @@ Verify with `TaskList()`:
 Expected (PR mode, TODO 1 independent, TODO 2 depends on TODO 1):
 
 #1  [pending] Init:State Begin
-#2  [pending] TODO 1:Worker — Config setup  [blocked by #1]
-#3  [pending] TODO 1:Verify         [blocked by #2]
-#4  [pending] TODO 1:Context        [blocked by #3]
-#5  [pending] TODO 1:Checkbox       [blocked by #4]
-#6  [pending] TODO 1:Commit         [blocked by #5]
-#7  [pending] TODO 2:Worker — API   [blocked by #6]
-#8  [pending] TODO 2:Verify         [blocked by #7]
-#9  [pending] TODO 2:Context        [blocked by #8]
-#10 [pending] TODO 2:Checkbox       [blocked by #9]
-#11 [pending] TODO 2:Commit         [blocked by #10]
-#12 [pending] TODO 3:Worker — Utils [blocked by #1]
-#13 [pending] TODO 3:Verify         [blocked by #12]
-#14 [pending] TODO 3:Context        [blocked by #13]
-#15 [pending] TODO 3:Checkbox       [blocked by #14]
-#16 [pending] Finalize:Residual Commit [blocked by #6, #11, #15]
+#2  [pending] 1.1:Worker — Config setup  [blocked by #1]
+#3  [pending] 1.2:Verify         [blocked by #2]
+#4  [pending] 1.3:Context        [blocked by #3]
+#5  [pending] 1.4:Checkbox       [blocked by #4]
+#6  [pending] 1.5:Commit         [blocked by #5]
+#7  [pending] 2.1:Worker — API   [blocked by #6]
+#8  [pending] 2.2:Verify         [blocked by #7]
+#9  [pending] 2.3:Context        [blocked by #8]
+#10 [pending] 2.4:Checkbox       [blocked by #9]
+#11 [pending] 3.1:Worker — Utils [blocked by #1]
+#12 [pending] 3.2:Verify         [blocked by #11]
+#13 [pending] 3.3:Context        [blocked by #12]
+#14 [pending] 3.4:Checkbox       [blocked by #13]
+#15 [pending] 3.5:Commit         [blocked by #14]
+#16 [pending] Finalize:Residual Commit [blocked by #6, #10, #15]
 #17 [pending] Finalize:State Complete  [blocked by #16]
 #18 [pending] Finalize:Report          [blocked by #17]
 
 → Round 0: #1 (Init:State Begin)
-→ Round 1: #2 (TODO 1:Worker), #12 (TODO 3:Worker) — parallel!
+→ Round 1: #2 (1.1:Worker), #11 (3.1:Worker) — parallel!
 ```
 
 ### 1.4 Init or Resume Context
@@ -458,9 +458,9 @@ Save Worker JSON fields to context files. Only runs after `:Verify` passes.
 | Worker JSON Field | File | Format |
 |-------------------|------|--------|
 | `outputs` | `outputs.json` | `existing["todo-N"] = outputs` → Write |
-| `learnings` | `learnings.md` | `## TODO N\n- item` append |
-| `issues` | `issues.md` | `## TODO N\n- [ ] item` append |
-| `decisions` | `decisions.md` | `## TODO N\n- item` append |
+| `learnings` | `learnings.md` | `## {N}\n- item` append |
+| `issues` | `issues.md` | `## {N}\n- [ ] item` append |
+| `decisions` | `decisions.md` | `## {N}\n- item` append |
 | `acceptance_criteria` | (not saved) | Used only for verification, not saved to context |
 
 Skip empty arrays.
@@ -468,7 +468,7 @@ Skip empty arrays.
 **⚠️ `outputs.json` race condition**: When multiple `:Context` tasks run in parallel, save `outputs.json` **sequentially** (Read → merge → Write one at a time). Other context files are safe for parallel append.
 
 ```
-# Parallel TODO 1:Context and TODO 3:Context both runnable:
+# Parallel 1.3:Context and 3.3:Context both runnable:
 
 # outputs.json — SEQUENTIAL:
 current = Read("outputs.json")
@@ -525,7 +525,7 @@ Find matching row in Plan's `## Commit Strategy` table:
 ```
 Task(
   subagent_type="git-master",
-  description="Commit TODO {N}",
+  description="Commit {N}",
   prompt="""
 Commit TODO {N} changes.
 Commit message: {Message from Commit Strategy table}
@@ -712,21 +712,21 @@ TODO 1 and TODO 3 have commits; TODO 2 does not.
 TaskList() after initialization:
 
 #1  [pending] Init:State Begin
-#2  [pending] TODO 1:Worker — Config setup  [blocked by #1]
-#3  [pending] TODO 1:Verify          [blocked by #2]
-#4  [pending] TODO 1:Context         [blocked by #3]
-#5  [pending] TODO 1:Checkbox        [blocked by #4]
-#6  [pending] TODO 1:Commit          [blocked by #5]
-#7  [pending] TODO 2:Worker — API    [blocked by #6]   ← cross-TODO dep
-#8  [pending] TODO 2:Verify          [blocked by #7]
-#9  [pending] TODO 2:Context         [blocked by #8]
-#10 [pending] TODO 2:Checkbox        [blocked by #9]
-#11 [pending] TODO 3:Worker — Utils  [blocked by #1]
-#12 [pending] TODO 3:Verify          [blocked by #11]
-#13 [pending] TODO 3:Context         [blocked by #12]
-#14 [pending] TODO 3:Checkbox        [blocked by #13]
-#15 [pending] TODO 3:Commit          [blocked by #14]
-#16 [pending] Finalize:Residual Commit [blocked by #6, #10, #15]
+#2  [pending] 1.1:Worker — Config setup  [blocked by #1]
+#3  [pending] 1.2:Verify          [blocked by #2]
+#4  [pending] 1.3:Context         [blocked by #3]
+#5  [pending] 1.4:Checkbox        [blocked by #4]
+#6  [pending] 1.5:Commit          [blocked by #5]
+#7  [pending] 2.1:Worker — API    [blocked by #6]   ← cross-TODO dep
+#8  [pending] 2.2:Verify          [blocked by #7]
+#9  [pending] 2.3:Context         [blocked by #8]
+#10 [pending] 2.4:Checkbox        [blocked by #9]
+#11 [pending] 3.1:Worker — Utils  [blocked by #1]
+#12 [pending] 3.2:Verify          [blocked by #11]
+#13 [pending] 3.3:Context         [blocked by #12]
+#14 [pending] 3.4:Checkbox        [blocked by #13]
+#15 [pending] 3.5:Commit          [blocked by #14]
+#16 [pending] Finalize:Residual Commit [blocked by #6, #10, #15]  ← #6=1.5:Commit, #10=2.4:Checkbox, #15=3.5:Commit
 #17 [pending] Finalize:State Complete  [blocked by #16]
 #18 [pending] Finalize:Report          [blocked by #17]
 ```
@@ -734,16 +734,16 @@ TaskList() after initialization:
 **Execution Rounds (auto-determined by TaskList):**
 
 ```
-Round 0:  #1 Init:State Begin                      ← PR only
-Round 1:  #2 TODO 1:Worker, #11 TODO 3:Worker     ← PARALLEL
-Round 2:  #3 TODO 1:Verify, #12 TODO 3:Verify     ← PARALLEL
-Round 3:  #4 TODO 1:Context, #13 TODO 3:Context   ← PARALLEL (outputs.json sequential!)
-Round 4:  #5 TODO 1:Checkbox, #14 TODO 3:Checkbox ← PARALLEL
-Round 5:  #6 TODO 1:Commit, #15 TODO 3:Commit     ← PARALLEL
-Round 6:  #7 TODO 2:Worker                         ← unblocked after #6
-Round 7:  #8 TODO 2:Verify
-Round 8:  #9 TODO 2:Context
-Round 9:  #10 TODO 2:Checkbox
+Round 0:  #1 Init:State Begin                   ← PR only
+Round 1:  #2 1.1:Worker, #11 3.1:Worker          ← PARALLEL
+Round 2:  #3 1.2:Verify, #12 3.2:Verify          ← PARALLEL
+Round 3:  #4 1.3:Context, #13 3.3:Context        ← PARALLEL (outputs.json sequential!)
+Round 4:  #5 1.4:Checkbox, #14 3.4:Checkbox      ← PARALLEL
+Round 5:  #6 1.5:Commit, #15 3.5:Commit          ← PARALLEL
+Round 6:  #7 2.1:Worker                           ← unblocked after #6
+Round 7:  #8 2.2:Verify
+Round 8:  #9 2.3:Context
+Round 9:  #10 2.4:Checkbox
 Round 10: #16 Finalize:Residual Commit             ← blocked by all TODO last steps
 Round 11: #17 Finalize:State Complete              ← blocked by #16
 Round 12: #18 Finalize:Report                      ← blocked by #17
@@ -781,11 +781,11 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 | Sub-Step | Subject Pattern | Purpose |
 |----------|----------------|---------|
 | `:State Begin` | `Init:State Begin` | [PR only] Begin PR state |
-| `:Worker` | `TODO N:Worker — {title}` | Delegate implementation to worker agent |
-| `:Verify` | `TODO N:Verify` | Check hook result, reconcile if FAILED |
-| `:Context` | `TODO N:Context` | Save outputs/learnings/issues/decisions |
-| `:Checkbox` | `TODO N:Checkbox` | Mark Plan `[x]` and acceptance criteria |
-| `:Commit` | `TODO N:Commit` | Commit via git-master (only if Commit Strategy row exists) |
+| `:Worker` | `{N}.1:Worker — {title}` | Delegate implementation to worker agent |
+| `:Verify` | `{N}.2:Verify` | Check hook result, reconcile if FAILED |
+| `:Context` | `{N}.3:Context` | Save outputs/learnings/issues/decisions |
+| `:Checkbox` | `{N}.4:Checkbox` | Mark Plan `[x]` and acceptance criteria |
+| `:Commit` | `{N}.5:Commit` | Commit via git-master (only if Commit Strategy row exists) |
 | `:Residual Commit` | `Finalize:Residual Commit` | Check & commit remaining changes |
 | `:State Complete` | `Finalize:State Complete` | [PR only] Complete PR state |
 | `:Report` | `Finalize:Report` | Output final orchestration report |
@@ -803,13 +803,13 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 
 ```
 # Init (PR only):
-Init:State Begin → all TODO Workers
+Init:State Begin → all {N}.1:Worker tasks
 
 # Intra-TODO chain (always):
-Worker → Verify → Context → Checkbox → Commit
+{N}.1:Worker → {N}.2:Verify → {N}.3:Context → {N}.4:Checkbox → {N}.5:Commit
 
 # Cross-TODO (from Dependency Graph):
-TODO 1:Commit (or :Checkbox) → TODO 2:Worker
+1.5:Commit (or 1.4:Checkbox) → 2.1:Worker
 
 # Finalize chain:
 all TODO last steps → Residual Commit → State Complete (PR) → Report
