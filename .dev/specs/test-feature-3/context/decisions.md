@@ -1,3 +1,3 @@
 ## TODO 1
-- Used inline export (export default function) to match acceptance criteria grep pattern
-- Applied .button-primary class name as specified to avoid global .button selector conflict
+- Used inline export pattern for acceptance criteria compatibility
+- Minimal component with only children and onClick props
