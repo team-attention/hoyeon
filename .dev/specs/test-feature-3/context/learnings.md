@@ -1,4 +1,5 @@
 ## TODO 1
-- Project uses `export default function ComponentName()` syntax for components
-- Button components build on global button styles from index.css
-- CSS class naming uses component-specific prefixes (button-primary) to avoid conflicts
+- Button component uses inline default export pattern: `export default function Button()`
+- CSS class naming uses .button-primary to avoid conflict with global button selector
+- Component follows destructured props pattern: `function Button({ children, onClick })`
+- Brand colors: primary #646cff, hover #535bf2

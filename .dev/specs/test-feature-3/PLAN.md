@@ -188,7 +188,7 @@ TODO-1 (Create Button Component) → TODO-Final (Verification)
 - [x] CSS has brand color: `grep -q '#646cff' web/src/components/Button/Button.css`
 
 *Static:*
-- [x] `cd web && npm run lint` → exit 0
+- [] `cd web && npm run lint` → exit 0 (SKIP: web/package.json missing)
 
 *Runtime:*
 - [x] (SKIP - no test framework configured)
@@ -228,7 +228,7 @@ TODO-1 (Create Button Component) → TODO-Final (Verification)
 - [x] index.js re-exports Button: `grep -q "export.*from.*Button\|export.*Button" web/src/components/Button/index.js`
 
 *Static:*
-- [x] `cd web && npm run lint` → exit 0
+- [] `cd web && npm run lint` → exit 0 (SKIP: web/package.json missing)
 
 *Runtime:*
 - [x] (SKIP - no test framework configured)
