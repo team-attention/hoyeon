@@ -123,7 +123,7 @@ TODO-1 (scaffold) → TODO-2 (data) → TODO-3 (components + app) → TODO-Final
 
 ## TODOs
 
-### [ ] TODO 1: Scaffold Vite + React Project
+### [x] TODO 1: Scaffold Vite + React Project
 
 **Type**: work
 
