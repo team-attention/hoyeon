@@ -3,5 +3,20 @@
     "outputs": {
       "data_dir": ".playground/data-pipeline/data/"
     }
+  },
+  "todo-2": {
+    "outputs": {
+      "fetch_csv_path": ".playground/data-pipeline/scripts/fetch-csv.sh"
+    }
+  },
+  "todo-3": {
+    "outputs": {
+      "fetch_json_path": ".playground/data-pipeline/scripts/fetch-json.sh"
+    }
+  },
+  "todo-4": {
+    "outputs": {
+      "fetch_api_path": ".playground/data-pipeline/scripts/fetch-api.sh"
+    }
   }
 }

@@ -155,7 +155,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 
 ---
 
-### [ ] TODO 2: Implement fetch-csv.sh
+### [x] TODO 2: Implement fetch-csv.sh
 
 **Type**: work
 
@@ -199,7 +199,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 
 ---
 
-### [ ] TODO 3: Implement fetch-json.sh
+### [x] TODO 3: Implement fetch-json.sh
 
 **Type**: work
 
@@ -243,7 +243,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 
 ---
 
-### [ ] TODO 4: Implement fetch-api.sh
+### [x] TODO 4: Implement fetch-api.sh
 
 **Type**: work
 
