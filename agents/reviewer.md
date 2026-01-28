@@ -1,5 +1,6 @@
 ---
 name: reviewer
+color: magenta
 description: Plan reviewer agent that evaluates work plans for clarity, verifiability, completeness, big picture understanding, and parallelizability. Returns OKAY or REJECT.
 model: haiku
 disallowed-tools:

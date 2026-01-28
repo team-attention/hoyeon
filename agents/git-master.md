@@ -1,5 +1,6 @@
 ---
 name: git-master
+color: green
 description: |
   Git commit specialist. Enforces atomic commits, detects project style.
   Use this agent for ALL git commits during /dev.execute workflow.

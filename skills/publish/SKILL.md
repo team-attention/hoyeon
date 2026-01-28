@@ -1,5 +1,5 @@
 ---
-name: dev.publish
+name: publish
 description: |
   "/publish", "publish PR", "PR ready", "publish PR", "remove Draft"
   Convert Draft PR to Ready for review

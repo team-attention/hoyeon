@@ -1,4 +1,5 @@
 ---
+name: test-validate
 description: Test skill for validate-output hook
 user_invocable: true
 validate_prompt: |

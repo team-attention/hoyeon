@@ -92,7 +92,7 @@ Extracts knowledge from PR context and saves structured documentation to `docs/l
 
 1. Assess documentation value from collected sources
 2. Check for duplicates: Search `docs/learnings/`
-3. Classify problem type - Refer to `.claude/skills/compound/references/problem-types.md`
+3. Classify problem type - Refer to `references/problem-types.md` (relative to this skill directory)
 4. Generate tags
 
 ### Phase 3: Document Generation
@@ -107,7 +107,7 @@ Extracts knowledge from PR context and saves structured documentation to `docs/l
    ```
 
 2. **Write document using template**
-   - Template location: `.claude/skills/compound/templates/LEARNING_TEMPLATE.md`
+   - Template location: `templates/LEARNING_TEMPLATE.md` (relative to this skill directory)
    - Read template and substitute placeholders
 
 3. **Determine filename**

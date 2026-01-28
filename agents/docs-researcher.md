@@ -1,5 +1,6 @@
 ---
 name: docs-researcher
+color: cyan
 description: Searches project internal docs (ADRs, READMEs, configs) for architecture decisions, team conventions, and constraints relevant to the current task.
 model: sonnet
 disallowed-tools:

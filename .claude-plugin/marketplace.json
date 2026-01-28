@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "team-attention-dev",
+  "description": "Development workflow automation: specify → open → execute pipeline with parallel research agents, hook-based guards, and PR state management",
+  "owner": {
+    "name": "team-attention"
+  },
+  "plugins": [
+    {
+      "name": "hoyeon",
+      "description": "Development workflow automation: specify → open → execute pipeline with parallel research agents, hook-based guards, and PR state management",
+      "version": "0.1.0",
+      "author": {
+        "name": "team-attention"
+      },
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

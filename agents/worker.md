@@ -1,5 +1,6 @@
 ---
 name: worker
+color: green
 description: |
   Implementation worker agent. Handles code writing, bug fixes, and test writing.
   Only works on tasks delegated by Orchestrator (/dev.execute skill).

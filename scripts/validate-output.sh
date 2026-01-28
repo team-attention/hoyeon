@@ -21,7 +21,7 @@ find_file() {
     # Agent 파일 검색 순서: 프로젝트 → 플러그인 → 사용자
     for path in \
       "$CWD/.claude/agents/${name}.md" \
-      "${CLAUDE_PLUGIN_ROOT:-}/.claude/agents/${name}.md" \
+      "${CLAUDE_PLUGIN_ROOT:-}/agents/${name}.md" \
       "$HOME/.claude/agents/${name}.md"; do
       if [[ -f "$path" ]]; then
         echo "$path"
@@ -41,7 +41,7 @@ find_file() {
     # Skill 파일 검색
     for path in \
       "$CWD/.claude/skills/${name}/SKILL.md" \
-      "${CLAUDE_PLUGIN_ROOT:-}/.claude/skills/${name}/SKILL.md" \
+      "${CLAUDE_PLUGIN_ROOT:-}/skills/${name}/SKILL.md" \
       "$HOME/.claude/skills/${name}/SKILL.md"; do
       if [[ -f "$path" ]]; then
         echo "$path"

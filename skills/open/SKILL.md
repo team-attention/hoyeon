@@ -1,5 +1,5 @@
 ---
-name: dev.open
+name: open
 description: |
   "dev.open", "create PR", "open PR", "create PR from spec", "Draft PR creation"
   Spec-based Draft PR creation. Starting point for SDD (Spec Driven Development) workflow.

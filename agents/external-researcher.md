@@ -1,5 +1,6 @@
 ---
 name: external-researcher
+color: blue
 description: Researches external libraries, frameworks, and best practices via web search and official docs. Use for migrations, new tech decisions, and unfamiliar APIs.
 model: sonnet
 allowed-tools:

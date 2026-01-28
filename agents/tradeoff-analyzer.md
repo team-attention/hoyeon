@@ -1,5 +1,6 @@
 ---
 name: tradeoff-analyzer
+color: red
 description: Evaluates proposed changes for risk (LOW/MED/HIGH), simpler alternatives, over-engineering, and generates structured decision_points for human approval on dangerous changes.
 model: sonnet
 disallowed-tools:
