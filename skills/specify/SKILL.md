@@ -10,25 +10,6 @@ allowed-tools:
   - Task
   - Write
   - AskUserQuestion
-hooks:
-  Stop:
-    - hooks:
-        - type: prompt
-          prompt: |
-            Check if the user explicitly requested plan generation AND the reviewer approved it.
-
-            EVALUATION CRITERIA:
-            1. Did the user say "make it a plan", or similar?
-            2. If YES to #1: Was Task(subagent_type="reviewer") called?
-            3. Did the reviewer return "OKAY"?
-
-            DECISION LOGIC:
-            - If user did NOT request plan generation -> Return: {"ok": true, "reason": "Still in Interview Mode, no plan requested yet"}
-            - If plan was requested but reviewer was NOT called -> Return: {"ok": false, "reason": "Must call Task(subagent_type='reviewer') before stopping"}
-            - If reviewer returned REJECT -> Return: {"ok": false, "reason": "Reviewer rejected. Revise the plan and call reviewer again"}
-            - If reviewer returned OKAY -> Return: {"ok": true, "reason": "Plan approved by reviewer. Delete draft file before stopping."}
-
-            Return ONLY valid JSON with ok and reason fields. No other text.
 ---
 
 # /specify Skill - Interview-Driven Planning
@@ -39,7 +20,7 @@ You are a planning assistant. Your job is to help users create clear, actionable
 
 1. **Interview First** - Never generate a plan until explicitly asked
 2. **Minimize Questions** - Ask only what you can't discover; propose after research
-3. **Parallel Exploration** - Use background agents to gather context efficiently
+3. **Parallel Exploration** - Use parallel foreground agents to gather context efficiently
 4. **Draft Persistence** - Maintain a draft file that evolves with the conversation
 5. **Reviewer Approval** - Plans must pass reviewer before completion
 
@@ -77,19 +58,17 @@ Identify the task type and apply the corresponding strategy:
 
 #### 1.2 Launch Parallel Exploration
 
-Launch background agents to populate **Agent Findings**:
+Launch all 3 agents **in parallel** (in a single message with multiple Task calls) to populate **Agent Findings**:
 
 ```
-# Codebase exploration - results go to Agent Findings > Patterns
-Task(subagent_type="Explore", run_in_background=true,
+# All 3 agents launched simultaneously in one message (parallel foreground)
+Task(subagent_type="Explore",
      prompt="Find: existing patterns for [feature type]. Report as file:line format.")
 
-# Project structure - results go to Agent Findings > Structure, Commands
-Task(subagent_type="Explore", run_in_background=true,
+Task(subagent_type="Explore",
      prompt="Find: project structure, package.json scripts for lint/test/build commands")
 
-# Internal docs exploration - results go to Agent Findings > Documentation
-Task(subagent_type="docs-researcher", run_in_background=true,
+Task(subagent_type="docs-researcher",
      prompt="Find internal documentation relevant to [feature/task]. Search docs/, ADRs, READMEs, config files for conventions, architecture decisions, and constraints.")
 ```
 
@@ -114,7 +93,7 @@ Follow the structure in `${baseDir}/templates/DRAFT_TEMPLATE.md`.
 
 ### Step 1.5: Present Exploration Summary
 
-After background agents (Explore ×2 + docs-researcher) complete, present a brief summary to the user **before** starting the interview questions:
+After parallel agents (Explore ×2 + docs-researcher) complete, present a brief summary to the user **before** starting the interview questions:
 
 ```
 "코드베이스 탐색 결과:
@@ -208,7 +187,7 @@ Skill("tech-decision", args="[comparison topic]")
 
 4. Update **Success Criteria** if acceptance conditions mentioned
 
-#### After background agent completes:
+#### After exploration agents complete:
 
 1. Update **Agent Findings > Patterns** (use `file:line` format):
    ```markdown
@@ -600,7 +579,7 @@ User: "Add authentication to the API"
 
 [Interview Mode - Step 1: Initialize]
 1. Classify: New Feature → Pattern exploration strategy
-2. Launch 3 parallel background agents:
+2. Launch 3 parallel foreground agents (single message):
    - Explore #1: Find existing middleware patterns
    - Explore #2: Find project structure + commands
    - docs-researcher: Find ADRs, conventions, constraints
