@@ -151,7 +151,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 - [x] CSV 첫 행이 헤더: `head -1 .playground/data-pipeline/data/sample.csv` → `id,name,department,score`
 
 *Runtime:*
-- [x] (no tests - data files only)
+- [] (no tests - data files only)
 
 ---
 
@@ -195,7 +195,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 - [x] `grep -q 'set -euo pipefail' .playground/data-pipeline/scripts/fetch-csv.sh` → exit 0
 
 *Runtime:*
-- [x] (script self-tests via execution)
+- [] (script self-tests via execution)
 
 ---
 
@@ -239,7 +239,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 - [x] `grep -q 'set -euo pipefail' .playground/data-pipeline/scripts/fetch-json.sh` → exit 0
 
 *Runtime:*
-- [x] (script self-tests via execution)
+- [] (script self-tests via execution)
 
 ---
 
@@ -285,7 +285,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 - [x] `! grep -q 'curl\|wget' .playground/data-pipeline/scripts/fetch-api.sh` → no network calls
 
 *Runtime:*
-- [x] (script self-tests via execution)
+- [] (script self-tests via execution)
 
 ---
 
@@ -334,7 +334,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 - [x] `grep -q 'set -euo pipefail' .playground/data-pipeline/scripts/merge-report.sh` → exit 0
 
 *Runtime:*
-- [x] (script self-tests via execution)
+- [] (script self-tests via execution)
 
 ---
 
@@ -380,7 +380,7 @@ TODO-1 (data) ──┬── TODO-2 (csv)  ──┐
 - [x] `grep -q 'wait' .playground/data-pipeline/run-pipeline.sh` → uses parallel wait
 
 *Runtime:*
-- [x] (full pipeline test via execution)
+- [] (full pipeline test via execution)
 
 ---
 
