@@ -10,7 +10,7 @@ Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs
 
 | Step | Skill | What it does |
 |------|-------|-------------|
-| 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, librarian), generates `PLAN.md` with reviewer approval. |
+| 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, tradeoff-analyzer, external-researcher), generates `PLAN.md` with reviewer approval. |
 | 2 | `/open` | Creates a Draft PR on `feat/{name}` branch from the approved spec. |
 | 3 | `/execute` | Orchestrator reads `PLAN.md`, creates Tasks per TODO, delegates to worker agents, verifies results, commits atomically. |
 | 4 | `/publish` | Converts Draft PR to Ready for Review. |
@@ -57,9 +57,90 @@ Chains the entire pipeline automatically via Stop hooks:
 |-------|-------|------|
 | `worker` | Sonnet | Implements delegated TODOs (code, tests, fixes) |
 | `gap-analyzer` | Haiku | Identifies missing requirements and pitfalls before planning |
-| `librarian` | Sonnet | Researches external libraries and official docs |
+| `tradeoff-analyzer` | Sonnet | Evaluates risk (LOW/MED/HIGH), simpler alternatives, over-engineering warnings |
+| `docs-researcher` | Sonnet | Searches internal docs (ADRs, READMEs, configs) for conventions and constraints |
+| `external-researcher` | Sonnet | Researches external libraries, frameworks, and official docs |
 | `reviewer` | Haiku | Evaluates plans for clarity, verifiability, completeness |
 | `git-master` | Sonnet | Enforces atomic commits following project style |
+
+## /specify Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    INTERVIEW MODE                           │
+│                                                             │
+│  Step 1: Initialize                                         │
+│   • Intent 분류 (Refactoring/Feature/Bug/Arch/...)          │
+│   • 병렬 에이전트:                                          │
+│     ┌──────────┐ ┌──────────┐ ┌────────────────┐            │
+│     │Explore #1│ │Explore #2│ │docs-researcher │            │
+│     │패턴 탐색 │ │구조+명령 │ │ADR/컨벤션 탐색 │            │
+│     └────┬─────┘ └────┬─────┘ └───────┬────────┘            │
+│          └────────────┼───────────────┘                     │
+│                       ▼                                     │
+│  Step 1.5: 탐색 결과 요약                       🧑 HITL #1 │
+│   → 사용자가 코드베이스 이해 확인                           │
+│                       ▼                                     │
+│  Step 2: 인터뷰                                 🧑 HITL #2 │
+│   ASK: 경계조건, 트레이드오프, 성공기준                     │
+│   PROPOSE: 탐색 기반 제안                                   │
+│                       ▼                                     │
+│  Step 3-4: DRAFT 업데이트 + 전환 준비                       │
+│   (tech-decision 필요시)                        🧑 HITL #3 │
+│                       │                                     │
+│            사용자: "플랜 만들어줘"               🧑 HITL #4 │
+└───────────────────────┼─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  PLAN GENERATION MODE                        │
+│                                                             │
+│  Step 1: Draft 완성도 검증                                   │
+│                       ▼                                     │
+│  Step 2: 병렬 분석 에이전트                                  │
+│   ┌─────────────┐ ┌──────────────────┐ ┌──────────────┐     │
+│   │gap-analyzer │ │tradeoff-analyzer │ │external-     │     │
+│   │누락/위험    │ │위험도/대안/과설계│ │researcher    │     │
+│   └──────┬──────┘ └────────┬─────────┘ │(선택적)      │     │
+│          └─────────────────┼───────────┴──┘            │     │
+│                            ▼                                │
+│   HIGH risk decision_points → 사용자 승인       🧑 HITL #5 │
+│                       ▼                                     │
+│  Step 3: 결정 요약 체크포인트                   🧑 HITL #6 │
+│   사용자 결정 + 자동 결정(LOW/MED) 전체 확인                │
+│                       ▼                                     │
+│  Step 4: PLAN.md 생성 (TODO별 Verify 블록 + Risk 태그)      │
+│                       ▼                                     │
+│  Step 5-6: Reviewer 검토                                     │
+│   ┌────────┐                                                │
+│   │reviewer│──OKAY──→ DRAFT 삭제 → 완료                     │
+│   └───┬────┘                                                │
+│       │REJECT                                               │
+│       ├─ cosmetic → 자동 수정 → 재검토                      │
+│       └─ semantic → 사용자 선택                 🧑 HITL #7  │
+│           ├ 제안대로 수정                                    │
+│           ├ 직접 수정                                        │
+│           └ 인터뷰로 돌아가기                   🧑 HITL #8  │
+└─────────────────────────────────────────────────────────────┘
+                        ▼
+              /open (Draft PR) 또는 /execute
+```
+
+**Human-in-the-Loop Checkpoints (8개):**
+
+| # | 시점 | 목적 |
+|---|------|------|
+| 1 | 탐색 결과 요약 | 잘못된 전제 방지 |
+| 2 | 인터뷰 질문 | 비즈니스 판단 |
+| 3 | tech-decision | 기술 선택 |
+| 4 | Plan 전환 | 명시적 사용자 의도 |
+| 5 | HIGH risk 결정 | 되돌리기 어려운 변경 |
+| 6 | 결정 요약 확인 | silent drift 방지 |
+| 7 | Semantic REJECT | 범위/요구사항 변경 |
+| 8 | 인터뷰 복귀 | 방향 전환 |
+
+**Risk Tagging:** TODO별로 LOW/MEDIUM/HIGH 위험도 태그. HIGH(DB 스키마, 인증, breaking API)는 반드시 사용자 승인 + rollback 포함.
+
+**Verification Block:** TODO마다 Given-When-Then 수락 테스트, 통합 검증, 실행 가능한 커맨드(`npm test`, `npm run typecheck`) 포함.
 
 ## Hook System
 
