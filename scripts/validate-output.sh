@@ -111,14 +111,12 @@ fi
 # tool_response 추출
 TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response')
 
-# validation 안내 메시지 출력 (Claude에게 전달됨)
-cat << EOF
----
-⚠️ VALIDATION REQUIRED for ${TYPE}: ${NAME}
+# validation 안내 메시지를 additionalContext JSON으로 출력
+CONTEXT="⚠️ VALIDATION REQUIRED for ${TYPE}: ${NAME}\n\nValidate Prompt:\n${VALIDATE_PROMPT}\n\nPlease verify the output meets the above criteria before proceeding."
 
-Validate Prompt:
-${VALIDATE_PROMPT}
-
-Please verify the output meets the above criteria before proceeding.
----
-EOF
+jq -n --arg ctx "$CONTEXT" '{
+  hookSpecificOutput: {
+    hookEventName: "PostToolUse",
+    additionalContext: $ctx
+  }
+}'
