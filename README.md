@@ -1,4 +1,4 @@
-# oh-my-claude-code
+# hoyeon
 
 Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs, execute tasks, and extract learnings — all through an orchestrated skill pipeline.
 
