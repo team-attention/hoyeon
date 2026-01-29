@@ -373,9 +373,9 @@ SubAgent does not remember previous calls.
 
 ### 2b. :Verify — Check Hook Result & Reconcile
 
-PostToolUse hook (`dev-worker-verify.sh`) automatically re-runs acceptance criteria commands after the `:Worker` Task.
+PostToolUse hook (`dev-worker-verify.sh`) automatically re-runs acceptance criteria commands after the `:Worker` Task completes. The hook returns its result via `additionalContext` JSON, which is injected into your context automatically.
 
-**1. Check hook output** in the preceding Task(worker) result:
+**1. Check hook output** — look for the VERIFICATION RESULT block that appears in your context after the Task(worker) call returns:
 
 ```
 === VERIFICATION RESULT ===
@@ -386,6 +386,8 @@ failed_items:
   - tsc_check:static:tsc --noEmit src/auth.ts
 ===========================
 ```
+
+> **How it works**: The hook outputs `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}}` which Claude Code injects into your context. You will see the VERIFICATION RESULT text directly after the Task(worker) result.
 
 **Worker JSON structure** (parsed from Task result):
 ```json

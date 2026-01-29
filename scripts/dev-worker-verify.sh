@@ -135,25 +135,32 @@ done
 echo "===========================" >&2
 echo "Results: PASS=$PASS_COUNT, FAIL=$FAIL_COUNT, SKIP=$SKIP_COUNT" >&2
 
-# Output structured result for Orchestrator
-echo ""
-echo "=== VERIFICATION RESULT ==="
-if [[ "$FAIL_COUNT" -eq 0 ]]; then
-  echo "status: VERIFIED"
-  echo "pass: $PASS_COUNT"
-  echo "skip: $SKIP_COUNT"
-else
-  echo "status: FAILED"
-  echo "pass: $PASS_COUNT"
-  echo "fail: $FAIL_COUNT"
-  echo "skip: $SKIP_COUNT"
-  echo "failed_items:"
-  echo -e "$FAILED_ITEMS" | while read -r line; do
-    if [[ -n "$line" ]]; then
-      echo "  - $line"
-    fi
-  done
-fi
-echo "==========================="
+# Build verification result as a temp file
+RESULT_FILE=$(mktemp)
+{
+  echo "=== VERIFICATION RESULT ==="
+  if [[ "$FAIL_COUNT" -eq 0 ]]; then
+    echo "status: VERIFIED"
+    echo "pass: $PASS_COUNT"
+    echo "skip: $SKIP_COUNT"
+  else
+    echo "status: FAILED"
+    echo "pass: $PASS_COUNT"
+    echo "fail: $FAIL_COUNT"
+    echo "skip: $SKIP_COUNT"
+    echo "failed_items:"
+    echo -e "$FAILED_ITEMS" | while read -r line; do
+      if [[ -n "$line" ]]; then
+        echo "  - $line"
+      fi
+    done
+  fi
+  echo "==========================="
+} > "$RESULT_FILE"
+
+# Output as JSON with additionalContext so Claude receives the result
+# (PostToolUse exit 0 plain text is NOT visible to Claude — must use additionalContext)
+jq -Rs '{ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: . } }' < "$RESULT_FILE"
+rm -f "$RESULT_FILE"
 
 exit 0
