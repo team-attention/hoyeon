@@ -406,7 +406,9 @@ Generate plan using **DRAFT → PLAN mapping**:
 | Agent Findings > Patterns | TODOs > References |
 | Agent Findings > Commands | TODO Final > Verification commands |
 | Direction > Work Breakdown | TODOs + Dependency Graph |
-| (verification-planner 결과) | Verification Summary |
+| (verification-planner > A-items) | Verification Summary + TODO Final > Acceptance Criteria |
+| (verification-planner > H-items) | Verification Summary > Human-Required |
+| (verification-planner > External Dependencies) | External Dependencies Strategy |
 | Agent Findings > External Dependencies | External Dependencies Strategy |
 
 ```
@@ -420,7 +422,7 @@ Follow the structure in `${baseDir}/templates/PLAN_TEMPLATE.md`.
 - **Work Objectives** with Must NOT Do from Boundaries + Gap Analysis
 - **Orchestrator Section**: Task Flow, Dependency Graph, Commit Strategy
 - **TODOs**: Each with Type, Inputs, Outputs, Steps, Acceptance Criteria
-- **TODO Final: Verification** with commands from Agent Findings
+- **TODO Final: Verification** with commands from Agent Findings + A-items from verification-planner
 
 ### Step 4.5: Verification Summary Confirmation
 

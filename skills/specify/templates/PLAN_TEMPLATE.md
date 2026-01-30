@@ -343,7 +343,7 @@ TODO-1 → TODO-2 → TODO-Final
 
 **Acceptance Criteria**:
 
-> Use commands from DRAFT's Agent Findings > Project Commands
+> Use commands from DRAFT's Agent Findings > Project Commands + A-items from verification-planner
 
 *Functional:*
 - [ ] All deliverables from Work Objectives exist
