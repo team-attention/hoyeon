@@ -72,6 +72,11 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - A hook script that is not registered in settings will **not fire** — creating the file alone is not enough
 - See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for additional hook behavior gotchas
 
+## Versioning
+
+- Plugin version is in `.claude-plugin/plugin.json`
+- **Bump the version** when merging a feature branch to `main`
+
 ## Lessons Learned
 
 See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for hook/tool behavior gotchas discovered during development.
