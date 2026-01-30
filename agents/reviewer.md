@@ -73,11 +73,19 @@ Missing a required category in any work TODO → **REJECT**
 
 Each criterion should include a re-executable shell command (not just a description).
 
+#### 6d. TODO Granularity
+- **Over-splitting**: Flag if any TODO modifies only 1 trivial file AND its Input description is longer than its Steps — suggest merging with adjacent TODO
+- **One-Verb Rule**: Flag if a TODO description contains multiple primary verbs joined by "and" — suggest splitting
+- **Atomicity check**: Flag if splitting a rename/refactor across multiple TODOs would leave broken intermediate state — must be single TODO
+- **Parallel opportunity**: Flag if independent TODOs are serialized without dependency — suggest marking as parallelizable
+
+Over-splitting is a **warning** (not auto-reject) but should be noted in the summary.
+
 ## Review Process
 
 1. Read the plan file provided
 2. For each task, evaluate against criteria 1-5 (qualitative)
-3. Run structural checks (criterion 6): required sections, dependency graph cross-check, AC category completeness
+3. Run structural checks (criterion 6): required sections, dependency graph cross-check, AC category completeness, TODO granularity
 4. Identify any gaps or ambiguities
 5. Provide your verdict
 
