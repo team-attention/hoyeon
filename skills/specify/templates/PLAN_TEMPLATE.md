@@ -56,7 +56,36 @@ Orchestrator (reads full PLAN)
 - [환경 제약 및 대안]
 ```
 
-### 3. Context
+### 3. External Dependencies Strategy
+
+```markdown
+## External Dependencies Strategy
+
+### Pre-work (사용자가 작업 전 준비)
+| Dependency | Action | Command/Step | Blocking? |
+|------------|--------|-------------|-----------|
+| PostgreSQL | docker-compose로 로컬 DB 실행 | `docker-compose up -d db` | Yes |
+| Stripe API | 테스트 키 환경변수 설정 | `export STRIPE_TEST_KEY=sk_test_...` | Yes |
+
+### During (AI 작업 중 전략)
+| Dependency | Dev Strategy | Rationale |
+|------------|-------------|-----------|
+| PostgreSQL | `pg-mem` 인메모리 mock 사용 | 실제 DB 없이 테스트 가능 |
+| Stripe API | stub response 파일 사용 | `tests/fixtures/stripe/` 기존 패턴 |
+| S3 | localstack 컨테이너 사용 | docker-compose에 이미 포함 |
+
+### Post-work (작업 완료 후 사용자 액션)
+| Task | Related Dependency | Action | Command/Step |
+|------|--------------------|--------|-------------|
+| DB 마이그레이션 | PostgreSQL | 실제 DB에 스키마 반영 | `npm run migrate` |
+| Staging 검증 | Stripe API | 테스트 결제 플로우 확인 | 수동 - Stripe dashboard 확인 |
+| 환경변수 등록 | All | Production env에 추가 | DevOps에 요청 |
+
+> **Note**: Pre-work의 Blocking=Yes 항목은 AI 작업 시작 전에 반드시 완료해야 합니다.
+> External Dependencies가 없으면 이 섹션을 "(none)" 으로 표기합니다.
+```
+
+### 5. Context
 
 ```markdown
 ## Context
@@ -73,7 +102,7 @@ Orchestrator (reads full PLAN)
 - [Finding 1]: [Implication]
 ```
 
-### 4. Work Objectives
+### 5. Work Objectives
 
 ```markdown
 ## Work Objectives
@@ -98,7 +127,7 @@ Orchestrator (reads full PLAN)
 
 > **For Orchestrator only** - Workers do not see this section.
 
-### 5. Task Flow
+### 6. Task Flow
 
 ```markdown
 ## Task Flow
@@ -108,7 +137,7 @@ TODO-1 → TODO-2 → TODO-Final
 ```
 ```
 
-### 6. Dependency Graph
+### 7. Dependency Graph
 
 ```markdown
 ## Dependency Graph
@@ -120,7 +149,7 @@ TODO-1 → TODO-2 → TODO-Final
 | Final | all outputs | - | verification |
 ```
 
-### 7. Parallelization
+### 8. Parallelization
 
 ```markdown
 ## Parallelization
@@ -130,7 +159,7 @@ TODO-1 → TODO-2 → TODO-Final
 | - | - | (define if parallel tasks exist) |
 ```
 
-### 8. Commit Strategy
+### 9. Commit Strategy
 
 > **Orchestrator commits on behalf of Workers** - Workers do NOT touch git.
 
@@ -145,7 +174,7 @@ TODO-1 → TODO-2 → TODO-Final
 > **Note**: No commit after Final (Verification is read-only). Final cleanup commit only if Orchestrator detects uncommitted changes before verification.
 ```
 
-### 9. Error Handling
+### 10. Error Handling
 
 ```markdown
 ## Error Handling
@@ -182,7 +211,7 @@ TODO-1 → TODO-2 → TODO-Final
 - Max depth = 1 (prevents infinite loop)
 ```
 
-### 10. Runtime Contract
+### 11. Runtime Contract
 
 ```markdown
 ## Runtime Contract
@@ -203,7 +232,7 @@ TODO-1 → TODO-2 → TODO-Final
 
 > **For Workers** - Each Worker receives only its assigned TODO.
 
-### 11. TODOs
+### 12. TODOs
 
 ```markdown
 ## TODOs

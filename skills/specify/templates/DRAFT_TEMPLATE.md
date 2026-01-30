@@ -68,6 +68,11 @@
 - Lint: `command`
 - Test: `command`
 
+### External Dependencies
+| Dependency | Type | Current Setup | Env Vars |
+|------------|------|---------------|----------|
+| [e.g. PostgreSQL] | [DB/API/Cache/Storage] | [docker-compose/cloud/none] | [DB_URL, ...] |
+
 ## Open Questions
 
 ### Critical (Must resolve before Plan)
@@ -144,8 +149,9 @@ Identify task type and establish strategy.
 - **Patterns**: Existing code patterns (`file:line` format required)
 - **Structure**: File/directory structure
 - **Project Commands**: lint, test, and other project commands
+- **External Dependencies**: DB, API services, cache, storage 등 외부 의존성 목록과 현재 개발 환경 셋업 상태
 
-> Maps to PLAN's References and Completion Protocol
+> Maps to PLAN's References, Completion Protocol, and External Dependencies Strategy
 
 ### Open Questions
 
@@ -177,6 +183,7 @@ Identify task type and establish strategy.
 | Success Criteria | Work Objectives > Definition of Done |
 | Agent Findings > Patterns | TODOs > References |
 | Agent Findings > Commands | TODO Final > Verification commands |
+| Agent Findings > External Dependencies | External Dependencies Strategy |
 | Direction > Work Breakdown | TODOs + Dependency Graph |
 
 ---
@@ -283,6 +290,11 @@ Identify task type and establish strategy.
 - Type check: `npm run type-check`
 - Lint: `npm run lint`
 - Test: `npm test`
+
+### External Dependencies
+| Dependency | Type | Current Setup | Env Vars |
+|------------|------|---------------|----------|
+| (none) | - | - | - |
 
 ## Open Questions
 
