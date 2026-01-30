@@ -58,10 +58,12 @@ Identify the task type and apply the corresponding strategy:
 
 #### 1.2 Launch Parallel Exploration
 
-Launch all 3 agents **in parallel** (in a single message with multiple Task calls) to populate **Agent Findings**:
+Launch all 3 agents **in parallel** (in a single message with multiple Task calls) to populate **Agent Findings**.
+
+> **IMPORTANT: Do NOT use `run_in_background: true`.** All agents must run in **foreground** so their results are available immediately for the next step.
 
 ```
-# All 3 agents launched simultaneously in one message (parallel foreground)
+# All 3 agents launched simultaneously in one message (parallel foreground, NOT background)
 Task(subagent_type="Explore",
      prompt="Find: existing patterns for [feature type]. Report as file:line format.")
 

@@ -315,7 +315,7 @@ TODO-1 → TODO-2 → TODO-Final
 
 > How Workers report results to Orchestrator.
 
-Worker outputs **JSON** in a ```json code block. The PostToolUse hook re-executes each `command` in `acceptance_criteria` to verify Worker's report.
+Worker outputs **JSON** in a ```json code block. The Verify Worker independently re-executes each `command` in `acceptance_criteria` to verify Worker's report.
 
 ### Output Schema
 
@@ -409,13 +409,13 @@ Worker completes TODO
         ↓
 Worker outputs JSON with acceptance_criteria
         ↓
-PostToolUse Hook triggers (dev-worker-verify.sh)
+Orchestrator dispatches Verify Worker
         ↓
-Hook re-executes each command in acceptance_criteria
+Verify Worker re-executes each command in acceptance_criteria
         ↓
-Hook outputs: VERIFIED (all pass) or FAILED (mismatch detected)
+Verify Worker outputs: VERIFIED (all pass) or FAILED (mismatch detected)
         ↓
-Orchestrator receives Hook result
+Orchestrator receives Verify Worker result
         ↓
 [VERIFIED] → Mark TODO complete    [FAILED] → Retry Worker
 ```

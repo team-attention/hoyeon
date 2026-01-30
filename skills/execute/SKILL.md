@@ -34,10 +34,9 @@ Delegate to SubAgents, verify results, manage parallelization.
    Pick runnable (pending + not blocked) → dispatch by type:
      :State Begin      → [PR only] Skill("state", "begin") → stop on failure
      :Worker  → Task(worker) with substituted variables
-     :Verify  → check hook result, reconcile if FAILED (max 3 retries)
-     :Context → save outputs/learnings/issues/decisions to files
+     :Verify  → dispatch verify worker, triage & reconcile if FAILED (max 3 retries)
+     :Wrap-up → save context (Worker + Verify) + mark Plan checkbox [x]
      :Commit  → Task(git-master) per Commit Strategy
-     :Checkbox → mark Plan checkbox [x] + acceptance criteria
      :Residual Commit → git status → git-master if dirty
      :State Complete   → [PR only] Skill("state", "complete")
      :Report           → output final report
@@ -49,11 +48,11 @@ Delegate to SubAgents, verify results, manage parallelization.
 ## Core Rules
 
 1. **DELEGATE** — All code writing goes to `Task(subagent_type="worker")`. You may only Read, Grep, Glob, Bash (for verification), and manage Tasks/Plan.
-2. **VERIFY** — SubAgents lie. After every `:Worker`, the `:Verify` step checks hook result. Reconcile if FAILED.
+2. **VERIFY** — SubAgents lie. After every `:Worker`, the `:Verify` step dispatches a verify worker to independently re-check acceptance criteria. Reconcile if FAILED.
 3. **PARALLELIZE** — Run all tasks whose `blockedBy` is empty simultaneously. Sub-step chains auto-parallelize across independent TODOs.
 4. **ONE TODO PER WORKER** — Each `:Worker` Task handles exactly one TODO.
-5. **PLAN CHECKBOX = TRUTH** — `### [x] TODO N:` is the only durable state. Sub-step Tasks (`{N}.1` ~ `{N}.5`) are recreated each session.
-6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify`, `:Context`, `:Checkbox`, `:Commit`, `:Residual Commit`, `:State Complete`, `:Report`.
+5. **PLAN CHECKBOX = TRUTH** — `### [x] TODO N:` is the only durable state. Sub-step Tasks (`{N}.1` ~ `{N}.4`) are recreated each session.
+6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify`, `:Wrap-up`, `:Commit`, `:Residual Commit`, `:State Complete`, `:Report`.
 
 ---
 
@@ -92,7 +91,7 @@ IF pr_mode:
                   description="Skill('state', args='begin <PR#>'). Stop on failure.",
                   activeForm="Beginning PR state")
 
-task_ids = {}  # task_ids[N] = {worker, verify, context, commit, checkbox}
+task_ids = {}  # task_ids[N] = {worker, verify, wrapup, commit}
 
 FOR EACH "### [ ] TODO N: {title}" in plan (in order):
 
@@ -102,44 +101,47 @@ FOR EACH "### [ ] TODO N: {title}" in plan (in order):
                  activeForm="{N}.1: Running Worker")
   task_ids[N] = {worker: w.task_id}
 
-  # 2. Verify — checks hook result, reconciles if needed
+  # 2. Verify — dispatches verify worker, triages & reconciles
   v = TaskCreate(subject="{N}.2:Verify",
-                 description="""Check hook verification result for TODO {N}.
+                 description="""Dispatch verify worker for TODO {N}.
+Check acceptance criteria + must-not-do violations + side-effects.
 If VERIFIED → mark completed.
-If FAILED → reconcile via Task(subagent_type="worker") with fix prompt (max 3 retries).
-After 3 retries → categorize (env_error/code_error/unknown) → halt or Fix Task.""",
+If FAILED → triage (retry/skip/halt), reconcile via fix worker (max 3 retries).
+Log all triage decisions to context.""",
                  activeForm="{N}.2: Verifying")
   task_ids[N].verify = v.task_id
 
-  # 3. Context — saves outputs/learnings/issues/decisions
-  c = TaskCreate(subject="{N}.3:Context",
-                 description="Save Worker output to context files for TODO {N}.",
-                 activeForm="{N}.3: Saving context")
-  task_ids[N].context = c.task_id
+  # 3. Wrap-up — saves context (Worker + Verify) AND marks checkboxes
+  wu = TaskCreate(subject="{N}.3:Wrap-up",
+                  description="""Wrap-up for TODO {N}. Two actions in sequence:
 
-  # 4. Checkbox — marks Plan checkbox [x] and acceptance criteria
-  cb = TaskCreate(subject="{N}.4:Checkbox",
-                  description="Mark TODO {N} checkbox and acceptance criteria in PLAN.md.",
-                  activeForm="{N}.4: Updating plan")
-  task_ids[N].checkbox = cb.task_id
+**A. Save Context** — save to context files:
+1. Worker output (outputs, learnings, issues, decisions)
+2. Verify Worker findings (missing_context, undocumented_changes)
+3. Reconciliation triage decisions (retried/skipped/halted items)
 
-  # 5. Commit — only if Commit Strategy table has a row for this TODO
+**B. Mark Checkboxes** — update PLAN.md:
+1. Mark TODO checkbox: ### [ ] → ### [x]
+2. Mark acceptance criteria per Verify result (PASS → [x], FAIL → [ ])""",
+                  activeForm="{N}.3: Wrapping up")
+  task_ids[N].wrapup = wu.task_id
+
+  # 4. Commit — only if Commit Strategy table has a row for this TODO
   IF commit_strategy_has_row(N):
-    cm = TaskCreate(subject="{N}.5:Commit",
+    cm = TaskCreate(subject="{N}.4:Commit",
                     description="""Commit TODO {N} changes.
 Dispatch: Task(subagent_type="git-master")
 Message: {Message from Commit Strategy table}
 Files: {Files from Commit Strategy table}
 Push: {YES if PR mode, NO if Local mode}""",
-                    activeForm="{N}.5: Committing")
+                    activeForm="{N}.4: Committing")
     task_ids[N].commit = cm.task_id
 
-  # Intra-TODO chain: Worker → Verify → Context → Checkbox → Commit
+  # Intra-TODO chain: Worker → Verify → Wrap-up → Commit
   TaskUpdate(taskId=w.task_id, addBlocks=[v.task_id])
-  TaskUpdate(taskId=v.task_id, addBlocks=[c.task_id])
-  TaskUpdate(taskId=c.task_id, addBlocks=[cb.task_id])
+  TaskUpdate(taskId=v.task_id, addBlocks=[wu.task_id])
   IF task_ids[N].commit:
-    TaskUpdate(taskId=cb.task_id, addBlocks=[cm.task_id])
+    TaskUpdate(taskId=wu.task_id, addBlocks=[cm.task_id])
 
 # --- Init → TODO dependency (PR only) ---
 IF pr_mode:
@@ -202,25 +204,22 @@ Expected (PR mode, TODO 1 independent, TODO 2 depends on TODO 1):
 
 #1  [pending] Init:State Begin
 #2  [pending] 1.1:Worker — Config setup  [blocked by #1]
-#3  [pending] 1.2:Verify         [blocked by #2]
-#4  [pending] 1.3:Context        [blocked by #3]
-#5  [pending] 1.4:Checkbox       [blocked by #4]
-#6  [pending] 1.5:Commit         [blocked by #5]
-#7  [pending] 2.1:Worker — API   [blocked by #6]
-#8  [pending] 2.2:Verify         [blocked by #7]
-#9  [pending] 2.3:Context        [blocked by #8]
-#10 [pending] 2.4:Checkbox       [blocked by #9]
-#11 [pending] 3.1:Worker — Utils [blocked by #1]
-#12 [pending] 3.2:Verify         [blocked by #11]
-#13 [pending] 3.3:Context        [blocked by #12]
-#14 [pending] 3.4:Checkbox       [blocked by #13]
-#15 [pending] 3.5:Commit         [blocked by #14]
-#16 [pending] Finalize:Residual Commit [blocked by #6, #10, #15]
-#17 [pending] Finalize:State Complete  [blocked by #16]
-#18 [pending] Finalize:Report          [blocked by #17]
+#3  [pending] 1.2:Verify          [blocked by #2]
+#4  [pending] 1.3:Wrap-up         [blocked by #3]
+#5  [pending] 1.4:Commit          [blocked by #4]
+#6  [pending] 2.1:Worker — API    [blocked by #5]   ← cross-TODO dep
+#7  [pending] 2.2:Verify          [blocked by #6]
+#8  [pending] 2.3:Wrap-up         [blocked by #7]
+#9  [pending] 3.1:Worker — Utils  [blocked by #1]
+#10 [pending] 3.2:Verify          [blocked by #9]
+#11 [pending] 3.3:Wrap-up         [blocked by #10]
+#12 [pending] 3.4:Commit          [blocked by #11]
+#13 [pending] Finalize:Residual Commit [blocked by #5, #8, #12]
+#14 [pending] Finalize:State Complete  [blocked by #13]
+#15 [pending] Finalize:Report          [blocked by #14]
 
 → Round 0: #1 (Init:State Begin)
-→ Round 1: #2 (1.1:Worker), #11 (3.1:Worker) — parallel!
+→ Round 1: #2 (1.1:Worker), #9 (3.1:Worker) — parallel!
 ```
 
 ### 1.4 Init or Resume Context
@@ -257,10 +256,9 @@ WHILE TaskList() has pending tasks:
 |--------|---------|--------|
 | `:State Begin` | 2α | `Skill("state", args="begin <PR#>")` → stop on failure |
 | `:Worker` | 2a | Variable substitution → Task(worker) |
-| `:Verify` | 2b | Check hook result → reconcile if FAILED |
-| `:Context` | 2c | Save outputs/learnings/issues/decisions |
-| `:Checkbox` | 2d | Mark Plan `[x]` + acceptance criteria |
-| `:Commit` | 2e | Task(git-master) per Commit Strategy |
+| `:Verify` | 2b | Dispatch verify worker → triage & reconcile if FAILED |
+| `:Wrap-up` | 2c | Save context (Worker + Verify) + mark Plan `[x]` |
+| `:Commit` | 2d | Task(git-master) per Commit Strategy |
 | `:Residual Commit` | 2f | `git status --porcelain` → git-master if dirty |
 | `:State Complete` | 2g | `Skill("state", args="complete <PR#>")` |
 | `:Report` | 2h | Final Report output |
@@ -371,71 +369,184 @@ SubAgent does not remember previous calls.
 
 ---
 
-### 2b. :Verify — Check Hook Result & Reconcile
+### 2b. :Verify — Verify Worker & Reconciliation
 
-PostToolUse hook (`dev-worker-verify.sh`) automatically re-runs acceptance criteria commands after the `:Worker` Task completes. The hook returns its result via `additionalContext` JSON, which is injected into your context automatically.
+`:Verify` dispatches a **verify worker agent** that independently checks acceptance criteria **AND** must-not-do violations. No hook dependency — the verify worker is the source of truth.
 
-**1. Check hook output** — look for the VERIFICATION RESULT block that appears in your context after the Task(worker) call returns:
+**1. Dispatch Verify Worker:**
 
 ```
-=== VERIFICATION RESULT ===
-status: VERIFIED          # or FAILED
-pass: 4
-fail: 1
-failed_items:
-  - tsc_check:static:tsc --noEmit src/auth.ts
-===========================
-```
+Task(
+  subagent_type="worker",
+  description="Verify: TODO {N} acceptance criteria + must-not-do",
+  prompt="""
+## TASK
+You are a VERIFICATION worker. Your job is to independently verify
+that TODO {N}'s acceptance criteria are met AND that must-not-do
+rules were not violated.
 
-> **How it works**: The hook outputs `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}}` which Claude Code injects into your context. You will see the VERIFICATION RESULT text directly after the Task(worker) result.
+DO NOT write or modify any code. Only READ and RUN verification commands.
 
-**Worker JSON structure** (parsed from Task result):
-```json
+## PART 1: ACCEPTANCE CRITERIA TO VERIFY
+{Acceptance Criteria section from Plan for TODO N}
+
+For each criterion, run the specified command and report PASS/FAIL:
+
+1. Functional checks: run commands (test -f, curl, etc.)
+2. Static checks: run linter/type-checker (tsc --noEmit, eslint, etc.)
+3. Runtime checks: run tests (npm test, pytest, etc.)
+
+⚠️ Do NOT trust the Worker's self-reported PASS status.
+Re-execute every command yourself and judge independently.
+
+## PART 2: MUST-NOT-DO VIOLATIONS
+{Must NOT do section from Plan for TODO N}
+{Standard must-not-do: no other Tasks, no files outside allowed list, no new dependencies, no git commands}
+
+For each must-not-do rule, check whether it was violated:
+- Read `git diff` (staged + unstaged) to see what the Worker actually changed
+- Check for files modified outside the allowed list
+- Check for new dependencies added (package.json, go.mod, etc.)
+- Check for out-of-scope changes unrelated to this TODO
+
+## PART 3: SIDE-EFFECT & CONTEXT AUDIT
+Review the Worker's output JSON and the actual code changes:
+
+1. **Suspicious PASS**: Did the Worker report PASS but the actual
+   code doesn't fully satisfy the criterion? (e.g., stub implementation,
+   TODO comments, partial logic, error swallowed silently)
+2. **Undocumented side-effects**: Did the Worker change things not
+   mentioned in its output? (e.g., modified shared utilities, changed
+   configs, added exports not in scope)
+3. **Missing context**: Did the Worker discover patterns, issues, or
+   make decisions that should be in learnings/issues/decisions but aren't?
+
+## OUTPUT FORMAT (strict JSON)
 {
-  "outputs": {"config_path": "./config.json"},
-  "acceptance_criteria": [
-    {
-      "id": "file_exists",
-      "category": "functional",
-      "description": "File exists",
-      "command": "test -f ./config.json",
-      "status": "PASS"
-    },
-    {
-      "id": "tsc_check",
-      "category": "static",
-      "description": "tsc passes",
-      "command": "tsc --noEmit",
-      "status": "FAIL",
-      "reason": "Type error in line 42"
-    }
-  ],
-  "learnings": ["Uses ESM"],
-  "issues": ["Incomplete type definitions"],
-  "decisions": ["Following existing pattern"]
+  "status": "VERIFIED" | "FAILED",
+  "acceptance_criteria": {
+    "pass": <number>,
+    "fail": <number>,
+    "results": [
+      {
+        "id": "<criterion_id>",
+        "category": "functional" | "static" | "runtime",
+        "description": "<what was checked>",
+        "command": "<command run>",
+        "status": "PASS" | "FAIL",
+        "reason": "<failure reason, if FAIL>"
+      }
+    ]
+  },
+  "must_not_do": {
+    "violations": [
+      {
+        "rule": "<which rule was violated>",
+        "evidence": "<what was found>",
+        "severity": "critical" | "warning"
+      }
+    ]
+  },
+  "side_effects": {
+    "suspicious_passes": ["<criterion_id that looks questionable>"],
+    "undocumented_changes": ["<file or change not mentioned in output>"],
+    "missing_context": ["<learning/issue/decision Worker should have reported>"]
+  }
 }
+
+## MUST NOT DO
+- Do not modify any files
+- Do not write code or fix issues
+- Do not run git commands (except read-only: git diff, git status)
+- Only verify — report results objectively
+"""
+)
 ```
 
-**2. Route by status:**
+**2. Parse result & route by status:**
 
-- **VERIFIED** → `TaskUpdate(taskId, status="completed")` → `:Context` becomes runnable.
-- **FAILED** → Reconciliation loop (below).
+- **VERIFIED** (all criteria PASS, no critical violations, no suspicious passes) → `TaskUpdate(taskId, status="completed")` → `:Wrap-up` becomes runnable.
+- **FAILED** (any criterion FAIL, or critical must-not-do violation, or suspicious pass found) → Reconciliation loop (below).
+
+> **`:Wrap-up` enrichment**: When VERIFIED, merge `side_effects.missing_context` into the Worker's learnings/issues/decisions before saving. This ensures context is complete even if the Worker under-reported.
 
 **3. Reconciliation (max 3 retries):**
 
 ```
 retry_count = 0
 RECONCILE_LOOP:
-  if hook status == "VERIFIED" → mark completed, done
+  verify_result = dispatch_verify_worker(TODO_N)
+  if verify_result.status == "VERIFIED" → mark completed, done
   retry_count++
   if retry_count < 3:
-    Task(worker, "Fix: {failed_items details}")
-    → re-enter RECONCILE_LOOP (hook verifies again)
+    # Build fix prompt from ALL failure categories
+    fix_prompt = """
+    Fix the following issues found by Verify Worker:
+
+    ## Failed Acceptance Criteria
+    {verify_result.acceptance_criteria.results where status==FAIL}
+
+    ## Must-Not-Do Violations
+    {verify_result.must_not_do.violations}
+
+    ## Suspicious Passes (re-implement properly)
+    {verify_result.side_effects.suspicious_passes}
+
+    ## Missing Context (add to your output JSON)
+    {verify_result.side_effects.missing_context}
+    """
+    Task(subagent_type="worker", prompt=fix_prompt)
+    → re-enter RECONCILE_LOOP (verify worker runs again)
   else:
     → failure handling (below)
 ```
 
-**After 3 retries, categorize failure:**
+> **Pattern**: Worker → Verify Worker → (if FAILED) Fix Worker → Verify Worker → ...
+> Each cycle is a full reconciliation round. The verify worker always runs fresh.
+> Fix Worker receives ALL categories of failure — not just acceptance criteria.
+
+**4. Reconciliation Decision — Triage each failure item:**
+
+Not all failures require retry. Orchestrator triages each item from `verify_result` into one of 3 dispositions:
+
+| Disposition | When | Action |
+|-------------|------|--------|
+| **retry** | Fixable by Worker (code_error, suspicious pass, missing context) | Include in fix prompt → retry loop |
+| **skip** | Not blocking, or ambiguous/low-severity (warning-level violation, cosmetic) | Mark TODO with partial completion, log decision |
+| **halt** | Unfixable (env_error, critical must-not-do violation, unknown after 3 retries) | Stop execution |
+
+**Triage rules:**
+```
+FOR EACH item in verify_result (failed criteria + violations + side_effects):
+  IF item is acceptance_criteria with status==FAIL → retry
+  IF item is must_not_do with severity==critical → halt (immediate, no retry)
+  IF item is must_not_do with severity==warning → skip (log decision)
+  IF item is suspicious_pass → retry (force re-implementation)
+  IF item is undocumented_change → skip (log to issues.md)
+  IF item is missing_context → skip (merge into Context step)
+```
+
+**5. Decision logging — ALL dispositions go to context:**
+
+Every triage decision is recorded in `decisions.md` during the `:Wrap-up` step:
+
+```markdown
+## TODO {N} — Reconciliation Decisions
+
+### Retried
+- [criterion_id]: {reason} → Fixed in retry #{n}
+
+### Skipped
+- [warning_rule]: {evidence} → Skipped: {justification}
+- [undocumented_change]: {file} → Logged as issue, not blocking
+
+### Halted
+- [critical_rule]: {evidence} → Execution stopped
+```
+
+> **Why log skips**: Skipped items are technical debt. They must be visible in context so future TODOs or humans can address them.
+
+**6. After 3 retries (for retry-disposition items only):**
 
 | Category | Examples | Action |
 |----------|----------|--------|
@@ -453,24 +564,29 @@ RECONCILE_LOOP:
 
 ---
 
-### 2c. :Context — Save to Context Files
+### 2c. :Wrap-up — Save Context + Mark Checkboxes
 
-Save Worker JSON fields to context files. Only runs after `:Verify` passes.
+Combines context saving and checkbox marking into a single step. Only runs after `:Verify` completes (VERIFIED or skipped-through).
 
-| Worker JSON Field | File | Format |
-|-------------------|------|--------|
-| `outputs` | `outputs.json` | `existing["todo-N"] = outputs` → Write |
-| `learnings` | `learnings.md` | `## {N}\n- item` append |
-| `issues` | `issues.md` | `## {N}\n- [ ] item` append |
-| `decisions` | `decisions.md` | `## {N}\n- item` append |
+**Part A: Save to Context Files**
+
+| Source | Field | File | Format |
+|--------|-------|------|--------|
+| Worker | `outputs` | `outputs.json` | `existing["todo-N"] = outputs` → Write |
+| Worker | `learnings` | `learnings.md` | `## {N}\n- item` append |
+| Worker | `issues` | `issues.md` | `## {N}\n- [ ] item` append |
+| Worker | `decisions` | `decisions.md` | `## {N}\n- item` append |
+| Verify | `side_effects.missing_context` | `learnings.md` / `issues.md` | Merge into appropriate file |
+| Verify | `side_effects.undocumented_changes` | `issues.md` | `- [ ] Undocumented: {change}` append |
+| Orchestrator | reconciliation decisions | `decisions.md` | `## {N} — Reconciliation\n- {disposition}: {item}` append |
 | `acceptance_criteria` | (not saved) | Used only for verification, not saved to context |
 
 Skip empty arrays.
 
-**⚠️ `outputs.json` race condition**: When multiple `:Context` tasks run in parallel, save `outputs.json` **sequentially** (Read → merge → Write one at a time). Other context files are safe for parallel append.
+**⚠️ `outputs.json` race condition**: When multiple `:Wrap-up` tasks run in parallel, save `outputs.json` **sequentially** (Read → merge → Write one at a time). Other context files are safe for parallel append.
 
 ```
-# Parallel 1.3:Context and 3.3:Context both runnable:
+# Parallel 1.3:Wrap-up and 3.3:Wrap-up both runnable:
 
 # outputs.json — SEQUENTIAL:
 current = Read("outputs.json")
@@ -484,11 +600,7 @@ Write("outputs.json", current)
 # learnings.md, issues.md — PARALLEL OK (append mode)
 ```
 
-On completion: `TaskUpdate(taskId, status="completed")` → `:Checkbox` becomes runnable.
-
----
-
-### 2d. :Checkbox — Mark Plan Complete
+**Part B: Mark Plan Checkboxes**
 
 **1. Update Plan TODO checkbox:**
 ```
@@ -509,7 +621,7 @@ FOR EACH criterion in verify_result.acceptance_criteria:
 
 **⚠️ Caution:**
 - Only check items whose `status` is `PASS` from the `:Verify` result
-- Do not check based on SubAgent report alone — use hook verification result
+- Do not check based on SubAgent report alone — use verify worker result
 - Items with `status: FAIL` remain `- [ ]`
 - Do NOT check Steps items (`- [ ]` under `**Steps**:`) — only Acceptance Criteria
 
@@ -663,15 +775,19 @@ After TODO #2  → Update outputs.json + append learnings
 
 ### C. Reconciliation Details
 
-**K8s-style reconciliation pattern:**
+**K8s-style reconciliation pattern (Worker → Verify Worker loop):**
 ```
-Desired State: All acceptance_criteria PASS/SKIP
-Current State: Hook verification result
+Desired State: All acceptance_criteria PASS/SKIP, no critical violations
+Current State: Verify Worker result
 
-[VERIFIED] → Save context (2d)
-[FAILED, retry < 3] → Task(worker, "Fix...") → re-verify
-[FAILED, retry >= 3] → Categorize → Fix Task or Halt
+[VERIFIED] → Save context (2c) — include missing_context from Verify
+[FAILED] → Triage each item:
+  retry   → Fix Worker → Verify Worker (max 3 rounds)
+  skip    → Log decision to decisions.md, proceed
+  halt    → Stop execution, log to issues.md
 ```
+
+**Decision trail**: Every triage disposition (retry/skip/halt) is recorded in `decisions.md` during `:Wrap-up`. Skipped items become visible technical debt for humans or future TODOs.
 
 **Fix Task rules:**
 - Inherits context from failed task
@@ -716,39 +832,34 @@ TaskList() after initialization:
 #1  [pending] Init:State Begin
 #2  [pending] 1.1:Worker — Config setup  [blocked by #1]
 #3  [pending] 1.2:Verify          [blocked by #2]
-#4  [pending] 1.3:Context         [blocked by #3]
-#5  [pending] 1.4:Checkbox        [blocked by #4]
-#6  [pending] 1.5:Commit          [blocked by #5]
-#7  [pending] 2.1:Worker — API    [blocked by #6]   ← cross-TODO dep
-#8  [pending] 2.2:Verify          [blocked by #7]
-#9  [pending] 2.3:Context         [blocked by #8]
-#10 [pending] 2.4:Checkbox        [blocked by #9]
-#11 [pending] 3.1:Worker — Utils  [blocked by #1]
-#12 [pending] 3.2:Verify          [blocked by #11]
-#13 [pending] 3.3:Context         [blocked by #12]
-#14 [pending] 3.4:Checkbox        [blocked by #13]
-#15 [pending] 3.5:Commit          [blocked by #14]
-#16 [pending] Finalize:Residual Commit [blocked by #6, #10, #15]  ← #6=1.5:Commit, #10=2.4:Checkbox, #15=3.5:Commit
-#17 [pending] Finalize:State Complete  [blocked by #16]
-#18 [pending] Finalize:Report          [blocked by #17]
+#4  [pending] 1.3:Wrap-up         [blocked by #3]
+#5  [pending] 1.4:Commit          [blocked by #4]
+#6  [pending] 2.1:Worker — API    [blocked by #5]   ← cross-TODO dep
+#7  [pending] 2.2:Verify          [blocked by #6]
+#8  [pending] 2.3:Wrap-up         [blocked by #7]
+#9  [pending] 3.1:Worker — Utils  [blocked by #1]
+#10 [pending] 3.2:Verify          [blocked by #9]
+#11 [pending] 3.3:Wrap-up         [blocked by #10]
+#12 [pending] 3.4:Commit          [blocked by #11]
+#13 [pending] Finalize:Residual Commit [blocked by #5, #8, #12]  ← #5=1.4:Commit, #8=2.3:Wrap-up, #12=3.4:Commit
+#14 [pending] Finalize:State Complete  [blocked by #13]
+#15 [pending] Finalize:Report          [blocked by #14]
 ```
 
 **Execution Rounds (auto-determined by TaskList):**
 
 ```
 Round 0:  #1 Init:State Begin                   ← PR only
-Round 1:  #2 1.1:Worker, #11 3.1:Worker          ← PARALLEL
-Round 2:  #3 1.2:Verify, #12 3.2:Verify          ← PARALLEL
-Round 3:  #4 1.3:Context, #13 3.3:Context        ← PARALLEL (outputs.json sequential!)
-Round 4:  #5 1.4:Checkbox, #14 3.4:Checkbox      ← PARALLEL
-Round 5:  #6 1.5:Commit, #15 3.5:Commit          ← PARALLEL
-Round 6:  #7 2.1:Worker                           ← unblocked after #6
-Round 7:  #8 2.2:Verify
-Round 8:  #9 2.3:Context
-Round 9:  #10 2.4:Checkbox
-Round 10: #16 Finalize:Residual Commit             ← blocked by all TODO last steps
-Round 11: #17 Finalize:State Complete              ← blocked by #16
-Round 12: #18 Finalize:Report                      ← blocked by #17
+Round 1:  #2 1.1:Worker, #9 3.1:Worker           ← PARALLEL
+Round 2:  #3 1.2:Verify, #10 3.2:Verify          ← PARALLEL
+Round 3:  #4 1.3:Wrap-up, #11 3.3:Wrap-up        ← PARALLEL (outputs.json sequential!)
+Round 4:  #5 1.4:Commit, #12 3.4:Commit          ← PARALLEL
+Round 5:  #6 2.1:Worker                           ← unblocked after #5
+Round 6:  #7 2.2:Verify
+Round 7:  #8 2.3:Wrap-up
+Round 8:  #13 Finalize:Residual Commit            ← blocked by all TODO last steps
+Round 9:  #14 Finalize:State Complete             ← blocked by #13
+Round 10: #15 Finalize:Report                     ← blocked by #14
 ```
 
 ### F. Session Recovery
@@ -763,7 +874,7 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 ```
 
 1. Parse checkboxes → only unchecked TODOs
-2. Create sub-step Tasks for each unchecked TODO (Worker, Verify, Context, Checkbox, Commit)
+2. Create sub-step Tasks for each unchecked TODO (Worker, Verify, Wrap-up, Commit)
 3. Set intra-TODO chains + cross-TODO dependencies (only between unchecked)
 4. Load `outputs.json` (variable substitution works if prior outputs saved)
 5. Resume execution loop — dispatch picks up from where it left off
@@ -778,16 +889,15 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 
 **Plan checkbox = only source of truth.** Task system = sub-step parallelization helper (recreated each session).
 
-**Task types**: Init (1, PR only) + per-TODO sub-steps (up to 5 each) + Finalize (2-3):
+**Task types**: Init (1, PR only) + per-TODO sub-steps (up to 4 each) + Finalize (2-3):
 
 | Sub-Step | Subject Pattern | Purpose |
 |----------|----------------|---------|
 | `:State Begin` | `Init:State Begin` | [PR only] Begin PR state |
 | `:Worker` | `{N}.1:Worker — {title}` | Delegate implementation to worker agent |
-| `:Verify` | `{N}.2:Verify` | Check hook result, reconcile if FAILED |
-| `:Context` | `{N}.3:Context` | Save outputs/learnings/issues/decisions |
-| `:Checkbox` | `{N}.4:Checkbox` | Mark Plan `[x]` and acceptance criteria |
-| `:Commit` | `{N}.5:Commit` | Commit via git-master (only if Commit Strategy row exists) |
+| `:Verify` | `{N}.2:Verify` | Dispatch verify worker, triage & reconcile if FAILED |
+| `:Wrap-up` | `{N}.3:Wrap-up` | Save context (Worker + Verify) + mark Plan `[x]` |
+| `:Commit` | `{N}.4:Commit` | Commit via git-master (only if Commit Strategy row exists) |
 | `:Residual Commit` | `Finalize:Residual Commit` | Check & commit remaining changes |
 | `:State Complete` | `Finalize:State Complete` | [PR only] Complete PR state |
 | `:Report` | `Finalize:Report` | Output final orchestration report |
@@ -808,10 +918,10 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 Init:State Begin → all {N}.1:Worker tasks
 
 # Intra-TODO chain (always):
-{N}.1:Worker → {N}.2:Verify → {N}.3:Context → {N}.4:Checkbox → {N}.5:Commit
+{N}.1:Worker → {N}.2:Verify → {N}.3:Wrap-up → {N}.4:Commit
 
 # Cross-TODO (from Dependency Graph):
-1.5:Commit (or 1.4:Checkbox) → 2.1:Worker
+1.4:Commit (or 1.3:Wrap-up) → 2.1:Worker
 
 # Finalize chain:
 all TODO last steps → Residual Commit → State Complete (PR) → Report
@@ -837,17 +947,16 @@ Usage: `TaskUpdate(status="completed")` — yes. `TaskUpdate(status="in_progress
 
 **2. Task Initialization:**
 - [ ] Identified unchecked TODOs from Plan?
-- [ ] Created sub-step Tasks (Worker, Verify, Context, Checkbox, Commit) for each unchecked TODO?
-- [ ] Intra-TODO chains set (Worker→Verify→Context→Checkbox→Commit)?
+- [ ] Created sub-step Tasks (Worker, Verify, Wrap-up, Commit) for each unchecked TODO?
+- [ ] Intra-TODO chains set (Worker→Verify→Wrap-up→Commit)?
 - [ ] Cross-TODO dependencies set from Dependency Graph?
 
 **3. Execution Phase:**
 - [ ] No pending Tasks in TaskList?
 - [ ] TaskUpdate(status="completed") on each sub-step?
 - [ ] All `:Worker` tasks delegated to worker agent?
-- [ ] All `:Verify` tasks checked hook result + reconciled if needed?
-- [ ] All `:Context` tasks saved outputs/learnings/issues/decisions?
-- [ ] All `:Checkbox` tasks marked Plan `[x]` + acceptance criteria?
+- [ ] All `:Verify` tasks dispatched verify worker + triaged + reconciled if needed?
+- [ ] All `:Wrap-up` tasks saved context + marked Plan `[x]` + logged triage decisions?
 - [ ] All `:Commit` tasks delegated to git-master?
 - [ ] Pushed after each commit (PR mode)?
 

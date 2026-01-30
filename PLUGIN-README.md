@@ -48,7 +48,6 @@ Provides a full **specify → open → execute** pipeline with:
 |-------|---------|---------|
 | PreToolUse(Skill) | dev-execute-init-hook, dev-specify-init-hook | Initialize pipeline state |
 | PreToolUse(Edit/Write) | dev-plan-guard, dev-orchestrator-guard | Prevent unauthorized edits |
-| PostToolUse(Task) | dev-worker-verify | Verify worker output |
 | PostToolUse(Task/Skill) | validate-output | Validate against frontmatter |
 | Stop | ultrawork-stop, dev-execute-stop, dev-specify-stop | Pipeline transitions |
 | UserPromptSubmit | ultrawork-init, dev-init | Initialize sessions |

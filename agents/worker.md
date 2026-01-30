@@ -141,7 +141,7 @@ When work is complete, **always** report in the following JSON format:
 | `id` | ✅ | Unique identifier (e.g., `tsc_check`, `test_auth`) |
 | `category` | ✅ | `functional` / `static` / `runtime` / `cleanup` |
 | `description` | ✅ | Verification content description (human-readable) |
-| `command` | ✅ | Command used for verification (Hook will re-execute) |
+| `command` | ✅ | Command used for verification (Verify Worker will re-execute) |
 | `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
 | `reason` | ❌ | Reason for FAIL/SKIP |
 
@@ -162,9 +162,9 @@ learnings = "This is how it works" (resolved, tip for next Worker)
 issues    = "This problem exists" (unresolved, needs attention)
 ```
 
-**⚠️ Hook will re-execute acceptance_criteria commands for verification.**
-- Even if Worker reports PASS, Hook will re-verify
-- If mismatch, Orchestrator will re-run Worker
+**⚠️ Verify Worker will independently re-execute acceptance_criteria commands.**
+- Even if Worker reports PASS, a separate verify worker will re-check
+- If mismatch, Orchestrator will re-run Worker (reconciliation loop)
 
 ## Important Notes
 
