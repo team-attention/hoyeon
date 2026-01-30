@@ -74,8 +74,8 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 
 ## Versioning
 
-- Plugin version is in `.claude-plugin/plugin.json`
-- **Bump the version** when merging a feature branch to `main`
+- Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
+- **Bump both files** when merging a feature branch to `main`
 
 ## Lessons Learned
 
