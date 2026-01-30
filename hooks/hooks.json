@@ -30,15 +30,6 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/dev-worker-verify.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Task|Skill",
         "hooks": [
           {

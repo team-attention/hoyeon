@@ -43,15 +43,6 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/scripts/dev-worker-verify.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Task|Skill",
         "hooks": [
           {

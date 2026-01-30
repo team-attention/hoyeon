@@ -151,7 +151,6 @@ Hooks automate transitions and enforce quality:
 | UserPromptSubmit | `ultrawork-init-hook.sh` | Initialize ultrawork pipeline state |
 | Stop | `dev-specify-stop-hook.sh` | Transition specify → open |
 | PostToolUse | `validate-output.sh` | Validate agent/skill output against `validate_prompt` |
-| PostToolUse | `dev-worker-verify.sh` | Verify worker output (functional, static, runtime) |
 
 ## Execute Architecture
 
