@@ -24,6 +24,30 @@ Orchestrator (reads full PLAN)
 - Orchestrator handles **all commits** (Workers do NOT commit)
 - **Verification** runs once after all TODOs complete (read-only)
 
+### TODO Granularity Rules
+
+Each TODO is executed by an isolated Worker agent (not a human). Agent call overhead (context transfer, result collection, verification) is significant, so TODO granularity directly impacts total execution time.
+
+**Sizing Criterion**: One TODO = single purpose + single verifiable artifact + 1-5 files modified/created.
+
+**One-Verb Rule**: A TODO description should have one primary verb ("implement", "refactor", "migrate"). If it contains two or more verbs joined by "and", consider splitting.
+
+**When to Split**:
+- Independent changes across different modules/layers (enables parallel execution)
+- High-failure-risk sections (external API calls, complex algorithms) — isolate for targeted retry
+- Different expertise domains mixed in one task (e.g., DB schema + UI component)
+
+**When to Merge**:
+- Atomicity would break if split (rename/refactor touching declaration + all call sites)
+- High context overlap (repeated modifications to the same file/class)
+- Intermediate output is consumed immediately without transformation by the next TODO
+- Input description would be longer than the task description itself (context overhead > work)
+
+**Default Policy**:
+- Uncertain/exploratory work → split small, verify quickly
+- Mechanical/deterministic work → merge large, minimize call count
+- Prefer fewer TODOs over more — when in doubt, merge
+
 ---
 
 ## Required Sections
