@@ -265,7 +265,7 @@ Before creating plan, verify DRAFT has:
 
 ### Step 2: Run Parallel Analysis Agents
 
-Launch gap-analyzer, tradeoff-analyzer, and external-researcher (if needed) **in parallel**:
+Launch gap-analyzer, tradeoff-analyzer, verification-planner, and external-researcher (if needed) **in parallel**:
 
 ```
 # Gap analysis - identify missing requirements and pitfalls
@@ -289,6 +289,17 @@ Boundaries: [From DRAFT Boundaries]
 
 Assess risk per change area, propose simpler alternatives, flag dangerous changes,
 and generate decision_points for HIGH risk items requiring human approval.
+""")
+
+# Verification planning - classify verification points as agent-verifiable vs human-required
+Task(subagent_type="verification-planner",
+     prompt="""
+User's Goal: [From DRAFT What & Why]
+Current Understanding: [Summary from DRAFT]
+Work Breakdown: [From DRAFT Direction > Work Breakdown]
+Agent Findings: [From DRAFT Agent Findings - patterns, structure, commands]
+
+Explore test infrastructure and classify verification points.
 """)
 
 # External docs research (if needed) - runs in parallel with above
@@ -358,6 +369,15 @@ AskUserQuestion(
 - HIGH: 1건 (DB 스키마 변경 — 사용자 승인 완료)
 - MEDIUM: 3건 (위 자동 결정 참조)
 - LOW: 5건
+
+## 검증 전략 (Verification Strategy)
+### Agent가 검증 (A-items)
+- A-1: [검증 내용] (method: [command])
+- A-2: [검증 내용] (method: [e2e/unit test])
+### 사람이 확인 (H-items)
+- H-1: [검증 내용] (reason: [왜 사람이 필요한지])
+### 검증 Gap
+- [환경 제약 및 대안]
 ```
 
 > **Purpose**: Agent가 자율 결정한 LOW/MEDIUM 항목을 사용자가 확인할 기회 제공. Silent scope drift 방지.
@@ -379,6 +399,7 @@ Generate plan using **DRAFT → PLAN mapping**:
 | Agent Findings > Patterns | TODOs > References |
 | Agent Findings > Commands | TODO Final > Verification commands |
 | Direction > Work Breakdown | TODOs + Dependency Graph |
+| (verification-planner 결과) | Verification Summary |
 
 ```
 Write(".dev/specs/{name}/PLAN.md", plan_content)
@@ -392,6 +413,22 @@ Follow the structure in `${baseDir}/templates/PLAN_TEMPLATE.md`.
 - **Orchestrator Section**: Task Flow, Dependency Graph, Commit Strategy
 - **TODOs**: Each with Type, Inputs, Outputs, Steps, Acceptance Criteria
 - **TODO Final: Verification** with commands from Agent Findings
+
+### Step 4.5: Verification Summary Confirmation
+
+After creating the PLAN, present the Verification Summary to the user for lightweight confirmation:
+
+```
+AskUserQuestion(
+  question: "PLAN의 Verification Summary입니다. 이대로 진행할까요?",
+  options: [
+    { label: "확인", description: "검증 전략이 적절합니다" },
+    { label: "수정 필요", description: "검증 항목을 변경하고 싶습니다" }
+  ]
+)
+```
+
+**If "수정 필요"**: Ask which items to change, update the PLAN's Verification Summary, then proceed to Step 5.
 
 ### Step 5: Call Reviewer
 
@@ -553,7 +590,7 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
 
 - [ ] User explicitly requested plan generation
 - [ ] Draft completeness validated (Step 1 of Plan Generation)
-- [ ] Parallel analysis agents ran (gap-analyzer + tradeoff-analyzer, optionally external-researcher)
+- [ ] Parallel analysis agents ran (gap-analyzer + tradeoff-analyzer + verification-planner, optionally external-researcher)
 - [ ] All HIGH risk decision_points presented to user and resolved
 - [ ] Decision Summary Checkpoint presented and confirmed by user
 - [ ] Plan file exists at `.dev/specs/{name}/PLAN.md`
@@ -620,9 +657,10 @@ User: "OK, make it a plan"
 
 [Plan Generation Mode]
 1. Validate draft completeness ✓
-2. Launch 3 parallel analysis agents:
+2. Launch 4 parallel analysis agents:
    - gap-analyzer: missing reqs, AI pitfalls
    - tradeoff-analyzer: risk assessment, simpler alternatives
+   - verification-planner: test infra, A-items vs H-items
    - external-researcher: (skipped - no migration/new lib)
 3. Present HIGH risk decision_points → User selects option
 4. Decision Summary Checkpoint:
@@ -630,7 +668,8 @@ User: "OK, make it a plan"
     자동 결정: [MED] JSON response, [LOW] src/services/auth/
     위험도: HIGH 1건(승인됨), MED 3건, LOW 5건"
    → User confirms
-5. Write: .dev/specs/api-auth/PLAN.md (with Verify blocks per TODO)
+5. Write: .dev/specs/api-auth/PLAN.md (with Verify blocks + Verification Summary)
+5.5. Present Verification Summary → User confirms
 6. Call: Task(reviewer)
 7. Reviewer says REJECT (semantic: missing rollback for DB change)
    → Present rejection to user → User selects "제안대로 수정"

@@ -36,7 +36,27 @@ Orchestrator (reads full PLAN)
 > Brief description of what this plan accomplishes
 ```
 
-### 2. Context
+### 2. Verification Summary
+
+```markdown
+## Verification Summary
+
+### Agent-Verifiable (A-items)
+| ID | Criterion | Method | Related TODO |
+|----|-----------|--------|-------------|
+| A-1 | [검증 내용] | command: `npm test` | TODO 2 |
+| A-2 | [검증 내용] | e2e test | TODO Final |
+
+### Human-Required (H-items)
+| ID | Criterion | Reason | Review Material |
+|----|-----------|--------|----------------|
+| H-1 | [검증 내용] | 주관적 판단 | [링크/경로] |
+
+### Verification Gaps
+- [환경 제약 및 대안]
+```
+
+### 3. Context
 
 ```markdown
 ## Context
@@ -53,7 +73,7 @@ Orchestrator (reads full PLAN)
 - [Finding 1]: [Implication]
 ```
 
-### 3. Work Objectives
+### 4. Work Objectives
 
 ```markdown
 ## Work Objectives
@@ -78,7 +98,7 @@ Orchestrator (reads full PLAN)
 
 > **For Orchestrator only** - Workers do not see this section.
 
-### 4. Task Flow
+### 5. Task Flow
 
 ```markdown
 ## Task Flow
@@ -88,7 +108,7 @@ TODO-1 → TODO-2 → TODO-Final
 ```
 ```
 
-### 5. Dependency Graph
+### 6. Dependency Graph
 
 ```markdown
 ## Dependency Graph
@@ -100,7 +120,7 @@ TODO-1 → TODO-2 → TODO-Final
 | Final | all outputs | - | verification |
 ```
 
-### 6. Parallelization
+### 7. Parallelization
 
 ```markdown
 ## Parallelization
@@ -110,7 +130,7 @@ TODO-1 → TODO-2 → TODO-Final
 | - | - | (define if parallel tasks exist) |
 ```
 
-### 7. Commit Strategy
+### 8. Commit Strategy
 
 > **Orchestrator commits on behalf of Workers** - Workers do NOT touch git.
 
@@ -125,7 +145,7 @@ TODO-1 → TODO-2 → TODO-Final
 > **Note**: No commit after Final (Verification is read-only). Final cleanup commit only if Orchestrator detects uncommitted changes before verification.
 ```
 
-### 8. Error Handling
+### 9. Error Handling
 
 ```markdown
 ## Error Handling
@@ -162,7 +182,7 @@ TODO-1 → TODO-2 → TODO-Final
 - Max depth = 1 (prevents infinite loop)
 ```
 
-### 9. Runtime Contract
+### 10. Runtime Contract
 
 ```markdown
 ## Runtime Contract
@@ -183,7 +203,7 @@ TODO-1 → TODO-2 → TODO-Final
 
 > **For Workers** - Each Worker receives only its assigned TODO.
 
-### 10. TODOs
+### 11. TODOs
 
 ```markdown
 ## TODOs
