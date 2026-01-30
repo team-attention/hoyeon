@@ -206,6 +206,13 @@ Skill("tech-decision", args="[comparison topic]")
    - `CONTRIBUTING.md:22` - All new endpoints need integration tests
    ```
 
+5. Update **Agent Findings > External Dependencies** (from exploration):
+   ```markdown
+   | Dependency | Type | Current Setup | Env Vars |
+   |------------|------|---------------|----------|
+   | PostgreSQL | DB | docker-compose | DB_URL |
+   ```
+
 #### When direction is agreed:
 
 1. Update **Direction > Approach** with high-level strategy
@@ -259,7 +266,7 @@ Before creating plan, verify DRAFT has:
 - [ ] **Boundaries** specified
 - [ ] **Success Criteria** defined
 - [ ] **Critical Open Questions** empty
-- [ ] **Agent Findings** has Patterns, Commands, and Documentation
+- [ ] **Agent Findings** has Patterns, Commands, Documentation, and External Dependencies
 
 **If incomplete**: Return to Interview Mode to gather missing information.
 
@@ -400,6 +407,7 @@ Generate plan using **DRAFT → PLAN mapping**:
 | Agent Findings > Commands | TODO Final > Verification commands |
 | Direction > Work Breakdown | TODOs + Dependency Graph |
 | (verification-planner 결과) | Verification Summary |
+| Agent Findings > External Dependencies | External Dependencies Strategy |
 
 ```
 Write(".dev/specs/{name}/PLAN.md", plan_content)
