@@ -13,6 +13,21 @@
     ]
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/ultrawork-init-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/dev-init-hook.sh"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Skill",
