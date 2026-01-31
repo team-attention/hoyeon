@@ -58,12 +58,12 @@ Identify the task type and apply the corresponding strategy:
 
 #### 1.2 Launch Parallel Exploration
 
-Launch all 3 agents **in parallel** (in a single message with multiple Task calls) to populate **Agent Findings**.
+Launch all 4 agents **in parallel** (in a single message with multiple Task calls) to populate **Agent Findings**.
 
 > **IMPORTANT: Do NOT use `run_in_background: true`.** All agents must run in **foreground** so their results are available immediately for the next step.
 
 ```
-# All 3 agents launched simultaneously in one message (parallel foreground, NOT background)
+# All 4 agents launched simultaneously in one message (parallel foreground, NOT background)
 Task(subagent_type="Explore",
      prompt="Find: existing patterns for [feature type]. Report as file:line format.")
 
@@ -72,6 +72,16 @@ Task(subagent_type="Explore",
 
 Task(subagent_type="docs-researcher",
      prompt="Find internal documentation relevant to [feature/task]. Search docs/, ADRs, READMEs, config files for conventions, architecture decisions, and constraints.")
+
+Task(subagent_type="ux-reviewer",
+     prompt="""
+User's Goal: [user's stated goal]
+Current Understanding: [brief description of what's being proposed]
+Intent Type: [classified intent from 1.1]
+Affected Area: [which part of the product the change touches]
+
+Evaluate how this change affects existing user experience.
+Focus on: current UX flow, simplicity impact, and better alternatives.""")
 ```
 
 **What to discover** (for DRAFT's Agent Findings section):
@@ -79,6 +89,7 @@ Task(subagent_type="docs-researcher",
 - Directory structure → `Structure`
 - Project commands → `Project Commands`
 - Internal documentation → `Documentation` (ADRs, conventions, constraints)
+- Current UX flow & impact → `UX Review` (from ux-reviewer agent)
 
 #### 1.3 Create Draft File
 
@@ -103,6 +114,7 @@ After parallel agents (Explore ×2 + docs-researcher) complete, present a brief 
  - 관련 패턴: [발견된 기존 패턴 2-3개]
  - 내부 문서: [관련 ADR/컨벤션 요약]
  - 프로젝트 명령어: lint/test/build
+ - UX 리뷰: [현재 UX 흐름 요약 + 주요 UX 우려사항]
 
 이 맥락이 맞는지 확인 후 진행하겠습니다."
 ```

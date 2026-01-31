@@ -73,6 +73,12 @@
 |------------|------|---------------|----------|
 | [e.g. PostgreSQL] | [DB/API/Cache/Storage] | [docker-compose/cloud/none] | [DB_URL, ...] |
 
+### UX Review
+- **Current flow**: [How user currently interacts with affected area]
+- **UX impact**: [How proposed change affects simplicity/intuitiveness]
+- **Recommendations**: [Simpler alternatives or UX qualities to preserve]
+- **Must NOT do (UX)**: [UX anti-patterns to avoid]
+
 ## Open Questions
 
 ### Critical (Must resolve before Plan)
@@ -184,6 +190,7 @@ Identify task type and establish strategy.
 | Agent Findings > Patterns | TODOs > References |
 | Agent Findings > Commands | TODO Final > Verification commands |
 | Agent Findings > External Dependencies | External Dependencies Strategy |
+| Agent Findings > UX Review | Work Objectives > Must NOT Do (UX items) + TODOs > UX constraints |
 | Direction > Work Breakdown | TODOs + Dependency Graph |
 
 ---
