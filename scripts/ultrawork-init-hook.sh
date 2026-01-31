@@ -24,14 +24,6 @@ if ! echo "$PROMPT" | grep -qiE "^/ultrawork|^ultrawork"; then
   exit 0
 fi
 
-# Extract feature name from prompt
-# "/ultrawork feature-name" or "ultrawork feature-name"
-FEATURE_NAME=$(echo "$PROMPT" | sed -E 's/^\/?(ultrawork|ULTRAWORK)[[:space:]]+//i' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | head -c 50)
-
-if [[ -z "$FEATURE_NAME" ]]; then
-  FEATURE_NAME="unnamed-feature"
-fi
-
 # Initialize state file
 STATE_FILE="$CWD/.dev/state.local.json"
 mkdir -p "$CWD/.dev"
@@ -53,19 +45,17 @@ TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 TEMP_FILE="${STATE_FILE}.tmp.$$"
 
 jq --arg sid "$SESSION_ID" \
-   --arg name "$FEATURE_NAME" \
    --arg ts "$TIMESTAMP" \
    '.[$sid] = {
      "created_at": $ts,
      "agents": {},
      "ultrawork": {
-       "name": $name,
        "phase": "specify_interview",
        "iteration": 0,
        "max_iterations": 10
      }
    }' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
 
-echo "🚀 Ultrawork initialized: $FEATURE_NAME (session: ${SESSION_ID:0:8}...)" >&2
+echo "🚀 Ultrawork initialized (session: ${SESSION_ID:0:8}...)" >&2
 
 exit 0

@@ -41,7 +41,6 @@ if [[ -z "$ULTRAWORK_STATE" ]] || [[ "$ULTRAWORK_STATE" == "null" ]]; then
 fi
 
 # Extract ultrawork fields
-FEATURE_NAME=$(jq -r --arg sid "$SESSION_ID" '.[$sid].ultrawork.name // "unnamed"' "$STATE_FILE")
 PHASE=$(jq -r --arg sid "$SESSION_ID" '.[$sid].ultrawork.phase // "specify_interview"' "$STATE_FILE")
 ITERATION=$(jq -r --arg sid "$SESSION_ID" '.[$sid].ultrawork.iteration // 0' "$STATE_FILE")
 MAX_ITERATIONS=$(jq -r --arg sid "$SESSION_ID" '.[$sid].ultrawork.max_iterations // 10' "$STATE_FILE")
@@ -62,8 +61,22 @@ if [[ $MAX_ITERATIONS -gt 0 ]] && [[ $ITERATION -ge $MAX_ITERATIONS ]]; then
   exit 0
 fi
 
-# Spec directory
-SPEC_DIR="$CWD/.dev/specs/$FEATURE_NAME"
+# Find spec directory: scan .dev/specs/ for the most recently modified DRAFT.md or PLAN.md
+SPECS_ROOT="$CWD/.dev/specs"
+SPEC_DIR=""
+FEATURE_NAME=""
+if [[ -d "$SPECS_ROOT" ]]; then
+  SPEC_DIR=$(find "$SPECS_ROOT" -maxdepth 2 \( -name "DRAFT.md" -o -name "PLAN.md" \) -exec stat -f '%m %N' {} \; 2>/dev/null \
+    | sort -rn | head -1 | cut -d' ' -f2- | xargs dirname 2>/dev/null || echo "")
+  if [[ -n "$SPEC_DIR" ]]; then
+    FEATURE_NAME=$(basename "$SPEC_DIR")
+  fi
+fi
+
+if [[ -z "$SPEC_DIR" ]]; then
+  # No specs found at all
+  exit 0
+fi
 
 # ============================================================
 # HELPER FUNCTIONS
