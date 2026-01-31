@@ -82,105 +82,71 @@ Read plan file:
   gh pr view <PR#> --json body -q '.body' | grep -oP '(?<=→ \[)[^\]]+'
   ```
 
-⚠️ For each **unchecked** TODO, create sub-step Tasks (**sequentially** to ensure ID order):
+⚠️ **BATCH CREATE all tasks in minimal turns to avoid overhead.**
+
+**Strategy**: Call ALL TaskCreate calls for a single turn in parallel (multiple tool calls in one message). Then set ALL dependencies in one follow-up turn. This reduces task setup from ~3 minutes to ~15 seconds.
 
 ```
-# --- Init Tasks (PR only) ---
+# ═══════════════════════════════════════════════════
+# TURN 1: Create ALL tasks in PARALLEL (single message)
+# ═══════════════════════════════════════════════════
+# Send ALL of these TaskCreate calls in ONE message simultaneously.
+# Claude Code supports multiple tool calls per message — use it.
+
+# Init (PR only)
 IF pr_mode:
-  sb = TaskCreate(subject="Init:State Begin",
-                  description="Skill('state', args='begin <PR#>'). Stop on failure.",
-                  activeForm="Beginning PR state")
+  sb = TaskCreate(subject="Init:State Begin", ...)
 
-task_ids = {}  # task_ids[N] = {worker, verify, wrapup, commit}
-
-FOR EACH "### [ ] TODO N: {title}" in plan (in order):
-
-  # 1. Worker — delegates implementation
-  w = TaskCreate(subject="{N}.1:Worker — {title}",
-                 description="{full TODO section content}",
-                 activeForm="{N}.1: Running Worker")
-  task_ids[N] = {worker: w.task_id}
-
-  # 2. Verify — dispatches verify worker, triages & reconciles
-  v = TaskCreate(subject="{N}.2:Verify",
-                 description="""Dispatch verify worker for TODO {N}.
-Check acceptance criteria + must-not-do violations + side-effects.
-If VERIFIED → mark completed.
-If FAILED → triage (retry/skip/halt), reconcile via fix worker (max 3 retries).
-Log all triage decisions to context.""",
-                 activeForm="{N}.2: Verifying")
-  task_ids[N].verify = v.task_id
-
-  # 3. Wrap-up — saves context (Worker + Verify) AND marks checkboxes
+# Per-TODO sub-steps (ALL TODOs in parallel)
+FOR EACH "### [ ] TODO N: {title}" in plan:
+  w  = TaskCreate(subject="{N}.1:Worker — {title}",
+                  description="{full TODO section content}",
+                  activeForm="{N}.1: Running Worker")
+  v  = TaskCreate(subject="{N}.2:Verify",
+                  description="Dispatch verify worker for TODO {N}. ...",
+                  activeForm="{N}.2: Verifying")
   wu = TaskCreate(subject="{N}.3:Wrap-up",
-                  description="""Wrap-up for TODO {N}. Two actions in sequence:
-
-**A. Save Context** — save to context files:
-1. Worker output (outputs, learnings, issues, decisions)
-2. Verify Worker findings (missing_context, undocumented_changes)
-3. Reconciliation triage decisions (retried/skipped/halted items)
-
-**B. Mark Checkboxes** — update PLAN.md:
-1. Mark TODO checkbox: ### [ ] → ### [x]
-2. Mark acceptance criteria per Verify result (PASS → [x], FAIL → [ ])""",
+                  description="Wrap-up for TODO {N}. ...",
                   activeForm="{N}.3: Wrapping up")
-  task_ids[N].wrapup = wu.task_id
-
-  # 4. Commit — only if Commit Strategy table has a row for this TODO
   IF commit_strategy_has_row(N):
     cm = TaskCreate(subject="{N}.4:Commit",
-                    description="""Commit TODO {N} changes.
-Dispatch: Task(subagent_type="git-master")
-Message: {Message from Commit Strategy table}
-Files: {Files from Commit Strategy table}
-Push: {YES if PR mode, NO if Local mode}""",
+                    description="Commit TODO {N} changes. ...",
                     activeForm="{N}.4: Committing")
-    task_ids[N].commit = cm.task_id
 
-  # Intra-TODO chain: Worker → Verify → Wrap-up → Commit
+# Finalize tasks
+rc = TaskCreate(subject="Finalize:Residual Commit", ...)
+IF pr_mode:
+  sc = TaskCreate(subject="Finalize:State Complete", ...)
+rp = TaskCreate(subject="Finalize:Report", ...)
+
+# ═══════════════════════════════════════════════════
+# TURN 2: Set ALL dependencies in PARALLEL (single message)
+# ═══════════════════════════════════════════════════
+# After Turn 1 returns all task IDs, send ALL TaskUpdate calls
+# for dependencies in ONE message simultaneously.
+
+FOR EACH unchecked TODO N:
   TaskUpdate(taskId=w.task_id, addBlocks=[v.task_id])
   TaskUpdate(taskId=v.task_id, addBlocks=[wu.task_id])
   IF task_ids[N].commit:
     TaskUpdate(taskId=wu.task_id, addBlocks=[cm.task_id])
 
-# --- Init → TODO dependency (PR only) ---
 IF pr_mode:
   FOR EACH unchecked TODO N:
     TaskUpdate(taskId=sb.task_id, addBlocks=[task_ids[N].worker])
 
-# --- Finalize Tasks ---
-# Collect the last sub-step of each unchecked TODO
-all_last_steps = [task_ids[N].commit ?? task_ids[N].checkbox for each unchecked TODO N]
-
-rc = TaskCreate(subject="Finalize:Residual Commit",
-                description="""Run `git status --porcelain`.
-If dirty: Task(subagent_type="git-master") with message "chore({plan-name}): miscellaneous changes".
-Push: {YES if PR mode, NO if Local mode}.
-If clean: skip.""",
-                activeForm="Residual commit check")
-
-IF pr_mode:
-  sc = TaskCreate(subject="Finalize:State Complete",
-                  description="""Complete PR state.
-Dispatch: Skill("state", args="complete <PR#>")
-Removes state:executing label, converts Draft → Ready, adds "Published" comment.""",
-                  activeForm="Completing PR state")
-
-rp = TaskCreate(subject="Finalize:Report",
-                description="Output final orchestration report",
-                activeForm="Generating report")
-
-# All TODO chains must finish before Finalize starts
+all_last_steps = [task_ids[N].commit ?? task_ids[N].wrapup for each unchecked TODO N]
 FOR EACH last_step in all_last_steps:
   TaskUpdate(taskId=last_step, addBlocks=[rc.task_id])
 
-# Finalize chain: Residual Commit → State Complete (PR) → Report
 IF pr_mode:
   TaskUpdate(taskId=rc.task_id, addBlocks=[sc.task_id])
   TaskUpdate(taskId=sc.task_id, addBlocks=[rp.task_id])
 ELSE:
   TaskUpdate(taskId=rc.task_id, addBlocks=[rp.task_id])
 ```
+
+**⚠️ Key rule**: NEVER create tasks one-by-one across multiple turns. All TaskCreate in Turn 1, all TaskUpdate in Turn 2. Two turns total.
 
 ### 1.3 Set Cross-TODO Dependencies
 
@@ -243,12 +209,42 @@ Create: `outputs.json` (`{}`), `learnings.md`, `issues.md`, `decisions.md` (empt
 
 ## STEP 2: Execute Loop (Type-Based Dispatch)
 
+### Dispatch Rules
+
+**⚠️ CRITICAL: True parallel dispatch requires `run_in_background: true`.**
+
+If you call `Task(...)` without `run_in_background`, Claude Code blocks until the agent returns — making execution sequential even if multiple tasks are runnable. To achieve real parallelism:
+
 ```
 WHILE TaskList() has pending tasks:
   runnable = TaskList().filter(status=="pending" AND blockedBy==empty)
-  FOR EACH task in runnable (PARALLEL):
-    dispatch(task)  # route by sub-step type suffix
+
+  IF len(runnable) > 1 AND all are :Worker or :Verify or :Commit:
+    # PARALLEL dispatch — send ALL in ONE message with run_in_background
+    FOR EACH task in runnable (in single message):
+      dispatch(task, run_in_background=true)
+    # Poll for completion
+    WAIT until any background task completes (check TaskOutput periodically)
+    # Process completed tasks, mark completed, loop
+  ELSE:
+    # Single task or orchestrator-handled type → dispatch normally
+    dispatch(task)
 ```
+
+**Which types can run in parallel:**
+- `:Worker` — YES (if touching disjoint files)
+- `:Verify` — YES (read-only, no conflicts)
+- `:Commit` — NO (git operations must be sequential)
+- `:Wrap-up` — PARTIAL (outputs.json must be sequential, other files OK)
+- `:State Begin/Complete` — NO (single task)
+
+### Overhead Reduction Rules
+
+**⚠️ DO NOT re-read context files between worker dispatches.**
+- Worker results come back in the Task return value — use that directly
+- Only read `outputs.json` when you need variable substitution for the NEXT worker
+- Do NOT call `Read` on PLAN.md, learnings.md, issues.md between dispatches — you already have this in memory
+- After a worker completes: `TaskUpdate(completed)` → `TaskList()` → dispatch next runnable. That's it. No extra Read/Bash calls.
 
 **Dispatch by task subject suffix:**
 
@@ -263,7 +259,7 @@ WHILE TaskList() has pending tasks:
 | `:State Complete` | 2g | `Skill("state", args="complete <PR#>")` |
 | `:Report` | 2h | Final Report output |
 
-After each sub-step completes: `TaskUpdate(taskId, status="completed")` → removed from TaskList → dependents unblocked.
+After each sub-step completes: `TaskUpdate(taskId, status="completed")` → removed from TaskList → dependents unblocked. **Immediately check TaskList() for newly unblocked tasks and dispatch without delay.**
 
 ---
 
