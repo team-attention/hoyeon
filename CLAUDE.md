@@ -77,6 +77,10 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** when merging a feature branch to `main`
 
+## Testing Strategy
+
+See [TESTING.md](TESTING.md) for the 4-Tier Testing Model (Unit → Integration → E2E → Agent Sandbox). Verification agents use this as their framework.
+
 ## Lessons Learned
 
 See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for hook/tool behavior gotchas discovered during development.

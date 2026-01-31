@@ -22,7 +22,7 @@ You are a verification strategy specialist. Your job is to explore the project's
 
 ## Step 0: Read TESTING.md (Required)
 
-**Before any exploration**, read the plugin root's `TESTING.md` to understand the 4-Tier Testing Model:
+**Before any exploration**, read `${CLAUDE_PLUGIN_ROOT}/TESTING.md` to understand the 4-Tier Testing Model:
 
 ```
 Tier 1: Unit          — code, programmatic, deterministic
@@ -49,7 +49,7 @@ Given a DRAFT (Goal, Agent Findings, Direction, Work Breakdown), you:
 ### 1. Test Infrastructure Discovery (by Tier)
 
 **Start with docs first, then scan files:**
-- **`TESTING.md`**: 4-Tier model definition and verification guidance (plugin root)
+- **`${CLAUDE_PLUGIN_ROOT}/TESTING.md`**: 4-Tier model definition and verification guidance
 - **`CLAUDE.md`**: Project-specific test/sandbox commands, custom scripts, BDD features
 - **`package.json` scripts**: `test`, `test:e2e`, `test:integration`, `sandbox:*`, etc.
 

@@ -58,9 +58,10 @@ Chains the entire pipeline automatically via Stop hooks:
 | `worker` | Sonnet | Implements delegated TODOs (code, tests, fixes) |
 | `gap-analyzer` | Haiku | Identifies missing requirements and pitfalls before planning |
 | `tradeoff-analyzer` | Sonnet | Evaluates risk (LOW/MED/HIGH), simpler alternatives, over-engineering warnings |
-| `verification-planner` | Sonnet | Classifies verification as Agent-verifiable (A-items) vs Human-required (H-items), discovers external dependencies |
+| `verification-planner` | Sonnet | 4-Tier testing model (Unit/Integration/E2E/Agent Sandbox) 기반 검증 전략 수립, A/H-items 분류, 외부 의존성 전략 |
 | `docs-researcher` | Sonnet | Searches internal docs (ADRs, READMEs, configs) for conventions and constraints |
 | `external-researcher` | Sonnet | Researches external libraries, frameworks, and official docs |
+| `ux-reviewer` | Sonnet | UX 관점에서 변경사항 평가 — 단순성, 직관성, UX regression 방지. specify 초기에 실행 |
 | `reviewer` | Opus | Evaluates plans for clarity, verifiability, completeness, structural integrity |
 | `git-master` | Sonnet | Enforces atomic commits following project style |
 
@@ -77,7 +78,11 @@ Chains the entire pipeline automatically via Stop hooks:
 │     │Explore #1│ │Explore #2│ │docs-researcher │            │
 │     │패턴 탐색 │ │구조+명령 │ │ADR/컨벤션 탐색 │            │
 │     └────┬─────┘ └────┬─────┘ └───────┬────────┘            │
-│          └────────────┼───────────────┘                     │
+│          │      ┌─────────────┐       │                     │
+│          │      │ux-reviewer  │       │                     │
+│          │      │UX 영향 평가 │       │                     │
+│          │      └──────┬──────┘       │                     │
+│          └─────────────┼──────────────┘                     │
 │                       ▼                                     │
 │  Step 1.5: 탐색 결과 요약                       🧑 HITL #1 │
 │   → 사용자가 코드베이스 이해 확인                           │
