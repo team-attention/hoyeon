@@ -220,14 +220,17 @@ WHILE TaskList() has pending tasks:
   runnable = TaskList().filter(status=="pending" AND blockedBy==empty)
 
   IF len(runnable) > 1 AND all are :Worker or :Verify or :Commit:
-    # PARALLEL dispatch — send ALL in ONE message with run_in_background
+    # PARALLEL dispatch — mark in_progress FIRST, then send ALL in ONE message
+    FOR EACH task in runnable:
+      TaskUpdate(taskId=task.id, status="in_progress")
     FOR EACH task in runnable (in single message):
       dispatch(task, run_in_background=true)
     # Poll for completion
     WAIT until any background task completes (check TaskOutput periodically)
     # Process completed tasks, mark completed, loop
   ELSE:
-    # Single task or orchestrator-handled type → dispatch normally
+    # Single task — mark in_progress, then dispatch
+    TaskUpdate(taskId=task.id, status="in_progress")
     dispatch(task)
 ```
 
@@ -923,7 +926,9 @@ Init:State Begin → all {N}.1:Worker tasks
 all TODO last steps → Residual Commit → State Complete (PR) → Report
 ```
 
-Usage: `TaskUpdate(status="completed")` — yes. `TaskUpdate(status="in_progress")` — not used.
+Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(status="completed")` — after sub-step finishes. Both are used.
+
+**⚠️ Why `in_progress` matters**: With parallel dispatch, `TaskList().filter(status=="pending")` is used to find runnable tasks. Without marking dispatched tasks as `in_progress`, the next loop iteration would re-dispatch them. Always mark `in_progress` BEFORE dispatching.
 
 ### H. Mode Differences (PR vs Local)
 
