@@ -117,7 +117,8 @@ FOR EACH "### [ ] TODO N: {title}" in plan:
 rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 IF pr_mode:
   sc = TaskCreate(subject="Finalize:State Complete", ...)
-rp = TaskCreate(subject="Finalize:Report", ...)
+rp = TaskCreate(subject="Finalize:Report", activeForm="Generating report",
+     description="Output the final orchestration report. MUST include ALL sections (print 'None' if empty): TASK SUMMARY, COMMITS CREATED, FILES MODIFIED, LEARNINGS ACCUMULATED, ISSUES DISCOVERED, ACCEPTANCE CRITERIA. See handler 2h for full template.")
 
 # ═══════════════════════════════════════════════════
 # TURN 2: Set ALL dependencies in PARALLEL (single message)
@@ -229,9 +230,10 @@ WHILE TaskList() has pending tasks:
     WAIT until any background task completes (check TaskOutput periodically)
     # Process completed tasks, mark completed, loop
   ELSE:
-    # Single task — mark in_progress, then dispatch
+    # Single task — mark in_progress, read details, then dispatch
     TaskUpdate(taskId=task.id, status="in_progress")
-    dispatch(task)
+    task_details = TaskGet(taskId=task.id)
+    dispatch(task, task_details)
 ```
 
 **Which types can run in parallel:**
@@ -691,7 +693,27 @@ On completion: `TaskUpdate(taskId, status="completed")` → `:Report` becomes ru
 
 ### 2h. :Report — Final Orchestration Report
 
+**Follows the same dispatch pattern as all other tasks:**
+
 ```
+TaskUpdate(report.id, status="in_progress")
+task_details = TaskGet(report.id)          ← description contains template
+# Orchestrator outputs report directly (no worker needed)
+# MUST follow the template in task_details.description exactly
+TaskUpdate(report.id, status="completed")
+```
+
+**TaskCreate description MUST include the full template:**
+
+When creating the `:Report` task (in STEP 2 batch creation), use this description:
+
+```
+TaskCreate(
+  subject="Finalize:Report",
+  activeForm="Generating report",
+  description="""Output the final orchestration report.
+MUST include ALL sections below. If no data for a section, print "None".
+
 ═══════════════════════════════════════════════════════════
                     ORCHESTRATION COMPLETE
 ═══════════════════════════════════════════════════════════
@@ -700,30 +722,36 @@ PLAN: .dev/specs/{name}/PLAN.md
 MODE: Local | PR #123
 
 TASK SUMMARY:
-   Total TODOs:               8
-   Completed:                 8
-   Failed:                    0
+   Total TODOs:               [count]
+   Completed:                 [count]
+   Failed:                    [count]
 
-   Acceptance Criteria:      24
-   Verified & Checked:       24
+   Acceptance Criteria:       [count]
+   Verified & Checked:        [count]
+
+COMMITS CREATED:
+   [list all commits created during execution]
 
 FILES MODIFIED:
-   - src/auth/token.ts
-   - src/auth/token.test.ts
+   [list all files modified]
 
 LEARNINGS ACCUMULATED:
-   - This project uses ESM only
+   [from context/learnings.md, or "None"]
 
 ISSUES DISCOVERED:
-   - Issues found in existing code (not fixed, out of scope)
+   [from context/issues.md, or "None"]
 
 ACCEPTANCE CRITERIA:
-   - Functional: PASS (all TODOs)
-   - Static: PASS (all TODOs)
-   - Runtime: PASS (all TODOs)
+   - Functional: PASS/FAIL
+   - Static: PASS/FAIL
+   - Runtime: PASS/FAIL
 
 ═══════════════════════════════════════════════════════════
+"""
+)
 ```
+
+**Key rule:** At dispatch time, `TaskGet` brings this description into context, ensuring the template is followed exactly. No sections may be omitted.
 
 On completion: `TaskUpdate(taskId, status="completed")` → all tasks done, execution ends.
 
