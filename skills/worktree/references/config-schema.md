@@ -81,7 +81,7 @@ Template string defining the directory path where new worktrees will be created.
 
 | Property | Type | Required | Default |
 |----------|------|----------|---------|
-| `base_dir` | `string` | No | `../{repo}.{name}` |
+| `base_dir` | `string` | No | `../.worktrees/{name}` |
 
 **Purpose**: Customize worktree directory structure and location.
 
@@ -95,10 +95,10 @@ Template string defining the directory path where new worktrees will be created.
 **Example configurations**:
 
 ```yaml
-# Default: Create worktrees as siblings to main repo
+# Default: Create worktrees in consolidated directory
 worktree:
-  base_dir: "../{repo}.{name}"
-# Result: ../oh-my-claude-code.auth-feature/
+  base_dir: "../.worktrees/{name}"
+# Result: ../.worktrees/auth-feature/
 
 # Custom: Create worktrees in dedicated directory
 worktree:
@@ -124,7 +124,7 @@ When `.dev/config.yml` doesn't exist or fields are omitted:
 | Field | Default Value | Behavior |
 |-------|---------------|----------|
 | `copy_files` | `[]` | No files are copied |
-| `base_dir` | `../{repo}.{name}` | Worktrees created as sibling directories |
+| `base_dir` | `../.worktrees/{name}` | Worktrees created in consolidated directory |
 
 ## Complete Example
 
@@ -192,7 +192,7 @@ fi
 
 # Apply defaults if not set
 copy_files=${copy_files:-""}
-base_dir=${base_dir:-"../{repo}.{name}"}
+base_dir=${base_dir:-"../.worktrees/{name}"}
 ```
 
 ## Validation Rules
@@ -243,7 +243,7 @@ worktree:
   copy_files:
     - .env.local
     - .secrets/api-keys.json
-  base_dir: "../{repo}.{name}"
+  base_dir: "../.worktrees/{name}"
 ```
 
 **Important**: Ensure these files are in `.gitignore`!
@@ -270,7 +270,7 @@ worktree:
   copy_files:
     - node_modules/.cache
     - .next/cache
-  base_dir: "../{repo}.{name}"
+  base_dir: "../.worktrees/{name}"
 ```
 
 ### Use Case 4: Team Conventions
@@ -297,7 +297,7 @@ mkdir -p .dev
 cat > .dev/config.yml << EOF
 worktree:
   copy_files: []
-  base_dir: "../{repo}.{name}"
+  base_dir: "../.worktrees/{name}"
 EOF
 
 # 2. Add files you want to copy
