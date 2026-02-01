@@ -199,10 +199,11 @@ CONTEXT_DIR=".dev/specs/{name}/context"
 ```bash
 mkdir -p "$CONTEXT_DIR"
 ```
-Create: `outputs.json` (`{}`), `learnings.md`, `issues.md`, `decisions.md` (empty).
+Create: `outputs.json` (`{}`), `learnings.md`, `issues.md`, `decisions.md`, `amendments.md` (empty).
 
 **Resume** (context folder exists):
 - Read `outputs.json` into memory (for variable substitution)
+- Read `amendments.md` into memory (for dynamic TODO recovery)
 - Keep other files as-is (append mode)
 - Progress determined from Plan checkboxes
 
@@ -422,6 +423,27 @@ Review the Worker's output JSON and the actual code changes:
 3. **Missing context**: Did the Worker discover patterns, issues, or
    make decisions that should be in learnings/issues/decisions but aren't?
 
+## PART 4: SCOPE-RELATED BLOCKAGE DETECTION
+If you detect a failure that stems from SCOPE limitations (not Worker error),
+populate the `suggested_adaptation` field:
+
+**When to suggest adaptation:**
+- **scope_violation**: Acceptance criteria requires modifying files outside the allowed list
+- **dod_gap**: DoD (Definition of Done) criterion cannot be met without expanding scope
+- **dependency_missing**: Work requires outputs/artifacts not produced by any prior TODO
+
+**Detection signals:**
+1. Check if failed acceptance criteria point to files NOT in the allowed list
+2. Check if the DoD explicitly requires work beyond current TODO's boundaries
+3. Check if the Worker correctly identified a blocker but cannot fix it in-scope
+
+**What NOT to suggest:**
+- Worker made a mistake (code_error) → retry, don't adapt
+- Environment issue (missing dependency, API key) → env_error, don't adapt
+- Suspicious pass or missing context → side_effects, don't adapt
+
+Only suggest adaptation when the PLAN itself needs adjustment, not the Worker's execution.
+
 ## OUTPUT FORMAT (strict JSON)
 {
   "status": "VERIFIED" | "FAILED",
@@ -452,6 +474,21 @@ Review the Worker's output JSON and the actual code changes:
     "suspicious_passes": ["<criterion_id that looks questionable>"],
     "undocumented_changes": ["<file or change not mentioned in output>"],
     "missing_context": ["<learning/issue/decision Worker should have reported>"]
+  },
+  "suggested_adaptation": {
+    // ⚠️ Only include this field when status is FAILED AND you detect a scope-related blockage
+    // (e.g., needed file is outside allowed list, DoD criterion requires out-of-scope work)
+    "blockage_type": "scope_violation" | "dod_gap" | "dependency_missing",
+    "suggested_todo": {
+      "title": "<concise TODO title for what needs to be added to plan>",
+      "reason": "<why current scope cannot satisfy this criterion>",
+      "steps": ["<step 1>", "<step 2>", ...],
+      "scope_justification": "<why this new TODO is necessary and in-scope for the overall plan>"
+    },
+    "scope_signals": {
+      "dod_related": ["<which acceptance criteria cannot be met with current scope>"],
+      "files_in_allowlist": <boolean — true if needed files are in allowed list, false if out-of-scope>
+    }
   }
 }
 
@@ -514,6 +551,7 @@ Not all failures require retry. Orchestrator triages each item from `verify_resu
 |-------------|------|--------|
 | **retry** | Fixable by Worker (code_error, suspicious pass, missing context) | Include in fix prompt → retry loop |
 | **skip** | Not blocking, or ambiguous/low-severity (warning-level violation, cosmetic) | Mark TODO with partial completion, log decision |
+| **adapt** | Scope-internal blocker detected by Verify Worker. Verify Worker's `suggested_adaptation` field present | Create dynamic TODO → retry original TODO after resolution |
 | **halt** | Unfixable (env_error, critical must-not-do violation, unknown after 3 retries) | Stop execution |
 
 **Triage rules:**
@@ -525,7 +563,84 @@ FOR EACH item in verify_result (failed criteria + violations + side_effects):
   IF item is suspicious_pass → retry (force re-implementation)
   IF item is undocumented_change → skip (log to issues.md)
   IF item is missing_context → skip (merge into Context step)
+
+# After retry failures (if retry_count >= 3):
+IF verify_result has suggested_adaptation AND scope_check(suggested_adaptation) == IN_SCOPE:
+  → adapt (create dynamic TODO)
 ```
+
+**Scope judgment criteria (for adapt disposition):**
+
+When `suggested_adaptation` is present, apply BOTH rules to determine if it's IN_SCOPE:
+
+```
+Rule 1: Is suggested_todo necessary to achieve a DoD checklist item?
+  → Check if any acceptance criterion or DoD item depends on the suggested work
+  → If NO → OUT_OF_SCOPE (halt)
+
+Rule 2: Is suggested_todo within the file scope of References section?
+  → Check if suggested_todo.files are all listed in current TODO's References
+  → If NO → OUT_OF_SCOPE (halt)
+
+Judgment: IF Rule 1 == YES AND Rule 2 == YES → IN_SCOPE (adapt)
+          ELSE → OUT_OF_SCOPE (halt + report to human)
+```
+
+**⚠️ No LLM free judgment**: Use ONLY these 2 rules. If ambiguous → halt and report to human.
+
+**Adapt processing flow:**
+
+When adapt disposition is triggered (IN_SCOPE judgment passed):
+
+```
+1. Record PROPOSED adaptation to amendments.md:
+   ## TODO {N} — Proposed Adaptation
+   - **Blockage Type**: {blockage_type}
+   - **Suggested TODO**: {title}
+   - **Reason**: {reason}
+   - **Files**: {files}
+   - **Status**: PROPOSED
+
+2. Create dynamic TODO (same TaskCreate mechanism as Fix Task):
+   - Use suggested_todo.title, suggested_todo.description
+   - Set is_dynamic=true flag
+   - Set depth=1 (no nesting allowed)
+   - Inherits context from parent TODO
+
+3. Delegate to Fix Task mechanism:
+   dynamic_task = TaskCreate(
+     subject="{N}.fix:Adapt — {suggested_todo.title}",
+     description="{suggested_todo.description}",
+     is_dynamic=true,
+     depth=1
+   )
+   → Run Worker → Verify Worker for dynamic TODO
+
+4. After dynamic TODO completes:
+   IF dynamic_task.status == VERIFIED:
+     → Retry original TODO {N} (full reconciliation loop)
+     → Update amendments.md: Status = COMPLETED
+   ELSE:
+     → Halt execution
+     → Update amendments.md: Status = FAILED
+
+5. Update amendments.md with outcome:
+   ## TODO {N} — Adaptation Result
+   - **Status**: COMPLETED | FAILED
+   - **Dynamic Task ID**: {task_id}
+   - **Outcome**: {summary}
+```
+
+**⚠️ Depth=1 limit (infinite loop prevention):**
+
+```
+IF is_dynamic==true AND verify_result has suggested_adaptation:
+  → Ignore suggested_adaptation
+  → Halt with error: "Dynamic TODO cannot trigger nested adaptation"
+  → Update amendments.md: Status = FAILED (depth limit exceeded)
+```
+
+Dynamic TODOs (is_dynamic=true) are NOT allowed to trigger further adaptations. Only depth=0 (original plan TODOs) can trigger adapt.
 
 **5. Decision logging — ALL dispositions go to context:**
 
@@ -541,6 +656,10 @@ Every triage decision is recorded in `decisions.md` during the `:Wrap-up` step:
 - [warning_rule]: {evidence} → Skipped: {justification}
 - [undocumented_change]: {file} → Logged as issue, not blocking
 
+### Adapted
+- [blockage_type]: {suggested_todo.title} → Dynamic TODO created: {task_id}
+- Outcome: {COMPLETED | FAILED}
+
 ### Halted
 - [critical_rule]: {evidence} → Execution stopped
 ```
@@ -548,6 +667,18 @@ Every triage decision is recorded in `decisions.md` during the `:Wrap-up` step:
 > **Why log skips**: Skipped items are technical debt. They must be visible in context so future TODOs or humans can address them.
 
 **6. After 3 retries (for retry-disposition items only):**
+
+**Priority order**: Check for `suggested_adaptation` first, then categorize.
+
+```
+IF verify_result has suggested_adaptation:
+  → Try adapt disposition (see Adapt processing flow above)
+  → Run scope_check() to determine IN_SCOPE vs OUT_OF_SCOPE
+  → If IN_SCOPE: create dynamic TODO and retry
+  → If OUT_OF_SCOPE: halt + report to human
+ELSE:
+  → Categorize into env_error / code_error / unknown (see table below)
+```
 
 | Category | Examples | Action |
 |----------|----------|--------|
@@ -580,7 +711,27 @@ Combines context saving and checkbox marking into a single step. Only runs after
 | Verify | `side_effects.missing_context` | `learnings.md` / `issues.md` | Merge into appropriate file |
 | Verify | `side_effects.undocumented_changes` | `issues.md` | `- [ ] Undocumented: {change}` append |
 | Orchestrator | reconciliation decisions | `decisions.md` | `## {N} — Reconciliation\n- {disposition}: {item}` append |
+| Orchestrator | adapt decisions | `amendments.md` | structured entry (see format below) |
 | `acceptance_criteria` | (not saved) | Used only for verification, not saved to context |
+
+**amendments.md format:**
+
+```markdown
+## [YYYY-MM-DD HH:MM] Adaptation #{n}
+
+### ADDED: TODO {dynamic_id} — {title}
+- **Trigger**: TODO {origin_id} verify 실패 ({blockage_type})
+- **Scope check**: DoD "{related_dod_item}" → in-scope ✓
+- **Depends on**: {dependencies or "(none)"}
+- **Blocks**: TODO {blocked_id}
+- **Steps**: {from suggested_todo.steps}
+- **Status**: COMPLETED | FAILED | ABANDONED
+
+### MODIFIED: TODO {id} (if dependency changed)
+- **Before**: {original input/dependency}
+- **After**: {updated input/dependency}
+- **Reason**: {why modification needed}
+```
 
 Skip empty arrays.
 
@@ -740,6 +891,7 @@ Substitution logic:
 | `learnings.md` | Worker → Orchestrator saves | Patterns discovered and applied |
 | `issues.md` | Worker → Orchestrator saves | Unresolved issues (`- [ ]` format) |
 | `decisions.md` | Worker → Orchestrator saves | Decisions and reasons |
+| `amendments.md` | Orchestrator | Dynamic TODO tracking (adapt disposition records) |
 
 **Context Lifecycle:**
 ```
