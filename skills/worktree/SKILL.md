@@ -47,18 +47,9 @@ actions:
 
 ## Configuration
 
-This skill references `.dev/config.yml` for project-specific settings:
+This skill references `.dev/config.yml` for project-specific settings. See `${baseDir}/references/config-schema.md` for full schema and examples.
 
-```yaml
-worktree:
-  base_dir: "../"           # Parent directory for worktrees (default: ../)
-  copy_files:               # Files to copy to new worktrees
-    - ".dev/config.yml"
-    - ".env.local"
-    - "package.json"
-```
-
-**Note**: If `.dev/config.yml` does not exist, use defaults (base_dir: `../`, copy_files: empty).
+**Defaults** (when `.dev/config.yml` doesn't exist): `base_dir: ../`, `copy_files: []`
 
 ---
 
@@ -255,22 +246,7 @@ Output:
 
    - **Agent status**: Match tmux window name with worktree name
 
-4. **Output table**:
-   ```
-   WORKTREE STATUS
-   ═══════════════════════════════════════════════════════════════════════════
-   NAME           BRANCH           AGENT     PLAN      CHANGES   PATH
-   ───────────────────────────────────────────────────────────────────────────
-   user-auth      feat/user-auth   ⚡ claude  3/5       12        ../repo.user-auth
-   payment        feat/payment     💤 idle    0/3       0         ../repo.payment
-   email-tmpl     feat/email-tmpl  -         -         5         ../repo.email-tmpl
-   ═══════════════════════════════════════════════════════════════════════════
-
-   Legend:
-   AGENT:  ⚡ claude (running) | 💤 idle (tmux window exists, no claude) | - (no session)
-   PLAN:   checked/total TODOs (- if no PLAN.md)
-   CHANGES: number of uncommitted changes
-   ```
+4. **Output table**: See `${baseDir}/references/status-table.md` for table format and data collection commands.
 
 **Example**:
 ```
