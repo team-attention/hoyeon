@@ -49,7 +49,7 @@ actions:
 
 This skill references `.dev/config.yml` for project-specific settings. See `${baseDir}/references/config-schema.md` for full schema and examples.
 
-**Defaults** (when `.dev/config.yml` doesn't exist): `base_dir: ../`, `copy_files: []`
+**Defaults** (when `.dev/config.yml` doesn't exist): `base_dir: "../{repo}.{name}"`, `copy_files: []`
 
 ---
 
@@ -79,10 +79,12 @@ This skill references `.dev/config.yml` for project-specific settings. See `${ba
    fi
    ```
 
-2. **Create worktree**:
+2. **Resolve worktree path** (from `base_dir` template):
    ```bash
    REPO_NAME=$(basename $(git rev-parse --show-toplevel))
-   WORKTREE_PATH="${BASE_DIR}${REPO_NAME}.${NAME}"
+   # Replace {repo} and {name} in base_dir template
+   # Default template: "../{repo}.{name}"
+   WORKTREE_PATH=$(echo "$BASE_DIR" | sed "s/{repo}/$REPO_NAME/g; s/{name}/$NAME/g")
 
    git worktree add "$WORKTREE_PATH" -b "feat/${NAME}"
    ```
@@ -143,10 +145,10 @@ Output:
    fi
    ```
 
-2. **Get worktree path**:
+2. **Resolve worktree path** (from `base_dir` template):
    ```bash
    REPO_NAME=$(basename $(git rev-parse --show-toplevel))
-   WORKTREE_PATH="${BASE_DIR}${REPO_NAME}.${NAME}"
+   WORKTREE_PATH=$(echo "$BASE_DIR" | sed "s/{repo}/$REPO_NAME/g; s/{name}/$NAME/g")
 
    if [ ! -d "$WORKTREE_PATH" ]; then
      echo "워크트리 '{name}'가 존재하지 않습니다."
@@ -173,7 +175,12 @@ Output:
 
    - **Headless mode** (`--headless` flag):
      ```bash
-     tmux send-keys -t wt:"$NAME" "cd $WORKTREE_PATH && claude -p '$PROMPT'" Enter
+     # Write prompt to temp file to avoid shell injection (quotes, backticks, etc.)
+     PROMPT_FILE="/tmp/wt-prompt-${NAME}"
+     cat > "$PROMPT_FILE" << 'PROMPT_EOF'
+     ${PROMPT}
+     PROMPT_EOF
+     tmux send-keys -t wt:"$NAME" "cd $WORKTREE_PATH && claude -p \"\$(cat $PROMPT_FILE)\"" Enter
      ```
 
 **Example**:
@@ -246,7 +253,22 @@ Output:
 
    - **Agent status**: Match tmux window name with worktree name
 
+   - **Drift from main** (commits behind):
+     ```bash
+     BEHIND=$(git -C "$WORKTREE_PATH" rev-list --count HEAD..main 2>/dev/null || echo "0")
+     ```
+
+   - **PR status** (if `gh` CLI available):
+     ```bash
+     PR_STATE=$(gh pr list --head "feat/${NAME}" --json state --jq '.[0].state' 2>/dev/null || echo "-")
+     # Values: OPEN, MERGED, CLOSED, DRAFT, or - (no PR)
+     ```
+
 4. **Output table**: See `${baseDir}/references/status-table.md` for table format and data collection commands.
+
+   Additional columns beyond base table:
+   - **Behind**: commits behind main (`0` = up-to-date, `5` = 5 commits behind)
+   - **PR**: PR status (`-` | `draft` | `open` | `merged`)
 
 **Example**:
 ```
@@ -472,5 +494,10 @@ Output:
 
 6. **Config file handling**:
    - Read `.dev/config.yml` if exists
-   - Use defaults if not: `base_dir: ../`, `copy_files: []`
+   - Use defaults if not: `base_dir: "../{repo}.{name}"`, `copy_files: []`
    - Do NOT create config file if it doesn't exist
+
+7. **Cleanup merged worktrees**:
+   - `cleanup` checks PR status via `gh pr list --head feat/{name}`
+   - If PR is merged, skip uncommitted changes warning (branch is already integrated)
+   - If PR is not merged and has changes, warn before deleting
