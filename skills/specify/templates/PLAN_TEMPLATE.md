@@ -209,6 +209,7 @@ TODO-1 → TODO-2 → TODO-Final
 |----------|----------|-------------------|
 | `env_error` | API key missing, permission denied, network timeout | `/EACCES\|ECONNREFUSED\|timeout\|401\|403/i` |
 | `code_error` | Type error, lint failure, test failure | `/TypeError\|SyntaxError\|lint\|test failed/i` |
+| `scope_internal` | Missing prerequisite, schema mismatch, dependency conflict | Verify Worker `suggested_adaptation` present |
 | `unknown` | Unclassifiable errors | Default fallback |
 
 ### Failure Handling Flow
@@ -226,6 +227,7 @@ TODO-1 → TODO-2 → TODO-Final
 |----------|--------|
 | `env_error` | Halt + log to `issues.md` |
 | `code_error` | Create Fix Task (depth=1 limit) |
+| `scope_internal` | Adapt → Dynamic TODO (depth=1, delegates to Fix Task mechanism) |
 | `unknown` | Halt + log to `issues.md` |
 
 ### Fix Task Rules
@@ -233,6 +235,13 @@ TODO-1 → TODO-2 → TODO-Final
 - Fix Task type is always `work`
 - Fix Task failure → Halt (no further Fix Task creation)
 - Max depth = 1 (prevents infinite loop)
+
+### Adapt Rules
+
+- Adapt uses Fix Task mechanism (delegation)
+- Scope check: DoD match + file allowlist
+- depth=1 (dynamic TODO cannot adapt)
+- Logged to amendments.md
 ```
 
 ### 11. Runtime Contract
