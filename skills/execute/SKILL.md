@@ -118,7 +118,7 @@ rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 IF pr_mode:
   sc = TaskCreate(subject="Finalize:State Complete", ...)
 rp = TaskCreate(subject="Finalize:Report", activeForm="Generating report",
-     description="Output the final orchestration report. MUST include ALL sections (print 'None' if empty): TASK SUMMARY, COMMITS CREATED, FILES MODIFIED, LEARNINGS ACCUMULATED, ISSUES DISCOVERED, ACCEPTANCE CRITERIA. See handler 2h for full template.")
+     description="Read ${baseDir}/references/report-template.md, then output the report verbatim replacing placeholders with actual values.")
 
 # ═══════════════════════════════════════════════════
 # TURN 2: Set ALL dependencies in PARALLEL (single message)
@@ -693,65 +693,15 @@ On completion: `TaskUpdate(taskId, status="completed")` → `:Report` becomes ru
 
 ### 2h. :Report — Final Orchestration Report
 
-**Follows the same dispatch pattern as all other tasks:**
-
 ```
 TaskUpdate(report.id, status="in_progress")
-task_details = TaskGet(report.id)          ← description contains template
-# Orchestrator outputs report directly (no worker needed)
-# MUST follow the template in task_details.description exactly
+template = Read("${baseDir}/references/report-template.md")   ← actual file read
+# Output report verbatim, replacing {placeholders} with real values
+# Do NOT invent your own format — follow the template exactly
 TaskUpdate(report.id, status="completed")
 ```
 
-**TaskCreate description MUST include the full template:**
-
-When creating the `:Report` task (in STEP 2 batch creation), use this description:
-
-```
-TaskCreate(
-  subject="Finalize:Report",
-  activeForm="Generating report",
-  description="""Output the final orchestration report.
-MUST include ALL sections below. If no data for a section, print "None".
-
-═══════════════════════════════════════════════════════════
-                    ORCHESTRATION COMPLETE
-═══════════════════════════════════════════════════════════
-
-PLAN: .dev/specs/{name}/PLAN.md
-MODE: Local | PR #123
-
-TASK SUMMARY:
-   Total TODOs:               [count]
-   Completed:                 [count]
-   Failed:                    [count]
-
-   Acceptance Criteria:       [count]
-   Verified & Checked:        [count]
-
-COMMITS CREATED:
-   [list all commits created during execution]
-
-FILES MODIFIED:
-   [list all files modified]
-
-LEARNINGS ACCUMULATED:
-   [from context/learnings.md, or "None"]
-
-ISSUES DISCOVERED:
-   [from context/issues.md, or "None"]
-
-ACCEPTANCE CRITERIA:
-   - Functional: PASS/FAIL
-   - Static: PASS/FAIL
-   - Runtime: PASS/FAIL
-
-═══════════════════════════════════════════════════════════
-"""
-)
-```
-
-**Key rule:** At dispatch time, `TaskGet` brings this description into context, ensuring the template is followed exactly. No sections may be omitted.
+**Why Read instead of TaskGet:** The template lives in `references/report-template.md`. Reading it immediately before output keeps the template in close context and prevents the agent from generating a custom format.
 
 On completion: `TaskUpdate(taskId, status="completed")` → all tasks done, execution ends.
 
