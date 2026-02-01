@@ -239,9 +239,9 @@ TODO-1 → TODO-2 → TODO-Final
 ### Adapt Rules
 
 - Adapt uses Fix Task mechanism (delegation)
-- Scope check: DoD match + file allowlist
+- Scope check: DoD match OR file allowlist → adapt; both NO + non-destructive → adapt (OUT_OF_SCOPE tag); both NO + destructive → halt
 - depth=1 (dynamic TODO cannot adapt)
-- Logged to amendments.md
+- Dynamic TODO added to PLAN.md with (ADDED) marker + logged to amendments.md (audit trail)
 ```
 
 ### 11. Runtime Contract

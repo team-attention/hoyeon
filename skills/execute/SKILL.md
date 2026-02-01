@@ -545,7 +545,7 @@ RECONCILE_LOOP:
 
 **4. Reconciliation Decision — Triage each failure item:**
 
-Not all failures require retry. Orchestrator triages each item from `verify_result` into one of 3 dispositions:
+Not all failures require retry. Orchestrator triages each item from `verify_result` into one of 4 dispositions:
 
 | Disposition | When | Action |
 |-------------|------|--------|
@@ -565,49 +565,65 @@ FOR EACH item in verify_result (failed criteria + violations + side_effects):
   IF item is missing_context → skip (merge into Context step)
 
 # After retry failures (if retry_count >= 3):
-IF verify_result has suggested_adaptation AND scope_check(suggested_adaptation) == IN_SCOPE:
-  → adapt (create dynamic TODO)
+IF verify_result has suggested_adaptation AND scope_check(suggested_adaptation) != HALT:
+  → adapt (create dynamic TODO, tag with IN_SCOPE or OUT_OF_SCOPE)
 ```
 
 **Scope judgment criteria (for adapt disposition):**
 
-When `suggested_adaptation` is present, apply BOTH rules to determine if it's IN_SCOPE:
+When `suggested_adaptation` is present, evaluate scope and risk:
 
 ```
-Rule 1: Is suggested_todo necessary to achieve a DoD checklist item?
+Rule 1 (DoD): Is suggested_todo necessary to achieve a DoD checklist item?
   → Check if any acceptance criterion or DoD item depends on the suggested work
-  → If NO → OUT_OF_SCOPE (halt)
 
-Rule 2: Is suggested_todo within the file scope of References section?
+Rule 2 (Allowlist): Is suggested_todo within the file scope of References section?
   → Check if suggested_todo.files are all listed in current TODO's References
-  → If NO → OUT_OF_SCOPE (halt)
 
-Judgment: IF Rule 1 == YES AND Rule 2 == YES → IN_SCOPE (adapt)
-          ELSE → OUT_OF_SCOPE (halt + report to human)
+Rule 3 (Destructiveness): Is the change destructive or irreversible?
+  → Destructive = DB schema change, API breaking change, deletion of shared resources,
+    auth/security modification, external service configuration change
+  → Non-destructive = file creation, code addition, documentation, test addition,
+    refactoring within existing files
+
+Judgment:
+  Rule 1 YES OR Rule 2 YES           → adapt (IN_SCOPE)
+  Rule 1 NO AND Rule 2 NO:
+    Rule 3 = non-destructive          → adapt (OUT_OF_SCOPE tag, logged for review)
+    Rule 3 = destructive              → halt (report to human)
 ```
 
-**⚠️ No LLM free judgment**: Use ONLY these 2 rules. If ambiguous → halt and report to human.
+**⚠️ Bias toward action**: Prefer adapt over halt. halt is reserved for truly dangerous/irreversible changes. Non-destructive out-of-scope work should proceed with good logging — human reviews post-hoc via Report.
 
 **Adapt processing flow:**
 
-When adapt disposition is triggered (IN_SCOPE judgment passed):
+When adapt disposition is triggered:
 
 ```
-1. Record PROPOSED adaptation to amendments.md:
+1. Update PLAN.md — add dynamic TODO with (ADDED) marker:
+   Insert after parent TODO {N} in PLAN.md:
+   ### [ ] TODO {N}.a: (ADDED) {suggested_todo.title}
+   - **Type**: work
+   - **Trigger**: TODO {N} verify failed ({blockage_type})
+   - **Scope**: {IN_SCOPE | OUT_OF_SCOPE}
+   - **Steps**: {from suggested_todo.steps}
+
+2. Record to amendments.md (audit trail):
    ## TODO {N} — Proposed Adaptation
    - **Blockage Type**: {blockage_type}
    - **Suggested TODO**: {title}
+   - **Scope**: {IN_SCOPE | OUT_OF_SCOPE}
    - **Reason**: {reason}
    - **Files**: {files}
    - **Status**: PROPOSED
 
-2. Create dynamic TODO (same TaskCreate mechanism as Fix Task):
+3. Create dynamic TODO (same TaskCreate mechanism as Fix Task):
    - Use suggested_todo.title, suggested_todo.description
    - Set is_dynamic=true flag
    - Set depth=1 (no nesting allowed)
    - Inherits context from parent TODO
 
-3. Delegate to Fix Task mechanism:
+4. Delegate to Fix Task mechanism:
    dynamic_task = TaskCreate(
      subject="{N}.fix:Adapt — {suggested_todo.title}",
      description="{suggested_todo.description}",
@@ -616,19 +632,15 @@ When adapt disposition is triggered (IN_SCOPE judgment passed):
    )
    → Run Worker → Verify Worker for dynamic TODO
 
-4. After dynamic TODO completes:
+5. After dynamic TODO completes:
    IF dynamic_task.status == VERIFIED:
+     → Mark PLAN.md: [x] TODO {N}.a
      → Retry original TODO {N} (full reconciliation loop)
      → Update amendments.md: Status = COMPLETED
    ELSE:
+     → Mark PLAN.md: TODO {N}.a — FAILED
      → Halt execution
      → Update amendments.md: Status = FAILED
-
-5. Update amendments.md with outcome:
-   ## TODO {N} — Adaptation Result
-   - **Status**: COMPLETED | FAILED
-   - **Dynamic Task ID**: {task_id}
-   - **Outcome**: {summary}
 ```
 
 **⚠️ Depth=1 limit (infinite loop prevention):**
@@ -673,9 +685,9 @@ Every triage decision is recorded in `decisions.md` during the `:Wrap-up` step:
 ```
 IF verify_result has suggested_adaptation:
   → Try adapt disposition (see Adapt processing flow above)
-  → Run scope_check() to determine IN_SCOPE vs OUT_OF_SCOPE
-  → If IN_SCOPE: create dynamic TODO and retry
-  → If OUT_OF_SCOPE: halt + report to human
+  → Run scope_check() to determine scope + destructiveness
+  → If IN_SCOPE or non-destructive: create dynamic TODO and retry
+  → If OUT_OF_SCOPE + destructive: halt + report to human
 ELSE:
   → Categorize into env_error / code_error / unknown (see table below)
 ```
@@ -721,7 +733,7 @@ Combines context saving and checkbox marking into a single step. Only runs after
 
 ### ADDED: TODO {dynamic_id} — {title}
 - **Trigger**: TODO {origin_id} verify 실패 ({blockage_type})
-- **Scope check**: DoD "{related_dod_item}" → in-scope ✓
+- **Scope**: {IN_SCOPE | OUT_OF_SCOPE} (Rule 1: {Y/N}, Rule 2: {Y/N}, Rule 3: {destructive/non-destructive})
 - **Depends on**: {dependencies or "(none)"}
 - **Blocks**: TODO {blocked_id}
 - **Steps**: {from suggested_todo.steps}
