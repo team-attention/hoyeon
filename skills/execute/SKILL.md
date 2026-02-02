@@ -34,7 +34,7 @@ Delegate to SubAgents, verify results, manage parallelization.
    Pick runnable (pending + not blocked) → dispatch by type:
      :State Begin      → [PR only] Skill("state", "begin") → stop on failure
      :Worker  → Task(worker) with substituted variables
-     :Verify  → dispatch verify worker, triage & reconcile if FAILED (max 3 retries)
+     :Verify  → dispatch verify worker, triage (halt > adapt > retry > skip), reconcile if FAILED
      :Wrap-up → save context (Worker + Verify) + mark Plan checkbox [x]
      :Commit  → Task(git-master) per Commit Strategy
      :Residual Commit → git status → git-master if dirty
@@ -508,65 +508,95 @@ Only suggest adaptation when the PLAN itself needs adjustment, not the Worker's 
 
 > **`:Wrap-up` enrichment**: When VERIFIED, merge `side_effects.missing_context` into the Worker's learnings/issues/decisions before saving. This ensures context is complete even if the Worker under-reported.
 
-**3. Reconciliation (max 3 retries):**
+**3. Reconciliation loop:**
 
 ```
+verify_result = dispatch_verify_worker(TODO_N)
+if verify_result.status == "VERIFIED" → mark completed, done
+
+# Phase 1: Immediate triage (see section 4)
+triage(verify_result)
+  → halt items   → stop execution immediately
+  → adapt items  → create dynamic TODO, resolve, then retry original (see Adapt flow)
+  → skip items   → log and proceed
+  → retry items  → enter retry loop below
+
+# Phase 2: Retry loop (only for retry-disposition items)
 retry_count = 0
-RECONCILE_LOOP:
+RETRY_LOOP:
+  retry_count++
+  if retry_count > 3 → failure handling (section 6)
+  fix_prompt = """
+  Fix the following issues found by Verify Worker:
+
+  ## Failed Acceptance Criteria
+  {retry items from acceptance_criteria where status==FAIL}
+
+  ## Must-Not-Do Violations (non-critical only)
+  {retry items from must_not_do.violations}
+
+  ## Suspicious Passes (re-implement properly)
+  {retry items from side_effects.suspicious_passes}
+  """
+  Task(subagent_type="worker", prompt=fix_prompt)
   verify_result = dispatch_verify_worker(TODO_N)
   if verify_result.status == "VERIFIED" → mark completed, done
-  retry_count++
-  if retry_count < 3:
-    # Build fix prompt from ALL failure categories
-    fix_prompt = """
-    Fix the following issues found by Verify Worker:
-
-    ## Failed Acceptance Criteria
-    {verify_result.acceptance_criteria.results where status==FAIL}
-
-    ## Must-Not-Do Violations
-    {verify_result.must_not_do.violations}
-
-    ## Suspicious Passes (re-implement properly)
-    {verify_result.side_effects.suspicious_passes}
-
-    ## Missing Context (add to your output JSON)
-    {verify_result.side_effects.missing_context}
-    """
-    Task(subagent_type="worker", prompt=fix_prompt)
-    → re-enter RECONCILE_LOOP (verify worker runs again)
-  else:
-    → failure handling (below)
+  triage(verify_result)  # re-triage — new adapt/halt may appear
+  → re-enter RETRY_LOOP if retry items remain
 ```
 
-> **Pattern**: Worker → Verify Worker → (if FAILED) Fix Worker → Verify Worker → ...
-> Each cycle is a full reconciliation round. The verify worker always runs fresh.
-> Fix Worker receives ALL categories of failure — not just acceptance criteria.
+> **Pattern**: Worker → Verify Worker → triage → (adapt OR retry OR halt/skip)
+> Each verify cycle re-triages from scratch. New `suggested_adaptation` in a later cycle triggers adapt immediately — no need to exhaust retries first.
 
-**4. Reconciliation Decision — Triage each failure item:**
+**4. Reconciliation Decision — Two-phase triage:**
 
-Not all failures require retry. Orchestrator triages each item from `verify_result` into one of 4 dispositions:
+Verify Worker classifies each failure by **cause** (code_error vs blocker). Orchestrator uses this classification directly — no guessing required.
 
-| Disposition | When | Action |
-|-------------|------|--------|
-| **retry** | Fixable by Worker (code_error, suspicious pass, missing context) | Include in fix prompt → retry loop |
-| **skip** | Not blocking, or ambiguous/low-severity (warning-level violation, cosmetic) | Mark TODO with partial completion, log decision |
-| **adapt** | Scope-internal blocker detected by Verify Worker. Verify Worker's `suggested_adaptation` field present | Create dynamic TODO → retry original TODO after resolution |
-| **halt** | Unfixable (env_error, critical must-not-do violation, unknown after 3 retries) | Stop execution |
+**Phase 1: Immediate disposition (before any retry)**
 
-**Triage rules:**
+Orchestrator scans `verify_result` once and assigns dispositions. Precedence: **halt > adapt > retry > skip**.
+
 ```
 FOR EACH item in verify_result (failed criteria + violations + side_effects):
-  IF item is acceptance_criteria with status==FAIL → retry
-  IF item is must_not_do with severity==critical → halt (immediate, no retry)
-  IF item is must_not_do with severity==warning → skip (log decision)
-  IF item is suspicious_pass → retry (force re-implementation)
-  IF item is undocumented_change → skip (log to issues.md)
-  IF item is missing_context → skip (merge into Context step)
 
-# After retry failures (if retry_count >= 3):
-IF verify_result has suggested_adaptation AND scope_check(suggested_adaptation) != HALT:
-  → adapt (create dynamic TODO, tag with IN_SCOPE or OUT_OF_SCOPE)
+  # --- HALT (highest precedence, immediate) ---
+  IF item is must_not_do with severity==critical → halt
+  IF item is env_error (permission denied, API key missing, network) → halt
+
+  # --- ADAPT (scope blocker — no retry needed) ---
+  IF verify_result has suggested_adaptation:
+    → Run scope_check(suggested_adaptation)
+    → scope_check != HALT → adapt (create dynamic TODO immediately)
+    → scope_check == HALT → halt
+
+  # --- RETRY (Worker fixable) ---
+  IF item is acceptance_criteria with status==FAIL → retry
+  IF item is suspicious_pass → retry (force re-implementation)
+
+  # --- SKIP (lowest precedence) ---
+  IF item is must_not_do with severity==warning → skip (log decision)
+  IF item is undocumented_change → skip (log to issues.md)
+  IF item is missing_context → skip (merge into learnings/issues)
+```
+
+**⚠️ Key design**: `suggested_adaptation` triggers adapt **immediately on first failure** — not after 3 retries. The Verify Worker already determined the cause is a scope blocker, not a code error. Retrying a blocker is pointless.
+
+| Disposition | Cause | Action |
+|-------------|-------|--------|
+| **halt** | critical violation, env_error, destructive out-of-scope | Stop execution immediately |
+| **adapt** | Scope blocker (`suggested_adaptation` present, scope_check passes) | Create dynamic TODO → resolve → retry original |
+| **retry** | Code error, suspicious pass (Worker fixable) | Include in fix prompt → retry loop (max 3) |
+| **skip** | Warning-level, cosmetic, informational | Log decision, proceed |
+
+**Phase 2: After 3 retries exhausted (retry items only)**
+
+If retry-disposition items remain FAILED after 3 rounds:
+
+```
+→ Categorize remaining failures:
+  env_error  → halt + log to issues.md
+  code_error → Create Fix Task (depth=1, no nesting). If Fix Task fails → halt.
+  unknown    → halt + log to issues.md
 ```
 
 **Scope judgment criteria (for adapt disposition):**
@@ -594,6 +624,8 @@ Judgment:
 ```
 
 **⚠️ Bias toward action**: Prefer adapt over halt. halt is reserved for truly dangerous/irreversible changes. Non-destructive out-of-scope work should proceed with good logging — human reviews post-hoc via Report.
+
+**⚠️ Multiple suggested_adaptations**: If Verify Worker returns multiple blockers, process them in order of `blockage_type` priority: `dependency_missing` > `dod_gap` > `scope_violation`. Create one dynamic TODO at a time (sequential, not parallel).
 
 **Adapt processing flow:**
 
@@ -647,12 +679,15 @@ When adapt disposition is triggered:
 
 ```
 IF is_dynamic==true AND verify_result has suggested_adaptation:
-  → Ignore suggested_adaptation
-  → Halt with error: "Dynamic TODO cannot trigger nested adaptation"
-  → Update amendments.md: Status = FAILED (depth limit exceeded)
+  → Ignore suggested_adaptation (log: "Nested adaptation ignored")
+  → Continue with standard retry/skip/halt triage for remaining items
+  → Only halt if retry also exhausted (3 rounds)
+  → Update amendments.md: append "Nested adaptation suggestion ignored"
 ```
 
-Dynamic TODOs (is_dynamic=true) are NOT allowed to trigger further adaptations. Only depth=0 (original plan TODOs) can trigger adapt.
+Dynamic TODOs (is_dynamic=true) can be **retried** (max 3 rounds) but are NOT allowed to trigger further adaptations. Only depth=0 (original plan TODOs) can trigger adapt.
+
+**⚠️ Max dynamic TODO count**: A single original TODO can create at most **3 dynamic TODOs** sequentially. If the 3rd dynamic TODO fails, halt. This prevents unbounded sequential adaptation.
 
 **5. Decision logging — ALL dispositions go to context:**
 
@@ -680,16 +715,13 @@ Every triage decision is recorded in `decisions.md` during the `:Wrap-up` step:
 
 **6. After 3 retries (for retry-disposition items only):**
 
-**Priority order**: Check for `suggested_adaptation` first, then categorize.
+Adapt is already handled in Phase 1 (immediate). This section only applies to retry items that remain FAILED after 3 rounds.
 
 ```
-IF verify_result has suggested_adaptation:
-  → Try adapt disposition (see Adapt processing flow above)
-  → Run scope_check() to determine scope + destructiveness
-  → If IN_SCOPE or non-destructive: create dynamic TODO and retry
-  → If OUT_OF_SCOPE + destructive: halt + report to human
-ELSE:
-  → Categorize into env_error / code_error / unknown (see table below)
+→ Categorize remaining failures:
+  env_error  → halt + log to issues.md
+  code_error → Create Fix Task (depth=1, no nesting). If Fix Task fails → halt.
+  unknown    → halt + log to issues.md
 ```
 
 | Category | Examples | Action |
@@ -916,19 +948,20 @@ After TODO #2  → Update outputs.json + append learnings
 
 ### C. Reconciliation Details
 
-**K8s-style reconciliation pattern (Worker → Verify Worker loop):**
+**K8s-style reconciliation pattern (Worker → Verify Worker → triage):**
 ```
 Desired State: All acceptance_criteria PASS/SKIP, no critical violations
 Current State: Verify Worker result
 
 [VERIFIED] → Save context (2c) — include missing_context from Verify
-[FAILED] → Triage each item:
+[FAILED] → Triage each item (precedence: halt > adapt > retry > skip):
+  halt    → Stop execution immediately, log to issues.md
+  adapt   → Create dynamic TODO immediately, resolve, retry original
   retry   → Fix Worker → Verify Worker (max 3 rounds)
   skip    → Log decision to decisions.md, proceed
-  halt    → Stop execution, log to issues.md
 ```
 
-**Decision trail**: Every triage disposition (retry/skip/halt) is recorded in `decisions.md` during `:Wrap-up`. Skipped items become visible technical debt for humans or future TODOs.
+**Decision trail**: Every triage disposition (halt/adapt/retry/skip) is recorded in `decisions.md` during `:Wrap-up`. Adapt decisions are additionally recorded in `amendments.md`. Skipped items become visible technical debt for humans or future TODOs.
 
 **Fix Task rules:**
 - Inherits context from failed task
