@@ -2,6 +2,39 @@
 
 Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs, execute tasks, and extract learnings — all through an orchestrated skill pipeline.
 
+## Installation
+
+**Prerequisites:**
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed
+- `gh` CLI authenticated (`gh auth login`)
+- Git configured with remote repository
+
+**Install the plugin:**
+
+```bash
+claude plugin add team-attention/hoyeon
+```
+
+## Quick Start
+
+The simplest way to start is with `/ultrawork`:
+
+```
+> /ultrawork my-feature-name
+```
+
+This runs the full pipeline automatically: interview → plan → Draft PR → implement.
+
+For step-by-step control, use individual skills:
+
+```
+> /specify          # Interview + generate PLAN.md
+> /open             # Create Draft PR from plan
+> /execute          # Implement all TODOs
+> /publish          # Mark PR as Ready for Review
+> /compound         # Extract learnings
+```
+
 ## Core Workflow
 
 ```
@@ -51,6 +84,12 @@ Chains the entire pipeline automatically via Stop hooks:
 | `/dev-scan` | "community opinions" | Aggregate developer perspectives from Reddit, HN, Dev.to, Lobsters |
 | `/skill-session-analyzer` | "analyze session" | Post-hoc validation of skill execution |
 
+### Infrastructure
+| Skill | Trigger | Purpose |
+|-------|---------|---------|
+| `/init` | "/init" | Interactive `.dev/config.yml` initialization |
+| `/worktree` | "/worktree" | Git worktree management (create, spawn, status, cleanup) |
+
 ## Agents
 
 | Agent | Model | Role |
@@ -58,10 +97,10 @@ Chains the entire pipeline automatically via Stop hooks:
 | `worker` | Sonnet | Implements delegated TODOs (code, tests, fixes) |
 | `gap-analyzer` | Haiku | Identifies missing requirements and pitfalls before planning |
 | `tradeoff-analyzer` | Sonnet | Evaluates risk (LOW/MED/HIGH), simpler alternatives, over-engineering warnings |
-| `verification-planner` | Sonnet | 4-Tier testing model (Unit/Integration/E2E/Agent Sandbox) 기반 검증 전략 수립, A/H-items 분류, 외부 의존성 전략 |
+| `verification-planner` | Sonnet | Builds verification strategy based on 4-Tier testing model, classifies A/H-items, external dependency strategy |
 | `docs-researcher` | Sonnet | Searches internal docs (ADRs, READMEs, configs) for conventions and constraints |
 | `external-researcher` | Sonnet | Researches external libraries, frameworks, and official docs |
-| `ux-reviewer` | Sonnet | UX 관점에서 변경사항 평가 — 단순성, 직관성, UX regression 방지. specify 초기에 실행 |
+| `ux-reviewer` | Sonnet | Evaluates changes from UX perspective — simplicity, intuitiveness, UX regression prevention |
 | `reviewer` | Opus | Evaluates plans for clarity, verifiability, completeness, structural integrity |
 | `git-master` | Sonnet | Enforces atomic commits following project style |
 
@@ -72,103 +111,93 @@ Chains the entire pipeline automatically via Stop hooks:
 │                    INTERVIEW MODE                           │
 │                                                             │
 │  Step 1: Initialize                                         │
-│   • Intent 분류 (Refactoring/Feature/Bug/Arch/...)          │
-│   • 병렬 에이전트:                                          │
+│   • Classify intent (Refactoring/Feature/Bug/Arch/...)      │
+│   • Parallel agents:                                        │
 │     ┌──────────┐ ┌──────────┐ ┌────────────────┐            │
 │     │Explore #1│ │Explore #2│ │docs-researcher │            │
-│     │패턴 탐색 │ │구조+명령 │ │ADR/컨벤션 탐색 │            │
+│     │patterns  │ │structure │ │ADR/conventions │            │
 │     └────┬─────┘ └────┬─────┘ └───────┬────────┘            │
 │          │      ┌─────────────┐       │                     │
 │          │      │ux-reviewer  │       │                     │
-│          │      │UX 영향 평가 │       │                     │
+│          │      │UX impact    │       │                     │
 │          │      └──────┬──────┘       │                     │
 │          └─────────────┼──────────────┘                     │
 │                       ▼                                     │
-│  Step 1.5: 탐색 결과 요약                       🧑 HITL #1 │
-│   → 사용자가 코드베이스 이해 확인                           │
+│  Step 1.5: Exploration summary                  🧑 HITL #1 │
+│   → User confirms codebase understanding                    │
 │                       ▼                                     │
-│  Step 2: 인터뷰                                 🧑 HITL #2 │
-│   ASK: 경계조건, 트레이드오프, 성공기준                     │
-│   PROPOSE: 탐색 기반 제안                                   │
+│  Step 2: Interview                              🧑 HITL #2 │
+│   ASK: edge cases, tradeoffs, success criteria              │
+│   PROPOSE: exploration-based suggestions                    │
 │                       ▼                                     │
-│  Step 3-4: DRAFT 업데이트 + 전환 준비                       │
-│   (tech-decision 필요시)                        🧑 HITL #3 │
+│  Step 3-4: Update DRAFT + prepare transition                │
+│   (tech-decision if needed)                     🧑 HITL #3 │
 │                       │                                     │
-│            사용자: "플랜 만들어줘"               🧑 HITL #4 │
+│            User: "generate the plan"            🧑 HITL #4 │
 └───────────────────────┼─────────────────────────────────────┘
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  PLAN GENERATION MODE                        │
 │                                                             │
-│  Step 1: Draft 완성도 검증                                   │
+│  Step 1: Validate draft completeness                         │
 │                       ▼                                     │
-│  Step 2: 병렬 분석 에이전트                                  │
+│  Step 2: Parallel analysis agents                            │
 │   ┌─────────────┐ ┌──────────────────┐ ┌────────────────┐   │
 │   │gap-analyzer │ │tradeoff-analyzer │ │verification-   │   │
-│   │누락/위험    │ │위험도/대안/과설계│ │planner         │   │
+│   │gaps/risks   │ │risk/alt/overeng. │ │planner         │   │
 │   └──────┬──────┘ └────────┬─────────┘ │A/H-items,ExtDep│   │
 │          │                 │           └───────┬────────┘   │
 │          │         ┌───────────────┐           │            │
 │          │         │external-      │           │            │
 │          │         │researcher     │           │            │
-│          │         │(선택적)       │           │            │
+│          │         │(optional)     │           │            │
 │          │         └───────┬───────┘           │            │
 │          └─────────────────┼───────────────────┘            │
 │                            ▼                                │
-│   HIGH risk decision_points → 사용자 승인       🧑 HITL #5 │
+│   HIGH risk decision_points → user approval     🧑 HITL #5 │
 │                       ▼                                     │
-│  Step 3: 결정 요약 + 검증 전략 체크포인트       🧑 HITL #6 │
-│   사용자 결정 + 자동 결정 + A/H-items 확인                  │
+│  Step 3: Decision summary + verification        🧑 HITL #6 │
+│   User decisions + auto decisions + A/H-items               │
 │                       ▼                                     │
-│  Step 4: PLAN.md 생성                                        │
+│  Step 4: Generate PLAN.md                                    │
 │   (Verification Summary + External Deps + TODOs + Risk)     │
 │                       ▼                                     │
-│  Step 4.5: Verification Summary 확인            🧑 HITL #6b│
+│  Step 4.5: Verification Summary review          🧑 HITL #6b│
 │                       ▼                                     │
-│  Step 5-6: Reviewer 검토 (+ Structural Integrity)            │
+│  Step 5-6: Reviewer evaluation (+ Structural Integrity)      │
 │   ┌────────┐                                                │
-│   │reviewer│──OKAY──→ DRAFT 삭제 → 완료                     │
+│   │reviewer│──OKAY──→ Delete DRAFT → Done                   │
 │   └───┬────┘                                                │
 │       │REJECT                                               │
-│       ├─ cosmetic → 자동 수정 → 재검토                      │
-│       └─ semantic → 사용자 선택                 🧑 HITL #7  │
-│           ├ 제안대로 수정                                    │
-│           ├ 직접 수정                                        │
-│           └ 인터뷰로 돌아가기                   🧑 HITL #8  │
+│       ├─ cosmetic → auto-fix → re-review                    │
+│       └─ semantic → user choice                 🧑 HITL #7  │
+│           ├ Apply suggested fix                              │
+│           ├ Fix manually                                     │
+│           └ Return to interview                 🧑 HITL #8  │
 └─────────────────────────────────────────────────────────────┘
                         ▼
-              /open (Draft PR) 또는 /execute
+              /open (Draft PR) or /execute
 ```
 
-**Human-in-the-Loop Checkpoints (9개):**
+**Human-in-the-Loop Checkpoints (9):**
 
-| # | 시점 | 목적 |
-|---|------|------|
-| 1 | 탐색 결과 요약 | 잘못된 전제 방지 |
-| 2 | 인터뷰 질문 | 비즈니스 판단 |
-| 3 | tech-decision | 기술 선택 |
-| 4 | Plan 전환 | 명시적 사용자 의도 |
-| 5 | HIGH risk 결정 | 되돌리기 어려운 변경 |
-| 6 | 결정 요약 + 검증 전략 확인 | silent drift 방지 + 검증 방식 합의 |
-| 6b | Verification Summary 확인 | A/H-items + External Deps 최종 확인 |
-| 7 | Semantic REJECT | 범위/요구사항 변경 |
-| 8 | 인터뷰 복귀 | 방향 전환 |
+| # | When | Purpose |
+|---|------|---------|
+| 1 | Exploration summary | Prevent incorrect assumptions |
+| 2 | Interview questions | Business judgment |
+| 3 | tech-decision | Technology selection |
+| 4 | Plan transition | Explicit user intent |
+| 5 | HIGH risk decisions | Hard-to-reverse changes |
+| 6 | Decision summary + verification strategy | Prevent silent drift + agree on verification |
+| 6b | Verification Summary review | Final check on A/H-items + External Deps |
+| 7 | Semantic REJECT | Scope/requirement changes |
+| 8 | Return to interview | Change direction |
 
-**Risk Tagging:** TODO별로 LOW/MEDIUM/HIGH 위험도 태그. HIGH(DB 스키마, 인증, breaking API)는 반드시 사용자 승인 + rollback 포함.
+**Risk Tagging:** Each TODO gets a LOW/MEDIUM/HIGH risk tag. HIGH items (DB schema, auth, breaking API) require user approval + rollback plan.
 
-**Verification Strategy:** PLAN 최상단에 Verification Summary (A-items: Agent 자동 검증, H-items: Human 확인 필요) + External Dependencies Strategy (Pre-work/During/Post-work). A-items는 TODO Final의 Acceptance Criteria로 흘러감.
+**Verification Strategy:** PLAN header includes Verification Summary (A-items: agent-verifiable, H-items: human-required) + External Dependencies Strategy (pre-work/during/post-work). A-items flow into TODO acceptance criteria.
 
-**Verification Block:** TODO마다 Functional/Static/Runtime 수락 기준, 실행 가능한 커맨드(`npm test`, `npm run typecheck`) 포함.
-
-## Hook System
-
-Hooks automate transitions and enforce quality:
-
-| Hook Type | Script | Purpose |
-|-----------|--------|---------|
-| UserPromptSubmit | `ultrawork-init-hook.sh` | Initialize ultrawork pipeline state |
-| Stop | `dev-specify-stop-hook.sh` | Transition specify → open |
-| PostToolUse | `validate-output.sh` | Validate agent/skill output against `validate_prompt` |
+**Verification Block:** Each TODO includes Functional/Static/Runtime acceptance criteria with executable commands (`npm test`, `npm run typecheck`).
 
 ## Execute Architecture
 
@@ -188,28 +217,62 @@ Orchestrator (reads PLAN.md)
 **Key rules:**
 - Orchestrator never writes code — only delegates and verifies
 - Plan checkboxes (`### [x] TODO N:`) are the single source of truth
-- Failed tasks retry up to 3 times (reconciliation)
+- 3-disposition triage on failure: `halt > adapt > retry`
 - Independent TODOs run in parallel
+
+## Hook System
+
+Hooks automate transitions and enforce quality:
+
+| Hook Type | Script | Purpose |
+|-----------|--------|---------|
+| UserPromptSubmit | `ultrawork-init-hook.sh` | Initialize ultrawork pipeline state |
+| Stop | `dev-specify-stop-hook.sh` | Transition specify → open |
+| PostToolUse | `validate-output.sh` | Validate agent/skill output against `validate_prompt` |
+| PreToolUse | `dev-execute-init-hook.sh` | Initialize execution context |
 
 ## Project Structure
 
 ```
+.claude-plugin/
+├── plugin.json          # Plugin metadata
+└── marketplace.json     # Marketplace listing
+
 .claude/
-├── skills/          # Skill definitions (SKILL.md per skill)
-├── agents/          # Agent definitions (frontmatter + system prompt)
-└── scripts/         # Hook scripts (bash)
+├── skills/              # Skill definitions (SKILL.md per skill)
+├── agents/              # Agent definitions (frontmatter + system prompt)
+└── scripts/             # Hook scripts (bash)
 
 .dev/
-├── specs/{name}/    # Per-feature specs
+├── specs/{name}/        # Per-feature specs
 │   ├── PLAN.md
-│   └── context/     # learnings.md, decisions.md, issues.md, outputs.json
-└── state.local.json # Session state (git-ignored)
+│   └── context/         # audit.md, learnings.md, issues.md, outputs.json
+└── state.local.json     # Session state (git-ignored)
 
 docs/
 └── learnings/           # Knowledge extracted from development
     └── lessons-learned.md
 ```
 
-## Lessons Learned
+## Troubleshooting
 
-See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for hook and tool behavior gotchas discovered during development.
+**Hook not firing:**
+- Verify the script is executable: `chmod +x .claude/scripts/<script>.sh`
+- Check registration in `.claude/settings.local.json` under `hooks.<EventType>.matchers[]`
+- Creating the file alone is not enough — it must be registered
+
+**`/execute` failing on a TODO:**
+- Check `audit.md` in the spec context directory for disposition details
+- Failed tasks follow `halt > adapt > retry` triage
+- Verification TODOs (read-only) auto-route FAIL → ADAPT
+
+**State issues:**
+- Session state lives in `.dev/state.local.json` (git-ignored)
+- Use `/state status` to check current pipeline state
+- Use `/state list` to see all tracked PRs
+
+See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for more hook and tool behavior gotchas.
+
+## License
+
+MIT
