@@ -84,13 +84,22 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 1. All features merged to develop
 2. Version bump commit on develop (plugin.json + marketplace.json)
 3. git checkout main && git merge develop --no-ff -m "Release X.Y.Z"
-4. git tag vX.Y.Z && git push origin main --tags
+4. git tag vX.Y.Z && git push origin main --tags && git push origin develop
+5. gh release create vX.Y.Z --title "vX.Y.Z" --notes "## What's New in X.Y.Z ..."
 ```
 
 ## Versioning
 
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
+
+## Recent Changes (v0.3.0)
+
+- Execute skill: 3-disposition triage (`halt > adapt > retry`), unified `reconcile()`, single `audit.md`
+- Context files: `decisions.md` + `amendments.md` merged → `audit.md`
+- Scope enforcement uses per-TODO `Must NOT do` rules (no "allowed files" concept)
+- Verification TODOs (read-only) auto-route FAIL → ADAPT
+- New skills: `/worktree`, `/init`
 
 ## Testing Strategy
 
