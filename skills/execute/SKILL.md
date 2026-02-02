@@ -34,7 +34,7 @@ Delegate to SubAgents, verify results, manage parallelization.
    Pick runnable (pending + not blocked) → dispatch by type:
      :State Begin      → [PR only] Skill("state", "begin") → stop on failure
      :Worker  → Task(worker) with substituted variables
-     :Verify  → dispatch verify worker, triage & reconcile if FAILED (max 3 retries)
+     :Verify  → dispatch verify worker, triage (halt > adapt > retry > skip), reconcile if FAILED
      :Wrap-up → save context (Worker + Verify) + mark Plan checkbox [x]
      :Commit  → Task(git-master) per Commit Strategy
      :Residual Commit → git status → git-master if dirty
@@ -118,7 +118,7 @@ rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 IF pr_mode:
   sc = TaskCreate(subject="Finalize:State Complete", ...)
 rp = TaskCreate(subject="Finalize:Report", activeForm="Generating report",
-     description="Output the final orchestration report. MUST include ALL sections (print 'None' if empty): TASK SUMMARY, COMMITS CREATED, FILES MODIFIED, LEARNINGS ACCUMULATED, ISSUES DISCOVERED, ACCEPTANCE CRITERIA. See handler 2h for full template.")
+     description="Read ${baseDir}/references/report-template.md, then output the report verbatim replacing placeholders with actual values.")
 
 # ═══════════════════════════════════════════════════
 # TURN 2: Set ALL dependencies in PARALLEL (single message)
@@ -199,10 +199,11 @@ CONTEXT_DIR=".dev/specs/{name}/context"
 ```bash
 mkdir -p "$CONTEXT_DIR"
 ```
-Create: `outputs.json` (`{}`), `learnings.md`, `issues.md`, `decisions.md` (empty).
+Create: `outputs.json` (`{}`), `learnings.md`, `issues.md`, `audit.md` (empty).
 
 **Resume** (context folder exists):
 - Read `outputs.json` into memory (for variable substitution)
+- Read `audit.md` into memory (for dynamic TODO recovery)
 - Keep other files as-is (append mode)
 - Progress determined from Plan checkboxes
 
@@ -328,7 +329,6 @@ When this task is DONE, the following MUST be true:
 ## MUST NOT DO
 {Must NOT do section from Plan}
 - Do not perform other Tasks
-- Do not modify files outside allowed list
 - Do not add new dependencies
 - Do not run git commands (Orchestrator handles this)
 
@@ -348,8 +348,8 @@ SubAgent does not remember previous calls.
 **Failed approaches to AVOID (from issues.md):**
 {issues.md content}
 
-**Key decisions (from decisions.md):**
-{decisions.md content}
+**Key decisions & reconciliation history (from audit.md):**
+{audit.md content}
 """
 )
 ```
@@ -402,11 +402,11 @@ Re-execute every command yourself and judge independently.
 
 ## PART 2: MUST-NOT-DO VIOLATIONS
 {Must NOT do section from Plan for TODO N}
-{Standard must-not-do: no other Tasks, no files outside allowed list, no new dependencies, no git commands}
+{Standard must-not-do: no other Tasks, no new dependencies, no git commands}
 
 For each must-not-do rule, check whether it was violated:
 - Read `git diff` (staged + unstaged) to see what the Worker actually changed
-- Check for files modified outside the allowed list
+- Check for must-not-do violations from the TODO's rules
 - Check for new dependencies added (package.json, go.mod, etc.)
 - Check for out-of-scope changes unrelated to this TODO
 
@@ -421,6 +421,27 @@ Review the Worker's output JSON and the actual code changes:
    configs, added exports not in scope)
 3. **Missing context**: Did the Worker discover patterns, issues, or
    make decisions that should be in learnings/issues/decisions but aren't?
+
+## PART 4: SCOPE-RELATED BLOCKAGE DETECTION
+If you detect a failure that stems from SCOPE limitations (not Worker error),
+populate the `suggested_adaptation` field:
+
+**When to suggest adaptation:**
+- **scope_violation**: Acceptance criteria requires work beyond current TODO's must-not-do boundaries
+- **dod_gap**: DoD (Definition of Done) criterion cannot be met without expanding scope
+- **dependency_missing**: Work requires outputs/artifacts not produced by any prior TODO
+
+**Detection signals:**
+1. Check if failed acceptance criteria require work that violates must-not-do rules
+2. Check if the DoD explicitly requires work beyond current TODO's boundaries
+3. Check if the Worker correctly identified a blocker but cannot fix it in-scope
+
+**What NOT to suggest:**
+- Worker made a mistake (code_error) → retry, don't adapt
+- Environment issue (missing dependency, API key) → env_error, don't adapt
+- Suspicious pass or missing context → side_effects, don't adapt
+
+Only suggest adaptation when the PLAN itself needs adjustment, not the Worker's execution.
 
 ## OUTPUT FORMAT (strict JSON)
 {
@@ -452,6 +473,21 @@ Review the Worker's output JSON and the actual code changes:
     "suspicious_passes": ["<criterion_id that looks questionable>"],
     "undocumented_changes": ["<file or change not mentioned in output>"],
     "missing_context": ["<learning/issue/decision Worker should have reported>"]
+  },
+  "suggested_adaptation": {
+    // ⚠️ Only include this field when status is FAILED AND you detect a scope-related blockage
+    // (e.g., DoD criterion requires work that violates must-not-do, or needs missing dependency)
+    "blockage_type": "scope_violation" | "dod_gap" | "dependency_missing",
+    "suggested_todo": {
+      "title": "<concise TODO title for what needs to be added to plan>",
+      "reason": "<why current scope cannot satisfy this criterion>",
+      "steps": ["<step 1>", "<step 2>", ...],
+      "scope_justification": "<why this new TODO is necessary and in-scope for the overall plan>"
+    },
+    "scope_signals": {
+      "dod_related": ["<which acceptance criteria cannot be met with current scope>"],
+      "within_todo_scope": <boolean — true if work fits within current TODO's must-not-do rules, false if out-of-scope>
+    }
   }
 }
 
@@ -467,99 +503,182 @@ Review the Worker's output JSON and the actual code changes:
 **2. Parse result & route by status:**
 
 - **VERIFIED** (all criteria PASS, no critical violations, no suspicious passes) → `TaskUpdate(taskId, status="completed")` → `:Wrap-up` becomes runnable.
-- **FAILED** (any criterion FAIL, or critical must-not-do violation, or suspicious pass found) → Reconciliation loop (below).
+- **FAILED** (any criterion FAIL, or critical must-not-do violation, or suspicious pass found) → `reconcile(TODO_N, verify_result, depth=0)` — pass the result directly, no re-dispatch.
 
 > **`:Wrap-up` enrichment**: When VERIFIED, merge `side_effects.missing_context` into the Worker's learnings/issues/decisions before saving. This ensures context is complete even if the Worker under-reported.
 
-**3. Reconciliation (max 3 retries):**
+**3. Reconciliation — single-pass triage + loop:**
 
 ```
-retry_count = 0
-RECONCILE_LOOP:
-  verify_result = dispatch_verify_worker(TODO_N)
+function reconcile(TODO_N, verify_result, depth=0):
+  # verify_result is passed in from :Verify handler (no duplicate dispatch)
   if verify_result.status == "VERIFIED" → mark completed, done
-  retry_count++
-  if retry_count < 3:
-    # Build fix prompt from ALL failure categories
-    fix_prompt = """
-    Fix the following issues found by Verify Worker:
 
-    ## Failed Acceptance Criteria
-    {verify_result.acceptance_criteria.results where status==FAIL}
+  # Log non-blocking items FIRST (always, regardless of disposition)
+  log_non_blocking(verify_result)  # warnings → audit.md, undocumented → issues.md, missing_context → learnings.md
 
-    ## Must-Not-Do Violations
-    {verify_result.must_not_do.violations}
+  # Single-pass triage (precedence: halt > adapt > retry)
+  disposition = triage(verify_result, TODO_N.type)
+  append_audit("triage", TODO_N, disposition, verify_result)  # always log triage decision
 
-    ## Suspicious Passes (re-implement properly)
-    {verify_result.side_effects.suspicious_passes}
+  if disposition == HALT → log to issues.md, stop execution
+  if disposition == ADAPT → adapt(TODO_N, verify_result, depth)
+  if disposition == RETRY → retry_loop(TODO_N, verify_result, depth)
 
-    ## Missing Context (add to your output JSON)
-    {verify_result.side_effects.missing_context}
-    """
+function retry_loop(TODO_N, verify_result, depth):
+  for attempt in 1..3:
+    append_audit("retry", TODO_N, attempt)  # log retry intent
+    fix_prompt = build_fix_prompt(verify_result)  # failed criteria + violations + suspicious passes
     Task(subagent_type="worker", prompt=fix_prompt)
-    → re-enter RECONCILE_LOOP (verify worker runs again)
-  else:
-    → failure handling (below)
+    verify_result = dispatch_verify_worker(TODO_N)
+    if VERIFIED → done
+    log_non_blocking(verify_result)
+    disposition = triage(verify_result, TODO_N.type)  # re-triage each cycle
+    append_audit("triage", TODO_N, disposition, verify_result)
+    if disposition == HALT → stop
+    if disposition == ADAPT → adapt(TODO_N, verify_result, depth); return
+  # 3 retries exhausted → halt
+  halt("retry_exhausted")
 ```
 
-> **Pattern**: Worker → Verify Worker → (if FAILED) Fix Worker → Verify Worker → ...
-> Each cycle is a full reconciliation round. The verify worker always runs fresh.
-> Fix Worker receives ALL categories of failure — not just acceptance criteria.
+> **Pattern**: Worker → Verify Worker → triage → (halt | adapt | retry)
+> Each verify cycle re-triages from scratch. `suggested_adaptation` triggers adapt immediately — even mid-retry.
 
-**4. Reconciliation Decision — Triage each failure item:**
+**4. Triage rules:**
 
-Not all failures require retry. Orchestrator triages each item from `verify_result` into one of 3 dispositions:
+Single pass. Precedence: **halt > adapt > retry**. Non-blocking items (warnings, undocumented changes, missing context) are logged to `audit.md` and do not block — no separate "skip" disposition needed.
 
-| Disposition | When | Action |
-|-------------|------|--------|
-| **retry** | Fixable by Worker (code_error, suspicious pass, missing context) | Include in fix prompt → retry loop |
-| **skip** | Not blocking, or ambiguous/low-severity (warning-level violation, cosmetic) | Mark TODO with partial completion, log decision |
-| **halt** | Unfixable (env_error, critical must-not-do violation, unknown after 3 retries) | Stop execution |
-
-**Triage rules:**
 ```
-FOR EACH item in verify_result (failed criteria + violations + side_effects):
-  IF item is acceptance_criteria with status==FAIL → retry
-  IF item is must_not_do with severity==critical → halt (immediate, no retry)
-  IF item is must_not_do with severity==warning → skip (log decision)
-  IF item is suspicious_pass → retry (force re-implementation)
-  IF item is undocumented_change → skip (log to issues.md)
-  IF item is missing_context → skip (merge into Context step)
+function triage(verify_result, todo_type) → HALT | ADAPT | RETRY:
+  # todo_type detection:
+  #   "verification" — PLAN has `type: verification` field, OR title matches "TODO Final: Verification"
+  #   "work"         — all other TODOs (default)
+
+  # --- HALT (highest precedence) ---
+  IF any must_not_do with severity==critical → HALT
+  IF any env_error (permission, API key, network) → HALT
+
+  # --- ADAPT (scope blocker OR verification TODO) ---
+  IF suggested_adaptation present:
+    IF scope_check(suggested_adaptation) == safe → ADAPT
+    IF scope_check(suggested_adaptation) == destructive_out_of_scope → HALT
+
+  IF todo_type == "verification" AND any acceptance_criteria FAIL:
+    → ADAPT (auto-generate fix TODO from failed criteria)
+    # Verification TODOs are read-only — retry cannot fix code.
+    # Orchestrator builds suggested_adaptation from failed criteria:
+    #   title: "Fix: {failed_criterion.description}"
+    #   steps: derived from failure reason + affected files
+    #   scope: safe (fixing own project's code)
+
+  # --- RETRY (code error, suspicious pass — work TODOs only) ---
+  IF any acceptance_criteria FAIL or suspicious_pass → RETRY
+
+  # --- Non-blocking items (logged, not dispositions) ---
+  # must_not_do warning     → log to audit.md
+  # undocumented_change     → log to audit.md + issues.md
+  # missing_context         → log to audit.md + learnings.md
 ```
 
-**5. Decision logging — ALL dispositions go to context:**
+| Disposition | Cause | Action |
+|-------------|-------|--------|
+| **halt** | critical violation, env_error, destructive out-of-scope | Stop execution |
+| **adapt** | Scope blocker, OR verification TODO with failures | Create fix TODO → resolve → re-verify |
+| **retry** | Code error in work TODO (Worker fixable) | Fix Worker → re-verify (max 3) |
 
-Every triage decision is recorded in `decisions.md` during the `:Wrap-up` step:
+**5. scope_check — single function:**
+
+```
+function scope_check(suggested_adaptation) → safe | destructive_out_of_scope:
+  # in_scope detection:
+  #   needed_for_DoD = any acceptance_criteria in current TODO references the adaptation target
+  #   within_todo_scope = adaptation doesn't violate the TODO's must-not-do rules
+  in_scope = (needed_for_DoD OR within_todo_scope)
+
+  # destructive detection (ANY of these → destructive):
+  #   DB schema changes (migrations, ALTER TABLE)
+  #   API breaking changes (endpoint removal, response shape change)
+  #   Shared resource deletion (files imported by multiple modules)
+  #   Auth/security changes (token handling, permissions, secrets)
+  #   External config (CI/CD, deployment, infrastructure)
+  destructive = matches_any_destructive_pattern(suggested_adaptation)
+
+  IF in_scope → safe
+  IF NOT in_scope AND NOT destructive → safe (log "out-of-scope, non-destructive" to audit.md)
+  IF NOT in_scope AND destructive → destructive_out_of_scope
+```
+
+Bias toward action: only halt on destructive out-of-scope. Everything else proceeds with logging.
+
+**6. Adapt flow:**
+
+```
+function adapt(TODO_N, verify_result, depth):
+  IF depth >= 1 → halt("depth_limit")  # no nested adaptation
+  # count_dynamic_todos: count PLAN.md entries matching "TODO {N}.a*" (ADDED) markers
+  IF count_dynamic_todos(TODO_N) >= 3 → halt("max_dynamic_todos")  # max 3 per original
+  suffix = next_suffix(TODO_N)  # "a", "b", "c" — sequential per original TODO
+
+  # 1. Update PLAN.md
+  Edit: insert after TODO {N}:
+    ### [ ] TODO {N}.{suffix}: (ADDED) {suggested_todo.title}
+
+  # 2. Log to audit.md
+  append_audit("adapt", TODO_N, suggested_adaptation)
+
+  # 3. Create & run dynamic TODO (Task subject matches PLAN marker)
+  dynamic_task = TaskCreate(
+    subject="{N}.{suffix}:Adapt — {suggested_todo.title}",
+    description="{suggested_todo.description}",
+    metadata={is_dynamic: true, parent_todo: N}
+  )
+  → reconcile(dynamic_task, depth=1)  # same flow, depth incremented
+
+  # 4. Result
+  IF dynamic_task VERIFIED:
+    → Mark PLAN.md: [x] TODO {N}.{suffix}
+    → Update audit.md: Status = COMPLETED
+    → Retry original TODO {N} via reconcile(TODO_N, new_verify_result, depth=0)
+  ELSE:
+    → Mark PLAN.md: TODO {N}.{suffix} — FAILED
+    → Update audit.md: Status = FAILED
+    → halt("dynamic_todo_failed")
+```
+
+**Safety limits:**
+- **depth=1**: Dynamic TODOs (depth=1) use the same reconcile flow but `adapt()` is blocked at depth≥1. Retry (max 3) still works.
+- **Max 3 dynamic TODOs** per original TODO. 4th attempt → halt.
+
+**7. Audit logging — single file `audit.md`:**
+
+All reconciliation events go to one file. Replaces `decisions.md` + `amendments.md`.
 
 ```markdown
-## TODO {N} — Reconciliation Decisions
+## TODO {N} — Reconciliation
 
-### Retried
-- [criterion_id]: {reason} → Fixed in retry #{n}
+### [YYYY-MM-DD HH:MM] Triage
+- acceptance_criteria:login_test FAIL → retry
+- must_not_do:no_git_commands warning → logged (non-blocking)
+- suggested_adaptation:scope_violation → adapt
 
-### Skipped
-- [warning_rule]: {evidence} → Skipped: {justification}
-- [undocumented_change]: {file} → Logged as issue, not blocking
+### [YYYY-MM-DD HH:MM] Retry #1
+- Fix prompt sent, re-verified → FAIL
+- acceptance_criteria:login_test FAIL → retry
 
-### Halted
-- [critical_rule]: {evidence} → Execution stopped
+### [YYYY-MM-DD HH:MM] Adapt
+- **Dynamic TODO**: {N}.a — {title}
+- **Trigger**: {blockage_type}
+- **Scope**: safe (needed_for_DoD=YES)
+- **Status**: COMPLETED | FAILED
+
+### [YYYY-MM-DD HH:MM] Halted (if applicable)
+- **Reason**: {reason}
+- **Evidence**: {evidence}
 ```
-
-> **Why log skips**: Skipped items are technical debt. They must be visible in context so future TODOs or humans can address them.
-
-**6. After 3 retries (for retry-disposition items only):**
-
-| Category | Examples | Action |
-|----------|----------|--------|
-| `env_error` | Permission denied, API key missing, network timeout | Halt + log to `issues.md` |
-| `code_error` | Type error, lint failure, test failure | Create Fix Task (depth=1, no nesting) |
-| `unknown` | Unclassifiable | Halt + log to `issues.md` |
-
-**Fix Task** inherits context from failed task. If Fix Task fails → halt.
 
 **Mode-specific halt behavior:**
 - **Local**: Record in `issues.md`, report to user, offer Continue/Stop. Plan checkbox stays `[ ]`.
-- **PR**: `Skill("state", args="pause <PR#> <reason>")` → `state:executing` → `state:blocked` transition, records "Blocked" comment → stop execution.
+- **PR**: `Skill("state", args="pause <PR#> <reason>")` → records "Blocked" comment → stop execution.
 
 > Full reconciliation details → REFERENCE C
 
@@ -567,7 +686,7 @@ Every triage decision is recorded in `decisions.md` during the `:Wrap-up` step:
 
 ### 2c. :Wrap-up — Save Context + Mark Checkboxes
 
-Combines context saving and checkbox marking into a single step. Only runs after `:Verify` completes (VERIFIED or skipped-through).
+Combines context saving and checkbox marking into a single step. Only runs after `:Verify` completes (VERIFIED, or reconciliation resolved).
 
 **Part A: Save to Context Files**
 
@@ -576,10 +695,9 @@ Combines context saving and checkbox marking into a single step. Only runs after
 | Worker | `outputs` | `outputs.json` | `existing["todo-N"] = outputs` → Write |
 | Worker | `learnings` | `learnings.md` | `## {N}\n- item` append |
 | Worker | `issues` | `issues.md` | `## {N}\n- [ ] item` append |
-| Worker | `decisions` | `decisions.md` | `## {N}\n- item` append |
 | Verify | `side_effects.missing_context` | `learnings.md` / `issues.md` | Merge into appropriate file |
 | Verify | `side_effects.undocumented_changes` | `issues.md` | `- [ ] Undocumented: {change}` append |
-| Orchestrator | reconciliation decisions | `decisions.md` | `## {N} — Reconciliation\n- {disposition}: {item}` append |
+| Orchestrator | all reconciliation events | `audit.md` | structured entry (see section 7 format) |
 | `acceptance_criteria` | (not saved) | Used only for verification, not saved to context |
 
 Skip empty arrays.
@@ -693,65 +811,15 @@ On completion: `TaskUpdate(taskId, status="completed")` → `:Report` becomes ru
 
 ### 2h. :Report — Final Orchestration Report
 
-**Follows the same dispatch pattern as all other tasks:**
-
 ```
 TaskUpdate(report.id, status="in_progress")
-task_details = TaskGet(report.id)          ← description contains template
-# Orchestrator outputs report directly (no worker needed)
-# MUST follow the template in task_details.description exactly
+template = Read("${baseDir}/references/report-template.md")   ← actual file read
+# Output report verbatim, replacing {placeholders} with real values
+# Do NOT invent your own format — follow the template exactly
 TaskUpdate(report.id, status="completed")
 ```
 
-**TaskCreate description MUST include the full template:**
-
-When creating the `:Report` task (in STEP 2 batch creation), use this description:
-
-```
-TaskCreate(
-  subject="Finalize:Report",
-  activeForm="Generating report",
-  description="""Output the final orchestration report.
-MUST include ALL sections below. If no data for a section, print "None".
-
-═══════════════════════════════════════════════════════════
-                    ORCHESTRATION COMPLETE
-═══════════════════════════════════════════════════════════
-
-PLAN: .dev/specs/{name}/PLAN.md
-MODE: Local | PR #123
-
-TASK SUMMARY:
-   Total TODOs:               [count]
-   Completed:                 [count]
-   Failed:                    [count]
-
-   Acceptance Criteria:       [count]
-   Verified & Checked:        [count]
-
-COMMITS CREATED:
-   [list all commits created during execution]
-
-FILES MODIFIED:
-   [list all files modified]
-
-LEARNINGS ACCUMULATED:
-   [from context/learnings.md, or "None"]
-
-ISSUES DISCOVERED:
-   [from context/issues.md, or "None"]
-
-ACCEPTANCE CRITERIA:
-   - Functional: PASS/FAIL
-   - Static: PASS/FAIL
-   - Runtime: PASS/FAIL
-
-═══════════════════════════════════════════════════════════
-"""
-)
-```
-
-**Key rule:** At dispatch time, `TaskGet` brings this description into context, ensuring the template is followed exactly. No sections may be omitted.
+**Why Read instead of TaskGet:** The template lives in `references/report-template.md`. Reading it immediately before output keeps the template in close context and prevents the agent from generating a custom format.
 
 On completion: `TaskUpdate(taskId, status="completed")` → all tasks done, execution ends.
 
@@ -789,7 +857,7 @@ Substitution logic:
 | `outputs.json` | Worker → Orchestrator saves | TODO output values (input for next TODO) |
 | `learnings.md` | Worker → Orchestrator saves | Patterns discovered and applied |
 | `issues.md` | Worker → Orchestrator saves | Unresolved issues (`- [ ]` format) |
-| `decisions.md` | Worker → Orchestrator saves | Decisions and reasons |
+| `audit.md` | Orchestrator | All reconciliation events (triage, retry, adapt, halt) |
 
 **Context Lifecycle:**
 ```
@@ -802,25 +870,27 @@ After TODO #2  → Update outputs.json + append learnings
 
 ### C. Reconciliation Details
 
-**K8s-style reconciliation pattern (Worker → Verify Worker loop):**
+**K8s-style reconciliation pattern (Worker → Verify Worker → triage):**
 ```
-Desired State: All acceptance_criteria PASS/SKIP, no critical violations
+Desired State: All acceptance_criteria PASS, no critical violations
 Current State: Verify Worker result
 
 [VERIFIED] → Save context (2c) — include missing_context from Verify
-[FAILED] → Triage each item:
-  retry   → Fix Worker → Verify Worker (max 3 rounds)
-  skip    → Log decision to decisions.md, proceed
-  halt    → Stop execution, log to issues.md
+[FAILED] → reconcile(TODO_N, verify_result, depth=0):
+  log_non_blocking() → triage(verify_result, todo_type) → single disposition (halt > adapt > retry):
+  halt    → Stop execution, log to audit.md + issues.md
+  adapt   → Create dynamic TODO via reconcile(depth+1), then retry original
+  retry   → Fix Worker → re-verify (max 3), re-triage each cycle
+  All triage decisions + retry attempts logged to audit.md
 ```
 
-**Decision trail**: Every triage disposition (retry/skip/halt) is recorded in `decisions.md` during `:Wrap-up`. Skipped items become visible technical debt for humans or future TODOs.
+**Decision trail**: All events (triage, retry attempts, adapt, halt) recorded in single `audit.md`. Non-blocking items (warnings, undocumented changes) logged but don't produce a disposition.
 
-**Fix Task rules:**
-- Inherits context from failed task
-- Type = `work` (can modify files)
-- Fix Task failure → Halt (no nested Fix Tasks)
-- After Fix Task → original task's dependents become runnable
+**Dynamic TODO rules:**
+- Created by `adapt()` — uses same `reconcile()` flow at depth=1
+- Can be retried (max 3) but cannot trigger further `adapt()` (depth≥1 blocks it)
+- Max 3 dynamic TODOs per original TODO
+- On failure → halt
 
 **issues.md log format (on halt):**
 ```markdown

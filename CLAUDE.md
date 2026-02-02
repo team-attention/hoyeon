@@ -72,10 +72,25 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - A hook script that is not registered in settings will **not fire** — creating the file alone is not enough
 - See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for additional hook behavior gotchas
 
+## Git Branching & Release
+
+- **`main`** — release only. Do not commit directly.
+- **`develop`** — integration branch. Feature branches merge here.
+- **Feature branches** — `feat/xxx` from `develop`, merge back to `develop` via `--no-ff`.
+
+### Release Flow
+
+```
+1. All features merged to develop
+2. Version bump commit on develop (plugin.json + marketplace.json)
+3. git checkout main && git merge develop --no-ff -m "Release X.Y.Z"
+4. git tag vX.Y.Z && git push origin main --tags
+```
+
 ## Versioning
 
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
-- **Bump both files** when merging a feature branch to `main`
+- **Bump both files** in a single commit on `develop` before merging to `main`
 
 ## Testing Strategy
 

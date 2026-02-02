@@ -9,7 +9,9 @@
       "Bash(git branch:*)",
       "Bash(git ls-tree:*)",
       "Bash(gh pr:*)",
-      "Bash(gh pr list:*)"
+      "Bash(gh pr list:*)",
+      "Bash(git worktree:*)",
+      "Bash(tmux:*)"
     ]
   },
   "hooks": {
