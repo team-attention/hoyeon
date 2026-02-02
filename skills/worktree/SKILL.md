@@ -49,7 +49,7 @@ actions:
 
 This skill references `.dev/config.yml` for project-specific settings. See `${baseDir}/references/config-schema.md` for full schema and examples.
 
-**Defaults** (when `.dev/config.yml` doesn't exist): `base_dir: "../{repo}.{name}"`, `copy_files: []`
+**Defaults** (when `.dev/config.yml` doesn't exist): `base_dir: "../.worktrees/{name}"`, `copy_files: []`
 
 ---
 
@@ -83,7 +83,7 @@ This skill references `.dev/config.yml` for project-specific settings. See `${ba
    ```bash
    REPO_NAME=$(basename $(git rev-parse --show-toplevel))
    # Replace {repo} and {name} in base_dir template
-   # Default template: "../{repo}.{name}"
+   # Default template: "../.worktrees/{name}"
    WORKTREE_PATH=$(echo "$BASE_DIR" | sed "s/{repo}/$REPO_NAME/g; s/{name}/$NAME/g")
 
    git worktree add "$WORKTREE_PATH" -b "feat/${NAME}"
@@ -103,15 +103,27 @@ This skill references `.dev/config.yml` for project-specific settings. See `${ba
    mkdir -p "$WORKTREE_PATH/.dev/specs/${NAME}"
    ```
 
+5. **Create worktree metadata file**:
+   ```bash
+   cat > "$WORKTREE_PATH/.dev/worktree.yml" << EOF
+   name: ${NAME}
+   plan: .dev/specs/${NAME}/PLAN.md
+   branch: feat/${NAME}
+   created_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+   EOF
+   ```
+   This file is the **source of truth** for which PLAN document this worktree tracks.
+   The `plan` field is used by `/worktree status` to find progress data.
+
 **Example**:
 ```
 User: /worktree create user-auth
 
 Output:
-✅ Worktree created: ../oh-my-claude-code.user-auth
+✅ Worktree created: ../.worktrees/user-auth
    Branch: feat/user-auth
    Files copied: .dev/config.yml, .env.local
-   Spec directory: .dev/specs/user-auth/
+   Metadata: .dev/worktree.yml
 ```
 
 **Error Handling**:
@@ -240,10 +252,14 @@ Output:
    ```
 
 3. **For each worktree**, collect:
-   - **PLAN progress**: Count checked/unchecked TODOs in `.dev/specs/{name}/PLAN.md`
+   - **PLAN progress**: Read plan path from `.dev/worktree.yml`, then count TODOs
      ```bash
-     TOTAL=$(grep -c "^### \[.\] TODO" "$WORKTREE_PATH/.dev/specs/$NAME/PLAN.md" 2>/dev/null || echo "0")
-     DONE=$(grep -c "^### \[x\] TODO" "$WORKTREE_PATH/.dev/specs/$NAME/PLAN.md" 2>/dev/null || echo "0")
+     # Get plan path from worktree metadata (source of truth)
+     PLAN_PATH=$(grep "^plan:" "$WORKTREE_PATH/.dev/worktree.yml" 2>/dev/null | cut -d' ' -f2)
+     PLAN_FILE="$WORKTREE_PATH/$PLAN_PATH"
+
+     TOTAL=$(grep -c "^### \[.\] TODO" "$PLAN_FILE" 2>/dev/null || echo "0")
+     DONE=$(grep -c "^### \[x\] TODO" "$PLAN_FILE" 2>/dev/null || echo "0")
      ```
 
    - **Changes count**:
@@ -258,10 +274,17 @@ Output:
      BEHIND=$(git -C "$WORKTREE_PATH" rev-list --count HEAD..main 2>/dev/null || echo "0")
      ```
 
-   - **PR status** (if `gh` CLI available):
+   - **Merge status** (branch-based, then PR fallback):
      ```bash
-     PR_STATE=$(gh pr list --head "feat/${NAME}" --json state --jq '.[0].state' 2>/dev/null || echo "-")
-     # Values: OPEN, MERGED, CLOSED, DRAFT, or - (no PR)
+     # Primary: check if branch is ancestor of main (works without PR)
+     if git merge-base --is-ancestor "feat/${NAME}" main 2>/dev/null; then
+       MERGE_STATE="merged"
+     else
+       # Fallback: check PR status via gh CLI
+       PR_STATE=$(gh pr list --head "feat/${NAME}" --json state --jq '.[0].state' 2>/dev/null || echo "-")
+       MERGE_STATE=$(echo "$PR_STATE" | tr '[:upper:]' '[:lower:]')
+       # Values: merged, open, closed, draft, or -
+     fi
      ```
 
 4. **Output table**: See `${baseDir}/references/status-table.md` for table format and data collection commands.
@@ -494,7 +517,7 @@ Output:
 
 6. **Config file handling**:
    - Read `.dev/config.yml` if exists
-   - Use defaults if not: `base_dir: "../{repo}.{name}"`, `copy_files: []`
+   - Use defaults if not: `base_dir: "../.worktrees/{name}"`, `copy_files: []`
    - Do NOT create config file if it doesn't exist
 
 7. **Cleanup merged worktrees**:
