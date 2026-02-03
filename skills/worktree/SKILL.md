@@ -1,8 +1,9 @@
 ---
 name: worktree
 description: |
-  "/worktree", "git worktree", "worktree create", "worktree spawn", "worktree status", "worktree attach", "worktree cleanup"
-  Git worktree management skill - create, spawn agent sessions, check status, attach to sessions, and cleanup completed worktrees
+  "/worktree", "git worktree", "worktree create", "worktree go", "worktree status", "worktree cleanup"
+  Git worktree management skill - create worktrees, navigate to them with custom commands, check status with progress tracking, and cleanup
+  Natural language triggers: "워크트리 만들어줘", "워크트리 상태", "진행현황 보여줘", "워크트리 정리", "피처 브랜치 상태", "워크트리 가기"
 allowed-tools:
   - Bash
   - Read
@@ -10,10 +11,9 @@ allowed-tools:
   - Glob
   - AskUserQuestion
 validate_prompt: |
-  Must contain all 5 subcommands: create, spawn, status, attach, cleanup.
+  Must contain all 3 subcommands: create, status, cleanup.
   Each subcommand must have: Purpose, Syntax, Workflow, Example, Error Handling.
-  Output should use git worktree commands (NOT wt CLI).
-  tmux session name must be 'wt', window names must be worktree names.
+  Output should use twig CLI (internally uses git worktree).
 ---
 
 # worktree - Git Worktree Management
@@ -28,6 +28,12 @@ Manage parallel development workflows using git worktrees and tmux sessions. Eac
 - **Progress tracking**: Unified status view of worktrees, agents, and PLAN progress
 - **Clean isolation**: Each worktree has its own working directory and agent context
 
+**CLI Tool**: This skill wraps `twig` CLI. Install it first:
+- Via `/init` skill (recommended)
+- Or manually: `~/.claude/plugins/.../hoyeon/scripts/install-twig.sh`
+
+Once installed, `twig` is available globally in terminal.
+
 ---
 
 ## Input
@@ -36,10 +42,11 @@ Manage parallel development workflows using git worktrees and tmux sessions. Eac
 /worktree <action> [arguments]
 
 actions:
-  create <name>               # Create new worktree and copy config files
-  spawn <name> "<prompt>"     # Spawn Claude agent session in tmux
-  status                      # Show all worktrees, agent status, PLAN progress
-  attach <name>               # Attach to existing tmux session
+  (no args)                   # Interactive: show status + select → go
+  go <name>                   # Go to worktree + run post_command
+  create <name>               # Create worktree + move spec from main
+  status                      # Show all worktrees with PLAN progress
+  path <name>                 # Print worktree path (for scripts)
   cleanup [name]              # Cleanup worktree (interactive if no name)
 ```
 
@@ -49,15 +56,63 @@ actions:
 
 This skill references `.dev/config.yml` for project-specific settings. See `${baseDir}/references/config-schema.md` for full schema and examples.
 
-**Defaults** (when `.dev/config.yml` doesn't exist): `base_dir: "../.worktrees/{name}"`, `copy_files: []`
+```yaml
+worktree:
+  base_dir: ".worktrees/{name}"    # Worktree location
+  copy_files: [.env.local]         # Files to copy from main
+  post_command: "claude"           # Command to run after 'go' (or set TWIG_POST_COMMAND env)
+```
+
+**Defaults**: `base_dir: ".worktrees/{name}"`, `copy_files: []`, `post_command: "claude"`
 
 ---
 
 ## Actions
 
+### (interactive)
+
+**Purpose**: Interactive mode - show status table and select a worktree to open
+
+**Syntax**:
+```
+/worktree
+twig
+```
+
+**Workflow**:
+1. Show status table with numbered rows
+2. Prompt for selection
+3. Run `twig go <selected>` to navigate + start Claude
+
+---
+
+### go
+
+**Purpose**: Navigate to worktree and run post_command (default: claude)
+
+**Syntax**:
+```
+/worktree go <name>
+twig go <name>
+```
+
+**Workflow**:
+1. Resolve worktree path
+2. `cd` to worktree
+3. Run `post_command` from config (or `TWIG_POST_COMMAND` env)
+
+**Example**:
+```
+twig go my-feature
+→ cd .worktrees/my-feature
+→ claude
+```
+
+---
+
 ### create
 
-**Purpose**: Create a new git worktree with feature branch and copy necessary config files
+**Purpose**: Create a new git worktree with feature branch and MOVE spec from main
 
 **Syntax**:
 ```
@@ -70,50 +125,28 @@ This skill references `.dev/config.yml` for project-specific settings. See `${ba
 
 **Workflow**:
 
-1. **Read config** (if exists):
-   ```bash
-   # Check if .dev/config.yml exists
-   if [ -f .dev/config.yml ]; then
-     # Parse base_dir and copy_files from .dev/config.yml
-     # Default: base_dir="../", copy_files=[]
-   fi
-   ```
+Execute via `twig`:
+```bash
+twig create <name>
+```
 
-2. **Resolve worktree path** (from `base_dir` template):
-   ```bash
-   REPO_NAME=$(basename $(git rev-parse --show-toplevel))
-   # Replace {repo} and {name} in base_dir template
-   # Default template: "../.worktrees/{name}"
-   WORKTREE_PATH=$(echo "$BASE_DIR" | sed "s/{repo}/$REPO_NAME/g; s/{name}/$NAME/g")
-
-   git worktree add "$WORKTREE_PATH" -b "feat/${NAME}"
+The CLI handles:
+1. **Read config** from `.dev/config.yml` (or use defaults)
+2. **Create worktree** with `git worktree add`
+3. **Copy config files** specified in `copy_files`
+4. **MOVE spec** from main if exists (`.dev/specs/{name}/` → worktree, then delete from main)
+5. **Create metadata** at `.dev/local.json`:
+   ```json
+   {
+     "name": "feature-name",
+     "branch": "feat/feature-name",
+     "plan": ".dev/specs/feature-name/PLAN.md",
+     "created_at": "2026-02-03T...",
+     "source": "main"
+   }
    ```
-
-3. **Copy config files**:
-   ```bash
-   for file in "${COPY_FILES[@]}"; do
-     if [ -f "$file" ]; then
-       cp "$file" "$WORKTREE_PATH/$file"
-     fi
-   done
-   ```
-
-4. **Create spec directory structure** (if doesn't exist):
-   ```bash
-   mkdir -p "$WORKTREE_PATH/.dev/specs/${NAME}"
-   ```
-
-5. **Create worktree metadata file**:
-   ```bash
-   cat > "$WORKTREE_PATH/.dev/worktree.yml" << EOF
-   name: ${NAME}
-   plan: .dev/specs/${NAME}/PLAN.md
-   branch: feat/${NAME}
-   created_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-   EOF
-   ```
-   This file is the **source of truth** for which PLAN document this worktree tracks.
-   The `plan` field is used by `/worktree status` to find progress data.
+   This file is the **source of truth** for worktree identity.
+   The `plan` field is used by `twig status` to find progress data.
 
 **Example**:
 ```
@@ -133,104 +166,9 @@ Output:
 
 ---
 
-### spawn
-
-**Purpose**: Spawn a Claude agent session in tmux for the specified worktree
-
-**Syntax**:
-```
-/worktree spawn <name> "<prompt>"
-/worktree spawn <name> "<prompt>" --headless
-```
-
-**Preconditions**:
-- tmux must be installed (`which tmux`)
-- Worktree `<name>` must exist
-
-**Workflow**:
-
-1. **Verify tmux installation**:
-   ```bash
-   if ! command -v tmux &> /dev/null; then
-     echo "tmux가 필요합니다. 'brew install tmux'로 설치하세요."
-     exit 1
-   fi
-   ```
-
-2. **Resolve worktree path** (from `base_dir` template):
-   ```bash
-   REPO_NAME=$(basename $(git rev-parse --show-toplevel))
-   WORKTREE_PATH=$(echo "$BASE_DIR" | sed "s/{repo}/$REPO_NAME/g; s/{name}/$NAME/g")
-
-   if [ ! -d "$WORKTREE_PATH" ]; then
-     echo "워크트리 '{name}'가 존재하지 않습니다."
-     exit 1
-   fi
-   ```
-
-3. **Check/create tmux session**:
-   ```bash
-   if ! tmux has-session -t wt 2>/dev/null; then
-     # Create new session 'wt' with window named '<name>'
-     tmux new-session -d -s wt -n "$NAME"
-   else
-     # Add new window to existing session
-     tmux new-window -t wt -n "$NAME"
-   fi
-   ```
-
-4. **Spawn agent**:
-   - **Interactive mode** (default):
-     ```bash
-     tmux send-keys -t wt:"$NAME" "cd $WORKTREE_PATH && claude" Enter
-     ```
-
-   - **Headless mode** (`--headless` flag):
-     ```bash
-     # Write prompt to temp file to avoid shell injection (quotes, backticks, etc.)
-     PROMPT_FILE="/tmp/wt-prompt-${NAME}"
-     cat > "$PROMPT_FILE" << 'PROMPT_EOF'
-     ${PROMPT}
-     PROMPT_EOF
-     tmux send-keys -t wt:"$NAME" "cd $WORKTREE_PATH && claude -p \"\$(cat $PROMPT_FILE)\"" Enter
-     ```
-
-**Example**:
-
-*Interactive mode*:
-```
-User: /worktree spawn user-auth "Implement authentication middleware"
-
-Output:
-✅ Agent spawned in tmux session 'wt:user-auth'
-   Mode: interactive
-   Path: ../oh-my-claude-code.user-auth
-
-   To attach: /worktree attach user-auth
-   To view all sessions: tmux list-windows -t wt
-```
-
-*Headless mode*:
-```
-User: /worktree spawn user-auth "Review PLAN.md and start execution" --headless
-
-Output:
-✅ Agent spawned in tmux session 'wt:user-auth'
-   Mode: headless
-   Prompt: "Review PLAN.md and start execution"
-   Path: ../oh-my-claude-code.user-auth
-```
-
-**Error Handling**:
-- tmux not installed → "tmux가 필요합니다. `brew install tmux`로 설치하세요."
-- Worktree doesn't exist → "워크트리 '{name}'가 존재하지 않습니다. `/worktree create {name}`으로 생성하세요."
-- Window already exists → "tmux 윈도우 '{name}'가 이미 존재합니다. `/worktree attach {name}`으로 연결하세요."
-
----
-
 ### status
 
-**Purpose**: Show unified status of all worktrees, agent sessions, PLAN progress, and uncommitted changes
+**Purpose**: Show unified status of all worktrees with PLAN progress, sessions, and git changes
 
 **Syntax**:
 ```
@@ -239,131 +177,42 @@ Output:
 
 **Workflow**:
 
-1. **Get all worktrees**:
-   ```bash
-   git worktree list --porcelain
-   ```
+Execute via `twig`:
+```bash
+twig status
+```
 
-2. **Get tmux window status** (if session exists):
-   ```bash
-   if tmux has-session -t wt 2>/dev/null; then
-     tmux list-windows -t wt -F "#{window_name} #{pane_current_command}"
-   fi
-   ```
+The CLI handles:
+1. **Enumerate worktrees** via `git worktree list --porcelain`
+2. **For each worktree**, collect:
+   - **PLAN progress**: Read plan path from `.dev/local.json`, count TODOs
+   - **Changes count**: `git status --porcelain`
+   - **Active sessions**: From `.dev/state.local.json` (24h TTL filtered)
+   - **Behind main**: `git rev-list --count HEAD..main`
+   - **PR status**: via `gh pr list` (optional)
+3. **Output aligned table** with progress bars
 
-3. **For each worktree**, collect:
-   - **PLAN progress**: Read plan path from `.dev/worktree.yml`, then count TODOs
-     ```bash
-     # Get plan path from worktree metadata (source of truth)
-     PLAN_PATH=$(grep "^plan:" "$WORKTREE_PATH/.dev/worktree.yml" 2>/dev/null | cut -d' ' -f2)
-     PLAN_FILE="$WORKTREE_PATH/$PLAN_PATH"
-
-     TOTAL=$(grep -c "^### \[.\] TODO" "$PLAN_FILE" 2>/dev/null || echo "0")
-     DONE=$(grep -c "^### \[x\] TODO" "$PLAN_FILE" 2>/dev/null || echo "0")
-     ```
-
-   - **Changes count**:
-     ```bash
-     CHANGES=$(git -C "$WORKTREE_PATH" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-     ```
-
-   - **Agent status**: Match tmux window name with worktree name
-
-   - **Drift from main** (commits behind):
-     ```bash
-     BEHIND=$(git -C "$WORKTREE_PATH" rev-list --count HEAD..main 2>/dev/null || echo "0")
-     ```
-
-   - **Merge status** (branch-based, then PR fallback):
-     ```bash
-     # Primary: check if branch is ancestor of main (works without PR)
-     if git merge-base --is-ancestor "feat/${NAME}" main 2>/dev/null; then
-       MERGE_STATE="merged"
-     else
-       # Fallback: check PR status via gh CLI
-       PR_STATE=$(gh pr list --head "feat/${NAME}" --json state --jq '.[0].state' 2>/dev/null || echo "-")
-       MERGE_STATE=$(echo "$PR_STATE" | tr '[:upper:]' '[:lower:]')
-       # Values: merged, open, closed, draft, or -
-     fi
-     ```
-
-4. **Output table**: See `${baseDir}/references/status-table.md` for table format and data collection commands.
-
-   Additional columns beyond base table:
-   - **Behind**: commits behind main (`0` = up-to-date, `5` = 5 commits behind)
-   - **PR**: PR status (`-` | `draft` | `open` | `merged`)
+See `${baseDir}/references/status-table.md` for table format details.
 
 **Example**:
 ```
 User: /worktree status
 
-Output: (table as shown above)
+Output:
+NAME                 PROGRESS             CHANGES  BEHIND   SESSIONS   PR
+----                 --------             -------  ------   --------   --
+user-auth            3/5 ███░░            2        0        1          #42
+payment              5/5 █████            0        3        0          -
 ```
 
 **Error Handling**:
 - No worktrees → "워크트리가 없습니다. `/worktree create <name>`으로 생성하세요."
-- tmux not running → Show worktrees without agent status (AGENT column shows "-")
-
----
-
-### attach
-
-**Purpose**: Attach to an existing tmux session for the specified worktree
-
-**Syntax**:
-```
-/worktree attach <name>
-```
-
-**Preconditions**:
-- tmux session `wt` must exist
-- Window `<name>` must exist in session `wt`
-
-**Workflow**:
-
-1. **Verify tmux session/window exists**:
-   ```bash
-   if ! tmux has-session -t wt 2>/dev/null; then
-     echo "tmux 세션 'wt'가 없습니다."
-     exit 1
-   fi
-
-   if ! tmux list-windows -t wt -F "#{window_name}" | grep -q "^${NAME}$"; then
-     echo "tmux 윈도우 '{name}'가 없습니다."
-     exit 1
-   fi
-   ```
-
-2. **Attach or select window**:
-   ```bash
-   # If already in tmux, select window
-   if [ -n "$TMUX" ]; then
-     tmux select-window -t wt:"$NAME"
-   else
-     # If not in tmux, attach and select window
-     tmux attach-session -t wt \; select-window -t "$NAME"
-   fi
-   ```
-
-**Example**:
-```
-User: /worktree attach user-auth
-
-Output:
-✅ Attaching to tmux session 'wt:user-auth'...
-
-(Terminal switches to tmux session)
-```
-
-**Error Handling**:
-- Session doesn't exist → "tmux 세션 'wt'가 없습니다. 실행 중인 워크트리가 없습니다."
-- Window doesn't exist → "tmux 윈도우 '{name}'가 없습니다. `/worktree spawn {name}`로 생성하세요."
 
 ---
 
 ### cleanup
 
-**Purpose**: Clean up completed worktree - kill tmux window, remove worktree, optionally delete branch
+**Purpose**: Clean up completed worktree - remove worktree and optionally delete branch
 
 **Syntax**:
 ```
@@ -372,53 +221,20 @@ Output:
 
 **Workflow**:
 
-**1. If `<name>` provided**:
-   - Cleanup that specific worktree
+Execute via `twig`:
+```bash
+# Specific worktree
+twig cleanup <name>
 
-**2. If `<name>` NOT provided**:
-   - Query completed worktrees (PLAN 100% done OR no uncommitted changes)
-   - Use `AskUserQuestion` to let user select which to cleanup
+# Skip confirmations
+twig cleanup <name> --yes
+```
 
-   ```bash
-   # Find completed worktrees
-   for worktree in $(git worktree list --porcelain | grep "^worktree" | cut -d' ' -f2); do
-     # Check if PLAN complete or no changes
-     # Present list to user
-   done
-   ```
-
-**3. Cleanup flow** (for selected worktree):
-
-   a. **Check for uncommitted changes**:
-      ```bash
-      CHANGES=$(git -C "$WORKTREE_PATH" status --porcelain | wc -l | tr -d ' ')
-      if [ "$CHANGES" -gt 0 ]; then
-        echo "⚠️  워크트리에 커밋되지 않은 변경사항이 ${CHANGES}개 있습니다."
-        # Use AskUserQuestion: "정말 삭제하시겠습니까? 변경사항이 손실됩니다."
-      fi
-      ```
-
-   b. **Kill tmux window** (if exists):
-      ```bash
-      if tmux has-session -t wt 2>/dev/null; then
-        if tmux list-windows -t wt -F "#{window_name}" | grep -q "^${NAME}$"; then
-          tmux kill-window -t wt:"$NAME"
-        fi
-      fi
-      ```
-
-   c. **Remove worktree**:
-      ```bash
-      git worktree remove "$WORKTREE_PATH"
-      ```
-
-   d. **Ask about branch deletion**:
-      ```bash
-      # Use AskUserQuestion: "브랜치 'feat/{name}'도 삭제하시겠습니까?"
-      if user_confirms; then
-        git branch -D "feat/${NAME}"
-      fi
-      ```
+The CLI handles:
+1. **Check uncommitted changes** and warn
+2. **Kill tmux window** if exists
+3. **Remove worktree** via `git worktree remove`
+4. **Ask about branch deletion** (or auto-delete with `--yes`)
 
 **Example**:
 
@@ -430,31 +246,10 @@ Output:
 ⚠️  워크트리에 커밋되지 않은 변경사항이 3개 있습니다.
 정말 삭제하시겠습니까? 변경사항이 손실됩니다. (y/N): y
 
-✅ tmux 윈도우 'wt:user-auth' 종료
 ✅ 워크트리 제거: ../oh-my-claude-code.user-auth
 브랜치 'feat/user-auth'도 삭제하시겠습니까? (y/N): n
 
 완료: 브랜치는 유지됩니다.
-```
-
-*Without name (interactive)*:
-```
-User: /worktree cleanup
-
-Output:
-완료된 워크트리:
-  1. payment (PLAN: 3/3 ✓, changes: 0)
-  2. email-tmpl (PLAN: -, changes: 0)
-
-진행 중인 워크트리:
-  3. user-auth (PLAN: 2/5, changes: 12)
-
-삭제할 워크트리를 선택하세요 (번호 또는 이름): 1
-
-✅ tmux 윈도우 'wt:payment' 종료
-✅ 워크트리 제거: ../oh-my-claude-code.payment
-브랜치 'feat/payment'도 삭제하시겠습니까? (y/N): y
-✅ 브랜치 'feat/payment' 삭제
 ```
 
 **Error Handling**:
@@ -471,12 +266,7 @@ Output:
 | create | Worktree already exists | "워크트리 '{name}'가 이미 존재합니다. `git worktree list`로 확인하세요." |
 | create | Not a git repo | "git 저장소가 아닙니다. git 프로젝트 루트에서 실행하세요." |
 | create | Branch already exists | "브랜치 'feat/{name}'가 이미 존재합니다. 다른 이름을 사용하세요." |
-| spawn | tmux not installed | "tmux가 필요합니다. `brew install tmux`로 설치하세요." |
-| spawn | Worktree doesn't exist | "워크트리 '{name}'가 존재하지 않습니다. `/worktree create {name}`으로 생성하세요." |
-| spawn | Window already exists | "tmux 윈도우 '{name}'가 이미 존재합니다. `/worktree attach {name}`으로 연결하세요." |
 | status | No worktrees | "워크트리가 없습니다. `/worktree create <name>`으로 생성하세요." |
-| attach | Session doesn't exist | "tmux 세션 'wt'가 없습니다. 실행 중인 워크트리가 없습니다." |
-| attach | Window doesn't exist | "tmux 윈도우 '{name}'가 없습니다. `/worktree spawn {name}`로 생성하세요." |
 | cleanup | Worktree doesn't exist | "워크트리 '{name}'가 존재하지 않습니다." |
 | cleanup | Uncommitted changes (no confirm) | "⚠️  워크트리에 커밋되지 않은 변경사항이 {count}개 있습니다." |
 
@@ -490,37 +280,31 @@ Output:
 | `/open <name>` | Create PR based on spec |
 | `/execute <PR#>` | Execute implementation in current directory |
 | `git worktree list` | List all worktrees (native git command) |
-| `tmux list-windows -t wt` | List all tmux windows in 'wt' session |
 
 ---
 
 ## Implementation Notes
 
-1. **Worktree naming convention**: `{repo-name}.{feature-name}`
-   - Example: `oh-my-claude-code.user-auth`
+1. **CLI tool**: `twig` - standalone bash CLI
+   - All actions call this CLI internally for consistent behavior
+   - Can also be used directly from terminal
+   - Install via `/init` skill or manually: `scripts/install-twig.sh`
 
-2. **Branch naming convention**: `feat/{feature-name}`
-   - Example: `feat/user-auth`
+2. **Worktree metadata**: `.dev/local.json` (JSON format, gitignored)
+   ```json
+   {"name":"...", "branch":"feat/...", "plan":".dev/specs/.../PLAN.md", "created_at":"...", "source":"main"}
+   ```
 
-3. **Spec location**: `.dev/specs/{feature-name}/PLAN.md`
-   - Same name as worktree feature name
+3. **Session tracking**: `.dev/state.local.json` (sessions field)
+   - Recorded via UserPromptSubmit hook
+   - 24h TTL for stale session cleanup
 
-4. **tmux session structure**:
-   - Session name: `wt` (fixed)
-   - Window names: feature names (e.g., `user-auth`, `payment`)
-   - One agent per window
+4. **Worktree naming convention**: Resolved from `base_dir` in config
+   - Default: `../.worktrees/{name}`
 
-5. **Native git worktree** - do NOT use `wt` CLI:
-   - Create: `git worktree add <path> -b <branch>`
-   - List: `git worktree list`
-   - Remove: `git worktree remove <path>`
+5. **Branch naming convention**: `feat/{feature-name}`
 
 6. **Config file handling**:
    - Read `.dev/config.yml` if exists
-   - Use defaults if not: `base_dir: "../.worktrees/{name}"`, `copy_files: []`
+   - Use defaults if not
    - Do NOT create config file if it doesn't exist
-
-7. **Cleanup merged worktrees**:
-   - `cleanup` checks PR status via `gh pr list --head feat/{name}`
-   - If PR is merged, skip uncommitted changes warning (branch is already integrated)
-   - If PR is not merged and has changes, warn before deleting

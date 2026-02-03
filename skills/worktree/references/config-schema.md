@@ -26,6 +26,11 @@ worktree:
   # Base directory path for worktree creation
   # Supports template variables: {repo}, {name}
   base_dir: string
+
+  # Command to run after 'twig go <name>'
+  # Default: "claude"
+  # Can also be set via TWIG_POST_COMMAND environment variable
+  post_command: string
 ```
 
 ## Fields
@@ -124,7 +129,10 @@ When `.dev/config.yml` doesn't exist or fields are omitted:
 | Field | Default Value | Behavior |
 |-------|---------------|----------|
 | `copy_files` | `[]` | No files are copied |
-| `base_dir` | `../.worktrees/{name}` | Worktrees created in consolidated directory |
+| `base_dir` | `.worktrees/{name}` | Worktrees created in .worktrees directory |
+| `post_command` | `claude` | Run `claude` after `twig go` |
+
+**Environment Variable Override**: Set `TWIG_POST_COMMAND` to override `post_command` globally (takes precedence over config file).
 
 ## Complete Example
 
@@ -142,6 +150,7 @@ worktree:
 ```yaml
 # .dev/config.yml
 worktree:
+  post_command: "cld"  # Custom command (e.g., alias for claude)
   # Copy environment and local settings
   copy_files:
     - .env
@@ -320,8 +329,58 @@ yq -i '.worktree.base_dir = "~/worktrees/{repo}/{name}"' .dev/config.yml
 # 3. Existing worktrees are not affected (manual move required)
 ```
 
+## CLI Usage
+
+The `twig` CLI reads the same configuration file:
+
+```bash
+# Create worktree - reads .dev/config.yml for base_dir and copy_files
+twig create my-feature
+
+# Status - shows worktrees with progress
+twig status
+
+# Spawn Claude session in tmux
+twig spawn my-feature "Start /execute"
+
+# Attach to existing session
+twig attach my-feature
+
+# Cleanup completed worktree
+twig cleanup my-feature
+```
+
+The CLI and `/worktree` skill use identical logic, so behavior is consistent regardless of which interface you use.
+
+## File Structure
+
+After worktree creation, the following files exist:
+
+```
+worktree/
+├── .dev/
+│   ├── local.json          # Worktree identity (JSON, gitignored)
+│   └── specs/{name}/       # Copied from main if exists
+│       ├── PLAN.md
+│       └── ...
+└── ... (project files)
+```
+
+The `.dev/local.json` file contains worktree metadata:
+
+```json
+{
+  "name": "my-feature",
+  "branch": "feat/my-feature",
+  "plan": ".dev/specs/my-feature/PLAN.md",
+  "created_at": "2026-02-03T...",
+  "source": "main"
+}
+```
+
 ## Related
 
 - [status-table.md](./status-table.md) - Worktree status monitoring
 - `/worktree` skill - Worktree management commands
+- `twig` - Standalone CLI tool
 - Git worktree documentation: `git help worktree`

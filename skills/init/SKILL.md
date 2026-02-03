@@ -16,7 +16,7 @@ validate_prompt: |
   1. Evidence of project scanning (Glob calls for file patterns)
   2. AskUserQuestion with multiSelect for file selection
   3. .dev/config.yml creation with valid YAML (worktree.copy_files + worktree.base_dir)
-  4. .gitignore update for .worktrees/
+  4. .gitignore update for: .worktrees/, .dev/local.json, .dev/state.local.json
   5. Summary of what was created
 ---
 
@@ -131,15 +131,71 @@ worktree:
 
 ## Step 6: Update .gitignore
 
-`.gitignore`에 `.worktrees/` 항목이 없으면 추가.
+워크트리 관련 ephemeral 파일들을 `.gitignore`에 추가.
 
 ```bash
+# Entries to add
+gitignore_entries=(
+  ".worktrees/"
+  ".dev/local.json"
+  ".dev/state.local.json"
+)
+
 # Check and append if missing
-grep -qxF '.worktrees/' .gitignore 2>/dev/null || echo '.worktrees/' >> .gitignore
+for entry in "${gitignore_entries[@]}"; do
+  grep -qxF "$entry" .gitignore 2>/dev/null || echo "$entry" >> .gitignore
+done
 ```
 
+| Entry | 용도 |
+|-------|------|
+| `.worktrees/` | 워크트리 디렉토리들 |
+| `.dev/local.json` | 워크트리 identity (name, branch, plan) |
+| `.dev/state.local.json` | 세션 추적, 파이프라인 상태 |
+
 - `.gitignore` 파일이 없으면 생성
-- 이미 `.worktrees/` 있으면 skip (idempotent)
+- 이미 있는 항목은 skip (idempotent)
+
+## Step 6.5: Install twig CLI
+
+`twig` CLI가 설치되어 있지 않으면 설치 제안.
+
+```bash
+# Check if twig is available
+if ! command -v twig &> /dev/null; then
+  # twig not installed
+fi
+```
+
+**If twig not installed:**
+
+```
+AskUserQuestion(
+  question: "twig CLI를 설치하시겠습니까? 터미널에서 직접 worktree 관리가 가능합니다.",
+  header: "twig CLI",
+  options: [
+    { label: "Install", description: "~/.local/bin/twig에 설치" },
+    { label: "Skip", description: "나중에 수동으로 설치" }
+  ]
+)
+```
+
+**If Install:**
+
+```bash
+# Get plugin root (where this skill is located)
+PLUGIN_ROOT="${baseDir}/../.."
+
+# Run install script
+bash "$PLUGIN_ROOT/scripts/install-twig.sh"
+```
+
+**If Skip:** 설치 방법만 안내하고 진행
+
+```
+twig CLI를 나중에 설치하려면:
+  ~/.claude/plugins/.../hoyeon/scripts/install-twig.sh
+```
 
 ## Step 7: Summary
 
@@ -154,10 +210,16 @@ Config created: .dev/config.yml
 
   base_dir: .worktrees/{name}
 
-  .gitignore: .worktrees/ added
+  .gitignore:
+    - .worktrees/
+    - .dev/local.json
+    - .dev/state.local.json
+
+  twig CLI: {installed | not installed}
 
 To edit: open .dev/config.yml
 To use: /worktree create <name>
+Terminal: twig status
 ```
 
 ## References
