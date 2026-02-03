@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install-twig.sh - Install twig CLI to user's PATH
+# install-hy.sh - Install hy CLI to user's PATH
 #
 # Usage:
-#   ./scripts/install-twig.sh           # Install to ~/.local/bin/twig
-#   ./scripts/install-twig.sh /usr/local/bin  # Install to custom location
+#   ./scripts/install-hy.sh           # Install to ~/.local/bin/hy
+#   ./scripts/install-hy.sh /usr/local/bin  # Install to custom location
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TWIG_SOURCE="$SCRIPT_DIR/twig"
+HY_SOURCE="$SCRIPT_DIR/hy"
 
 # Default install location
 INSTALL_DIR="${1:-$HOME/.local/bin}"
-INSTALL_PATH="$INSTALL_DIR/twig"
+INSTALL_PATH="$INSTALL_DIR/hy"
 
-# Check if twig source exists
-if [ ! -f "$TWIG_SOURCE" ]; then
-  echo "Error: twig script not found at $TWIG_SOURCE"
+# Check if hy source exists
+if [ ! -f "$HY_SOURCE" ]; then
+  echo "Error: hy script not found at $HY_SOURCE"
   exit 1
 fi
 
@@ -33,8 +33,8 @@ if [ -L "$INSTALL_PATH" ] || [ -f "$INSTALL_PATH" ]; then
 fi
 
 # Create symlink
-ln -s "$TWIG_SOURCE" "$INSTALL_PATH"
-echo "Installed: $INSTALL_PATH -> $TWIG_SOURCE"
+ln -s "$HY_SOURCE" "$INSTALL_PATH"
+echo "Installed: $INSTALL_PATH -> $HY_SOURCE"
 
 # Check if install dir is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
@@ -48,4 +48,4 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
 fi
 
 echo ""
-echo "Done! Try: twig help"
+echo "Done! Try: hy help"

@@ -54,7 +54,7 @@ Chains the entire pipeline automatically via Stop hooks:
 ### Worktree Management
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
-| `/init` | "initialize config" | Scan project, create `.dev/config.yml`, install twig CLI |
+| `/init` | "initialize config" | Scan project, create `.dev/config.yml`, install hy CLI |
 | `/worktree` | "워크트리 만들어줘" | Create, navigate, monitor, and cleanup git worktrees |
 
 ## Agents
@@ -207,7 +207,7 @@ Parallel feature development using git worktrees with isolated Claude sessions.
 ### Setup
 
 ```bash
-/init  # Scan project, create .dev/config.yml, install twig CLI
+/init  # Scan project, create .dev/config.yml, install hy CLI
 ```
 
 Creates `.dev/config.yml`:
@@ -215,19 +215,19 @@ Creates `.dev/config.yml`:
 worktree:
   copy_files: [.env.local]  # Files to copy to new worktrees
   base_dir: ".worktrees/{name}"
-  post_command: "claude"  # Or set TWIG_POST_COMMAND env var
+  post_command: "claude"  # Or set HY_POST_COMMAND env var
 ```
 
 ### Commands
 
 | Command | Purpose |
 |---------|---------|
-| `twig` | Interactive: show status + select worktree to open |
-| `twig create <name>` | Create worktree with spec move from main |
-| `twig go <name>` | Navigate to worktree + run post_command |
-| `twig status` | Show all worktrees with PLAN progress |
-| `twig path <name>` | Print worktree path (for scripting) |
-| `twig cleanup <name>` | Remove worktree and optionally delete branch |
+| `hy` | Interactive: show status + select worktree to open |
+| `hy create <name>` | Create worktree with spec move from main |
+| `hy go <name>` | Navigate to worktree + run post_command |
+| `hy status` | Show all worktrees with PLAN progress |
+| `hy path <name>` | Print worktree path (for scripting) |
+| `hy cleanup <name>` | Remove worktree and optionally delete branch |
 
 ### Workflow
 
@@ -236,7 +236,7 @@ worktree:
     ↓
 /worktree create feature-name  # Spec moves to worktree
     ↓
-twig go feature-name  # cd + claude (or custom post_command)
+hy go feature-name  # cd + claude (or custom post_command)
     ↓
 /execute  # In worktree
 ```
@@ -270,7 +270,7 @@ twig go feature-name  # cd + claude (or custom post_command)
 └── {name}/          # Each worktree has its own .dev/local.json
 
 scripts/
-└── twig             # Standalone CLI for worktree management
+└── hy             # Standalone CLI for worktree management
 
 docs/
 └── learnings/           # Knowledge extracted from development

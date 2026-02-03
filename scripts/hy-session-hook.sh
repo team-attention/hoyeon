@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# twig-session-hook.sh - UserPromptSubmit hook
+# hy-session-hook.sh - UserPromptSubmit hook
 #
 # Purpose: Track Claude sessions in state.local.json with 24h TTL
 # Activation: UserPromptSubmit event

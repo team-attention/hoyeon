@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# twig - Standalone git worktree management CLI
+# hy - Standalone git worktree management CLI
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 REPO_NAME=$(basename "$REPO_ROOT")
@@ -47,8 +47,8 @@ parse_config() {
   fi
 
   # Environment variable overrides config
-  if [ -n "${TWIG_POST_COMMAND:-}" ]; then
-    post_command="$TWIG_POST_COMMAND"
+  if [ -n "${HY_POST_COMMAND:-}" ]; then
+    post_command="$HY_POST_COMMAND"
   fi
 
   echo "$base_dir"
@@ -85,29 +85,29 @@ get_worktree_path() {
 # Show usage
 cmd_help() {
   cat <<EOF
-twig - Git worktree management CLI
+hy - Git worktree management CLI
 
 Usage:
-  twig                                Interactive mode - select worktree to open
-  twig go <name>                      Go to worktree and run post_command
-  twig create <name>                  Create worktree + move spec from main
-  twig status                         Show worktree status table
-  twig path <name>                    Print worktree path (for scripts)
-  twig cleanup <name> [--yes]         Remove worktree
-  twig help                           Show this help
+  hy                               Interactive mode - select worktree to open
+  hy go <name>                      Go to worktree and run post_command
+  hy create <name>                  Create worktree + move spec from main
+  hy status                         Show worktree status table
+  hy path <name>                    Print worktree path (for scripts)
+  hy cleanup <name> [--yes]         Remove worktree
+  hy help                           Show this help
 
 Config (.dev/config.yml):
   worktree:
     base_dir: ".worktrees/{name}"     # Worktree location
     copy_files: [.env.local]          # Files to copy
-    post_command: "claude"            # Command after 'go' (or set TWIG_POST_COMMAND)
+    post_command: "claude"            # Command after 'go' (or set HY_POST_COMMAND)
 
 Examples:
-  twig                                Interactive: pick worktree → go
-  twig go my-feature                  cd to worktree + run claude (or custom command)
-  twig create my-feature              Create worktree, move spec from main
-  twig status                         View all worktrees with progress
-  twig path my-feature                Print path only (for: cd \$(twig path x))
+  hy                               Interactive: pick worktree → go
+  hy go my-feature                  cd to worktree + run claude (or custom command)
+  hy create my-feature              Create worktree, move spec from main
+  hy status                         View all worktrees with progress
+  hy path my-feature                Print path only (for: cd \$(hy path x))
 EOF
 }
 
@@ -217,7 +217,7 @@ EOF
   echo "✅ Worktree created: $worktree_path"
   echo ""
   echo "To start working:"
-  echo "  twig go ${name}"
+  echo "  hy go ${name}"
 }
 
 # Go to worktree and run post_command
@@ -359,7 +359,7 @@ cmd_status() {
   if [ ${#rows[@]} -eq 0 ]; then
     echo "No worktrees found."
     echo ""
-    echo "Create one with: twig create <name>"
+    echo "Create one with: hy create <name>"
     return 1
   fi
 

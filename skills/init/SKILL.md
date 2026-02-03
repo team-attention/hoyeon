@@ -232,25 +232,25 @@ done
 - `.gitignore` 파일이 없으면 생성
 - 이미 있는 항목은 skip (idempotent)
 
-## Step 6.5: Install twig CLI
+## Step 6.5: Install hy CLI
 
-`twig` CLI가 설치되어 있지 않으면 설치 제안.
+`hy` CLI가 설치되어 있지 않으면 설치 제안.
 
 ```bash
-# Check if twig is available
-if ! command -v twig &> /dev/null; then
-  # twig not installed
+# Check if hy is available
+if ! command -v hy &> /dev/null; then
+  # hy not installed
 fi
 ```
 
-**If twig not installed:**
+**If hy not installed:**
 
 ```
 AskUserQuestion(
-  question: "twig CLI를 설치하시겠습니까? 터미널에서 직접 worktree 관리가 가능합니다.",
-  header: "twig CLI",
+  question: "hy CLI를 설치하시겠습니까? 터미널에서 직접 worktree 관리가 가능합니다.",
+  header: "hy CLI",
   options: [
-    { label: "Install", description: "~/.local/bin/twig에 설치" },
+    { label: "Install", description: "~/.local/bin/hy에 설치" },
     { label: "Skip", description: "나중에 수동으로 설치" }
   ]
 )
@@ -263,14 +263,14 @@ AskUserQuestion(
 PLUGIN_ROOT="${baseDir}/../.."
 
 # Run install script
-bash "$PLUGIN_ROOT/scripts/install-twig.sh"
+bash "$PLUGIN_ROOT/scripts/install-hy.sh"
 ```
 
 **If Skip:** 설치 방법만 안내하고 진행
 
 ```
-twig CLI를 나중에 설치하려면:
-  ~/.claude/plugins/.../hoyeon/scripts/install-twig.sh
+hy CLI를 나중에 설치하려면:
+  ~/.claude/plugins/.../hoyeon/scripts/install-hy.sh
 ```
 
 ## Step 7: Summary
@@ -292,11 +292,11 @@ Config created: .dev/config.yml
     - .dev/local.json
     - .dev/state.local.json
 
-  twig CLI: {installed | not installed}
+  hy CLI: {installed | not installed}
 
 To edit: open .dev/config.yml
 To use: /worktree create <name>
-Terminal: twig status
+Terminal: hy status
 ```
 
 ## References
