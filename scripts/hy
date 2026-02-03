@@ -72,7 +72,7 @@ get_post_command() {
 resolve_path() {
   local path="$1"
   local name="$2"
-  echo "$path" | sed "s/{repo}/$REPO_NAME/g; s/{name}/$name/g"
+  echo "$path" | sed "s|{repo}|$REPO_NAME|g; s|{name}|$name|g"
 }
 
 # Get worktree path for a name
@@ -252,17 +252,21 @@ cmd_path() {
   echo "$worktree_path"
 }
 
-# Get worktree names as array
+# Get worktree names as array (from directory names, not branch names)
 get_worktree_names() {
   local worktrees=$(git worktree list --porcelain)
   local names=()
+  local current_path=""
 
   while IFS= read -r line; do
-    if [[ "$line" =~ ^branch\ refs/heads/(.+)$ ]]; then
+    if [[ "$line" =~ ^worktree\ (.+)$ ]]; then
+      current_path="${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ ^branch\ refs/heads/(.+)$ ]]; then
       local branch="${BASH_REMATCH[1]}"
       # Skip main branches
       if [ "$branch" != "main" ] && [ "$branch" != "master" ] && [ "$branch" != "develop" ]; then
-        local name=$(echo "$branch" | sed 's|^feat/||')
+        # Use directory name, not branch name
+        local name=$(basename "$current_path")
         names+=("$name")
       fi
     fi
@@ -297,8 +301,8 @@ cmd_status() {
         continue
       fi
 
-      # Extract name from branch (feat/name -> name)
-      local name=$(echo "$current_branch" | sed 's|^feat/||')
+      # Extract name from worktree path (directory name)
+      local name=$(basename "$current_path")
 
       # Read local.json if exists
       local plan_path=""
@@ -363,13 +367,27 @@ cmd_status() {
     return 1
   fi
 
-  printf "%-4s %-20s %-20s %-8s %-8s %-10s %-10s\n" "#" "NAME" "PROGRESS" "CHANGES" "BEHIND" "SESSIONS" "PR"
-  printf "%-4s %-20s %-20s %-8s %-8s %-10s %-10s\n" "-" "----" "--------" "-------" "------" "--------" "--"
+  # Calculate max name width (min 20, max 30)
+  local max_name_width=20
+  for row in "${rows[@]}"; do
+    local name="${row%%|*}"
+    local name_len=${#name}
+    if [ "$name_len" -gt "$max_name_width" ] && [ "$name_len" -le 30 ]; then
+      max_name_width=$name_len
+    fi
+  done
+
+  printf "%-4s %-${max_name_width}s %-20s %-8s %-8s %-10s %-6s\n" "#" "NAME" "PROGRESS" "CHANGES" "BEHIND" "SESSIONS" "PR"
+  printf "%-4s %-${max_name_width}s %-20s %-8s %-8s %-10s %-6s\n" "-" "----" "--------" "-------" "------" "--------" "--"
 
   local i=1
   for row in "${rows[@]}"; do
     IFS='|' read -r name progress changes behind sessions pr_status <<< "$row"
-    printf "%-4s %-20s %-20s %-8s %-8s %-10s %-10s\n" "$i." "$name" "$progress" "$changes" "$behind" "$sessions" "$pr_status"
+    # Truncate name if longer than 30 chars
+    if [ ${#name} -gt 30 ]; then
+      name="${name:0:27}..."
+    fi
+    printf "%-4s %-${max_name_width}s %-20s %-8s %-8s %-10s %-6s\n" "$i." "$name" "$progress" "$changes" "$behind" "$sessions" "$pr_status"
     ((i++))
   done
 
