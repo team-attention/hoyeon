@@ -12,7 +12,7 @@
       "Bash(gh pr list:*)",
       "Bash(git worktree:*)",
       "Bash(tmux:*)",
-      "Bash(scripts/twig:*)"
+      "Bash(twig:*)"
     ]
   },
   "hooks": {

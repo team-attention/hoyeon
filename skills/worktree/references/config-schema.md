@@ -322,23 +322,23 @@ yq -i '.worktree.base_dir = "~/worktrees/{repo}/{name}"' .dev/config.yml
 
 ## CLI Usage
 
-The `scripts/twig` CLI reads the same configuration file:
+The `twig` CLI reads the same configuration file:
 
 ```bash
 # Create worktree - reads .dev/config.yml for base_dir and copy_files
-scripts/twig create my-feature
+twig create my-feature
 
 # Status - shows worktrees with progress
-scripts/twig status
+twig status
 
 # Spawn Claude session in tmux
-scripts/twig spawn my-feature "Start /execute"
+twig spawn my-feature "Start /execute"
 
 # Attach to existing session
-scripts/twig attach my-feature
+twig attach my-feature
 
 # Cleanup completed worktree
-scripts/twig cleanup my-feature
+twig cleanup my-feature
 ```
 
 The CLI and `/worktree` skill use identical logic, so behavior is consistent regardless of which interface you use.
@@ -373,5 +373,5 @@ The `.dev/local.json` file contains worktree metadata:
 
 - [status-table.md](./status-table.md) - Worktree status monitoring
 - `/worktree` skill - Worktree management commands
-- `scripts/twig` - Standalone CLI tool
+- `twig` - Standalone CLI tool
 - Git worktree documentation: `git help worktree`

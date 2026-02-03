@@ -13,7 +13,7 @@ allowed-tools:
 validate_prompt: |
   Must contain all 5 subcommands: create, spawn, status, attach, cleanup.
   Each subcommand must have: Purpose, Syntax, Workflow, Example, Error Handling.
-  Output should use scripts/twig CLI (internally uses git worktree).
+  Output should use twig CLI (internally uses git worktree).
   tmux session name must be 'wt', window names must be worktree names.
 ---
 
@@ -29,7 +29,11 @@ Manage parallel development workflows using git worktrees and tmux sessions. Eac
 - **Progress tracking**: Unified status view of worktrees, agents, and PLAN progress
 - **Clean isolation**: Each worktree has its own working directory and agent context
 
-**CLI Tool**: This skill wraps `scripts/twig` - a standalone bash CLI that can also be used directly from terminal.
+**CLI Tool**: This skill wraps `twig` CLI. Install it first:
+- Via `/init` skill (recommended)
+- Or manually: `~/.claude/plugins/.../hoyeon/scripts/install-twig.sh`
+
+Once installed, `twig` is available globally in terminal.
 
 ---
 
@@ -73,9 +77,9 @@ This skill references `.dev/config.yml` for project-specific settings. See `${ba
 
 **Workflow**:
 
-Execute via `scripts/twig`:
+Execute via `twig`:
 ```bash
-scripts/twig create <name>
+twig create <name>
 ```
 
 The CLI handles:
@@ -94,7 +98,7 @@ The CLI handles:
    }
    ```
    This file is the **source of truth** for worktree identity.
-   The `plan` field is used by `scripts/twig status` to find progress data.
+   The `plan` field is used by `twig status` to find progress data.
 
 **Example**:
 ```
@@ -130,13 +134,13 @@ Output:
 
 **Workflow**:
 
-Execute via `scripts/twig`:
+Execute via `twig`:
 ```bash
 # Interactive mode (no prompt)
-scripts/twig spawn <name>
+twig spawn <name>
 
 # With prompt
-scripts/twig spawn <name> "Your prompt here"
+twig spawn <name> "Your prompt here"
 ```
 
 The CLI handles:
@@ -189,9 +193,9 @@ Output:
 
 **Workflow**:
 
-Execute via `scripts/twig`:
+Execute via `twig`:
 ```bash
-scripts/twig status
+twig status
 ```
 
 The CLI handles:
@@ -237,9 +241,9 @@ Output: (table as shown above)
 
 **Workflow**:
 
-Execute via `scripts/twig`:
+Execute via `twig`:
 ```bash
-scripts/twig attach <name>
+twig attach <name>
 ```
 
 The CLI handles:
@@ -275,13 +279,13 @@ Output:
 
 **Workflow**:
 
-Execute via `scripts/twig`:
+Execute via `twig`:
 ```bash
 # Specific worktree
-scripts/twig cleanup <name>
+twig cleanup <name>
 
 # Skip confirmations
-scripts/twig cleanup <name> --yes
+twig cleanup <name> --yes
 ```
 
 The CLI handles:
@@ -366,7 +370,7 @@ Output:
 
 ## Implementation Notes
 
-1. **CLI tool**: `scripts/twig` - standalone bash CLI
+1. **CLI tool**: `twig` - standalone bash CLI
    - All actions call this CLI internally for consistent behavior
    - Can also be used directly from terminal
 
