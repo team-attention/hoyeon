@@ -1,4 +1,5 @@
 .playground
 .dev/state.local.json
+.dev/local.json
 .dev/specs/*
 !.dev/specs/.gitkeep
