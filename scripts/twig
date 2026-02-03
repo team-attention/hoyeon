@@ -1,0 +1,428 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# twig - Standalone git worktree management CLI
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+REPO_NAME=$(basename "$REPO_ROOT")
+CONFIG_FILE="$REPO_ROOT/.dev/config.yml"
+
+# Parse config.yml for base_dir and copy_files (fallback to defaults)
+parse_config() {
+  local base_dir="../.worktrees/{name}"
+  local copy_files=()
+
+  if [ -f "$CONFIG_FILE" ]; then
+    # Extract base_dir using grep + awk
+    local config_base_dir=$(grep -E '^\s*base_dir:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
+    if [ -n "$config_base_dir" ]; then
+      base_dir="$config_base_dir"
+    fi
+
+    # Extract copy_files array (one file per line after copy_files:)
+    if grep -qE '^\s*copy_files:' "$CONFIG_FILE"; then
+      local in_copy_files=false
+      while IFS= read -r line; do
+        if echo "$line" | grep -qE '^\s*copy_files:'; then
+          in_copy_files=true
+          continue
+        fi
+        if [ "$in_copy_files" = true ]; then
+          if echo "$line" | grep -qE '^\s*-\s+'; then
+            local file=$(echo "$line" | sed -E 's/^\s*-\s+//' | tr -d '"' | xargs)
+            copy_files+=("$file")
+          else
+            break
+          fi
+        fi
+      done < "$CONFIG_FILE"
+    fi
+  fi
+
+  echo "$base_dir"
+  for file in "${copy_files[@]}"; do
+    echo "$file"
+  done
+}
+
+# Resolve template variables in path
+resolve_path() {
+  local path="$1"
+  local name="$2"
+  echo "$path" | sed "s/{repo}/$REPO_NAME/g; s/{name}/$name/g"
+}
+
+# Show usage
+cmd_help() {
+  cat <<EOF
+twig - Git worktree management CLI
+
+Usage:
+  twig help                           Show this help
+  twig create <name>                  Create worktree + spec copy from main
+  twig spawn <name> [prompt]          Launch Claude in tmux window
+  twig status                         Show worktree status table
+  twig attach <name>                  Attach to tmux window
+  twig cleanup <name> [--yes]         Remove worktree
+
+Examples:
+  twig create my-feature              Create worktree for 'my-feature'
+  twig spawn my-feature               Start Claude in tmux window
+  twig status                         View all worktrees
+  twig attach my-feature              Attach to Claude session
+  twig cleanup my-feature --yes       Remove worktree without confirmation
+EOF
+}
+
+# Create worktree with spec copy
+cmd_create() {
+  local name="$1"
+
+  # Parse config
+  local config_output=$(parse_config)
+  local base_dir=$(echo "$config_output" | head -n 1)
+  local copy_files=($(echo "$config_output" | tail -n +2))
+
+  # Resolve path
+  local worktree_path=$(resolve_path "$base_dir" "$name")
+
+  # Create worktree
+  echo "Creating worktree at $worktree_path..."
+  git worktree add "$worktree_path" -b "feat/${name}"
+
+  # Copy config files
+  for file in "${copy_files[@]}"; do
+    if [ -f "$REPO_ROOT/$file" ]; then
+      local dir=$(dirname "$file")
+      mkdir -p "$worktree_path/$dir"
+      cp "$REPO_ROOT/$file" "$worktree_path/$file"
+      echo "Copied: $file"
+    fi
+  done
+
+  # Copy spec if exists
+  local main_spec_dir="$REPO_ROOT/.dev/specs/${name}"
+  if [ -d "$main_spec_dir" ]; then
+    echo "Copying spec files..."
+    mkdir -p "$worktree_path/.dev/specs/${name}"
+
+    if [ -f "$main_spec_dir/PLAN.md" ]; then
+      cp "$main_spec_dir/PLAN.md" "$worktree_path/.dev/specs/${name}/"
+      echo "Copied: PLAN.md"
+    fi
+
+    if [ -f "$main_spec_dir/DRAFT.md" ]; then
+      cp "$main_spec_dir/DRAFT.md" "$worktree_path/.dev/specs/${name}/"
+      echo "Copied: DRAFT.md"
+    fi
+
+    if [ -d "$main_spec_dir/context" ]; then
+      cp -r "$main_spec_dir/context" "$worktree_path/.dev/specs/${name}/"
+      echo "Copied: context/"
+    fi
+  fi
+
+  # Create .dev/local.json
+  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  mkdir -p "$worktree_path/.dev"
+  cat > "$worktree_path/.dev/local.json" <<EOF
+{
+  "name": "${name}",
+  "branch": "feat/${name}",
+  "plan": ".dev/specs/${name}/PLAN.md",
+  "created_at": "${timestamp}",
+  "source": "main"
+}
+EOF
+
+  echo "Worktree created successfully: $worktree_path"
+}
+
+# Spawn Claude in tmux window
+cmd_spawn() {
+  local name="$1"
+  local prompt="${2:-}"
+
+  # Parse config and resolve path
+  local config_output=$(parse_config)
+  local base_dir=$(echo "$config_output" | head -n 1)
+  local worktree_path=$(resolve_path "$base_dir" "$name")
+
+  if [ ! -d "$worktree_path" ]; then
+    echo "Error: Worktree '$name' does not exist at $worktree_path"
+    exit 1
+  fi
+
+  # Create or reuse tmux session
+  if ! tmux has-session -t wt 2>/dev/null; then
+    tmux new-session -d -s wt -n "$name"
+  else
+    tmux new-window -t wt -n "$name"
+  fi
+
+  # Spawn Claude
+  if [ -z "$prompt" ]; then
+    # Interactive mode
+    tmux send-keys -t "wt:${name}" "cd '$worktree_path' && claude" Enter
+  else
+    # With prompt - use temp file to avoid shell injection
+    local prompt_file="/tmp/twig-prompt-${name}-$$"
+    cat > "$prompt_file" <<PROMPT_EOF
+$prompt
+PROMPT_EOF
+    tmux send-keys -t "wt:${name}" "cd '$worktree_path' && claude -p \"\$(cat '$prompt_file')\"" Enter
+  fi
+
+  echo "Claude spawned in tmux window: wt:${name}"
+  echo "Attach with: twig attach ${name}"
+}
+
+# Show worktree status table
+cmd_status() {
+  # Get active sessions (24h filter)
+  local state_file="$REPO_ROOT/.dev/state.local.json"
+  local cutoff=$(date -u -v-24H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
+  local active_sessions="{}"
+
+  if [ -f "$state_file" ] && [ -n "$cutoff" ]; then
+    active_sessions=$(jq --arg cutoff "$cutoff" '
+      .sessions // {} | to_entries | map(select(.value.created_at > $cutoff)) |
+      group_by(.value.worktree) | map({key: .[0].value.worktree, value: length}) | from_entries
+    ' "$state_file" 2>/dev/null || echo "{}")
+  fi
+
+  # Get tmux windows
+  local tmux_windows=""
+  if tmux has-session -t wt 2>/dev/null; then
+    tmux_windows=$(tmux list-windows -t wt -F "#{window_name}" 2>/dev/null || echo "")
+  fi
+
+  # Get worktree list
+  local worktrees=$(git worktree list --porcelain)
+
+  # Parse worktrees
+  local current_path=""
+  local current_branch=""
+  local rows=()
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^worktree\ (.+)$ ]]; then
+      current_path="${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ ^branch\ refs/heads/(.+)$ ]]; then
+      current_branch="${BASH_REMATCH[1]}"
+
+      # Skip main branch
+      if [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ] || [ "$current_branch" = "develop" ]; then
+        continue
+      fi
+
+      # Extract name from branch (feat/name -> name)
+      local name=$(echo "$current_branch" | sed 's|^feat/||')
+
+      # Read local.json if exists
+      local plan_path=""
+      if [ -f "$current_path/.dev/local.json" ]; then
+        plan_path=$(jq -r '.plan // ""' "$current_path/.dev/local.json" 2>/dev/null || echo "")
+      fi
+
+      # Count TODOs in PLAN
+      local total_todos=0
+      local done_todos=0
+      if [ -n "$plan_path" ] && [ -f "$current_path/$plan_path" ]; then
+        total_todos=$(grep -cE '^\s*###\s+\[\s*\]\s+TODO' "$current_path/$plan_path" 2>/dev/null || echo 0)
+        done_todos=$(grep -cE '^\s*###\s+\[x\]\s+TODO' "$current_path/$plan_path" 2>/dev/null || echo 0)
+      fi
+
+      # Progress bar
+      local progress="--"
+      if [ "$total_todos" -gt 0 ]; then
+        local bar=""
+        for i in $(seq 1 "$total_todos"); do
+          if [ "$i" -le "$done_todos" ]; then
+            bar="${bar}█"
+          else
+            bar="${bar}░"
+          fi
+        done
+        progress="${done_todos}/${total_todos} ${bar}"
+      fi
+
+      # Git changes
+      local changes=$(git -C "$current_path" status --porcelain 2>/dev/null | wc -l | xargs)
+
+      # Behind main
+      local behind=$(git -C "$current_path" rev-list --count HEAD..main 2>/dev/null || echo "?")
+
+      # Tmux status
+      local tmux_status="-"
+      if echo "$tmux_windows" | grep -q "^${name}$"; then
+        tmux_status="active"
+      fi
+
+      # Active sessions
+      local sessions=$(echo "$active_sessions" | jq -r --arg name "$name" '.[$name] // 0' 2>/dev/null || echo 0)
+
+      # PR status (optional)
+      local pr_status="-"
+      if command -v gh >/dev/null 2>&1; then
+        local pr_number=$(gh pr list --head "$current_branch" --json number --jq '.[0].number' 2>/dev/null || echo "")
+        if [ -n "$pr_number" ]; then
+          pr_status="#${pr_number}"
+        fi
+      fi
+
+      rows+=("${name}|${progress}|${changes}|${behind}|${tmux_status}|${sessions}|${pr_status}")
+    fi
+  done <<< "$worktrees"
+
+  # Output table
+  if [ ${#rows[@]} -eq 0 ]; then
+    echo "No worktrees found."
+    return
+  fi
+
+  printf "%-20s %-20s %-8s %-8s %-10s %-10s %-10s\n" "NAME" "PROGRESS" "CHANGES" "BEHIND" "TMUX" "SESSIONS" "PR"
+  printf "%-20s %-20s %-8s %-8s %-10s %-10s %-10s\n" "----" "--------" "-------" "------" "----" "--------" "--"
+
+  for row in "${rows[@]}"; do
+    IFS='|' read -r name progress changes behind tmux_status sessions pr_status <<< "$row"
+    printf "%-20s %-20s %-8s %-8s %-10s %-10s %-10s\n" "$name" "$progress" "$changes" "$behind" "$tmux_status" "$sessions" "$pr_status"
+  done
+}
+
+# Attach to tmux window
+cmd_attach() {
+  local name="$1"
+
+  # Check if tmux session exists
+  if ! tmux has-session -t wt 2>/dev/null; then
+    echo "Error: tmux session 'wt' does not exist"
+    exit 1
+  fi
+
+  # Check if window exists
+  if ! tmux list-windows -t wt -F "#{window_name}" 2>/dev/null | grep -q "^${name}$"; then
+    echo "Error: tmux window '${name}' does not exist in session 'wt'"
+    exit 1
+  fi
+
+  # Attach (different behavior if already in tmux)
+  if [ -n "${TMUX:-}" ]; then
+    tmux select-window -t "wt:${name}"
+  else
+    tmux attach-session -t wt \; select-window -t "${name}"
+  fi
+}
+
+# Cleanup worktree
+cmd_cleanup() {
+  local name="$1"
+  local yes_flag="${2:-}"
+
+  # Parse config and resolve path
+  local config_output=$(parse_config)
+  local base_dir=$(echo "$config_output" | head -n 1)
+  local worktree_path=$(resolve_path "$base_dir" "$name")
+
+  if [ ! -d "$worktree_path" ]; then
+    echo "Error: Worktree '$name' does not exist at $worktree_path"
+    exit 1
+  fi
+
+  # Check for uncommitted changes
+  local changes=$(git -C "$worktree_path" status --porcelain 2>/dev/null | wc -l | xargs)
+  if [ "$changes" -gt 0 ]; then
+    echo "Warning: Worktree has $changes uncommitted changes"
+    if [ "$yes_flag" != "--yes" ]; then
+      read -p "Continue with cleanup? (y/N): " -n 1 -r
+      echo
+      if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Cleanup cancelled"
+        exit 0
+      fi
+    fi
+  fi
+
+  # Kill tmux window if exists
+  if tmux has-session -t wt 2>/dev/null; then
+    if tmux list-windows -t wt -F "#{window_name}" 2>/dev/null | grep -q "^${name}$"; then
+      echo "Killing tmux window: wt:${name}"
+      tmux kill-window -t "wt:${name}" 2>/dev/null || true
+    fi
+  fi
+
+  # Remove worktree
+  echo "Removing worktree: $worktree_path"
+  git worktree remove "$worktree_path"
+
+  # Ask about branch deletion
+  if [ "$yes_flag" != "--yes" ]; then
+    read -p "Delete branch 'feat/${name}'? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      git branch -D "feat/${name}"
+      echo "Branch deleted: feat/${name}"
+    fi
+  else
+    git branch -D "feat/${name}" 2>/dev/null || true
+    echo "Branch deleted: feat/${name}"
+  fi
+
+  echo "Cleanup complete"
+}
+
+# Main command router
+main() {
+  if [ $# -eq 0 ]; then
+    cmd_help
+    exit 0
+  fi
+
+  local command="$1"
+  shift
+
+  case "$command" in
+    help|--help|-h)
+      cmd_help
+      ;;
+    create)
+      if [ $# -lt 1 ]; then
+        echo "Error: create requires <name>"
+        exit 1
+      fi
+      cmd_create "$@"
+      ;;
+    spawn)
+      if [ $# -lt 1 ]; then
+        echo "Error: spawn requires <name>"
+        exit 1
+      fi
+      cmd_spawn "$@"
+      ;;
+    status)
+      cmd_status
+      ;;
+    attach)
+      if [ $# -lt 1 ]; then
+        echo "Error: attach requires <name>"
+        exit 1
+      fi
+      cmd_attach "$@"
+      ;;
+    cleanup)
+      if [ $# -lt 1 ]; then
+        echo "Error: cleanup requires <name>"
+        exit 1
+      fi
+      cmd_cleanup "$@"
+      ;;
+    *)
+      echo "Error: Unknown command '$command'"
+      echo
+      cmd_help
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
