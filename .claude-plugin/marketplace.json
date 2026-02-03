@@ -9,7 +9,7 @@
     {
       "name": "hoyeon",
       "description": "Development workflow automation: specify → open → execute pipeline with parallel research agents, hook-based guards, and PR state management",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "author": {
         "name": "team-attention"
       },
