@@ -706,11 +706,20 @@ User: "OK, make it a plan"
 
 ## Next Steps (Guide User)
 
-After plan approval, inform the user of available options:
+After plan approval, ask the user to select next step using `AskUserQuestion`:
 
 ```
-Plan has been approved! Please select next steps:
-
-- `/open` - Create Draft PR (when you want reviewer feedback first)
-- `/execute` - Start implementation immediately (execute plan as-is)
+AskUserQuestion(
+  question: "플랜이 승인되었습니다. 다음 단계를 선택하세요.",
+  options: [
+    { label: "/open", description: "Draft PR 생성 (리뷰어 피드백 먼저 받기)" },
+    { label: "/execute", description: "바로 구현 시작 (현재 브랜치에서)" },
+    { label: "/worktree create {name}", description: "워크트리에서 격리 작업 (spec 자동 이동)" }
+  ]
+)
 ```
+
+**Based on user selection**:
+- `/open` → `Skill("open", args="{name}")`
+- `/execute` → `Skill("execute", args="{name}")`
+- `/worktree create {name}` → `Skill("worktree", args="create {name}")`, then guide user to run `/execute` in the new worktree
