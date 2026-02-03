@@ -85,6 +85,7 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 2. Version bump commit on develop (plugin.json + marketplace.json)
 3. git checkout main && git merge develop --no-ff -m "Release X.Y.Z"
 4. git tag vX.Y.Z && git push origin main --tags
+5. gh release create vX.Y.Z --title "vX.Y.Z" --notes "release notes here"
 ```
 
 ## Versioning
