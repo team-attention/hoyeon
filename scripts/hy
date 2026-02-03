@@ -236,7 +236,7 @@ cmd_go() {
   echo "→ $post_command"
   echo ""
 
-  cd "$worktree_path" && exec $post_command
+  cd "$worktree_path" && exec $SHELL -ic "$post_command"
 }
 
 # Print worktree path (for scripts)
