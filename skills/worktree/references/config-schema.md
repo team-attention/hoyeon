@@ -320,8 +320,58 @@ yq -i '.worktree.base_dir = "~/worktrees/{repo}/{name}"' .dev/config.yml
 # 3. Existing worktrees are not affected (manual move required)
 ```
 
+## CLI Usage
+
+The `scripts/twig` CLI reads the same configuration file:
+
+```bash
+# Create worktree - reads .dev/config.yml for base_dir and copy_files
+scripts/twig create my-feature
+
+# Status - shows worktrees with progress
+scripts/twig status
+
+# Spawn Claude session in tmux
+scripts/twig spawn my-feature "Start /execute"
+
+# Attach to existing session
+scripts/twig attach my-feature
+
+# Cleanup completed worktree
+scripts/twig cleanup my-feature
+```
+
+The CLI and `/worktree` skill use identical logic, so behavior is consistent regardless of which interface you use.
+
+## File Structure
+
+After worktree creation, the following files exist:
+
+```
+worktree/
+├── .dev/
+│   ├── local.json          # Worktree identity (JSON, gitignored)
+│   └── specs/{name}/       # Copied from main if exists
+│       ├── PLAN.md
+│       └── ...
+└── ... (project files)
+```
+
+The `.dev/local.json` file contains worktree metadata:
+
+```json
+{
+  "name": "my-feature",
+  "branch": "feat/my-feature",
+  "plan": ".dev/specs/my-feature/PLAN.md",
+  "created_at": "2026-02-03T...",
+  "source": "main"
+}
+```
+
 ## Related
 
 - [status-table.md](./status-table.md) - Worktree status monitoring
 - `/worktree` skill - Worktree management commands
+- `scripts/twig` - Standalone CLI tool
 - Git worktree documentation: `git help worktree`

@@ -2,7 +2,19 @@
 
 ## Overview
 
-The worktree status table provides a real-time overview of all active worktrees, their associated branches, development progress, agent status, and uncommitted changes.
+The worktree status table provides a real-time overview of all active worktrees, their associated branches, development progress, agent status, active sessions, and uncommitted changes.
+
+## CLI Usage
+
+```bash
+# From terminal
+scripts/twig status
+
+# From Claude skill
+/worktree status
+```
+
+Both produce identical output.
 
 ## Table Structure
 
@@ -14,6 +26,7 @@ The worktree status table provides a real-time overview of all active worktrees,
 | **Branch** | Git branch name | `feat/{spec-name}` | Git branch tracking |
 | **PLAN** | Progress in PLAN.md | `{done}/{total} {bar}` | TODO completion count |
 | **Agent** | Current agent status | `running` \| `completed` \| `idle` \| `-` | tmux session state |
+| **Sessions** | Active Claude sessions | `{count}` | `.dev/state.local.json` (24h TTL) |
 | **Changes** | Uncommitted changes | `+{added} ~{modified}` | Git status |
 
 ### Column Details
@@ -85,7 +98,24 @@ tmux list-windows -t wt -F "#{window_name} #{pane_current_command}" 2>/dev/null
 # - If window not found → idle
 ```
 
-#### 5. Changes
+#### 5. Sessions
+
+Count of active Claude sessions in this worktree (tracked via UserPromptSubmit hook).
+
+```bash
+# Read from .dev/state.local.json
+# Sessions are filtered by 24h TTL
+jq '[.sessions // {} | to_entries[] | select(.value.worktree == "{name}")] | length' .dev/state.local.json
+```
+
+Session data is recorded when Claude starts (via `scripts/twig-session-hook.sh`) and cleaned up after 24 hours.
+
+Example values:
+- `2` - Two active sessions in this worktree
+- `0` - No active sessions
+- `-` - No session data available
+
+#### 6. Changes
 
 Summary of uncommitted changes in the worktree.
 
@@ -113,14 +143,14 @@ Example values:
 ## Example Table
 
 ```
-┌─────────────────────────────┬──────────────────┬────────────┬───────────┬──────────┐
-│ Worktree                    │ Branch           │ PLAN       │ Agent     │ Changes  │
-├─────────────────────────────┼──────────────────┼────────────┼───────────┼──────────┤
-│ oh-my-claude-code.auth      │ feat/auth        │ 3/5 ██▓░░  │ running   │ +2 ~1    │
-│ oh-my-claude-code.payment   │ feat/payment     │ 5/5 █████  │ completed │ +0 ~3    │
-│ oh-my-claude-code.ui-fixes  │ feat/ui-fixes    │ 1/8 ░░░░░░ │ running   │ +5 ~0    │
-│ oh-my-claude-code.refactor  │ feat/refactor    │ -          │ idle      │ -        │
-└─────────────────────────────┴──────────────────┴────────────┴───────────┴──────────┘
+┌─────────────────────────────┬──────────────────┬────────────┬───────────┬──────────┬──────────┐
+│ Worktree                    │ Branch           │ PLAN       │ Agent     │ Sessions │ Changes  │
+├─────────────────────────────┼──────────────────┼────────────┼───────────┼──────────┼──────────┤
+│ oh-my-claude-code.auth      │ feat/auth        │ 3/5 ██▓░░  │ running   │ 2        │ +2 ~1    │
+│ oh-my-claude-code.payment   │ feat/payment     │ 5/5 █████  │ completed │ 1        │ +0 ~3    │
+│ oh-my-claude-code.ui-fixes  │ feat/ui-fixes    │ 1/8 ░░░░░░ │ running   │ 1        │ +5 ~0    │
+│ oh-my-claude-code.refactor  │ feat/refactor    │ -          │ idle      │ 0        │ -        │
+└─────────────────────────────┴──────────────────┴────────────┴───────────┴──────────┴──────────┘
 ```
 
 ## Data Collection Commands
@@ -157,14 +187,21 @@ git worktree list --porcelain
 # 2. Get branch for specific worktree
 git -C {worktree_path} branch --show-current
 
-# 3. Count PLAN TODOs
-grep '### \[x\] TODO' .dev/specs/{name}/PLAN.md | wc -l  # done
-grep '### \[.\] TODO' .dev/specs/{name}/PLAN.md | wc -l  # total
+# 3. Get worktree metadata (from .dev/local.json)
+jq -r '.name, .plan' {worktree_path}/.dev/local.json
 
-# 4. Get tmux agent status
+# 4. Count PLAN TODOs (using plan path from local.json)
+PLAN_PATH=$(jq -r '.plan' {worktree_path}/.dev/local.json)
+grep '### \[x\] TODO' "{worktree_path}/$PLAN_PATH" | wc -l  # done
+grep '### \[.\] TODO' "{worktree_path}/$PLAN_PATH" | wc -l  # total
+
+# 5. Get tmux agent status
 tmux list-windows -t wt -F "#{window_name} #{pane_current_command}"
 
-# 5. Get git changes count
+# 6. Get active sessions count (from state.local.json, 24h TTL)
+jq '[.sessions // {} | to_entries[] | select(.value.worktree == "{name}")] | length' .dev/state.local.json
+
+# 7. Get git changes count
 git -C {worktree_path} status --porcelain | wc -l
 git -C {worktree_path} diff --shortstat
 ```
@@ -217,3 +254,6 @@ echo "$done/$total $bar"
 
 - [config-schema.md](./config-schema.md) - Worktree configuration options
 - `/worktree` skill - Worktree management commands
+- `scripts/twig` - Standalone CLI tool
+- `.dev/local.json` - Worktree metadata (JSON format)
+- `.dev/state.local.json` - Session tracking data
