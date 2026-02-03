@@ -26,6 +26,11 @@ worktree:
   # Base directory path for worktree creation
   # Supports template variables: {repo}, {name}
   base_dir: string
+
+  # Command to run after 'twig go <name>'
+  # Default: "claude"
+  # Can also be set via TWIG_POST_COMMAND environment variable
+  post_command: string
 ```
 
 ## Fields
@@ -124,7 +129,10 @@ When `.dev/config.yml` doesn't exist or fields are omitted:
 | Field | Default Value | Behavior |
 |-------|---------------|----------|
 | `copy_files` | `[]` | No files are copied |
-| `base_dir` | `../.worktrees/{name}` | Worktrees created in consolidated directory |
+| `base_dir` | `.worktrees/{name}` | Worktrees created in .worktrees directory |
+| `post_command` | `claude` | Run `claude` after `twig go` |
+
+**Environment Variable Override**: Set `TWIG_POST_COMMAND` to override `post_command` globally (takes precedence over config file).
 
 ## Complete Example
 
@@ -142,6 +150,7 @@ worktree:
 ```yaml
 # .dev/config.yml
 worktree:
+  post_command: "cld"  # Custom command (e.g., alias for claude)
   # Copy environment and local settings
   copy_files:
     - .env

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The worktree status table provides a real-time overview of all active worktrees, their associated branches, development progress, agent status, active sessions, and uncommitted changes.
+The worktree status table provides a real-time overview of all active worktrees, their associated branches, development progress, active sessions, and uncommitted changes.
 
 ## CLI Usage
 
@@ -22,12 +22,12 @@ Both produce identical output.
 
 | Column | Description | Format | Data Source |
 |--------|-------------|--------|-------------|
-| **Worktree** | Worktree directory name | `{name}` | Derived from worktree path |
-| **Branch** | Git branch name | `feat/{spec-name}` | Git branch tracking |
-| **PLAN** | Progress in PLAN.md | `{done}/{total} {bar}` | TODO completion count |
-| **Agent** | Current agent status | `running` \| `completed` \| `idle` \| `-` | tmux session state |
-| **Sessions** | Active Claude sessions | `{count}` | `.dev/state.local.json` (24h TTL) |
-| **Changes** | Uncommitted changes | `+{added} ~{modified}` | Git status |
+| **NAME** | Worktree/feature name | `{name}` | Derived from branch name |
+| **PROGRESS** | Progress in PLAN.md | `{done}/{total} {bar}` | TODO completion count |
+| **CHANGES** | Uncommitted git changes | `{count}` | `git status --porcelain` |
+| **BEHIND** | Commits behind main | `{count}` | `git rev-list --count HEAD..main` |
+| **SESSIONS** | Active Claude sessions | `{count}` | `.dev/state.local.json` (24h TTL) |
+| **PR** | Associated PR number | `#{number}` or `-` | `gh pr list` |
 
 ### Column Details
 
@@ -76,29 +76,7 @@ Example values:
 - `5/5 █████` - 100% complete
 - `-` - No PLAN.md found
 
-#### 4. Agent
-
-Current agent execution status based on tmux session state.
-
-| Status | Meaning | Condition |
-|--------|---------|-----------|
-| `running` | Agent actively executing | tmux window exists with active claude process |
-| `completed` | Agent finished execution | tmux window exists, claude process completed |
-| `idle` | Worktree exists but no agent | tmux window not found |
-| `-` | No worktree or session | Worktree not set up for agent execution |
-
-```bash
-# Get agent status from tmux
-# List all windows in 'wt' session with window name and current command
-tmux list-windows -t wt -F "#{window_name} #{pane_current_command}" 2>/dev/null
-
-# Parse to determine status:
-# - If pane_current_command contains "claude" or "node" → running
-# - If window exists but command is "bash" or "zsh" → completed
-# - If window not found → idle
-```
-
-#### 5. Sessions
+#### 4. Sessions
 
 Count of active Claude sessions in this worktree (tracked via UserPromptSubmit hook).
 
@@ -115,7 +93,7 @@ Example values:
 - `0` - No active sessions
 - `-` - No session data available
 
-#### 6. Changes
+#### 5. Changes
 
 Summary of uncommitted changes in the worktree.
 
@@ -143,14 +121,12 @@ Example values:
 ## Example Table
 
 ```
-┌─────────────────────────────┬──────────────────┬────────────┬───────────┬──────────┬──────────┐
-│ Worktree                    │ Branch           │ PLAN       │ Agent     │ Sessions │ Changes  │
-├─────────────────────────────┼──────────────────┼────────────┼───────────┼──────────┼──────────┤
-│ oh-my-claude-code.auth      │ feat/auth        │ 3/5 ██▓░░  │ running   │ 2        │ +2 ~1    │
-│ oh-my-claude-code.payment   │ feat/payment     │ 5/5 █████  │ completed │ 1        │ +0 ~3    │
-│ oh-my-claude-code.ui-fixes  │ feat/ui-fixes    │ 1/8 ░░░░░░ │ running   │ 1        │ +5 ~0    │
-│ oh-my-claude-code.refactor  │ feat/refactor    │ -          │ idle      │ 0        │ -        │
-└─────────────────────────────┴──────────────────┴────────────┴───────────┴──────────┴──────────┘
+NAME                 PROGRESS             CHANGES  BEHIND   SESSIONS   PR
+----                 --------             -------  ------   --------   --
+auth                 3/5 ███░░            2        0        2          #42
+payment              5/5 █████            0        3        1          -
+ui-fixes             1/8 █░░░░░░░         5        1        1          #38
+refactor             --                   0        0        0          -
 ```
 
 ## Data Collection Commands

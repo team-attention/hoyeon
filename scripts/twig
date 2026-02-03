@@ -7,19 +7,26 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 REPO_NAME=$(basename "$REPO_ROOT")
 CONFIG_FILE="$REPO_ROOT/.dev/config.yml"
 
-# Parse config.yml for base_dir and copy_files (fallback to defaults)
+# Parse config.yml for base_dir, copy_files, and post_command
 parse_config() {
-  local base_dir="../.worktrees/{name}"
+  local base_dir=".worktrees/{name}"
+  local post_command="claude"
   local copy_files=()
 
   if [ -f "$CONFIG_FILE" ]; then
-    # Extract base_dir using grep + awk
+    # Extract base_dir
     local config_base_dir=$(grep -E '^\s*base_dir:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
     if [ -n "$config_base_dir" ]; then
       base_dir="$config_base_dir"
     fi
 
-    # Extract copy_files array (one file per line after copy_files:)
+    # Extract post_command
+    local config_post_command=$(grep -E '^\s*post_command:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
+    if [ -n "$config_post_command" ]; then
+      post_command="$config_post_command"
+    fi
+
+    # Extract copy_files array
     if grep -qE '^\s*copy_files:' "$CONFIG_FILE"; then
       local in_copy_files=false
       while IFS= read -r line; do
@@ -39,10 +46,26 @@ parse_config() {
     fi
   fi
 
+  # Environment variable overrides config
+  if [ -n "${TWIG_POST_COMMAND:-}" ]; then
+    post_command="$TWIG_POST_COMMAND"
+  fi
+
   echo "$base_dir"
+  echo "$post_command"
   for file in "${copy_files[@]}"; do
     echo "$file"
   done
+}
+
+# Get just the base_dir from config
+get_base_dir() {
+  parse_config | head -n 1
+}
+
+# Get post_command from config
+get_post_command() {
+  parse_config | sed -n '2p'
 }
 
 # Resolve template variables in path
@@ -52,39 +75,71 @@ resolve_path() {
   echo "$path" | sed "s/{repo}/$REPO_NAME/g; s/{name}/$name/g"
 }
 
+# Get worktree path for a name
+get_worktree_path() {
+  local name="$1"
+  local base_dir=$(get_base_dir)
+  resolve_path "$base_dir" "$name"
+}
+
 # Show usage
 cmd_help() {
   cat <<EOF
 twig - Git worktree management CLI
 
 Usage:
-  twig help                           Show this help
-  twig create <name>                  Create worktree + spec copy from main
-  twig spawn <name> [prompt]          Launch Claude in tmux window
+  twig                                Interactive mode - select worktree to open
+  twig go <name>                      Go to worktree and run post_command
+  twig create <name>                  Create worktree + move spec from main
   twig status                         Show worktree status table
-  twig attach <name>                  Attach to tmux window
+  twig path <name>                    Print worktree path (for scripts)
   twig cleanup <name> [--yes]         Remove worktree
+  twig help                           Show this help
+
+Config (.dev/config.yml):
+  worktree:
+    base_dir: ".worktrees/{name}"     # Worktree location
+    copy_files: [.env.local]          # Files to copy
+    post_command: "claude"            # Command after 'go' (or set TWIG_POST_COMMAND)
 
 Examples:
-  twig create my-feature              Create worktree for 'my-feature'
-  twig spawn my-feature               Start Claude in tmux window
-  twig status                         View all worktrees
-  twig attach my-feature              Attach to Claude session
-  twig cleanup my-feature --yes       Remove worktree without confirmation
+  twig                                Interactive: pick worktree → go
+  twig go my-feature                  cd to worktree + run claude (or custom command)
+  twig create my-feature              Create worktree, move spec from main
+  twig status                         View all worktrees with progress
+  twig path my-feature                Print path only (for: cd \$(twig path x))
 EOF
 }
 
-# Create worktree with spec copy
+# Create worktree with spec MOVE (not copy)
 cmd_create() {
   local name="$1"
+
+  # Validate name (no special chars except hyphen/underscore)
+  if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "Error: Invalid name '$name'. Use only letters, numbers, hyphens, underscores."
+    exit 1
+  fi
 
   # Parse config
   local config_output=$(parse_config)
   local base_dir=$(echo "$config_output" | head -n 1)
-  local copy_files=($(echo "$config_output" | tail -n +2))
+  local copy_files=($(echo "$config_output" | tail -n +3))
 
   # Resolve path
   local worktree_path=$(resolve_path "$base_dir" "$name")
+
+  # Check if worktree already exists
+  if [ -d "$worktree_path" ]; then
+    echo "Error: Worktree already exists at $worktree_path"
+    exit 1
+  fi
+
+  # Check if branch already exists
+  if git show-ref --verify --quiet "refs/heads/feat/${name}"; then
+    echo "Error: Branch 'feat/${name}' already exists"
+    exit 1
+  fi
 
   # Create worktree
   echo "Creating worktree at $worktree_path..."
@@ -100,25 +155,48 @@ cmd_create() {
     fi
   done
 
-  # Copy spec if exists
+  # MOVE spec if exists (copy then delete from main)
   local main_spec_dir="$REPO_ROOT/.dev/specs/${name}"
   if [ -d "$main_spec_dir" ]; then
-    echo "Copying spec files..."
-    mkdir -p "$worktree_path/.dev/specs/${name}"
+    echo "Moving spec files..."
+    local wt_spec_dir="$worktree_path/.dev/specs/${name}"
+    mkdir -p "$wt_spec_dir"
+
+    local move_success=true
 
     if [ -f "$main_spec_dir/PLAN.md" ]; then
-      cp "$main_spec_dir/PLAN.md" "$worktree_path/.dev/specs/${name}/"
-      echo "Copied: PLAN.md"
+      if cp "$main_spec_dir/PLAN.md" "$wt_spec_dir/"; then
+        echo "Moved: PLAN.md"
+      else
+        echo "Error: Failed to copy PLAN.md"
+        move_success=false
+      fi
     fi
 
     if [ -f "$main_spec_dir/DRAFT.md" ]; then
-      cp "$main_spec_dir/DRAFT.md" "$worktree_path/.dev/specs/${name}/"
-      echo "Copied: DRAFT.md"
+      if cp "$main_spec_dir/DRAFT.md" "$wt_spec_dir/"; then
+        echo "Moved: DRAFT.md"
+      else
+        echo "Error: Failed to copy DRAFT.md"
+        move_success=false
+      fi
     fi
 
     if [ -d "$main_spec_dir/context" ]; then
-      cp -r "$main_spec_dir/context" "$worktree_path/.dev/specs/${name}/"
-      echo "Copied: context/"
+      if cp -r "$main_spec_dir/context" "$wt_spec_dir/"; then
+        echo "Moved: context/"
+      else
+        echo "Error: Failed to copy context/"
+        move_success=false
+      fi
+    fi
+
+    # Only delete from main if all copies succeeded
+    if [ "$move_success" = true ]; then
+      rm -rf "$main_spec_dir"
+      echo "Removed spec from main: .dev/specs/${name}/"
+    else
+      echo "Warning: Spec copy had errors, keeping original in main"
     fi
   fi
 
@@ -135,46 +213,64 @@ cmd_create() {
 }
 EOF
 
-  echo "Worktree created successfully: $worktree_path"
+  echo ""
+  echo "✅ Worktree created: $worktree_path"
+  echo ""
+  echo "To start working:"
+  echo "  twig go ${name}"
 }
 
-# Spawn Claude in tmux window
-cmd_spawn() {
+# Go to worktree and run post_command
+cmd_go() {
   local name="$1"
-  local prompt="${2:-}"
-
-  # Parse config and resolve path
-  local config_output=$(parse_config)
-  local base_dir=$(echo "$config_output" | head -n 1)
-  local worktree_path=$(resolve_path "$base_dir" "$name")
+  local worktree_path=$(get_worktree_path "$name")
 
   if [ ! -d "$worktree_path" ]; then
     echo "Error: Worktree '$name' does not exist at $worktree_path"
     exit 1
   fi
 
-  # Create or reuse tmux session
-  if ! tmux has-session -t wt 2>/dev/null; then
-    tmux new-session -d -s wt -n "$name"
-  else
-    tmux new-window -t wt -n "$name"
+  local post_command=$(get_post_command)
+
+  echo "→ cd $worktree_path"
+  echo "→ $post_command"
+  echo ""
+
+  cd "$worktree_path" && exec $post_command
+}
+
+# Print worktree path (for scripts)
+cmd_path() {
+  local name="$1"
+  local worktree_path=$(get_worktree_path "$name")
+
+  if [ ! -d "$worktree_path" ]; then
+    echo "Error: Worktree '$name' does not exist at $worktree_path" >&2
+    exit 1
   fi
 
-  # Spawn Claude
-  if [ -z "$prompt" ]; then
-    # Interactive mode
-    tmux send-keys -t "wt:${name}" "cd '$worktree_path' && claude" Enter
-  else
-    # With prompt - use temp file to avoid shell injection
-    local prompt_file="/tmp/twig-prompt-${name}-$$"
-    cat > "$prompt_file" <<PROMPT_EOF
-$prompt
-PROMPT_EOF
-    tmux send-keys -t "wt:${name}" "cd '$worktree_path' && claude -p \"\$(cat '$prompt_file')\"" Enter
-  fi
+  echo "$worktree_path"
+}
 
-  echo "Claude spawned in tmux window: wt:${name}"
-  echo "Attach with: twig attach ${name}"
+# Get worktree names as array
+get_worktree_names() {
+  local worktrees=$(git worktree list --porcelain)
+  local names=()
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^branch\ refs/heads/(.+)$ ]]; then
+      local branch="${BASH_REMATCH[1]}"
+      # Skip main branches
+      if [ "$branch" != "main" ] && [ "$branch" != "master" ] && [ "$branch" != "develop" ]; then
+        local name=$(echo "$branch" | sed 's|^feat/||')
+        names+=("$name")
+      fi
+    fi
+  done <<< "$worktrees"
+
+  for name in "${names[@]}"; do
+    echo "$name"
+  done
 }
 
 # Show worktree status table
@@ -189,12 +285,6 @@ cmd_status() {
       .sessions // {} | to_entries | map(select(.value.created_at > $cutoff)) |
       group_by(.value.worktree) | map({key: .[0].value.worktree, value: length}) | from_entries
     ' "$state_file" 2>/dev/null || echo "{}")
-  fi
-
-  # Get tmux windows
-  local tmux_windows=""
-  if tmux has-session -t wt 2>/dev/null; then
-    tmux_windows=$(tmux list-windows -t wt -F "#{window_name}" 2>/dev/null || echo "")
   fi
 
   # Get worktree list
@@ -253,12 +343,6 @@ cmd_status() {
       # Behind main
       local behind=$(git -C "$current_path" rev-list --count HEAD..main 2>/dev/null || echo "?")
 
-      # Tmux status
-      local tmux_status="-"
-      if echo "$tmux_windows" | grep -q "^${name}$"; then
-        tmux_status="active"
-      fi
-
       # Active sessions
       local sessions=$(echo "$active_sessions" | jq -r --arg name "$name" '.[$name] // 0' 2>/dev/null || echo 0)
 
@@ -271,47 +355,67 @@ cmd_status() {
         fi
       fi
 
-      rows+=("${name}|${progress}|${changes}|${behind}|${tmux_status}|${sessions}|${pr_status}")
+      rows+=("${name}|${progress}|${changes}|${behind}|${sessions}|${pr_status}")
     fi
   done <<< "$worktrees"
 
   # Output table
   if [ ${#rows[@]} -eq 0 ]; then
     echo "No worktrees found."
+    echo ""
+    echo "Create one with: twig create <name>"
+    return 1
+  fi
+
+  printf "%-4s %-20s %-20s %-8s %-8s %-10s %-10s\n" "#" "NAME" "PROGRESS" "CHANGES" "BEHIND" "SESSIONS" "PR"
+  printf "%-4s %-20s %-20s %-8s %-8s %-10s %-10s\n" "-" "----" "--------" "-------" "------" "--------" "--"
+
+  local i=1
+  for row in "${rows[@]}"; do
+    IFS='|' read -r name progress changes behind sessions pr_status <<< "$row"
+    printf "%-4s %-20s %-20s %-8s %-8s %-10s %-10s\n" "$i." "$name" "$progress" "$changes" "$behind" "$sessions" "$pr_status"
+    ((i++))
+  done
+
+  return 0
+}
+
+# Interactive mode: show status then prompt for selection
+cmd_interactive() {
+  # Show status first
+  if ! cmd_status; then
     return
   fi
 
-  printf "%-20s %-20s %-8s %-8s %-10s %-10s %-10s\n" "NAME" "PROGRESS" "CHANGES" "BEHIND" "TMUX" "SESSIONS" "PR"
-  printf "%-20s %-20s %-8s %-8s %-10s %-10s %-10s\n" "----" "--------" "-------" "------" "----" "--------" "--"
+  echo ""
 
-  for row in "${rows[@]}"; do
-    IFS='|' read -r name progress changes behind tmux_status sessions pr_status <<< "$row"
-    printf "%-20s %-20s %-8s %-8s %-10s %-10s %-10s\n" "$name" "$progress" "$changes" "$behind" "$tmux_status" "$sessions" "$pr_status"
-  done
-}
+  # Get worktree names
+  local names=($(get_worktree_names))
+  local count=${#names[@]}
 
-# Attach to tmux window
-cmd_attach() {
-  local name="$1"
-
-  # Check if tmux session exists
-  if ! tmux has-session -t wt 2>/dev/null; then
-    echo "Error: tmux session 'wt' does not exist"
-    exit 1
+  if [ "$count" -eq 0 ]; then
+    return
   fi
 
-  # Check if window exists
-  if ! tmux list-windows -t wt -F "#{window_name}" 2>/dev/null | grep -q "^${name}$"; then
-    echo "Error: tmux window '${name}' does not exist in session 'wt'"
-    exit 1
+  # Prompt for selection
+  read -p "Select worktree [1-${count}, q to quit]: " selection
+
+  if [ "$selection" = "q" ] || [ "$selection" = "Q" ] || [ -z "$selection" ]; then
+    echo "Cancelled."
+    return
   fi
 
-  # Attach (different behavior if already in tmux)
-  if [ -n "${TMUX:-}" ]; then
-    tmux select-window -t "wt:${name}"
-  else
-    tmux attach-session -t wt \; select-window -t "${name}"
+  # Validate selection
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ] || [ "$selection" -gt "$count" ]; then
+    echo "Invalid selection: $selection"
+    return 1
   fi
+
+  # Get selected name (array is 0-indexed)
+  local selected_name="${names[$((selection-1))]}"
+
+  echo ""
+  cmd_go "$selected_name"
 }
 
 # Cleanup worktree
@@ -319,10 +423,7 @@ cmd_cleanup() {
   local name="$1"
   local yes_flag="${2:-}"
 
-  # Parse config and resolve path
-  local config_output=$(parse_config)
-  local base_dir=$(echo "$config_output" | head -n 1)
-  local worktree_path=$(resolve_path "$base_dir" "$name")
+  local worktree_path=$(get_worktree_path "$name")
 
   if [ ! -d "$worktree_path" ]; then
     echo "Error: Worktree '$name' does not exist at $worktree_path"
@@ -340,14 +441,6 @@ cmd_cleanup() {
         echo "Cleanup cancelled"
         exit 0
       fi
-    fi
-  fi
-
-  # Kill tmux window if exists
-  if tmux has-session -t wt 2>/dev/null; then
-    if tmux list-windows -t wt -F "#{window_name}" 2>/dev/null | grep -q "^${name}$"; then
-      echo "Killing tmux window: wt:${name}"
-      tmux kill-window -t "wt:${name}" 2>/dev/null || true
     fi
   fi
 
@@ -373,8 +466,9 @@ cmd_cleanup() {
 
 # Main command router
 main() {
+  # No args = interactive mode
   if [ $# -eq 0 ]; then
-    cmd_help
+    cmd_interactive
     exit 0
   fi
 
@@ -392,22 +486,22 @@ main() {
       fi
       cmd_create "$@"
       ;;
-    spawn)
+    go)
       if [ $# -lt 1 ]; then
-        echo "Error: spawn requires <name>"
+        echo "Error: go requires <name>"
         exit 1
       fi
-      cmd_spawn "$@"
+      cmd_go "$@"
+      ;;
+    path)
+      if [ $# -lt 1 ]; then
+        echo "Error: path requires <name>"
+        exit 1
+      fi
+      cmd_path "$@"
       ;;
     status)
       cmd_status
-      ;;
-    attach)
-      if [ $# -lt 1 ]; then
-        echo "Error: attach requires <name>"
-        exit 1
-      fi
-      cmd_attach "$@"
       ;;
     cleanup)
       if [ $# -lt 1 ]; then
