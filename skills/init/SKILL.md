@@ -15,9 +15,10 @@ validate_prompt: |
   Must contain:
   1. Evidence of project scanning (Glob calls for file patterns)
   2. AskUserQuestion with multiSelect for file selection
-  3. .dev/config.yml creation with valid YAML (worktree.copy_files + worktree.base_dir)
-  4. .gitignore update for: .worktrees/, .dev/local.json, .dev/state.local.json
-  5. Summary of what was created
+  3. AskUserQuestion for post_command selection
+  4. .dev/config.yml creation with valid YAML (worktree.copy_files + worktree.base_dir + worktree.post_command)
+  5. .gitignore update for: .worktrees/, .dev/local.json, .dev/state.local.json
+  6. Summary of what was created
 ---
 
 # /init — Initialize Worktree Configuration
@@ -54,6 +55,8 @@ Glob으로 아래 패턴을 탐지. **실제 존재하는 파일만** 후보 목
 
 ### Scan Patterns
 
+**공통 (모든 프로젝트):**
+
 | Category | Glob Pattern | Description |
 |----------|-------------|-------------|
 | Environment | `.env` | Base environment variables |
@@ -61,12 +64,40 @@ Glob으로 아래 패턴을 탐지. **실제 존재하는 파일만** 후보 목
 | Editor | `.vscode/settings.json` | VS Code settings |
 | Editor | `.idea/workspace.xml` | IntelliJ/WebStorm workspace |
 | Editor | `.editorconfig` | Editor standards |
+| Docker | `docker-compose.override.yml` | Local docker overrides |
+
+**Node.js:**
+
+| Category | Glob Pattern | Description |
+|----------|-------------|-------------|
 | Package | `.npmrc` | NPM registry config |
 | Package | `.yarnrc.yml` | Yarn config |
-| Formatting | `.prettierrc*` | Prettier config (any extension) |
-| Linting | `.eslintrc*` | ESLint config (any extension) |
-| TypeScript | `tsconfig.json` | TypeScript config |
-| Docker | `docker-compose.override.yml` | Local docker overrides |
+| Formatting | `.prettierrc*` | Prettier config |
+| Linting | `.eslintrc*` | ESLint config |
+
+**Python:**
+
+| Category | Glob Pattern | Description |
+|----------|-------------|-------------|
+| Config | `.python-version` | pyenv version |
+| Config | `pyrightconfig.json` | Pyright config |
+| Config | `.flake8` | Flake8 config |
+| Config | `mypy.ini` | Mypy config |
+
+**Ruby:**
+
+| Category | Glob Pattern | Description |
+|----------|-------------|-------------|
+| Config | `.ruby-version` | Ruby version |
+| Config | `.rubocop.yml` | Rubocop config |
+
+**Go/Rust/Other:**
+
+| Category | Glob Pattern | Description |
+|----------|-------------|-------------|
+| Config | `.golangci.yml` | Go linter config |
+| Config | `rustfmt.toml` | Rust formatter config |
+| Config | `.tool-versions` | asdf version manager |
 
 **Scan execution:**
 
@@ -101,13 +132,57 @@ AskUserQuestion(
 
 **If user selects nothing:** 빈 copy_files로 진행 (기본값)
 
+## Step 3.5: Configure post_command
+
+worktree 이동 후 실행할 명령어를 설정.
+
+### Dependency Manager Detection
+
+프로젝트의 의존성 관리자를 자동 감지 (lock file 기반):
+
+| Lock File | Manager | Install Command |
+|-----------|---------|-----------------|
+| `pnpm-lock.yaml` | pnpm | `pnpm install` |
+| `yarn.lock` | yarn | `yarn install` |
+| `bun.lockb` | bun | `bun install` |
+| `package-lock.json` | npm | `npm install` |
+| `poetry.lock` | poetry | `poetry install` |
+| `Pipfile.lock` | pipenv | `pipenv install` |
+| `uv.lock` | uv | `uv sync` |
+| `Gemfile.lock` | bundler | `bundle install` |
+| `go.sum` | go | `go mod download` |
+| `Cargo.lock` | cargo | `cargo fetch` |
+| `composer.lock` | composer | `composer install` |
+
+**감지 우선순위**: 첫 번째 발견된 lock file 사용
+
+### AskUserQuestion
+
+```
+AskUserQuestion(
+  question: "worktree 이동 시 실행할 명령어를 선택하세요.",
+  header: "Post command",
+  options: [
+    { label: "claude (Recommended)", description: "Claude만 실행 (의존성 수동 설치)" },
+    { label: "{install_cmd} && claude", description: "의존성 설치 후 Claude 실행" },
+    { label: "Custom", description: "직접 입력" }
+  ]
+)
+```
+
+- `{install_cmd}`: 감지된 의존성 설치 명령어 (예: `pnpm install`, `poetry install`)
+- 의존성 관리자가 없으면 두 번째 옵션 제외
+
+**If Custom selected:** 사용자 입력값 사용
+
 ## Step 4: Validate
 
 생성할 config를 검증:
 
 - **copy_files**: 모든 경로가 상대경로 (leading `/` 없음, `..` 없음)
 - **base_dir**: `{name}` 변수 포함 확인
-- **YAML 구조**: `worktree.copy_files` (array), `worktree.base_dir` (string)
+- **post_command**: 비어있지 않은 문자열
+- **YAML 구조**: `worktree.copy_files` (array), `worktree.base_dir` (string), `worktree.post_command` (string)
 
 검증 실패 시 사용자에게 알리고 재선택 유도.
 
@@ -125,9 +200,10 @@ worktree:
     - {selected_file_1}
     - {selected_file_2}
   base_dir: ".worktrees/{name}"
+  post_command: "{selected_post_command}"
 ```
 
-**Merge mode:** 기존 copy_files + 새로 선택한 파일 (중복 제거) 합쳐서 작성. 기존 base_dir 유지.
+**Merge mode:** 기존 copy_files + 새로 선택한 파일 (중복 제거) 합쳐서 작성. 기존 base_dir, post_command 유지 (사용자가 변경 원하면 Overwrite 선택).
 
 ## Step 6: Update .gitignore
 
@@ -209,6 +285,7 @@ Config created: .dev/config.yml
     - .vscode/settings.json
 
   base_dir: .worktrees/{name}
+  post_command: {selected_post_command}
 
   .gitignore:
     - .worktrees/
