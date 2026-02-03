@@ -16,7 +16,7 @@ validate_prompt: |
   1. Evidence of project scanning (Glob calls for file patterns)
   2. AskUserQuestion with multiSelect for file selection
   3. .dev/config.yml creation with valid YAML (worktree.copy_files + worktree.base_dir)
-  4. .gitignore update for .worktrees/
+  4. .gitignore update for: .worktrees/, .dev/local.json, .dev/state.local.json
   5. Summary of what was created
 ---
 
@@ -131,15 +131,30 @@ worktree:
 
 ## Step 6: Update .gitignore
 
-`.gitignore`에 `.worktrees/` 항목이 없으면 추가.
+워크트리 관련 ephemeral 파일들을 `.gitignore`에 추가.
 
 ```bash
+# Entries to add
+gitignore_entries=(
+  ".worktrees/"
+  ".dev/local.json"
+  ".dev/state.local.json"
+)
+
 # Check and append if missing
-grep -qxF '.worktrees/' .gitignore 2>/dev/null || echo '.worktrees/' >> .gitignore
+for entry in "${gitignore_entries[@]}"; do
+  grep -qxF "$entry" .gitignore 2>/dev/null || echo "$entry" >> .gitignore
+done
 ```
 
+| Entry | 용도 |
+|-------|------|
+| `.worktrees/` | 워크트리 디렉토리들 |
+| `.dev/local.json` | 워크트리 identity (name, branch, plan) |
+| `.dev/state.local.json` | 세션 추적, 파이프라인 상태 |
+
 - `.gitignore` 파일이 없으면 생성
-- 이미 `.worktrees/` 있으면 skip (idempotent)
+- 이미 있는 항목은 skip (idempotent)
 
 ## Step 6.5: Install twig CLI
 
@@ -195,7 +210,10 @@ Config created: .dev/config.yml
 
   base_dir: .worktrees/{name}
 
-  .gitignore: .worktrees/ added
+  .gitignore:
+    - .worktrees/
+    - .dev/local.json
+    - .dev/state.local.json
 
   twig CLI: {installed | not installed}
 
