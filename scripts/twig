@@ -275,17 +275,8 @@ get_worktree_names() {
 
 # Show worktree status table
 cmd_status() {
-  # Get active sessions (24h filter)
-  local state_file="$REPO_ROOT/.dev/state.local.json"
+  # Calculate 24h cutoff for session filtering
   local cutoff=$(date -u -v-24H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
-  local active_sessions="{}"
-
-  if [ -f "$state_file" ] && [ -n "$cutoff" ]; then
-    active_sessions=$(jq --arg cutoff "$cutoff" '
-      .sessions // {} | to_entries | map(select(.value.created_at > $cutoff)) |
-      group_by(.value.worktree) | map({key: .[0].value.worktree, value: length}) | from_entries
-    ' "$state_file" 2>/dev/null || echo "{}")
-  fi
 
   # Get worktree list
   local worktrees=$(git worktree list --porcelain)
@@ -343,8 +334,13 @@ cmd_status() {
       # Behind main
       local behind=$(git -C "$current_path" rev-list --count HEAD..main 2>/dev/null || echo "?")
 
-      # Active sessions
-      local sessions=$(echo "$active_sessions" | jq -r --arg name "$name" '.[$name] // 0' 2>/dev/null || echo 0)
+      # Active sessions (read from each worktree's state.local.json)
+      local sessions=0
+      if [ -f "$current_path/.dev/state.local.json" ] && [ -n "$cutoff" ]; then
+        sessions=$(jq --arg cutoff "$cutoff" '
+          [.sessions // {} | to_entries[] | select(.value.created_at > $cutoff)] | length
+        ' "$current_path/.dev/state.local.json" 2>/dev/null || echo 0)
+      fi
 
       # PR status (optional)
       local pr_status="-"

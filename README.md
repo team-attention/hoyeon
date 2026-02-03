@@ -51,6 +51,12 @@ Chains the entire pipeline automatically via Stop hooks:
 | `/dev-scan` | "community opinions" | Aggregate developer perspectives from Reddit, HN, Dev.to, Lobsters |
 | `/skill-session-analyzer` | "analyze session" | Post-hoc validation of skill execution |
 
+### Worktree Management
+| Skill | Trigger | Purpose |
+|-------|---------|---------|
+| `/init` | "initialize config" | Scan project, create `.dev/config.yml`, install twig CLI |
+| `/worktree` | "워크트리 만들어줘" | Create, navigate, monitor, and cleanup git worktrees |
+
 ## Agents
 
 | Agent | Model | Role |
@@ -137,7 +143,10 @@ Chains the entire pipeline automatically via Stop hooks:
 │           └ 인터뷰로 돌아가기                   🧑 HITL #8  │
 └─────────────────────────────────────────────────────────────┘
                         ▼
-              /open (Draft PR) 또는 /execute
+              다음 단계 선택:
+              • /worktree create {name} — 격리 작업 (spec 자동 이동)
+              • /open — Draft PR 생성
+              • /execute — 바로 구현 시작
 ```
 
 **Human-in-the-Loop Checkpoints (9개):**
@@ -191,6 +200,56 @@ Orchestrator (reads PLAN.md)
 - Failed tasks retry up to 3 times (reconciliation)
 - Independent TODOs run in parallel
 
+## Worktree Management
+
+Parallel feature development using git worktrees with isolated Claude sessions.
+
+### Setup
+
+```bash
+/init  # Scan project, create .dev/config.yml, install twig CLI
+```
+
+Creates `.dev/config.yml`:
+```yaml
+worktree:
+  copy_files: [.env.local]  # Files to copy to new worktrees
+  base_dir: ".worktrees/{name}"
+  post_command: "claude"  # Or set TWIG_POST_COMMAND env var
+```
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `twig` | Interactive: show status + select worktree to open |
+| `twig create <name>` | Create worktree with spec move from main |
+| `twig go <name>` | Navigate to worktree + run post_command |
+| `twig status` | Show all worktrees with PLAN progress |
+| `twig path <name>` | Print worktree path (for scripting) |
+| `twig cleanup <name>` | Remove worktree and optionally delete branch |
+
+### Workflow
+
+```
+/specify feature-name → Plan approved
+    ↓
+/worktree create feature-name  # Spec moves to worktree
+    ↓
+twig go feature-name  # cd + claude (or custom post_command)
+    ↓
+/execute  # In worktree
+```
+
+### Status Table
+
+```
+#   NAME                 PROGRESS             CHANGES  BEHIND   SESSIONS   PR
+-   ----                 --------             -------  ------   --------   --
+1   auth                 3/5 ███░░            2        0        2          #42
+2   payment              5/5 █████            0        3        0          -
+```
+
 ## Project Structure
 
 ```
@@ -200,10 +259,18 @@ Orchestrator (reads PLAN.md)
 └── scripts/         # Hook scripts (bash)
 
 .dev/
+├── config.yml       # Worktree configuration (committed)
 ├── specs/{name}/    # Per-feature specs
 │   ├── PLAN.md
 │   └── context/     # learnings.md, decisions.md, issues.md, outputs.json
-└── state.local.json # Session state (git-ignored)
+├── local.json       # Worktree identity metadata (git-ignored)
+└── state.local.json # Session tracking state (git-ignored)
+
+.worktrees/          # Feature worktrees (git-ignored)
+└── {name}/          # Each worktree has its own .dev/local.json
+
+scripts/
+└── twig             # Standalone CLI for worktree management
 
 docs/
 └── learnings/           # Knowledge extracted from development
