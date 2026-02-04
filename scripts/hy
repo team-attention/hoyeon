@@ -7,10 +7,11 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 REPO_NAME=$(basename "$REPO_ROOT")
 CONFIG_FILE="$REPO_ROOT/.dev/config.yml"
 
-# Parse config.yml for base_dir, copy_files, and post_command
+# Parse config.yml for base_dir, copy_files, post_create, and post_go
 parse_config() {
   local base_dir=".worktrees/{name}"
-  local post_command="claude"
+  local post_create=""
+  local post_go="claude"
   local copy_files=()
 
   if [ -f "$CONFIG_FILE" ]; then
@@ -20,10 +21,22 @@ parse_config() {
       base_dir="$config_base_dir"
     fi
 
-    # Extract post_command
-    local config_post_command=$(grep -E '^\s*post_command:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
-    if [ -n "$config_post_command" ]; then
-      post_command="$config_post_command"
+    # Extract post_create
+    local config_post_create=$(grep -E '^\s*post_create:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
+    if [ -n "$config_post_create" ]; then
+      post_create="$config_post_create"
+    fi
+
+    # Extract post_go (fallback to post_command for backward compatibility)
+    local config_post_go=$(grep -E '^\s*post_go:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
+    if [ -n "$config_post_go" ]; then
+      post_go="$config_post_go"
+    else
+      # Fallback: use deprecated post_command if post_go not set
+      local config_post_command=$(grep -E '^\s*post_command:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
+      if [ -n "$config_post_command" ]; then
+        post_go="$config_post_command"
+      fi
     fi
 
     # Extract copy_files array
@@ -47,12 +60,16 @@ parse_config() {
   fi
 
   # Environment variable overrides config
-  if [ -n "${HY_POST_COMMAND:-}" ]; then
-    post_command="$HY_POST_COMMAND"
+  if [ -n "${HY_POST_GO:-}" ]; then
+    post_go="$HY_POST_GO"
+  elif [ -n "${HY_POST_COMMAND:-}" ]; then
+    # Backward compatibility
+    post_go="$HY_POST_COMMAND"
   fi
 
   echo "$base_dir"
-  echo "$post_command"
+  echo "$post_create"
+  echo "$post_go"
   for file in "${copy_files[@]}"; do
     echo "$file"
   done
@@ -63,9 +80,14 @@ get_base_dir() {
   parse_config | head -n 1
 }
 
-# Get post_command from config
-get_post_command() {
+# Get post_create command from config
+get_post_create() {
   parse_config | sed -n '2p'
+}
+
+# Get post_go command from config
+get_post_go() {
+  parse_config | sed -n '3p'
 }
 
 # Resolve template variables in path
@@ -100,7 +122,8 @@ Config (.dev/config.yml):
   worktree:
     base_dir: ".worktrees/{name}"     # Worktree location
     copy_files: [.env.local]          # Files to copy
-    post_command: "claude"            # Command after 'go' (or set HY_POST_COMMAND)
+    post_create: "pnpm install"       # Command after 'create' (setup, non-interactive)
+    post_go: "claude"                 # Command after 'go' (or set HY_POST_GO)
 
 Examples:
   hy                               Interactive: pick worktree → go
@@ -124,7 +147,8 @@ cmd_create() {
   # Parse config
   local config_output=$(parse_config)
   local base_dir=$(echo "$config_output" | head -n 1)
-  local copy_files=($(echo "$config_output" | tail -n +3))
+  local post_create=$(echo "$config_output" | sed -n '2p')
+  local copy_files=($(echo "$config_output" | tail -n +4))
 
   # Resolve path
   local worktree_path=$(resolve_path "$base_dir" "$name")
@@ -215,12 +239,20 @@ EOF
 
   echo ""
   echo "✅ Worktree created: $worktree_path"
+
+  # Run post_create if configured
+  if [ -n "$post_create" ]; then
+    echo ""
+    echo "→ Running post_create: $post_create"
+    (cd "$worktree_path" && eval "$post_create")
+  fi
+
   echo ""
   echo "To start working:"
   echo "  hy go ${name}"
 }
 
-# Go to worktree and run post_command
+# Go to worktree and run post_go
 cmd_go() {
   local name="$1"
   local worktree_path=$(get_worktree_path "$name")
@@ -230,13 +262,13 @@ cmd_go() {
     exit 1
   fi
 
-  local post_command=$(get_post_command)
+  local post_go=$(get_post_go)
 
   echo "→ cd $worktree_path"
-  echo "→ $post_command"
+  echo "→ $post_go"
   echo ""
 
-  cd "$worktree_path" && exec $SHELL -ic "$post_command"
+  cd "$worktree_path" && exec $SHELL -ic "eval '$post_go'"
 }
 
 # Print worktree path (for scripts)
