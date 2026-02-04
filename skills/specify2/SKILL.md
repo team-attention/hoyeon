@@ -66,6 +66,24 @@ Interview-driven planning with **two independent axes**:
 - `/specify2 fix-typo --quick` → quick + autopilot
 - `/specify2 migrate-db --thorough` → thorough + interactive
 
+### 1.4 Combination Priority Rules
+
+두 축이 충돌할 때의 우선순위:
+
+| 충돌 상황 | 우선 축 | 이유 |
+|-----------|---------|------|
+| Draft 구조 (Assumptions) | **Depth** | Quick은 Interview 스킵 → Assumptions 필수 |
+| Review 동작 (user confirm) | **Interaction** | Autopilot의 본질은 무중단 진행 |
+
+#### 특수 조합 동작
+
+| 조합 | 주의사항 | 동작 |
+|------|----------|------|
+| **quick + interactive** | ⚠️ Interview 여전히 스킵됨 | Assumptions 자동 적용, Explore summary만 확인 대기 |
+| **thorough + autopilot** | ⚠️ Review 자동화됨 | Cosmetic/Semantic 모두 auto-fix, scope 변경 시 halt |
+
+> 상세: `modules/draft.md`, `modules/review.md` 참조
+
 ---
 
 ## 2. Module Reference
@@ -77,7 +95,7 @@ Each module receives `depth` and `interaction` as input.
 | Module | Source | Quick | Standard | Thorough |
 |--------|--------|-------|----------|----------|
 | **Triage** | `modules/triage.md` | ✅ | ✅ | ✅ |
-| **Explore** | `modules/explore.md` | lite (2 agents) | full (4 agents) | deep (6 agents) |
+| **Explore** | `modules/explore.md` | lite (2 agents) | full (4 agents) | deep (4 agents, deeper prompts) |
 | **Draft** | `modules/draft.md` | + Assumptions | ✅ | ✅ |
 | **Interview** | `modules/interview.md` | ❌ skip | ✅ | deep (2+ rounds) |
 | **Analysis** | `modules/analysis.md` | tradeoff-lite | full (4 agents) | strict |
@@ -144,6 +162,12 @@ Triage → Explore(deep,+Intent) → Draft → Interview(deep) ←──┐ → 
 | **Exit** | All critical questions resolved OR "make it a plan" |
 | **Max iterations** | 10 (standard), unlimited (thorough) |
 | **Autopilot behavior** | Apply standard choices, log decisions |
+
+> **Max iteration 도달 시:** 강제 전환 금지. 명시적 확인 필요.
+> - Interactive: AskUserQuestion (플랜 생성 / 계속 / 중단)
+> - Autopilot: 자동 "플랜 생성" 선택 + 경고 로깅
+>
+> 상세: `modules/interview.md` 참조
 
 ### 4.2 Review Loop (all depths)
 

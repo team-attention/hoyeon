@@ -6,6 +6,7 @@ Reviewer approval loop (re-entrant).
 
 - depth: `quick` | `standard` | `thorough`
 - interaction: `interactive` | `autopilot`
+- feature_name: from Triage (for DRAFT deletion path)
 - plan_path: from Plan module
 
 ## Output
@@ -97,6 +98,25 @@ AskUserQuestion(
 | quick | 1 | auto-fix | halt |
 | standard | 5 | auto-fix | AskUser (interactive) / auto-fix (autopilot) |
 | thorough | unlimited | user confirm | AskUser always |
+
+## Combination Priority Rules
+
+> **Interaction takes precedence over Depth for user-facing decisions.**
+
+| Combination | Cosmetic Rejection | Semantic Rejection | Rationale |
+|-------------|-------------------|-------------------|-----------|
+| quick + interactive | auto-fix | halt | Quick 본질 유지, 1회 제한 |
+| quick + autopilot | auto-fix | halt | 표준 케이스 |
+| standard + interactive | auto-fix | AskUser | 표준 케이스 |
+| standard + autopilot | auto-fix | auto-fix (halt if scope) | 표준 케이스 |
+| thorough + interactive | user confirm | AskUser | 표준 케이스 |
+| thorough + autopilot | **auto-fix** (interaction wins) | **auto-fix** (interaction wins) | Autopilot의 본질은 무중단. Thorough의 품질은 Analysis에서 확보. |
+
+**thorough + autopilot 특수 처리:**
+```
+"⚠️ Thorough + Autopilot: 검토 단계가 자동화됩니다.
+   Cosmetic/Semantic 모두 auto-fix 시도 후 scope 변경 시 halt."
+```
 
 ### Quick Depth
 

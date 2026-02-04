@@ -99,6 +99,25 @@ Follow `templates/DRAFT_TEMPLATE.md`:
 | interactive | Empty (decisions made via AskUser) |
 | autopilot | Pre-filled with standard choices |
 
+## Combination Priority Rules
+
+> **Depth takes precedence over Interaction for structural decisions.**
+
+| Combination | Assumptions Section | Rationale |
+|-------------|---------------------|-----------|
+| quick + interactive | **Pre-filled** (depth wins) | Quick의 본질은 속도. Interview 스킵되므로 Assumptions 필수. Interactive는 Explore summary 확인에만 적용. |
+| quick + autopilot | Pre-filled | 표준 케이스 |
+| standard + interactive | Empty | 표준 케이스 |
+| standard + autopilot | Pre-filled | 표준 케이스 |
+| thorough + interactive | Empty | 표준 케이스 |
+| thorough + autopilot | **Pre-filled** (interaction wins) | 가정 기반 진행이지만, thorough Analysis에서 검증됨 |
+
+**quick + interactive 특수 처리:**
+```
+"⚠️ Quick 모드: Interview가 스킵되어 Assumptions가 자동 적용됩니다.
+   Assumptions가 잘못되었다면 알려주세요."
+```
+
 ---
 
 ## Update Rules

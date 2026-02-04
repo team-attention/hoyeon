@@ -6,6 +6,7 @@ PLAN.md generation with checkpoints.
 
 - depth: `quick` | `standard` | `thorough`
 - interaction: `interactive` | `autopilot`
+- feature_name: from Triage (for output path)
 - draft_path: from Interview
 - analysis_results: from Analysis
 

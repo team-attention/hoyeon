@@ -7,6 +7,7 @@ Codebase exploration and Intent classification.
 - depth: `quick` | `standard` | `thorough`
 - interaction: `interactive` | `autopilot`
 - feature_name: from Triage
+- user_request: from Triage (original user message for agent prompts)
 
 ## Output
 
@@ -20,7 +21,9 @@ Codebase exploration and Intent classification.
 |-------|--------|----------------------|
 | quick | 2 (Explore×2) | Basic |
 | standard | 4 (Explore×2, docs-researcher, ux-reviewer) | Full |
-| thorough | 6 (above + gap-analyzer, external-researcher) | Deep |
+| thorough | 4 (same agents, deeper prompts) | Deep |
+
+> **Thorough의 gap-analyzer, external-researcher는 Analysis 모듈에서 실행됩니다.**
 
 ## Logic
 
@@ -48,7 +51,7 @@ Task(subagent_type="docs-researcher",
 
 Task(subagent_type="ux-reviewer",
      prompt="""
-User's Goal: [user's stated goal]
+User's Goal: {user_request}
 Current Understanding: [brief description of what's being proposed]
 Intent Type: [classified intent from exploration]
 Affected Area: [which part of the product the change touches]
@@ -57,17 +60,36 @@ Evaluate how this change affects existing user experience.
 Focus on: current UX flow, simplicity impact, and better alternatives.""")
 ```
 
-#### Thorough (6 agents)
+#### Thorough (4 agents, deeper prompts)
 
 ```
-# Above 4 plus:
+# Same 4 agents as Standard, but with enhanced prompts:
 
-Task(subagent_type="gap-analyzer",
-     prompt="Pre-analyze potential gaps and pitfalls for [feature]. Identify missing requirements, constraints, and 'must NOT do' items.")
+Task(subagent_type="Explore",
+     prompt="Deep dive: existing patterns for [feature]. Include edge cases, error handling patterns. Report as file:line format.")
 
-Task(subagent_type="external-researcher",
-     prompt="Research best practices and official docs for [relevant tech]. Focus on migration guides, common pitfalls, and recommended patterns.")
+Task(subagent_type="Explore",
+     prompt="Full audit: project structure, all package.json scripts, CI/CD config, test infrastructure")
+
+Task(subagent_type="docs-researcher",
+     prompt="Comprehensive search: ALL documentation relevant to [feature]. Include docs/, ADRs, READMEs, config files, inline comments with TODO/FIXME.")
+
+Task(subagent_type="ux-reviewer",
+     prompt="""
+User's Goal: {user_request}
+Current Understanding: [detailed description]
+Intent Type: [classified intent]
+Affected Area: [full impact scope]
+
+Deep UX evaluation:
+- Full user journey mapping
+- Edge case UX scenarios
+- Accessibility considerations
+- Existing UX patterns to preserve""")
 ```
+
+> **Note:** gap-analyzer와 external-researcher는 Analysis 모듈에서 실행됩니다.
+> Explore는 탐색에 집중하고, Analysis는 분석에 집중합니다.
 
 ### 2. Intent Classification
 

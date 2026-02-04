@@ -178,7 +178,34 @@ All decisions logged in Draft's **Assumptions** section.
 
 1. User explicitly requests plan generation
 2. All critical questions resolved AND direction agreed
-3. Max iterations reached (force transition with warning)
+3. Max iterations reached → **Must still ask for explicit confirmation**
+
+### Max Iteration Handling
+
+> **Core Principle: Never force transition without explicit user request.**
+
+When max iterations reached (standard: 10):
+
+```
+AskUserQuestion(
+  question: "인터뷰 라운드가 {max}회에 도달했습니다. 현재 상태로 플랜을 생성할까요?",
+  options: [
+    { label: "플랜 생성", description: "현재 수집된 정보로 플랜 작성" },
+    { label: "계속 진행", description: "추가 질문/논의 (standard: +5회 연장)" },
+    { label: "중단", description: "인터뷰 종료, 플랜 생성 안 함" }
+  ]
+)
+```
+
+**If "플랜 생성":** Return `status: ready_for_plan`
+**If "계속 진행":** Extend max by 5, continue loop
+**If "중단":** Return `status: halted`
+
+**Autopilot mode:** Auto-select "플랜 생성" with warning logged
+
+```
+⚠️ Autopilot: Max iterations reached, proceeding to plan generation.
+```
 
 ### Re-entry
 

@@ -5,12 +5,14 @@ Mode selection and input parsing.
 ## Input
 
 - args: User's command arguments (e.g., "add-auth --quick --autopilot")
+- user_request: Original user message (e.g., "Add user authentication to the API")
 
 ## Output
 
 - depth: `quick` | `standard` | `thorough`
 - interaction: `interactive` | `autopilot`
 - feature_name: kebab-case name (e.g., "add-auth")
+- user_request: Passed through unchanged (for downstream modules)
 
 ## Logic
 
