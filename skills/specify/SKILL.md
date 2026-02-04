@@ -56,6 +56,34 @@ Identify the task type and apply the corresponding strategy:
 - **Migration**: External docs critical - consider tech-decision research
 - **Performance**: Baseline measurement required before any optimization
 
+#### 1.1.5 Tech-Decision Proposal (Conditional)
+
+**Trigger conditions** (check after Intent Classification):
+- Intent is **Architecture** or **Migration**
+- User's request contains comparison keywords: "vs", "versus", "비교", "어떤 거", "which one", "what should I use", "뭐 쓸지"
+
+**If triggered**, propose tech-decision research to user:
+
+```
+AskUserQuestion(
+  question: "기술 선택이 필요해 보입니다. tech-decision으로 깊이 분석할까요?",
+  header: "Tech Research",
+  options: [
+    { label: "예, 분석 진행", description: "여러 소스에서 비교 분석 (시간 소요)" },
+    { label: "아니오, 빠르게 진행", description: "기존 패턴/문서 기반으로 결정" }
+  ]
+)
+```
+
+**If user selects "예, 분석 진행"**:
+```
+Skill("tech-decision", args="[comparison topic extracted from user's request]")
+```
+
+Then incorporate tech-decision results into DRAFT before continuing to Step 1.2.
+
+**If user selects "아니오, 빠르게 진행"**: Skip and proceed to Step 1.2.
+
 #### 1.2 Launch Parallel Exploration
 
 Launch all 4 agents **in parallel** (in a single message with multiple Task calls) to populate **Agent Findings**.
@@ -166,23 +194,28 @@ Let me know if you prefer a different approach."
 
 #### Technical Decision Support
 
-When user seems uncertain ("which is better?", "what should I use?"):
+> **Note**: Primary tech-decision proposal happens in **Step 1.1.5** based on Intent analysis.
+> This section covers cases where comparison needs emerge **during** the interview.
+
+When user expresses uncertainty mid-interview ("which is better?", "what should I use?", "어떤 게 나을까?"):
 
 ```
 AskUserQuestion(
-  question: "Which approach should we take?",
+  question: "기술 비교 분석이 필요할까요?",
+  header: "Tech Research",
   options: [
-    { label: "Option A", description: "..." },
-    { label: "Option B", description: "..." },
-    { label: "Need comparison", description: "Deep research with tech-decision" }
+    { label: "예, tech-decision 실행", description: "깊이 있는 비교 분석 (시간 소요)" },
+    { label: "아니오, 제안해주세요", description: "기존 패턴 기반으로 추천" }
   ]
 )
 ```
 
-**If user selects "Need comparison"**:
+**If user selects "예, tech-decision 실행"**:
 ```
 Skill("tech-decision", args="[comparison topic]")
 ```
+
+**If user selects "아니오, 제안해주세요"**: Propose based on exploration findings.
 
 ### Step 3: Update Draft Continuously
 
@@ -655,25 +688,24 @@ User: "Add authentication to the API"
     - 명령어: npm test, npm run lint"
    → User confirms context is correct
 
+[Interview Mode - Step 1.1.5: Tech-Decision Proposal]
+5. Detect: User request mentions "authentication" - potential tech choice needed
+   Ask: "기술 선택이 필요해 보입니다. tech-decision으로 깊이 분석할까요?"
+   - 예, 분석 진행 (여러 소스에서 비교 분석)
+   - 아니오, 빠르게 진행
+   → User selects "예, 분석 진행"
+6. Call: Skill("tech-decision", args="JWT vs Session for REST API authentication")
+7. Update draft with tech-decision results
+
 [Interview Mode - Step 2: Gather Requirements]
-5. PROPOSE (based on exploration):
-   "Based on my investigation, src/middleware/logging.ts pattern should work.
-    jsonwebtoken is already installed."
-
-6. ASK (only what's necessary):
-   "Which auth method should we use?"
-   - JWT (Recommended) - already installed
-   - Session
-   - Need comparison
-
-7. User selects "Need comparison"
-8. Call: Skill("tech-decision", args="JWT vs Session for REST API")
-9. Update draft with tech-decision results
-10. Record in User Decisions table
+8. PROPOSE (based on exploration + tech-decision):
+   "Based on tech-decision analysis, JWT is recommended for this use case.
+    jsonwebtoken is already installed. src/middleware/logging.ts pattern works."
+9. Record in User Decisions table
 
 [Interview Mode - Step 3-4]
-11. Update DRAFT continuously
-12. Check: Critical Open Questions resolved? ✓
+10. Update DRAFT continuously
+11. Check: Critical Open Questions resolved? ✓
 
 User: "OK, make it a plan"
 
