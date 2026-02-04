@@ -148,129 +148,26 @@ Triage → Explore(deep,+Intent) → Draft → Interview(deep) ←──┐ → 
                                               [needs more] ──┘                                   [changes] ────┘
 ```
 
-**Enhanced:** 6 agents in Explore, 2+ Interview rounds, strict Review
+**Enhanced:** 4 agents with deeper prompts, 2+ Interview rounds, strict Review
+
+> **Loop 상세:** `modules/interview.md`, `modules/review.md` 참조
 
 ---
 
-## 4. Loop Handling
+## 4. Execution Summary
 
-### 4.1 Interview Loop (standard, thorough)
+```
+1. Parse Input → depth, interaction 결정
+2. Load modules/{module}.md 순차 실행
+3. Re-entrant loops 처리 (Interview, Review)
+4. Finalize → DRAFT 삭제, 다음 단계 안내
+```
 
-| Aspect | Rule |
-|--------|------|
-| **Trigger** | User input received |
-| **Exit** | All critical questions resolved OR "make it a plan" |
-| **Max iterations** | 10 (standard), unlimited (thorough) |
-| **Autopilot behavior** | Apply standard choices, log decisions |
-
-> **Max iteration 도달 시:** 강제 전환 금지. 명시적 확인 필요.
-> - Interactive: AskUserQuestion (플랜 생성 / 계속 / 중단)
-> - Autopilot: 자동 "플랜 생성" 선택 + 경고 로깅
->
-> 상세: `modules/interview.md` 참조
-
-### 4.2 Review Loop (all depths)
-
-| Aspect | Quick | Standard | Thorough |
-|--------|-------|----------|----------|
-| **Max iterations** | 1 | 5 | unlimited |
-| **Cosmetic rejection** | auto-fix | auto-fix | user confirm |
-| **Semantic rejection** | halt | AskUser (interactive) / auto-fix (autopilot) | AskUser always |
+> **상세 Flow:** `references/example-flows.md` 참조
 
 ---
 
-## 5. Execution Flow
-
-### Step 0: Parse Input
-
-```python
-# Parse flags
-depth = "quick" if "--quick" in args else "thorough" if "--thorough" in args else "standard"
-interaction = "autopilot" if "--autopilot" in args else "interactive" if "--interactive" in args else None
-
-# Apply defaults
-if interaction is None:
-    interaction = "autopilot" if depth == "quick" else "interactive"
-```
-
-### Step 1: Run Triage
-
-```
-Load: modules/triage.md
-Execute: Validate depth/interaction, extract feature name
-Output: { depth, interaction, feature_name }
-```
-
-### Step 2: Generate Tasks
-
-Based on `depth`, create task graph:
-
-```markdown
-# Quick: 6 tasks
-T1:Triage → T2:Explore(lite) → T3:Draft → T4:Analysis(lite) → T5:Plan → T6:Review
-
-# Standard: 7 tasks
-T1:Triage → T2:Explore → T3:Draft → T4:Interview → T5:Analysis → T6:Plan → T7:Review
-
-# Thorough: 7 tasks (same structure, deeper execution)
-T1:Triage → T2:Explore(deep) → T3:Draft → T4:Interview(deep) → T5:Analysis(strict) → T6:Plan → T7:Review(strict)
-```
-
-### Step 3: Execute Tasks
-
-```
-WHILE pending tasks exist:
-    task = next runnable task (no blockers)
-    Load: modules/{task.module}.md
-    Execute with: { depth, interaction, inputs from previous tasks }
-    Handle re-entrant loops if needed
-```
-
-### Step 4: Finalize
-
-- Delete DRAFT.md (if Plan approved)
-- Output completion message
-- Guide to next steps (/open, /execute)
-
----
-
-## 6. Module Interface Contract
-
-Each module file follows this structure:
-
-```markdown
-# Module: {Name}
-
-## Input
-- depth: quick | standard | thorough
-- interaction: interactive | autopilot
-- {other inputs from previous modules}
-
-## Output
-- {outputs for next modules}
-- status: success | needs_more | error
-
-## Behavior by Depth
-| Depth | Behavior |
-|-------|----------|
-| quick | ... |
-| standard | ... |
-| thorough | ... |
-
-## Behavior by Interaction
-| Interaction | Behavior |
-|-------------|----------|
-| interactive | ... |
-| autopilot | ... |
-
-## Logic
-1. ...
-2. ...
-```
-
----
-
-## 7. Autopilot Decision Rules
+## 5. Autopilot Decision Rules
 
 When `interaction = autopilot`, use these standard choices:
 
@@ -286,7 +183,7 @@ All autopilot decisions are logged in **Assumptions** section of DRAFT/PLAN.
 
 ---
 
-## 8. File Locations
+## 6. File Locations
 
 | Type | Path | When |
 |------|------|------|
@@ -296,20 +193,20 @@ All autopilot decisions are logged in **Assumptions** section of DRAFT/PLAN.
 
 ---
 
-## 9. Quick Reference
+## 7. Quick Reference
 
 | I want to... | Read |
 |--------------|------|
 | Understand modes | Section 1 (Mode Selection) |
 | See module activation | Section 2 (Module Reference) |
 | See the flow | Section 3 (Task Graphs) |
-| Handle loops | Section 4 (Loop Handling) |
-| Implement a module | Section 6 (Module Interface) |
-| Check autopilot rules | Section 7 (Autopilot Decision Rules) |
+| Check autopilot rules | Section 5 (Autopilot Decision Rules) |
+| See detailed examples | `references/example-flows.md` |
+| Understand a module | `modules/{module}.md` |
 
 ---
 
-## 10. Next Steps (After Plan Approval)
+## 8. Next Steps (After Plan Approval)
 
 ```
 AskUserQuestion(
@@ -323,84 +220,3 @@ AskUserQuestion(
 ```
 
 **Autopilot behavior:** Skip this question, output plan location and stop.
-
----
-
-## Example Flow
-
-### Standard + Interactive (Default)
-
-```
-User: "Add authentication to the API"
-
-[Triage]
-1. Parse: No flags → standard + interactive
-2. Extract: feature_name = "api-auth"
-
-[Explore - 4 agents in parallel]
-3. Launch agents (single message, parallel foreground):
-   - Explore #1: Find existing middleware patterns
-   - Explore #2: Find project structure + commands
-   - docs-researcher: Find ADRs, conventions, constraints
-   - ux-reviewer: Evaluate UX impact
-4. Classify intent: New Feature → Pattern exploration strategy
-5. Present exploration summary, wait for user confirmation
-
-[Draft]
-6. Create: .dev/specs/api-auth/DRAFT.md
-7. Populate Agent Findings from exploration results
-
-[Interview]
-8. Detect: "authentication" → Potential tech choice needed
-   Ask: "기술 선택이 필요해 보입니다. tech-decision으로 깊이 분석할까요?"
-   → User selects "예, 분석 진행"
-9. Call: Skill("tech-decision", args="JWT vs Session for REST API auth")
-10. Update draft with tech-decision results
-11. PROPOSE based on exploration:
-    "Based on tech-decision analysis, JWT recommended. jsonwebtoken already installed."
-12. Wait for user: "make it a plan"
-
-[Analysis]
-13. Run tradeoff-analyzer, gap-analyzer, verification-planner
-14. Present HIGH risk decision_points if any
-
-[Plan]
-15. Generate PLAN.md from DRAFT
-16. Present Decision Summary checkpoint
-
-[Review]
-17. Submit to reviewer agent
-18. If REJECT (cosmetic): auto-fix and resubmit
-19. If OKAY: Delete DRAFT, output plan location
-20. Guide to next steps: /open, /execute, /worktree
-```
-
-### Quick + Autopilot
-
-```
-User: "/specify2 fix-typo --quick"
-
-[Triage]
-1. Parse: --quick → quick + autopilot (default for quick)
-2. Extract: feature_name = "fix-typo"
-
-[Explore - 2 agents]
-3. Launch 2 Explore agents (lite exploration)
-4. Classify intent: Bug Fix
-
-[Draft]
-5. Create DRAFT with Assumptions section populated
-
-[Interview: SKIPPED]
-
-[Analysis - lite]
-6. Run tradeoff-analyzer only
-7. No AskUserQuestion (autopilot)
-
-[Plan]
-8. Generate PLAN.md with Assumptions notice
-
-[Review - 1x]
-9. Single review attempt, auto-fix if cosmetic
-10. Output plan location and stop
-```
