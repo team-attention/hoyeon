@@ -8,7 +8,7 @@ The worktree status table provides a real-time overview of all active worktrees,
 
 ```bash
 # From terminal
-twig status
+hy status
 
 # From Claude skill
 /worktree status
@@ -86,7 +86,7 @@ Count of active Claude sessions in this worktree (tracked via UserPromptSubmit h
 jq '[.sessions // {} | to_entries[] | select(.value.worktree == "{name}")] | length' .dev/state.local.json
 ```
 
-Session data is recorded when Claude starts (via `twig-session-hook.sh`) and cleaned up after 24 hours.
+Session data is recorded when Claude starts (via `hy-session-hook.sh`) and cleaned up after 24 hours.
 
 Example values:
 - `2` - Two active sessions in this worktree
@@ -230,6 +230,6 @@ echo "$done/$total $bar"
 
 - [config-schema.md](./config-schema.md) - Worktree configuration options
 - `/worktree` skill - Worktree management commands
-- `twig` - Standalone CLI tool
+- `hy` - Standalone CLI tool
 - `.dev/local.json` - Worktree metadata (JSON format)
 - `.dev/state.local.json` - Session tracking data

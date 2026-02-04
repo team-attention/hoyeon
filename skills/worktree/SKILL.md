@@ -13,7 +13,7 @@ allowed-tools:
 validate_prompt: |
   Must contain all 3 subcommands: create, status, cleanup.
   Each subcommand must have: Purpose, Syntax, Workflow, Example, Error Handling.
-  Output should use twig CLI (internally uses git worktree).
+  Output should use hy CLI (internally uses git worktree).
 ---
 
 # worktree - Git Worktree Management
@@ -28,11 +28,11 @@ Manage parallel development workflows using git worktrees and tmux sessions. Eac
 - **Progress tracking**: Unified status view of worktrees, agents, and PLAN progress
 - **Clean isolation**: Each worktree has its own working directory and agent context
 
-**CLI Tool**: This skill wraps `twig` CLI. Install it first:
+**CLI Tool**: This skill wraps `hy` CLI. Install it first:
 - Via `/init` skill (recommended)
-- Or manually: `~/.claude/plugins/.../hoyeon/scripts/install-twig.sh`
+- Or manually: `~/.claude/plugins/.../hoyeon/scripts/install-hy.sh`
 
-Once installed, `twig` is available globally in terminal.
+Once installed, `hy` is available globally in terminal.
 
 ---
 
@@ -60,7 +60,7 @@ This skill references `.dev/config.yml` for project-specific settings. See `${ba
 worktree:
   base_dir: ".worktrees/{name}"    # Worktree location
   copy_files: [.env.local]         # Files to copy from main
-  post_command: "claude"           # Command to run after 'go' (or set TWIG_POST_COMMAND env)
+  post_command: "claude"           # Command to run after 'go' (or set HY_POST_COMMAND env)
 ```
 
 **Defaults**: `base_dir: ".worktrees/{name}"`, `copy_files: []`, `post_command: "claude"`
@@ -76,13 +76,13 @@ worktree:
 **Syntax**:
 ```
 /worktree
-twig
+hy
 ```
 
 **Workflow**:
 1. Show status table with numbered rows
 2. Prompt for selection
-3. Run `twig go <selected>` to navigate + start Claude
+3. Run `hy go <selected>` to navigate + start Claude
 
 ---
 
@@ -93,17 +93,17 @@ twig
 **Syntax**:
 ```
 /worktree go <name>
-twig go <name>
+hy go <name>
 ```
 
 **Workflow**:
 1. Resolve worktree path
 2. `cd` to worktree
-3. Run `post_command` from config (or `TWIG_POST_COMMAND` env)
+3. Run `post_command` from config (or `HY_POST_COMMAND` env)
 
 **Example**:
 ```
-twig go my-feature
+hy go my-feature
 → cd .worktrees/my-feature
 → claude
 ```
@@ -125,9 +125,9 @@ twig go my-feature
 
 **Workflow**:
 
-Execute via `twig`:
+Execute via `hy`:
 ```bash
-twig create <name>
+hy create <name>
 ```
 
 The CLI handles:
@@ -146,7 +146,7 @@ The CLI handles:
    }
    ```
    This file is the **source of truth** for worktree identity.
-   The `plan` field is used by `twig status` to find progress data.
+   The `plan` field is used by `hy status` to find progress data.
 
 **Example**:
 ```
@@ -177,9 +177,9 @@ Output:
 
 **Workflow**:
 
-Execute via `twig`:
+Execute via `hy`:
 ```bash
-twig status
+hy status
 ```
 
 The CLI handles:
@@ -221,13 +221,13 @@ payment              5/5 █████            0        3        0         
 
 **Workflow**:
 
-Execute via `twig`:
+Execute via `hy`:
 ```bash
 # Specific worktree
-twig cleanup <name>
+hy cleanup <name>
 
 # Skip confirmations
-twig cleanup <name> --yes
+hy cleanup <name> --yes
 ```
 
 The CLI handles:
@@ -285,10 +285,10 @@ Output:
 
 ## Implementation Notes
 
-1. **CLI tool**: `twig` - standalone bash CLI
+1. **CLI tool**: `hy` - standalone bash CLI
    - All actions call this CLI internally for consistent behavior
    - Can also be used directly from terminal
-   - Install via `/init` skill or manually: `scripts/install-twig.sh`
+   - Install via `/init` skill or manually: `scripts/install-hy.sh`
 
 2. **Worktree metadata**: `.dev/local.json` (JSON format, gitignored)
    ```json

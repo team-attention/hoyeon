@@ -12,7 +12,7 @@
       "Bash(gh pr list:*)",
       "Bash(git worktree:*)",
       "Bash(tmux:*)",
-      "Bash(twig:*)"
+      "Bash(hy:*)"
     ]
   },
   "hooks": {
@@ -30,7 +30,7 @@
           },
           {
             "type": "command",
-            "command": "scripts/twig-session-hook.sh"
+            "command": "scripts/hy-session-hook.sh"
           }
         ]
       }

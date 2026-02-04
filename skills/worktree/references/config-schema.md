@@ -27,9 +27,9 @@ worktree:
   # Supports template variables: {repo}, {name}
   base_dir: string
 
-  # Command to run after 'twig go <name>'
+  # Command to run after 'hy go <name>'
   # Default: "claude"
-  # Can also be set via TWIG_POST_COMMAND environment variable
+  # Can also be set via HY_POST_COMMAND environment variable
   post_command: string
 ```
 
@@ -130,9 +130,9 @@ When `.dev/config.yml` doesn't exist or fields are omitted:
 |-------|---------------|----------|
 | `copy_files` | `[]` | No files are copied |
 | `base_dir` | `.worktrees/{name}` | Worktrees created in .worktrees directory |
-| `post_command` | `claude` | Run `claude` after `twig go` |
+| `post_command` | `claude` | Run `claude` after `hy go` |
 
-**Environment Variable Override**: Set `TWIG_POST_COMMAND` to override `post_command` globally (takes precedence over config file).
+**Environment Variable Override**: Set `HY_POST_COMMAND` to override `post_command` globally (takes precedence over config file).
 
 ## Complete Example
 
@@ -331,23 +331,23 @@ yq -i '.worktree.base_dir = "~/worktrees/{repo}/{name}"' .dev/config.yml
 
 ## CLI Usage
 
-The `twig` CLI reads the same configuration file:
+The `hy` CLI reads the same configuration file:
 
 ```bash
 # Create worktree - reads .dev/config.yml for base_dir and copy_files
-twig create my-feature
+hy create my-feature
 
 # Status - shows worktrees with progress
-twig status
+hy status
 
 # Spawn Claude session in tmux
-twig spawn my-feature "Start /execute"
+hy spawn my-feature "Start /execute"
 
 # Attach to existing session
-twig attach my-feature
+hy attach my-feature
 
 # Cleanup completed worktree
-twig cleanup my-feature
+hy cleanup my-feature
 ```
 
 The CLI and `/worktree` skill use identical logic, so behavior is consistent regardless of which interface you use.
@@ -382,5 +382,5 @@ The `.dev/local.json` file contains worktree metadata:
 
 - [status-table.md](./status-table.md) - Worktree status monitoring
 - `/worktree` skill - Worktree management commands
-- `twig` - Standalone CLI tool
+- `hy` - Standalone CLI tool
 - Git worktree documentation: `git help worktree`

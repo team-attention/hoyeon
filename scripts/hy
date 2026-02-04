@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# twig - Standalone git worktree management CLI
+# hy - Standalone git worktree management CLI
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 REPO_NAME=$(basename "$REPO_ROOT")
 CONFIG_FILE="$REPO_ROOT/.dev/config.yml"
 
-# Parse config.yml for base_dir, copy_files, and post_command
+# Parse config.yml for base_dir, copy_files, post_create, and post_go
 parse_config() {
   local base_dir=".worktrees/{name}"
-  local post_command="claude"
+  local post_create=""
+  local post_go="claude"
   local copy_files=()
 
   if [ -f "$CONFIG_FILE" ]; then
@@ -20,10 +21,22 @@ parse_config() {
       base_dir="$config_base_dir"
     fi
 
-    # Extract post_command
-    local config_post_command=$(grep -E '^\s*post_command:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
-    if [ -n "$config_post_command" ]; then
-      post_command="$config_post_command"
+    # Extract post_create
+    local config_post_create=$(grep -E '^\s*post_create:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
+    if [ -n "$config_post_create" ]; then
+      post_create="$config_post_create"
+    fi
+
+    # Extract post_go (fallback to post_command for backward compatibility)
+    local config_post_go=$(grep -E '^\s*post_go:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
+    if [ -n "$config_post_go" ]; then
+      post_go="$config_post_go"
+    else
+      # Fallback: use deprecated post_command if post_go not set
+      local config_post_command=$(grep -E '^\s*post_command:' "$CONFIG_FILE" | awk -F': ' '{print $2}' | tr -d '"' | xargs || echo "")
+      if [ -n "$config_post_command" ]; then
+        post_go="$config_post_command"
+      fi
     fi
 
     # Extract copy_files array
@@ -47,12 +60,16 @@ parse_config() {
   fi
 
   # Environment variable overrides config
-  if [ -n "${TWIG_POST_COMMAND:-}" ]; then
-    post_command="$TWIG_POST_COMMAND"
+  if [ -n "${HY_POST_GO:-}" ]; then
+    post_go="$HY_POST_GO"
+  elif [ -n "${HY_POST_COMMAND:-}" ]; then
+    # Backward compatibility
+    post_go="$HY_POST_COMMAND"
   fi
 
   echo "$base_dir"
-  echo "$post_command"
+  echo "$post_create"
+  echo "$post_go"
   for file in "${copy_files[@]}"; do
     echo "$file"
   done
@@ -63,16 +80,21 @@ get_base_dir() {
   parse_config | head -n 1
 }
 
-# Get post_command from config
-get_post_command() {
+# Get post_create command from config
+get_post_create() {
   parse_config | sed -n '2p'
+}
+
+# Get post_go command from config
+get_post_go() {
+  parse_config | sed -n '3p'
 }
 
 # Resolve template variables in path
 resolve_path() {
   local path="$1"
   local name="$2"
-  echo "$path" | sed "s/{repo}/$REPO_NAME/g; s/{name}/$name/g"
+  echo "$path" | sed "s|{repo}|$REPO_NAME|g; s|{name}|$name|g"
 }
 
 # Get worktree path for a name
@@ -85,29 +107,30 @@ get_worktree_path() {
 # Show usage
 cmd_help() {
   cat <<EOF
-twig - Git worktree management CLI
+hy - Git worktree management CLI
 
 Usage:
-  twig                                Interactive mode - select worktree to open
-  twig go <name>                      Go to worktree and run post_command
-  twig create <name>                  Create worktree + move spec from main
-  twig status                         Show worktree status table
-  twig path <name>                    Print worktree path (for scripts)
-  twig cleanup <name> [--yes]         Remove worktree
-  twig help                           Show this help
+  hy                               Interactive mode - select worktree to open
+  hy go <name>                      Go to worktree and run post_command
+  hy create <name>                  Create worktree + move spec from main
+  hy status                         Show worktree status table
+  hy path <name>                    Print worktree path (for scripts)
+  hy cleanup <name> [--yes]         Remove worktree
+  hy help                           Show this help
 
 Config (.dev/config.yml):
   worktree:
     base_dir: ".worktrees/{name}"     # Worktree location
     copy_files: [.env.local]          # Files to copy
-    post_command: "claude"            # Command after 'go' (or set TWIG_POST_COMMAND)
+    post_create: "pnpm install"       # Command after 'create' (setup, non-interactive)
+    post_go: "claude"                 # Command after 'go' (or set HY_POST_GO)
 
 Examples:
-  twig                                Interactive: pick worktree → go
-  twig go my-feature                  cd to worktree + run claude (or custom command)
-  twig create my-feature              Create worktree, move spec from main
-  twig status                         View all worktrees with progress
-  twig path my-feature                Print path only (for: cd \$(twig path x))
+  hy                               Interactive: pick worktree → go
+  hy go my-feature                  cd to worktree + run claude (or custom command)
+  hy create my-feature              Create worktree, move spec from main
+  hy status                         View all worktrees with progress
+  hy path my-feature                Print path only (for: cd \$(hy path x))
 EOF
 }
 
@@ -124,7 +147,8 @@ cmd_create() {
   # Parse config
   local config_output=$(parse_config)
   local base_dir=$(echo "$config_output" | head -n 1)
-  local copy_files=($(echo "$config_output" | tail -n +3))
+  local post_create=$(echo "$config_output" | sed -n '2p')
+  local copy_files=($(echo "$config_output" | tail -n +4))
 
   # Resolve path
   local worktree_path=$(resolve_path "$base_dir" "$name")
@@ -215,12 +239,20 @@ EOF
 
   echo ""
   echo "✅ Worktree created: $worktree_path"
+
+  # Run post_create if configured
+  if [ -n "$post_create" ]; then
+    echo ""
+    echo "→ Running post_create: $post_create"
+    (cd "$worktree_path" && eval "$post_create")
+  fi
+
   echo ""
   echo "To start working:"
-  echo "  twig go ${name}"
+  echo "  hy go ${name}"
 }
 
-# Go to worktree and run post_command
+# Go to worktree and run post_go
 cmd_go() {
   local name="$1"
   local worktree_path=$(get_worktree_path "$name")
@@ -230,13 +262,13 @@ cmd_go() {
     exit 1
   fi
 
-  local post_command=$(get_post_command)
+  local post_go=$(get_post_go)
 
   echo "→ cd $worktree_path"
-  echo "→ $post_command"
+  echo "→ $post_go"
   echo ""
 
-  cd "$worktree_path" && exec $post_command
+  cd "$worktree_path" && exec $SHELL -ic "eval '$post_go'"
 }
 
 # Print worktree path (for scripts)
@@ -252,17 +284,21 @@ cmd_path() {
   echo "$worktree_path"
 }
 
-# Get worktree names as array
+# Get worktree names as array (from directory names, not branch names)
 get_worktree_names() {
   local worktrees=$(git worktree list --porcelain)
   local names=()
+  local current_path=""
 
   while IFS= read -r line; do
-    if [[ "$line" =~ ^branch\ refs/heads/(.+)$ ]]; then
+    if [[ "$line" =~ ^worktree\ (.+)$ ]]; then
+      current_path="${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ ^branch\ refs/heads/(.+)$ ]]; then
       local branch="${BASH_REMATCH[1]}"
       # Skip main branches
       if [ "$branch" != "main" ] && [ "$branch" != "master" ] && [ "$branch" != "develop" ]; then
-        local name=$(echo "$branch" | sed 's|^feat/||')
+        # Use directory name, not branch name
+        local name=$(basename "$current_path")
         names+=("$name")
       fi
     fi
@@ -297,8 +333,8 @@ cmd_status() {
         continue
       fi
 
-      # Extract name from branch (feat/name -> name)
-      local name=$(echo "$current_branch" | sed 's|^feat/||')
+      # Extract name from worktree path (directory name)
+      local name=$(basename "$current_path")
 
       # Read local.json if exists
       local plan_path=""
@@ -359,17 +395,31 @@ cmd_status() {
   if [ ${#rows[@]} -eq 0 ]; then
     echo "No worktrees found."
     echo ""
-    echo "Create one with: twig create <name>"
+    echo "Create one with: hy create <name>"
     return 1
   fi
 
-  printf "%-4s %-20s %-20s %-8s %-8s %-10s %-10s\n" "#" "NAME" "PROGRESS" "CHANGES" "BEHIND" "SESSIONS" "PR"
-  printf "%-4s %-20s %-20s %-8s %-8s %-10s %-10s\n" "-" "----" "--------" "-------" "------" "--------" "--"
+  # Calculate max name width (min 20, max 30)
+  local max_name_width=20
+  for row in "${rows[@]}"; do
+    local name="${row%%|*}"
+    local name_len=${#name}
+    if [ "$name_len" -gt "$max_name_width" ] && [ "$name_len" -le 30 ]; then
+      max_name_width=$name_len
+    fi
+  done
+
+  printf "%-4s %-${max_name_width}s %-20s %-8s %-8s %-10s %-6s\n" "#" "NAME" "PROGRESS" "CHANGES" "BEHIND" "SESSIONS" "PR"
+  printf "%-4s %-${max_name_width}s %-20s %-8s %-8s %-10s %-6s\n" "-" "----" "--------" "-------" "------" "--------" "--"
 
   local i=1
   for row in "${rows[@]}"; do
     IFS='|' read -r name progress changes behind sessions pr_status <<< "$row"
-    printf "%-4s %-20s %-20s %-8s %-8s %-10s %-10s\n" "$i." "$name" "$progress" "$changes" "$behind" "$sessions" "$pr_status"
+    # Truncate name if longer than 30 chars
+    if [ ${#name} -gt 30 ]; then
+      name="${name:0:27}..."
+    fi
+    printf "%-4s %-${max_name_width}s %-20s %-8s %-8s %-10s %-6s\n" "$i." "$name" "$progress" "$changes" "$behind" "$sessions" "$pr_status"
     ((i++))
   done
 
