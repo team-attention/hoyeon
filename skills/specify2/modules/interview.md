@@ -8,11 +8,17 @@ Requirements gathering through conversation (re-entrant loop).
 - interaction: `interactive` | `autopilot`
 - draft_path: from Draft module
 - intent_type: from Explore
+- user_request: from Triage (for tech-decision context)
 
 ## Output
 
 - updated draft_path
 - status: `ready_for_plan` | `needs_more`
+
+## Variable Convention
+
+> **IMPORTANT**: When invoking Skill/Task, replace all `{variable}` placeholders:
+> - `{comparison_topic}` → Extract from user_request (e.g., "JWT vs Session", "React vs Vue")
 
 ## Behavior by Depth
 
@@ -85,8 +91,12 @@ AskUserQuestion(
 
 **If user selects "예, 분석 진행":**
 ```
-Skill("tech-decision", args="[comparison topic extracted from user's request]")
+Skill("tech-decision", args="{comparison_topic}")
 ```
+
+> Extract `{comparison_topic}` from user_request. Examples:
+> - "JWT로 할지 Session으로 할지" → "JWT vs Session for authentication"
+> - "React랑 Vue 중에" → "React vs Vue for frontend framework"
 
 Then incorporate tech-decision results into DRAFT before continuing.
 
@@ -188,7 +198,7 @@ When max iterations reached (standard: 10):
 
 ```
 AskUserQuestion(
-  question: "인터뷰 라운드가 {max}회에 도달했습니다. 현재 상태로 플랜을 생성할까요?",
+  question: "인터뷰 라운드가 {max_iterations}회에 도달했습니다. 현재 상태로 플랜을 생성할까요?",
   options: [
     { label: "플랜 생성", description: "현재 수집된 정보로 플랜 작성" },
     { label: "계속 진행", description: "추가 질문/논의 (standard: +5회 연장)" },

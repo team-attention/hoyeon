@@ -15,6 +15,14 @@ Codebase exploration and Intent classification.
 - intent_type: one of 7 types
 - intent_strategy: corresponding strategy
 
+## Variable Convention
+
+> **IMPORTANT**: When invoking Task, replace all `{variable}` placeholders with actual values:
+> - `{feature_name}` → from Input
+> - `{user_request}` → from Input
+> - `{intent_type}` → from Intent Classification result (Section 2)
+> - `(summarize: X)` → Claude generates this from context/exploration results
+
 ## Behavior by Depth
 
 | Depth | Agents | Intent Classification |
@@ -35,7 +43,7 @@ Codebase exploration and Intent classification.
 
 ```
 Task(subagent_type="Explore",
-     prompt="Find: existing patterns for [feature]. Report as file:line format.")
+     prompt="Find: existing patterns for {feature_name}. Report as file:line format.")
 
 Task(subagent_type="Explore",
      prompt="Find: project structure, package.json scripts for lint/test/build commands")
@@ -47,14 +55,14 @@ Task(subagent_type="Explore",
 # Above 2 plus:
 
 Task(subagent_type="docs-researcher",
-     prompt="Find internal documentation relevant to [feature]. Search docs/, ADRs, READMEs, config files for conventions, architecture decisions, and constraints.")
+     prompt="Find internal documentation relevant to {feature_name}. Search docs/, ADRs, READMEs, config files for conventions, architecture decisions, and constraints.")
 
 Task(subagent_type="ux-reviewer",
      prompt="""
 User's Goal: {user_request}
-Current Understanding: [brief description of what's being proposed]
-Intent Type: [classified intent from exploration]
-Affected Area: [which part of the product the change touches]
+Current Understanding: (summarize: what feature/change is being proposed based on user_request)
+Intent Type: {intent_type}
+Affected Area: (summarize: which part of the product this change touches, from exploration results)
 
 Evaluate how this change affects existing user experience.
 Focus on: current UX flow, simplicity impact, and better alternatives.""")
@@ -66,20 +74,20 @@ Focus on: current UX flow, simplicity impact, and better alternatives.""")
 # Same 4 agents as Standard, but with enhanced prompts:
 
 Task(subagent_type="Explore",
-     prompt="Deep dive: existing patterns for [feature]. Include edge cases, error handling patterns. Report as file:line format.")
+     prompt="Deep dive: existing patterns for {feature_name}. Include edge cases, error handling patterns. Report as file:line format.")
 
 Task(subagent_type="Explore",
      prompt="Full audit: project structure, all package.json scripts, CI/CD config, test infrastructure")
 
 Task(subagent_type="docs-researcher",
-     prompt="Comprehensive search: ALL documentation relevant to [feature]. Include docs/, ADRs, READMEs, config files, inline comments with TODO/FIXME.")
+     prompt="Comprehensive search: ALL documentation relevant to {feature_name}. Include docs/, ADRs, READMEs, config files, inline comments with TODO/FIXME.")
 
 Task(subagent_type="ux-reviewer",
      prompt="""
 User's Goal: {user_request}
-Current Understanding: [detailed description]
-Intent Type: [classified intent]
-Affected Area: [full impact scope]
+Current Understanding: (summarize: detailed description of proposed changes)
+Intent Type: {intent_type}
+Affected Area: (summarize: full scope of areas impacted by this change)
 
 Deep UX evaluation:
 - Full user journey mapping
@@ -109,12 +117,12 @@ Based on exploration results, classify intent:
 
 ```markdown
 "코드베이스 탐색 결과:
- - 구조: [주요 디렉토리 요약]
- - 관련 패턴: [발견된 패턴 2-3개]
- - 내부 문서: [관련 ADR/컨벤션]
+ - 구조: {summary of directory structure}
+ - 관련 패턴: {2-3 discovered patterns}
+ - 내부 문서: {relevant ADRs/conventions}
  - 프로젝트 명령어: lint/test/build
- - UX 리뷰: [현재 UX 흐름 + 우려사항] (standard/thorough only)
- - Intent: [분류된 Intent] → [전략]
+ - UX 리뷰: {UX flow + concerns} (standard/thorough only)
+ - Intent: {intent_type} → {intent_strategy}
 
 이 맥락이 맞는지 확인 후 진행하겠습니다."
 ```

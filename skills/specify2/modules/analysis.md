@@ -17,6 +17,20 @@ Risk assessment and verification planning.
 - external_research: (thorough only, or conditional)
 - status: `complete` | `high_risk_detected`
 
+## Variable Convention
+
+> **IMPORTANT**: When invoking Task, replace `{variable}` placeholders:
+> - `{draft_*}` → Read from DRAFT file at `{draft_path}`, extract the corresponding section
+> - `{intent_type}` → from Input
+> - `(summarize: X)` → Claude generates from DRAFT content
+>
+> **Draft Section Mapping:**
+> - `{draft_what_why}` → DRAFT's "What & Why" section
+> - `{draft_work_breakdown}` → DRAFT's "Direction > Work Breakdown" section
+> - `{draft_approach}` → DRAFT's "Direction > Approach" section
+> - `{draft_boundaries}` → DRAFT's "Boundaries" section
+> - `{draft_agent_findings}` → DRAFT's "Agent Findings" section
+
 ## Behavior by Depth
 
 | Depth | gap-analyzer | tradeoff-analyzer | verification-planner | external-researcher |
@@ -37,7 +51,7 @@ Task(subagent_type="tradeoff-analyzer",
 Mode: lite (risk tagging only)
 
 Work Breakdown from DRAFT:
-{draft.direction.work_breakdown}
+{draft_work_breakdown}
 
 For each item, assign risk level:
 - LOW: Reversible, isolated change
@@ -54,7 +68,7 @@ Output format:
 
 **If HIGH risk detected:**
 ```
-⚠️ HIGH 위험 항목 감지됨: {items}
+⚠️ HIGH 위험 항목 감지됨: {high_risk_items}
 standard depth로 재실행을 권장합니다.
 
 Continue anyway? (autopilot: proceed with warning)
@@ -67,8 +81,8 @@ Continue anyway? (autopilot: proceed with warning)
 
 Task(subagent_type="gap-analyzer",
      prompt="""
-User's Goal: {draft.what_why}
-Current Understanding: {summary}
+User's Goal: {draft_what_why}
+Current Understanding: (summarize: brief overview of the proposed feature from DRAFT)
 Intent Type: {intent_type}
 
 Analyze for:
@@ -79,9 +93,9 @@ Analyze for:
 
 Task(subagent_type="tradeoff-analyzer",
      prompt="""
-Proposed Approach: {draft.direction.approach}
-Work Breakdown: {draft.direction.work_breakdown}
-Boundaries: {draft.boundaries}
+Proposed Approach: {draft_approach}
+Work Breakdown: {draft_work_breakdown}
+Boundaries: {draft_boundaries}
 
 Assess:
 - Risk per change area (LOW/MEDIUM/HIGH)
@@ -93,8 +107,8 @@ Generate decision_points for HIGH risk items.
 
 Task(subagent_type="verification-planner",
      prompt="""
-Work Breakdown: {draft.direction.work_breakdown}
-Agent Findings: {draft.agent_findings}
+Work Breakdown: {draft_work_breakdown}
+Agent Findings: {draft_agent_findings}
 
 Classify verification points:
 - A-items: Agent-verifiable (commands, tests)
@@ -105,8 +119,15 @@ Explore test infrastructure.
 
 # Conditional: only if migration/new library/unfamiliar tech
 Task(subagent_type="external-researcher",
-     prompt="Research official docs for {library}: {specific_question}")
+     prompt="Research official docs for {library_name}: {specific_question}")
 ```
+
+> **external-researcher trigger conditions:**
+> - Intent is Migration
+> - DRAFT mentions new/unfamiliar library
+> - User explicitly requested external research
+>
+> Extract `{library_name}` and `{specific_question}` from DRAFT context.
 
 ### Thorough Depth (strict versions)
 
@@ -162,9 +183,9 @@ Combine all agent results:
 ## Analysis Summary
 
 ### Gap Analysis (standard/thorough)
-- Missing: {list}
-- Pitfalls: {list}
-- Must NOT Do: {list}
+- Missing: {missing_items}
+- Pitfalls: {pitfall_items}
+- Must NOT Do: {must_not_do_items}
 
 ### Risk Assessment
 | Item | Risk | Notes |
@@ -183,7 +204,7 @@ Combine all agent results:
 - H-2: Business logic validation
 
 ### External Research (if applicable)
-{summary of findings}
+{external_research_summary}
 ```
 
 ---
