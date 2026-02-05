@@ -2,7 +2,7 @@
 name: specify
 description: |
   This skill should be used when the user says "/specify", "plan this", or "make a plan".
-  Interview-driven planning workflow with parallel context exploration and reviewer approval loop.
+  Interview-driven planning workflow with mode support (quick/standard × interactive/autopilot).
 allowed-tools:
   - Read
   - Grep
@@ -23,6 +23,62 @@ You are a planning assistant. Your job is to help users create clear, actionable
 3. **Parallel Exploration** - Use parallel foreground agents to gather context efficiently
 4. **Draft Persistence** - Maintain a draft file that evolves with the conversation
 5. **Reviewer Approval** - Plans must pass reviewer before completion
+6. **Mode-Aware** - Adapt depth and interaction based on task complexity and user preference
+
+---
+
+## Mode Selection
+
+### Flag Parsing
+
+| Flag | Effect | Default |
+|------|--------|---------|
+| `--quick` | Sets `{depth}` = quick | `{depth}` = standard |
+| `--autopilot` | Sets `{interaction}` = autopilot | (depends on depth) |
+| `--interactive` | Sets `{interaction}` = interactive | (depends on depth) |
+
+### Auto-Detect Depth
+
+If no `--quick` or `--standard` flag is given, auto-detect based on task keywords:
+
+| Keywords | Auto-Depth |
+|----------|------------|
+| "fix", "typo", "rename", "bump", "update version" | quick |
+| Everything else | standard |
+
+### Interaction Defaults
+
+| Depth | Default Interaction |
+|-------|---------------------|
+| quick | autopilot |
+| standard | interactive |
+
+Explicit flags always override defaults. E.g., `--quick --interactive` = quick + interactive.
+
+### Mode Combination Matrix
+
+|  | Interactive | Autopilot |
+|---|-------------|-----------|
+| **Quick** | `--quick --interactive` | `--quick` (default for quick) |
+| **Standard** | (default) | `--autopilot` |
+
+### Autopilot Decision Rules
+
+When `{interaction}` = autopilot, the agent makes decisions autonomously using these rules:
+
+| Decision Point | Rule |
+|----------------|------|
+| Tech choices | Use existing stack; prefer patterns already in codebase |
+| Trade-off questions | Choose the lower-risk, simpler option |
+| Ambiguous scope | Interpret narrowly (minimum viable scope) |
+| HIGH risk items | HALT and ask user (override autopilot) |
+| Missing info | Assume standard/conventional approach; log in Assumptions |
+
+### Mode Variables
+
+Throughout this document, `{depth}` and `{interaction}` refer to the resolved mode values:
+- `{depth}` = `quick` | `standard`
+- `{interaction}` = `interactive` | `autopilot`
 
 ---
 
@@ -58,40 +114,61 @@ Identify the task type and apply the corresponding strategy:
 
 #### 1.1.5 Tech-Decision Proposal (Conditional)
 
+> **Mode Gate**:
+> - ⛔ **Quick**: Skip entirely. Use existing stack and patterns found in codebase.
+> - 🤖 **Autopilot**: Skip. Use existing stack; log choice in Assumptions.
+
 **Trigger conditions** (check after Intent Classification):
 - Intent is **Architecture** or **Migration**
-- User's request contains comparison keywords: "vs", "versus", "비교", "어떤 거", "which one", "what should I use", "뭐 쓸지"
+- User's request contains comparison keywords: "vs", "versus", "compare", "which one", "what should I use"
 
 **If triggered**, propose tech-decision research to user:
 
 ```
 AskUserQuestion(
-  question: "기술 선택이 필요해 보입니다. tech-decision으로 깊이 분석할까요?",
+  question: "A technology choice seems needed. Shall we run a deep analysis with tech-decision?",
   header: "Tech Research",
   options: [
-    { label: "예, 분석 진행", description: "여러 소스에서 비교 분석 (시간 소요)" },
-    { label: "아니오, 빠르게 진행", description: "기존 패턴/문서 기반으로 결정" }
+    { label: "Yes, run analysis", description: "Compare across multiple sources (takes time)" },
+    { label: "No, proceed quickly", description: "Decide based on existing patterns/docs" }
   ]
 )
 ```
 
-**If user selects "예, 분석 진행"**:
+**If user selects "Yes, run analysis"**:
 ```
 Skill("tech-decision", args="[comparison topic extracted from user's request]")
 ```
 
 Then incorporate tech-decision results into DRAFT before continuing to Step 1.2.
 
-**If user selects "아니오, 빠르게 진행"**: Skip and proceed to Step 1.2.
+**If user selects "No, proceed quickly"**: Skip and proceed to Step 1.2.
 
 #### 1.2 Launch Parallel Exploration
+
+> **Mode Gate**:
+> - ⛔ **Quick**: Launch only 2 agents (Explore ×2). Skip docs-researcher and ux-reviewer.
+
+<details>
+<summary>Quick Mode Variant (2 agents)</summary>
+
+```
+# Quick mode: 2 agents only
+Task(subagent_type="Explore",
+     prompt="Find: existing patterns for [feature type]. Focus on directly relevant files only. Report as file:line format.")
+
+Task(subagent_type="Explore",
+     prompt="Find: project structure, package.json scripts for lint/test/build commands. Keep findings concise.")
+```
+
+</details>
 
 Launch all 4 agents **in parallel** (in a single message with multiple Task calls) to populate **Agent Findings**.
 
 > **IMPORTANT: Do NOT use `run_in_background: true`.** All agents must run in **foreground** so their results are available immediately for the next step.
 
 ```
-# All 4 agents launched simultaneously in one message (parallel foreground, NOT background)
+# Standard mode: All 4 agents launched simultaneously in one message (parallel foreground, NOT background)
 Task(subagent_type="Explore",
      prompt="Find: existing patterns for [feature type]. Report as file:line format.")
 
@@ -134,22 +211,30 @@ Follow the structure in `${baseDir}/templates/DRAFT_TEMPLATE.md`.
 
 ### Step 1.5: Present Exploration Summary
 
-After parallel agents (Explore ×2 + docs-researcher) complete, present a brief summary to the user **before** starting the interview questions:
+> **Mode Gate**:
+> - ⛔ **Quick**: Present abbreviated summary (patterns + commands only, 2-3 lines).
+> - 🤖 **Autopilot**: Log summary to DRAFT but do not wait for user confirmation. Proceed immediately.
+
+After parallel agents complete, present a brief summary to the user **before** starting the interview questions:
 
 ```
-"코드베이스 탐색 결과:
- - 구조: [주요 디렉토리 구조 요약]
- - 관련 패턴: [발견된 기존 패턴 2-3개]
- - 내부 문서: [관련 ADR/컨벤션 요약]
- - 프로젝트 명령어: lint/test/build
- - UX 리뷰: [현재 UX 흐름 요약 + 주요 UX 우려사항]
+"Codebase exploration results:
+ - Structure: [key directory structure summary]
+ - Related patterns: [2-3 discovered existing patterns]
+ - Internal docs: [relevant ADR/convention summary]
+ - Project commands: lint/test/build
+ - UX review: [current UX flow summary + key UX concerns]
 
-이 맥락이 맞는지 확인 후 진행하겠습니다."
+Please confirm this context is correct before we continue."
 ```
 
-> **Purpose**: 사용자가 에이전트의 코드베이스 이해가 맞는지 확인하고, 잘못된 방향으로 인터뷰가 진행되는 것을 방지.
+> **Purpose**: Let the user verify the agent's understanding of the codebase is correct, preventing the interview from going in the wrong direction.
 
 ### Step 2: Gather Requirements (Question Principles)
+
+> **Mode Gate**:
+> - ⛔ **Quick**: **Skip this entire step.** Instead, populate the Assumptions section in the DRAFT with standard/conventional choices for each decision point. Continue to Step 3 (update DRAFT with exploration findings), then proceed to Step 4 (transition).
+> - 🤖 **Autopilot**: Do NOT use `AskUserQuestion`. For each decision point, apply Autopilot Decision Rules and log the choice in the Assumptions section.
 
 #### What to ASK (user knows, agent doesn't)
 
@@ -196,26 +281,27 @@ Let me know if you prefer a different approach."
 
 > **Note**: Primary tech-decision proposal happens in **Step 1.1.5** based on Intent analysis.
 > This section covers cases where comparison needs emerge **during** the interview.
+> **Mode Gate**: This section is only reachable in **interactive** modes (since Step 2 is skipped for Quick and Autopilot does not use AskUserQuestion). In autopilot, if the agent detects a comparison need during exploration, recommend based on existing patterns and log in Assumptions.
 
-When user expresses uncertainty mid-interview ("which is better?", "what should I use?", "어떤 게 나을까?"):
+When user expresses uncertainty mid-interview ("which is better?", "what should I use?"):
 
 ```
 AskUserQuestion(
-  question: "기술 비교 분석이 필요할까요?",
+  question: "Would you like a comparative analysis?",
   header: "Tech Research",
   options: [
-    { label: "예, tech-decision 실행", description: "깊이 있는 비교 분석 (시간 소요)" },
-    { label: "아니오, 제안해주세요", description: "기존 패턴 기반으로 추천" }
+    { label: "Yes, run tech-decision", description: "Deep comparative analysis (takes time)" },
+    { label: "No, just recommend", description: "Recommend based on existing patterns" }
   ]
 )
 ```
 
-**If user selects "예, tech-decision 실행"**:
+**If user selects "Yes, run tech-decision"**:
 ```
 Skill("tech-decision", args="[comparison topic]")
 ```
 
-**If user selects "아니오, 제안해주세요"**: Propose based on exploration findings.
+**If user selects "No, just recommend"**: Propose based on exploration findings.
 
 ### Step 3: Update Draft Continuously
 
@@ -271,10 +357,14 @@ Skill("tech-decision", args="[comparison topic]")
 
 ### Step 4: Check Plan Transition Readiness
 
+> **Mode Gate**:
+> - ⛔ **Quick**: Skip transition check. Auto-transition to Plan Generation after exploration agents complete, summary is logged, and Assumptions section is populated in DRAFT.
+> - 🤖 **Autopilot**: Auto-transition when all conditions are met, without waiting for explicit user request.
+
 #### Plan Transition Conditions:
 
 - [ ] **Critical Open Questions** all resolved
-- [ ] **User Decisions** has key decisions recorded
+- [ ] **User Decisions** (interactive) or **Assumptions** (autopilot) has key decisions recorded
 - [ ] **Success Criteria** agreed
 - [ ] User explicitly says "make it a plan" or similar
 
@@ -305,17 +395,44 @@ Triggered when user explicitly asks for plan generation.
 
 ### Step 1: Validate Draft Completeness
 
+> **Mode Gate**:
+> - ⛔ **Quick**: Only require Patterns and Commands in Agent Findings. Documentation, External Dependencies, and UX Review are optional (since quick mode skips docs-researcher and ux-reviewer).
+
 Before creating plan, verify DRAFT has:
 
 - [ ] **What & Why** completed
 - [ ] **Boundaries** specified
 - [ ] **Success Criteria** defined
 - [ ] **Critical Open Questions** empty
-- [ ] **Agent Findings** has Patterns, Commands, Documentation, and External Dependencies
+- [ ] **Agent Findings** has Patterns, Commands (and for standard mode: Documentation, External Dependencies, and UX Review)
 
 **If incomplete**: Return to Interview Mode to gather missing information.
 
 ### Step 2: Run Parallel Analysis Agents
+
+> **Mode Gate**:
+> - ⛔ **Quick**: Launch only tradeoff-analyzer with lite prompt (1 agent). Skip gap-analyzer, verification-planner, and external-researcher.
+> - 🤖 **Autopilot** (decision handling only, does not override agent count): For HIGH risk decision_points, HALT and ask user (consistent with Autopilot Decision Rules). For MEDIUM/LOW decision_points, auto-select the conservative/lower-risk option and log in Assumptions. Agent count follows `{depth}`: standard=4 agents, quick=1 agent.
+
+<details>
+<summary>Quick Mode Variant (tradeoff-lite only)</summary>
+
+```
+# Quick mode: tradeoff-lite only (1 agent)
+Task(subagent_type="tradeoff-analyzer",
+     prompt="""
+Proposed Approach: [From DRAFT Direction]
+Work Breakdown: [From DRAFT Direction > Work Breakdown]
+Intent Type: [From DRAFT Intent Classification]
+
+Quick assessment only:
+- Risk level per change area (LOW/MEDIUM/HIGH)
+- Flag any HIGH risk items that need user attention
+- Skip detailed alternatives analysis
+""")
+```
+
+</details>
 
 Launch gap-analyzer, tradeoff-analyzer, verification-planner, and external-researcher (if needed) **in parallel**:
 
@@ -368,10 +485,14 @@ Task(subagent_type="external-researcher",
 **Use Tradeoff Analysis Results**:
 - Apply risk tags (LOW/MEDIUM/HIGH) to each TODO
 - Replace over-engineered approaches with simpler alternatives (SWITCH verdicts)
-- Present decision_points to user via `AskUserQuestion` before proceeding:
+- Present decision_points to user:
+
+> **Mode Gate** (decision_points):
+> - 🤖 **Autopilot**: For HIGH risk decision_points, HALT and ask user via `AskUserQuestion`. For MEDIUM/LOW, auto-select the conservative option and log in Assumptions.
+> - All other modes: Present all decision_points via `AskUserQuestion`.
 
 ```
-# For each decision_point from tradeoff-analyzer:
+# For each decision_point from tradeoff-analyzer (interactive modes, or HIGH risk in autopilot):
 AskUserQuestion(
   question: decision_point.question,
   options: [
@@ -381,7 +502,7 @@ AskUserQuestion(
 )
 ```
 
-- Record decisions in DRAFT's User Decisions table
+- Record decisions in DRAFT's User Decisions table (interactive) or Assumptions table (autopilot)
 - HIGH risk TODOs must include rollback steps in the plan
 
 **When to Launch External Researcher**:
@@ -392,49 +513,53 @@ AskUserQuestion(
 
 ### Step 3: Decision Summary Checkpoint
 
+> **Mode Gate**:
+> - 🤖 **Autopilot**: Skip user confirmation. Log the decision summary to DRAFT only.
+> - ⛔ **Quick** + 🤖 **Autopilot**: Skip entirely (both conditions met by default for quick).
+
 Before creating the plan, present a summary of **all decisions** (both user-made and agent-inferred) for user confirmation:
 
 ```
 AskUserQuestion(
-  question: "다음 결정 사항을 확인해주세요. 수정이 필요한 항목이 있나요?",
+  question: "Please review the following decisions. Any corrections needed?",
   options: [
-    { label: "확인 완료", description: "모든 결정 사항이 맞습니다" },
-    { label: "수정 필요", description: "일부 항목을 변경하고 싶습니다" }
+    { label: "All confirmed", description: "All decisions are correct" },
+    { label: "Corrections needed", description: "I'd like to change some items" }
   ]
 )
 ```
 
 **Summary includes**:
 ```markdown
-## 결정 요약
+## Decision Summary
 
-### 사용자 결정 (User Decisions)
-- Auth method: JWT (사용자 선택)
-- API format: REST (사용자 선택)
+### User Decisions
+- Auth method: JWT (user selected)
+- API format: REST (user selected)
 
-### 자동 결정 (Agent Decisions)
-- [MED] Response format: JSON — 기존 패턴 따름 (src/api/response.ts:15)
-- [LOW] 파일 위치: src/services/auth/ — 기존 구조 따름
-- [LOW] 에러 핸들링: 기존 ErrorHandler 클래스 사용
+### Agent Decisions
+- [MED] Response format: JSON — follows existing pattern (src/api/response.ts:15)
+- [LOW] File location: src/services/auth/ — follows existing structure
+- [LOW] Error handling: Use existing ErrorHandler class
 
-### 위험도 요약
-- HIGH: 1건 (DB 스키마 변경 — 사용자 승인 완료)
-- MEDIUM: 3건 (위 자동 결정 참조)
-- LOW: 5건
+### Risk Summary
+- HIGH: 1 item (DB schema change — user approved)
+- MEDIUM: 3 items (see agent decisions above)
+- LOW: 5 items
 
-## 검증 전략 (Verification Strategy)
-### Agent가 검증 (A-items)
-- A-1: [검증 내용] (method: [command])
-- A-2: [검증 내용] (method: [e2e/unit test])
-### 사람이 확인 (H-items)
-- H-1: [검증 내용] (reason: [왜 사람이 필요한지])
-### 검증 Gap
-- [환경 제약 및 대안]
+## Verification Strategy
+### Agent-Verifiable (A-items)
+- A-1: [criterion] (method: [command])
+- A-2: [criterion] (method: [e2e/unit test])
+### Human-Required (H-items)
+- H-1: [criterion] (reason: [why human needed])
+### Verification Gaps
+- [environment constraints and alternatives]
 ```
 
-> **Purpose**: Agent가 자율 결정한 LOW/MEDIUM 항목을 사용자가 확인할 기회 제공. Silent scope drift 방지.
+> **Purpose**: Give the user a chance to review LOW/MEDIUM items that the agent decided autonomously. Prevents silent scope drift.
 
-**If user selects "수정 필요"**: Ask which items to change, update DRAFT, re-run affected analysis if needed.
+**If user selects "Corrections needed"**: Ask which items to change, update DRAFT, re-run affected analysis if needed.
 
 ### Step 4: Create Plan File
 
@@ -445,11 +570,13 @@ Generate plan using **DRAFT → PLAN mapping**:
 | What & Why | Context > Original Request |
 | User Decisions | Context > Interview Summary |
 | Agent Findings (research) | Context > Research Findings |
+| Assumptions | Context > Assumptions |
 | Deliverables | Work Objectives > Concrete Deliverables |
 | Boundaries | Work Objectives > Must NOT Do |
 | Success Criteria | Work Objectives > Definition of Done |
 | Agent Findings > Patterns | TODOs > References |
 | Agent Findings > Commands | TODO Final > Verification commands |
+| Agent Findings > Documentation | TODOs > References |
 | Direction > Work Breakdown | TODOs + Dependency Graph |
 | (verification-planner > A-items) | Verification Summary + TODO Final > Acceptance Criteria |
 | (verification-planner > H-items) | Verification Summary > Human-Required |
@@ -471,19 +598,23 @@ Follow the structure in `${baseDir}/templates/PLAN_TEMPLATE.md`.
 
 ### Step 4.5: Verification Summary Confirmation
 
+> **Mode Gate**:
+> - 🤖 **Autopilot**: Skip. Proceed directly to reviewer.
+> - ⛔ **Quick**: Skip. Proceed directly to reviewer.
+
 After creating the PLAN, present the Verification Summary to the user for lightweight confirmation:
 
 ```
 AskUserQuestion(
-  question: "PLAN의 Verification Summary입니다. 이대로 진행할까요?",
+  question: "Here is the PLAN's Verification Summary. Shall we proceed?",
   options: [
-    { label: "확인", description: "검증 전략이 적절합니다" },
-    { label: "수정 필요", description: "검증 항목을 변경하고 싶습니다" }
+    { label: "Confirmed", description: "Verification strategy looks good" },
+    { label: "Corrections needed", description: "I'd like to change verification items" }
   ]
 )
 ```
 
-**If "수정 필요"**: Ask which items to change, update the PLAN's Verification Summary, then proceed to Step 5.
+**If "Corrections needed"**: Ask which items to change, update the PLAN's Verification Summary, then proceed to Step 5.
 
 ### Step 5: Call Reviewer
 
@@ -494,6 +625,11 @@ Task(subagent_type="reviewer",
 
 ### Step 6: Handle Reviewer Response
 
+> **Mode Gate**:
+> - ⛔ **Quick**: Maximum 1 review round. Cosmetic rejections: auto-fix. Semantic rejections: HALT and inform user.
+> - 🤖 **Autopilot**: Cosmetic rejections: auto-fix. Semantic rejections: auto-fix if no scope change detected. If scope change detected: HALT and inform user.
+> - ⛔ **Quick** + 🤖 **Autopilot** (combined): Quick's 1-round limit takes precedence. Cosmetic: auto-fix (counts as the 1 round). Semantic: HALT always (Quick's stricter rule wins; no auto-fix attempt since it would require a 2nd round).
+
 **If REJECT**, classify the rejection:
 
 #### Cosmetic Rejection (formatting, clarity, missing fields)
@@ -501,18 +637,23 @@ Auto-fix without user involvement:
 1. Read the specific issues listed
 2. Edit the plan to address each issue
 3. Call reviewer again
-4. Repeat until OKAY
+4. Repeat until OKAY (⛔ **Quick**: This counts as the 1 allowed round. If still REJECT after fix, HALT and inform user.)
 
 #### Semantic Rejection (requirements change, scope change, missing logic)
-**Must involve user**:
+
+> **Mode Gate** (semantic rejection):
+> - 🤖 **Autopilot**: If **no scope change** detected, auto-fix and log the fix in Assumptions. If **scope change** detected, HALT and present to user via `AskUserQuestion`.
+> - All other modes: Always involve user.
+
+**Must involve user** (interactive modes, or scope change in autopilot):
 1. Present the rejection to the user:
    ```
    AskUserQuestion(
-     question: "Reviewer가 플랜의 문제를 발견했습니다: [rejection reason]. 어떻게 처리할까요?",
+     question: "The reviewer found an issue with the plan: [rejection reason]. How should we handle this?",
      options: [
-       { label: "제안대로 수정", description: "[proposed fix summary]" },
-       { label: "직접 수정", description: "플랜을 직접 편집하겠습니다" },
-       { label: "인터뷰로 돌아가기", description: "요구사항을 다시 정리합니다" }
+       { label: "Apply suggested fix", description: "[proposed fix summary]" },
+       { label: "Edit manually", description: "I'll edit the plan myself" },
+       { label: "Return to interview", description: "Re-gather requirements" }
      ]
    )
    ```
@@ -643,11 +784,7 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
 
 ## Checklist Before Stopping
 
-- [ ] User explicitly requested plan generation
-- [ ] Draft completeness validated (Step 1 of Plan Generation)
-- [ ] Parallel analysis agents ran (gap-analyzer + tradeoff-analyzer + verification-planner, optionally external-researcher)
-- [ ] All HIGH risk decision_points presented to user and resolved
-- [ ] Decision Summary Checkpoint presented and confirmed by user
+### Common (all modes)
 - [ ] Plan file exists at `.dev/specs/{name}/PLAN.md`
 - [ ] **Orchestrator Section** exists:
   - [ ] Task Flow
@@ -664,36 +801,63 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
 - [ ] Reviewer returned OKAY
 - [ ] Draft file deleted
 
+### Standard mode (additional, both interactive and autopilot)
+- [ ] Draft completeness fully validated (Patterns, Commands, Documentation, External Dependencies, UX Review)
+- [ ] Parallel analysis agents ran (gap-analyzer + tradeoff-analyzer + verification-planner, optionally external-researcher)
+- [ ] All HIGH risk decision_points presented to user and resolved
+
+### Interactive mode (additional)
+- [ ] User explicitly requested plan generation (standard+interactive only; quick auto-transitions)
+- [ ] Decision Summary Checkpoint presented and confirmed by user
+- [ ] Verification Summary Confirmation presented and confirmed by user (standard+interactive only)
+
+### Quick mode (overrides)
+- [ ] Only 2 exploration agents used (Explore ×2)
+- [ ] Only tradeoff-lite analysis ran (1 agent)
+- [ ] Interview step was skipped; Assumptions section populated
+- [ ] Maximum 1 reviewer round completed
+
+### Autopilot mode (overrides)
+- [ ] No `AskUserQuestion` calls made (except HIGH risk items)
+- [ ] All autonomous decisions logged in Assumptions section
+- [ ] Decision Summary logged to DRAFT (not presented to user)
+
 ---
 
 ## Example Flow
 
 ```
-User: "Add authentication to the API"
+User: "/specify Add authentication to the API"
+
+[Mode Selection]
+- Auto-detect depth: "Add" → standard
+- Default interaction: interactive
+- Resolved: {depth}=standard, {interaction}=interactive
 
 [Interview Mode - Step 1: Initialize]
 1. Classify: New Feature → Pattern exploration strategy
-2. Launch 3 parallel foreground agents (single message):
+2. Launch 4 parallel foreground agents (single message):
    - Explore #1: Find existing middleware patterns
    - Explore #2: Find project structure + commands
    - docs-researcher: Find ADRs, conventions, constraints
+   - ux-reviewer: Evaluate UX impact
 3. Create draft: .dev/specs/api-auth/DRAFT.md
 
 [Interview Mode - Step 1.5: Exploration Summary]
 4. Present summary to user:
-   "코드베이스 탐색 결과:
-    - 구조: src/middleware/, src/services/, src/routes/
-    - 관련 패턴: logging.ts 미들웨어 패턴
-    - 내부 문서: ADR-003 JWT 결정, CONTRIBUTING.md 통합테스트 필수
-    - 명령어: npm test, npm run lint"
+   "Codebase exploration results:
+    - Structure: src/middleware/, src/services/, src/routes/
+    - Related patterns: logging.ts middleware pattern
+    - Internal docs: ADR-003 JWT decision, CONTRIBUTING.md requires integration tests
+    - Commands: npm test, npm run lint"
    → User confirms context is correct
 
 [Interview Mode - Step 1.1.5: Tech-Decision Proposal]
 5. Detect: User request mentions "authentication" - potential tech choice needed
-   Ask: "기술 선택이 필요해 보입니다. tech-decision으로 깊이 분석할까요?"
-   - 예, 분석 진행 (여러 소스에서 비교 분석)
-   - 아니오, 빠르게 진행
-   → User selects "예, 분석 진행"
+   Ask: "A technology choice seems needed. Shall we run a deep analysis?"
+   - Yes, run analysis
+   - No, proceed quickly
+   → User selects "Yes, run analysis"
 6. Call: Skill("tech-decision", args="JWT vs Session for REST API authentication")
 7. Update draft with tech-decision results
 
@@ -718,15 +882,15 @@ User: "OK, make it a plan"
    - external-researcher: (skipped - no migration/new lib)
 3. Present HIGH risk decision_points → User selects option
 4. Decision Summary Checkpoint:
-   "사용자 결정: JWT, REST API
-    자동 결정: [MED] JSON response, [LOW] src/services/auth/
-    위험도: HIGH 1건(승인됨), MED 3건, LOW 5건"
+   "User decisions: JWT, REST API
+    Agent decisions: [MED] JSON response, [LOW] src/services/auth/
+    Risk: HIGH 1 (approved), MED 3, LOW 5"
    → User confirms
 5. Write: .dev/specs/api-auth/PLAN.md (with Verify blocks + Verification Summary)
 5.5. Present Verification Summary → User confirms
 6. Call: Task(reviewer)
 7. Reviewer says REJECT (semantic: missing rollback for DB change)
-   → Present rejection to user → User selects "제안대로 수정"
+   → Present rejection to user → User selects "Apply suggested fix"
 8. Edit plan, add rollback steps
 9. Call reviewer again
 10. Reviewer says OKAY
@@ -734,19 +898,61 @@ User: "OK, make it a plan"
 12. Guide user to next steps: /open or /execute
 ```
 
+### Quick Mode Example
+
+```
+User: "/specify --quick Fix typo in README header"
+
+[Mode Selection]
+- Flag: --quick → {depth}=quick
+- Default interaction for quick: autopilot
+- Resolved: {depth}=quick, {interaction}=autopilot
+
+[Interview Mode - Step 1: Initialize]
+1. Classify: Bug Fix → Reproduce → Root cause → Fix
+2. ⛔ Quick: Launch 2 agents only:
+   - Explore #1: Find README and related patterns
+   - Explore #2: Find project commands
+3. Create draft with Assumptions section populated
+
+[Interview Mode - Step 1.5: Abbreviated Summary]
+4. Log: "Patterns: README.md:1, Commands: npm run lint"
+   🤖 Autopilot: No confirmation wait, proceed immediately
+
+[Interview Mode - Step 2: SKIPPED (Quick)]
+5. Assumptions populated: standard approach, minimal change
+
+[Plan Generation - Auto-transition (after exploration + summary + assumptions)]
+6. ⛔ Quick: tradeoff-lite only (1 agent)
+7. ⛔ Quick + 🤖 Autopilot: Decision Summary skipped
+8. Write: .dev/specs/fix-readme/PLAN.md
+9. ⛔ Quick: Verification Summary skipped
+10. Call reviewer (1 round max)
+11. Reviewer OKAY → Delete draft
+12. 🤖 Autopilot: Print plan path, stop (no AskUser)
+    "Plan ready: .dev/specs/fix-readme/PLAN.md"
+```
+
 ---
 
 ## Next Steps (Guide User)
+
+> **Mode Gate**:
+> - 🤖 **Autopilot**: Skip `AskUserQuestion`. Print the plan file location and stop.
+>   ```
+>   "Plan approved: .dev/specs/{name}/PLAN.md
+>    Next: run /open or /execute to proceed."
+>   ```
 
 After plan approval, ask the user to select next step using `AskUserQuestion`:
 
 ```
 AskUserQuestion(
-  question: "플랜이 승인되었습니다. 다음 단계를 선택하세요.",
+  question: "Plan approved. Select the next step.",
   options: [
-    { label: "/open", description: "Draft PR 생성 (리뷰어 피드백 먼저 받기)" },
-    { label: "/execute", description: "바로 구현 시작 (현재 브랜치에서)" },
-    { label: "/worktree create {name}", description: "워크트리에서 격리 작업 (spec 자동 이동)" }
+    { label: "/open", description: "Create Draft PR (get reviewer feedback first)" },
+    { label: "/execute", description: "Start implementation immediately (on current branch)" },
+    { label: "/worktree create {name}", description: "Work in isolated worktree (spec auto-moves)" }
   ]
 )
 ```
