@@ -18,6 +18,11 @@
 ```markdown
 # Draft: {name}
 
+## Meta
+- **Depth**: [quick|standard]
+- **Interaction**: [interactive|autopilot]
+- **Created**: [timestamp]
+
 ## Intent Classification
 - **Type**: [Refactoring|New Feature|Bug Fix|Architecture|Research|Migration|Performance]
 - **Strategy**: [Strategy for this type]
@@ -68,6 +73,9 @@
 - Lint: `command`
 - Test: `command`
 
+### Documentation
+- `[path:line]` - [ADR/convention/constraint description]
+
 ### External Dependencies
 | Dependency | Type | Current Setup | Env Vars |
 |------------|------|---------------|----------|
@@ -96,6 +104,13 @@
 1. [Task 1] → outputs: [deliverable]
 2. [Task 2] → depends on: Task 1
 3. [Task 3] → parallel with: Task 2
+
+## Assumptions
+> Populated automatically in quick/autopilot mode when decisions are made without user input.
+
+| Decision Point | Assumed Choice | Rationale | Source |
+|---------------|---------------|-----------|--------|
+| [e.g. Auth method] | [e.g. JWT] | [e.g. Already installed in project] | [autopilot-rule/codebase-pattern/convention] |
 ```
 
 ---
@@ -155,7 +170,8 @@ Identify task type and establish strategy.
 - **Patterns**: Existing code patterns (`file:line` format required)
 - **Structure**: File/directory structure
 - **Project Commands**: lint, test, and other project commands
-- **External Dependencies**: DB, API services, cache, storage 등 외부 의존성 목록과 현재 개발 환경 셋업 상태
+- **External Dependencies**: List of external dependencies (DB, API services, cache, storage) and current dev environment setup status
+- **Documentation**: Internal docs findings (ADRs, conventions, constraints)
 
 > Maps to PLAN's References, Completion Protocol, and External Dependencies Strategy
 
@@ -184,10 +200,12 @@ Identify task type and establish strategy.
 | What & Why | Context > Original Request |
 | User Decisions | Context > Interview Summary |
 | Agent Findings (partial) | Context > Research Findings |
+| Assumptions | Context > Assumptions |
 | Deliverables | Work Objectives > Concrete Deliverables |
 | Boundaries | Work Objectives > Must NOT Do |
 | Success Criteria | Work Objectives > Definition of Done |
 | Agent Findings > Patterns | TODOs > References |
+| Agent Findings > Documentation | TODOs > References |
 | Agent Findings > Commands | TODO Final > Verification commands |
 | Agent Findings > External Dependencies | External Dependencies Strategy |
 | Agent Findings > UX Review | Work Objectives > Must NOT Do (UX items) + TODOs > UX constraints |
