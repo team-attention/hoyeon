@@ -93,13 +93,12 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.3.0)
+## Recent Changes (v0.4.0)
 
-- Execute skill: 3-disposition triage (`halt > adapt > retry`), unified `reconcile()`, single `audit.md`
-- Context files: `decisions.md` + `amendments.md` merged → `audit.md`
-- Scope enforcement uses per-TODO `Must NOT do` rules (no "allowed files" concept)
-- Verification TODOs (read-only) auto-route FAIL → ADAPT
-- New skills: `/worktree`, `/init`
+- Specify skill: mode support (quick/standard × interactive/autopilot)
+- Execute skill: quick mode (`--quick` flag) for lightweight execution without independent verification
+- Init skill: reorganized hy CLI install to Step 1
+- Agent prompts: standardized placeholder variables
 
 ## Testing Strategy
 
