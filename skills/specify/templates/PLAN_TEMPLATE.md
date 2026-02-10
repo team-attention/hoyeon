@@ -58,9 +58,26 @@ Each TODO is executed by an isolated Worker agent (not a human). Agent call over
 # {Plan Title}
 
 > Brief description of what this plan accomplishes
+> Mode: {depth}/{interaction} (omit if standard/interactive)
 ```
 
-### 2. Verification Summary
+### 2. Assumptions (quick/autopilot modes)
+
+> Include this section when the plan was generated with quick or autopilot mode. Omit for standard/interactive.
+
+```markdown
+## Assumptions
+
+> Decisions made autonomously without explicit user confirmation.
+
+| Decision Point | Assumed Choice | Rationale | Source |
+|---------------|---------------|-----------|--------|
+| [e.g. Auth method] | [e.g. JWT] | [e.g. Already installed] | [autopilot-rule/codebase-pattern] |
+
+> **Note**: These assumptions were NOT confirmed by the user. If any assumption is incorrect, re-run with `--interactive` to get explicit confirmation.
+```
+
+### 3. Verification Summary
 
 ```markdown
 ## Verification Summary
@@ -68,45 +85,45 @@ Each TODO is executed by an isolated Worker agent (not a human). Agent call over
 ### Agent-Verifiable (A-items)
 | ID | Criterion | Method | Related TODO |
 |----|-----------|--------|-------------|
-| A-1 | [검증 내용] | command: `npm test` | TODO 2 |
-| A-2 | [검증 내용] | e2e test | TODO Final |
+| A-1 | [criterion] | command: `npm test` | TODO 2 |
+| A-2 | [criterion] | e2e test | TODO Final |
 
 ### Human-Required (H-items)
 | ID | Criterion | Reason | Review Material |
 |----|-----------|--------|----------------|
-| H-1 | [검증 내용] | 주관적 판단 | [링크/경로] |
+| H-1 | [criterion] | Subjective judgment | [link/path] |
 
 ### Verification Gaps
-- [환경 제약 및 대안]
+- [environment constraints and alternatives]
 ```
 
-### 3. External Dependencies Strategy
+### 4. External Dependencies Strategy
 
 ```markdown
 ## External Dependencies Strategy
 
-### Pre-work (사용자가 작업 전 준비)
+### Pre-work (user prepares before AI work)
 | Dependency | Action | Command/Step | Blocking? |
 |------------|--------|-------------|-----------|
-| PostgreSQL | docker-compose로 로컬 DB 실행 | `docker-compose up -d db` | Yes |
-| Stripe API | 테스트 키 환경변수 설정 | `export STRIPE_TEST_KEY=sk_test_...` | Yes |
+| PostgreSQL | Run local DB via docker-compose | `docker-compose up -d db` | Yes |
+| Stripe API | Set test key env var | `export STRIPE_TEST_KEY=sk_test_...` | Yes |
 
-### During (AI 작업 중 전략)
+### During (AI work strategy)
 | Dependency | Dev Strategy | Rationale |
 |------------|-------------|-----------|
-| PostgreSQL | `pg-mem` 인메모리 mock 사용 | 실제 DB 없이 테스트 가능 |
-| Stripe API | stub response 파일 사용 | `tests/fixtures/stripe/` 기존 패턴 |
-| S3 | localstack 컨테이너 사용 | docker-compose에 이미 포함 |
+| PostgreSQL | Use `pg-mem` in-memory mock | Testable without real DB |
+| Stripe API | Use stub response files | Existing pattern in `tests/fixtures/stripe/` |
+| S3 | Use localstack container | Already included in docker-compose |
 
-### Post-work (작업 완료 후 사용자 액션)
+### Post-work (user actions after completion)
 | Task | Related Dependency | Action | Command/Step |
 |------|--------------------|--------|-------------|
-| DB 마이그레이션 | PostgreSQL | 실제 DB에 스키마 반영 | `npm run migrate` |
-| Staging 검증 | Stripe API | 테스트 결제 플로우 확인 | 수동 - Stripe dashboard 확인 |
-| 환경변수 등록 | All | Production env에 추가 | DevOps에 요청 |
+| DB migration | PostgreSQL | Apply schema to real DB | `npm run migrate` |
+| Staging validation | Stripe API | Verify test payment flow | Manual - check Stripe dashboard |
+| Env var registration | All | Add to production env | Request from DevOps |
 
-> **Note**: Pre-work의 Blocking=Yes 항목은 AI 작업 시작 전에 반드시 완료해야 합니다.
-> External Dependencies가 없으면 이 섹션을 "(none)" 으로 표기합니다.
+> **Note**: Pre-work items with Blocking=Yes must be completed before AI work begins.
+> If no external dependencies exist, mark this section as "(none)".
 ```
 
 ### 5. Context
@@ -126,7 +143,7 @@ Each TODO is executed by an isolated Worker agent (not a human). Agent call over
 - [Finding 1]: [Implication]
 ```
 
-### 5. Work Objectives
+### 6. Work Objectives
 
 ```markdown
 ## Work Objectives
@@ -151,7 +168,7 @@ Each TODO is executed by an isolated Worker agent (not a human). Agent call over
 
 > **For Orchestrator only** - Workers do not see this section.
 
-### 6. Task Flow
+### 7. Task Flow
 
 ```markdown
 ## Task Flow
@@ -161,7 +178,7 @@ TODO-1 → TODO-2 → TODO-Final
 ```
 ```
 
-### 7. Dependency Graph
+### 8. Dependency Graph
 
 ```markdown
 ## Dependency Graph
@@ -173,7 +190,7 @@ TODO-1 → TODO-2 → TODO-Final
 | Final | all outputs | - | verification |
 ```
 
-### 8. Parallelization
+### 9. Parallelization
 
 ```markdown
 ## Parallelization
@@ -183,7 +200,7 @@ TODO-1 → TODO-2 → TODO-Final
 | - | - | (define if parallel tasks exist) |
 ```
 
-### 9. Commit Strategy
+### 10. Commit Strategy
 
 > **Orchestrator commits on behalf of Workers** - Workers do NOT touch git.
 
@@ -198,7 +215,7 @@ TODO-1 → TODO-2 → TODO-Final
 > **Note**: No commit after Final (Verification is read-only). Final cleanup commit only if Orchestrator detects uncommitted changes before verification.
 ```
 
-### 10. Error Handling
+### 11. Error Handling
 
 ```markdown
 ## Error Handling
@@ -244,7 +261,7 @@ TODO-1 → TODO-2 → TODO-Final
 - Dynamic TODO added to PLAN.md with (ADDED) marker + logged to amendments.md (audit trail)
 ```
 
-### 11. Runtime Contract
+### 12. Runtime Contract
 
 ```markdown
 ## Runtime Contract
@@ -265,7 +282,7 @@ TODO-1 → TODO-2 → TODO-Final
 
 > **For Workers** - Each Worker receives only its assigned TODO.
 
-### 12. TODOs
+### 13. TODOs
 
 ```markdown
 ## TODOs

@@ -3,7 +3,7 @@ name: execute
 description: |
   This skill should be used when the user says "/execute", "execute".
   Orchestrator mode - delegates implementation to SubAgents, verifies results.
-  Refactored version of /execute with clearer 3-step structure.
+  Supports mode selection: standard (with full verification) and quick (lightweight, no independent verify).
 allowed-tools:
   - Read
   - Grep
@@ -24,17 +24,52 @@ Delegate to SubAgents, verify results, manage parallelization.
 
 ---
 
+## Mode Selection
+
+### Flag Parsing
+
+| Flag | Effect | Default |
+|------|--------|---------|
+| `--quick` | Sets `{depth}` = quick | `{depth}` = standard |
+
+Examples:
+- `/execute` → standard mode
+- `/execute --quick` → quick mode
+- `/execute --quick my-feature` → quick mode with spec name
+- `/execute --quick #42` → quick mode with PR
+
+### Mode Variable
+
+Throughout this document, `{depth}` refers to the resolved mode value:
+- `{depth}` = `quick` | `standard`
+
+### Quick Mode Summary
+
+Quick mode removes the independent verification agent and reconciliation system. The Worker's self-reported results are trusted. On failure, execution halts immediately (no retry, no adapt).
+
+| Aspect | Standard | Quick |
+|--------|----------|-------|
+| Sub-steps per TODO | 4 (Worker, Verify, Wrap-up, Commit) | 3 (Worker, Wrap-up, Commit) |
+| Verification | Independent verify agent (4-part) | Worker self-report trusted |
+| Reconciliation | halt/adapt/retry (3 retries, dynamic TODOs) | Pass or halt (no retry) |
+| Context files | 4 files (all maintained) | 4 files (all maintained) |
+| Report | Full template | Abbreviated summary |
+
+---
+
 ## Golden Path (End-to-End Flow)
 
+### Standard Mode (default)
+
 ```
-1. Parse input → Determine mode (PR / Local)
+1. Parse input → Determine mode (PR / Local) + depth (standard / quick)
 2. Read PLAN.md → Create ALL Tasks (Init + TODO sub-steps + Finalize) → Set dependencies
 3. Init/resume context (.dev/specs/{name}/context/)
 4. LOOP while TaskList() has pending tasks:
    Pick runnable (pending + not blocked) → dispatch by type:
      :State Begin      → [PR only] Skill("state", "begin") → stop on failure
      :Worker  → Task(worker) with substituted variables
-     :Verify  → dispatch verify worker, triage (halt > adapt > retry > skip), reconcile if FAILED
+     :Verify  → dispatch verify worker, triage (halt > adapt > retry), reconcile if FAILED
      :Wrap-up → save context (Worker + Verify) + mark Plan checkbox [x]
      :Commit  → Task(git-master) per Commit Strategy
      :Residual Commit → git status → git-master if dirty
@@ -43,16 +78,35 @@ Delegate to SubAgents, verify results, manage parallelization.
 5. (Init, TODO execution, and Finalize are all part of the loop)
 ```
 
+### ⛔ Quick Mode (`--quick`)
+
+```
+1. Parse input → Determine mode (PR / Local) + depth = quick
+2. Read PLAN.md → Create ALL Tasks (Init + TODO sub-steps [NO Verify] + Finalize) → Set dependencies
+3. Init/resume context (.dev/specs/{name}/context/)
+4. LOOP while TaskList() has pending tasks:
+   Pick runnable (pending + not blocked) → dispatch by type:
+     :State Begin      → [PR only] Skill("state", "begin") → stop on failure
+     :Worker  → Task(worker) with substituted variables
+     ⛔ :Verify  → SKIPPED (no independent verification)
+     :Wrap-up → save context (Worker only) + mark Plan checkbox [x]
+     :Commit  → Task(git-master) per Commit Strategy
+     :Residual Commit → git status → git-master if dirty
+     :State Complete   → [PR only] Skill("state", "complete")
+     :Report           → abbreviated summary
+5. On Worker failure → HALT (no retry, no adapt)
+```
+
 ---
 
 ## Core Rules
 
 1. **DELEGATE** — All code writing goes to `Task(subagent_type="worker")`. You may only Read, Grep, Glob, Bash (for verification), and manage Tasks/Plan.
-2. **VERIFY** — SubAgents lie. After every `:Worker`, the `:Verify` step dispatches a verify worker to independently re-check acceptance criteria. Reconcile if FAILED.
+2. **VERIFY** — SubAgents lie. After every `:Worker`, the `:Verify` step dispatches a verify worker to independently re-check acceptance criteria. Reconcile if FAILED. ⛔ **Quick**: Skip independent verification. Worker self-report is trusted. On failure → HALT.
 3. **PARALLELIZE** — Run all tasks whose `blockedBy` is empty simultaneously. Sub-step chains auto-parallelize across independent TODOs.
 4. **ONE TODO PER WORKER** — Each `:Worker` Task handles exactly one TODO.
-5. **PLAN CHECKBOX = TRUTH** — `### [x] TODO N:` is the only durable state. Sub-step Tasks (`{N}.1` ~ `{N}.4`) are recreated each session.
-6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify`, `:Wrap-up`, `:Commit`, `:Residual Commit`, `:State Complete`, `:Report`.
+5. **PLAN CHECKBOX = TRUTH** — `### [x] TODO N:` is the only durable state. Sub-step Tasks are recreated each session. Standard: `{N}.1` ~ `{N}.4`. Quick: `{N}.1` ~ `{N}.3`.
+6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify` (standard only), `:Wrap-up`, `:Commit`, `:Residual Commit`, `:State Complete`, `:Report`.
 
 ---
 
@@ -60,12 +114,17 @@ Delegate to SubAgents, verify results, manage parallelization.
 
 ### 1.1 Parse Input & Determine Mode
 
-| Input | Mode | Behavior |
-|-------|------|----------|
-| `/execute` | Auto-detect | Branch → Draft PR check → PR mode if exists, else Local |
-| `/execute <name>` | Local | `.dev/specs/<name>/PLAN.md` |
-| `/execute <PR#>` | PR | Parse spec path from PR body |
-| `/execute <PR URL>` | PR | Extract PR# → PR mode |
+**Flag parsing**: Strip `--quick` flag from input before mode detection.
+
+| Input | Mode | Depth | Behavior |
+|-------|------|-------|----------|
+| `/execute` | Auto-detect | standard | Branch → Draft PR check → PR mode if exists, else Local |
+| `/execute --quick` | Auto-detect | quick | Same as above, but quick depth |
+| `/execute <name>` | Local | standard | `.dev/specs/<name>/PLAN.md` |
+| `/execute --quick <name>` | Local | quick | Same as above, but quick depth |
+| `/execute <PR#>` | PR | standard | Parse spec path from PR body |
+| `/execute --quick <PR#>` | PR | quick | Same as above, but quick depth |
+| `/execute <PR URL>` | PR | standard | Extract PR# → PR mode |
 
 Auto-detect logic:
 ```bash
@@ -85,6 +144,8 @@ Read plan file:
 ⚠️ **BATCH CREATE all tasks in minimal turns to avoid overhead.**
 
 **Strategy**: Call ALL TaskCreate calls for a single turn in parallel (multiple tool calls in one message). Then set ALL dependencies in one follow-up turn. This reduces task setup from ~3 minutes to ~15 seconds.
+
+### Standard Mode Task Creation
 
 ```
 # ═══════════════════════════════════════════════════
@@ -146,6 +207,69 @@ IF pr_mode:
 ELSE:
   TaskUpdate(taskId=rc.task_id, addBlocks=[rp.task_id])
 ```
+
+### ⛔ Quick Mode Task Creation
+
+> **Mode Gate**: In quick mode, `:Verify` sub-step is NOT created. Sub-steps per TODO: Worker → Wrap-up → Commit (3 steps instead of 4).
+
+<details>
+<summary>Quick Mode Variant (no Verify step)</summary>
+
+```
+# ═══════════════════════════════════════════════════
+# TURN 1: Create ALL tasks in PARALLEL (single message)
+# ═══════════════════════════════════════════════════
+
+# Init (PR only)
+IF pr_mode:
+  sb = TaskCreate(subject="Init:State Begin", ...)
+
+# Per-TODO sub-steps — NO :Verify
+FOR EACH "### [ ] TODO N: {title}" in plan:
+  w  = TaskCreate(subject="{N}.1:Worker — {title}",
+                  description="{full TODO section content}",
+                  activeForm="{N}.1: Running Worker")
+  wu = TaskCreate(subject="{N}.2:Wrap-up",
+                  description="Wrap-up for TODO {N}. Save context + mark checkbox.",
+                  activeForm="{N}.2: Wrapping up")
+  IF commit_strategy_has_row(N):
+    cm = TaskCreate(subject="{N}.3:Commit",
+                    description="Commit TODO {N} changes. ...",
+                    activeForm="{N}.3: Committing")
+
+# Finalize tasks
+rc = TaskCreate(subject="Finalize:Residual Commit", ...)
+IF pr_mode:
+  sc = TaskCreate(subject="Finalize:State Complete", ...)
+rp = TaskCreate(subject="Finalize:Report", activeForm="Generating report",
+     description="Output abbreviated summary report.")
+
+# ═══════════════════════════════════════════════════
+# TURN 2: Set ALL dependencies in PARALLEL (single message)
+# ═══════════════════════════════════════════════════
+
+FOR EACH unchecked TODO N:
+  # Direct chain: Worker → Wrap-up → Commit (no Verify)
+  TaskUpdate(taskId=w.task_id, addBlocks=[wu.task_id])
+  IF task_ids[N].commit:
+    TaskUpdate(taskId=wu.task_id, addBlocks=[cm.task_id])
+
+IF pr_mode:
+  FOR EACH unchecked TODO N:
+    TaskUpdate(taskId=sb.task_id, addBlocks=[task_ids[N].worker])
+
+all_last_steps = [task_ids[N].commit ?? task_ids[N].wrapup for each unchecked TODO N]
+FOR EACH last_step in all_last_steps:
+  TaskUpdate(taskId=last_step, addBlocks=[rc.task_id])
+
+IF pr_mode:
+  TaskUpdate(taskId=rc.task_id, addBlocks=[sc.task_id])
+  TaskUpdate(taskId=sc.task_id, addBlocks=[rp.task_id])
+ELSE:
+  TaskUpdate(taskId=rc.task_id, addBlocks=[rp.task_id])
+```
+
+</details>
 
 **⚠️ Key rule**: NEVER create tasks one-by-one across multiple turns. All TaskCreate in Turn 1, all TaskUpdate in Turn 2. Two turns total.
 
@@ -254,16 +378,16 @@ WHILE TaskList() has pending tasks:
 
 **Dispatch by task subject suffix:**
 
-| Suffix | Handler | Action |
-|--------|---------|--------|
-| `:State Begin` | 2α | `Skill("state", args="begin <PR#>")` → stop on failure |
-| `:Worker` | 2a | Variable substitution → Task(worker) |
-| `:Verify` | 2b | Dispatch verify worker → triage & reconcile if FAILED |
-| `:Wrap-up` | 2c | Save context (Worker + Verify) + mark Plan `[x]` |
-| `:Commit` | 2d | Task(git-master) per Commit Strategy |
-| `:Residual Commit` | 2f | `git status --porcelain` → git-master if dirty |
-| `:State Complete` | 2g | `Skill("state", args="complete <PR#>")` |
-| `:Report` | 2h | Final Report output |
+| Suffix | Handler | Standard | Quick |
+|--------|---------|----------|-------|
+| `:State Begin` | 2α | `Skill("state", args="begin <PR#>")` | Same |
+| `:Worker` | 2a | Variable substitution → Task(worker) | Same |
+| `:Verify` | 2b | Dispatch verify worker → triage & reconcile | ⛔ **SKIPPED** (not created) |
+| `:Wrap-up` | 2c | Save context (Worker + Verify) + mark Plan `[x]` | Save context (Worker only) + mark Plan `[x]` |
+| `:Commit` | 2d | Task(git-master) per Commit Strategy | Same |
+| `:Residual Commit` | 2f | `git status --porcelain` → git-master if dirty | Same |
+| `:State Complete` | 2g | `Skill("state", args="complete <PR#>")` | Same |
+| `:Report` | 2h | Full report from template | Abbreviated summary |
 
 After each sub-step completes: `TaskUpdate(taskId, status="completed")` → removed from TaskList → dependents unblocked. **Immediately check TaskList() for newly unblocked tasks and dispatch without delay.**
 
@@ -366,11 +490,14 @@ SubAgent does not remember previous calls.
 | References | `## CONTEXT > References` |
 | Inputs (after substitution) | `## CONTEXT > Dependencies` |
 
-**3. On completion:** `TaskUpdate(taskId, status="completed")` → `:Verify` becomes runnable.
+**3. On completion:** `TaskUpdate(taskId, status="completed")` → next sub-step becomes runnable (Standard: `:Verify`, Quick: `:Wrap-up`).
 
 ---
 
 ### 2b. :Verify — Verify Worker & Reconciliation
+
+> **Mode Gate**:
+> - ⛔ **Quick**: This entire section is SKIPPED. `:Verify` tasks are not created in quick mode. Worker self-report is trusted. On Worker failure → HALT immediately (log to `issues.md` and `audit.md`, stop execution). No retry, no adapt, no independent verification.
 
 `:Verify` dispatches a **verify worker agent** that independently checks acceptance criteria **AND** must-not-do violations. No hook dependency — the verify worker is the source of truth.
 
@@ -686,19 +813,22 @@ All reconciliation events go to one file. Replaces `decisions.md` + `amendments.
 
 ### 2c. :Wrap-up — Save Context + Mark Checkboxes
 
-Combines context saving and checkbox marking into a single step. Only runs after `:Verify` completes (VERIFIED, or reconciliation resolved).
+Combines context saving and checkbox marking into a single step.
+
+- **Standard**: Only runs after `:Verify` completes (VERIFIED, or reconciliation resolved).
+- **Quick**: Runs directly after `:Worker` completes. No verify result to process.
 
 **Part A: Save to Context Files**
 
-| Source | Field | File | Format |
-|--------|-------|------|--------|
-| Worker | `outputs` | `outputs.json` | `existing["todo-N"] = outputs` → Write |
-| Worker | `learnings` | `learnings.md` | `## {N}\n- item` append |
-| Worker | `issues` | `issues.md` | `## {N}\n- [ ] item` append |
-| Verify | `side_effects.missing_context` | `learnings.md` / `issues.md` | Merge into appropriate file |
-| Verify | `side_effects.undocumented_changes` | `issues.md` | `- [ ] Undocumented: {change}` append |
-| Orchestrator | all reconciliation events | `audit.md` | structured entry (see section 7 format) |
-| `acceptance_criteria` | (not saved) | Used only for verification, not saved to context |
+| Source | Field | File | Format | Mode |
+|--------|-------|------|--------|------|
+| Worker | `outputs` | `outputs.json` | `existing["todo-N"] = outputs` → Write | Both |
+| Worker | `learnings` | `learnings.md` | `## {N}\n- item` append | Both |
+| Worker | `issues` | `issues.md` | `## {N}\n- [ ] item` append | Both |
+| Verify | `side_effects.missing_context` | `learnings.md` / `issues.md` | Merge into appropriate file | Standard only |
+| Verify | `side_effects.undocumented_changes` | `issues.md` | `- [ ] Undocumented: {change}` append | Standard only |
+| Orchestrator | all reconciliation events | `audit.md` | structured entry (see section 7 format) | Standard only |
+| `acceptance_criteria` | (not saved) | Used only for verification, not saved to context | Standard only |
 
 Skip empty arrays.
 
@@ -726,7 +856,9 @@ Write("outputs.json", current)
 Edit(plan_path, "### [ ] TODO N: ...", "### [x] TODO N: ...")
 ```
 
-**2. Update Acceptance Criteria checkboxes** based on `:Verify` results:
+**2. Update Acceptance Criteria checkboxes:**
+
+**Standard mode**: Based on `:Verify` results.
 
 The `:Verify` step produces `acceptance_criteria` with per-item `status` (PASS/FAIL). Use this to check individual items:
 
@@ -738,11 +870,21 @@ FOR EACH criterion in verify_result.acceptance_criteria:
          "- [x] {criterion.description}")
 ```
 
-**⚠️ Caution:**
+**⚠️ Caution (Standard mode):**
 - Only check items whose `status` is `PASS` from the `:Verify` result
 - Do not check based on SubAgent report alone — use verify worker result
 - Items with `status: FAIL` remain `- [ ]`
 - Do NOT check Steps items (`- [ ]` under `**Steps**:`) — only Acceptance Criteria
+
+**⛔ Quick mode**: No `:Verify` result available. Check all Acceptance Criteria items as `[x]` based on Worker's self-reported completion. The Worker is trusted in quick mode.
+
+```
+# Quick mode: trust Worker self-report
+FOR EACH acceptance criterion in TODO N:
+  Edit(plan_path,
+       "- [ ] {criterion.description}",
+       "- [x] {criterion.description}")
+```
 
 On completion: `TaskUpdate(taskId, status="completed")` → `:Commit` becomes runnable (if exists), or next TODO's `:Worker` is unblocked.
 
@@ -811,6 +953,11 @@ On completion: `TaskUpdate(taskId, status="completed")` → `:Report` becomes ru
 
 ### 2h. :Report — Final Orchestration Report
 
+> **Mode Gate**:
+> - ⛔ **Quick**: Output an abbreviated summary instead of the full template. No need to Read the template file.
+
+**Standard mode:**
+
 ```
 TaskUpdate(report.id, status="in_progress")
 template = Read("${baseDir}/references/report-template.md")   ← actual file read
@@ -820,6 +967,32 @@ TaskUpdate(report.id, status="completed")
 ```
 
 **Why Read instead of TaskGet:** The template lives in `references/report-template.md`. Reading it immediately before output keeps the template in close context and prevents the agent from generating a custom format.
+
+**⛔ Quick mode:**
+
+```
+TaskUpdate(report.id, status="in_progress")
+# Output abbreviated summary — no template file needed
+```
+
+Quick mode report format:
+```
+═══════════════════════════════════════════════════════════
+                    ORCHESTRATION COMPLETE
+═══════════════════════════════════════════════════════════
+
+PLAN: {plan_path}
+MODE: {Local | PR #N} (quick)
+
+RESULT: {completed}/{total} TODOs completed
+COMMITS: {count} commits created
+FILES: {count} files modified
+
+{If any issues exist:}
+ISSUES:
+  {from context/issues.md, or "None"}
+═══════════════════════════════════════════════════════════
+```
 
 On completion: `TaskUpdate(taskId, status="completed")` → all tasks done, execution ends.
 
@@ -923,6 +1096,8 @@ Current State: Verify Worker result
 **Setup**: PR mode. TODO 1 (independent), TODO 2 (depends on TODO 1), TODO 3 (independent).
 TODO 1 and TODO 3 have commits; TODO 2 does not.
 
+#### Standard Mode
+
 ```
 TaskList() after initialization:
 
@@ -959,6 +1134,41 @@ Round 9:  #14 Finalize:State Complete             ← blocked by #13
 Round 10: #15 Finalize:Report                     ← blocked by #14
 ```
 
+#### ⛔ Quick Mode (same setup)
+
+```
+TaskList() after initialization (no :Verify tasks):
+
+#1  [pending] Init:State Begin
+#2  [pending] 1.1:Worker — Config setup  [blocked by #1]
+#3  [pending] 1.2:Wrap-up         [blocked by #2]
+#4  [pending] 1.3:Commit          [blocked by #3]
+#5  [pending] 2.1:Worker — API    [blocked by #4]   ← cross-TODO dep
+#6  [pending] 2.2:Wrap-up         [blocked by #5]
+#7  [pending] 3.1:Worker — Utils  [blocked by #1]
+#8  [pending] 3.2:Wrap-up         [blocked by #7]
+#9  [pending] 3.3:Commit          [blocked by #8]
+#10 [pending] Finalize:Residual Commit [blocked by #4, #6, #9]
+#11 [pending] Finalize:State Complete  [blocked by #10]
+#12 [pending] Finalize:Report          [blocked by #11]
+```
+
+**Execution Rounds:**
+
+```
+Round 0:  #1 Init:State Begin
+Round 1:  #2 1.1:Worker, #7 3.1:Worker     ← PARALLEL
+Round 2:  #3 1.2:Wrap-up, #8 3.2:Wrap-up   ← PARALLEL
+Round 3:  #4 1.3:Commit, #9 3.3:Commit     ← PARALLEL
+Round 4:  #5 2.1:Worker                     ← unblocked after #4
+Round 5:  #6 2.2:Wrap-up
+Round 6:  #10 Finalize:Residual Commit
+Round 7:  #11 Finalize:State Complete
+Round 8:  #12 Finalize:Report
+```
+
+> Quick mode saves 2 rounds (no Verify rounds) — 8 rounds vs 10 rounds for the same plan.
+
 ### F. Session Recovery
 
 Plan checkbox is the only durable state, so recovery = fresh start:
@@ -971,7 +1181,9 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 ```
 
 1. Parse checkboxes → only unchecked TODOs
-2. Create sub-step Tasks for each unchecked TODO (Worker, Verify, Wrap-up, Commit)
+2. Create sub-step Tasks for each unchecked TODO:
+   - **Standard**: Worker, Verify, Wrap-up, Commit
+   - **⛔ Quick**: Worker, Wrap-up, Commit (no Verify)
 3. Set intra-TODO chains + cross-TODO dependencies (only between unchecked)
 4. Load `outputs.json` (variable substitution works if prior outputs saved)
 5. Resume execution loop — dispatch picks up from where it left off
@@ -986,18 +1198,18 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 
 **Plan checkbox = only source of truth.** Task system = sub-step parallelization helper (recreated each session).
 
-**Task types**: Init (1, PR only) + per-TODO sub-steps (up to 4 each) + Finalize (2-3):
+**Task types**: Init (1, PR only) + per-TODO sub-steps + Finalize (2-3):
 
-| Sub-Step | Subject Pattern | Purpose |
-|----------|----------------|---------|
-| `:State Begin` | `Init:State Begin` | [PR only] Begin PR state |
-| `:Worker` | `{N}.1:Worker — {title}` | Delegate implementation to worker agent |
-| `:Verify` | `{N}.2:Verify` | Dispatch verify worker, triage & reconcile if FAILED |
-| `:Wrap-up` | `{N}.3:Wrap-up` | Save context (Worker + Verify) + mark Plan `[x]` |
-| `:Commit` | `{N}.4:Commit` | Commit via git-master (only if Commit Strategy row exists) |
-| `:Residual Commit` | `Finalize:Residual Commit` | Check & commit remaining changes |
-| `:State Complete` | `Finalize:State Complete` | [PR only] Complete PR state |
-| `:Report` | `Finalize:Report` | Output final orchestration report |
+| Sub-Step | Standard Subject | Quick Subject | Purpose |
+|----------|-----------------|---------------|---------|
+| `:State Begin` | `Init:State Begin` | Same | [PR only] Begin PR state |
+| `:Worker` | `{N}.1:Worker — {title}` | `{N}.1:Worker — {title}` | Delegate implementation to worker agent |
+| `:Verify` | `{N}.2:Verify` | ⛔ **Not created** | Dispatch verify worker, triage & reconcile if FAILED |
+| `:Wrap-up` | `{N}.3:Wrap-up` | `{N}.2:Wrap-up` | Save context + mark Plan `[x]` |
+| `:Commit` | `{N}.4:Commit` | `{N}.3:Commit` | Commit via git-master (only if Commit Strategy row exists) |
+| `:Residual Commit` | `Finalize:Residual Commit` | Same | Check & commit remaining changes |
+| `:State Complete` | `Finalize:State Complete` | Same | [PR only] Complete PR state |
+| `:Report` | `Finalize:Report` | Same (abbreviated output) | Output final orchestration report |
 
 **Task tools:**
 
@@ -1014,11 +1226,13 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 # Init (PR only):
 Init:State Begin → all {N}.1:Worker tasks
 
-# Intra-TODO chain (always):
-{N}.1:Worker → {N}.2:Verify → {N}.3:Wrap-up → {N}.4:Commit
+# Intra-TODO chain:
+Standard: {N}.1:Worker → {N}.2:Verify → {N}.3:Wrap-up → {N}.4:Commit
+Quick:    {N}.1:Worker → {N}.2:Wrap-up → {N}.3:Commit
 
 # Cross-TODO (from Dependency Graph):
-1.4:Commit (or 1.3:Wrap-up) → 2.1:Worker
+Standard: 1.4:Commit (or 1.3:Wrap-up) → 2.1:Worker
+Quick:    1.3:Commit (or 1.2:Wrap-up) → 2.1:Worker
 
 # Finalize chain:
 all TODO last steps → Residual Commit → State Complete (PR) → Report
@@ -1040,22 +1254,22 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 
 ### I. Checklist Before Stopping
 
+#### Common (all modes)
+
 **1. Init Tasks (PR Mode Only):**
 - [ ] `Init:State Begin` task created and completed?
 - [ ] Stopped immediately on failure?
 
 **2. Task Initialization:**
 - [ ] Identified unchecked TODOs from Plan?
-- [ ] Created sub-step Tasks (Worker, Verify, Wrap-up, Commit) for each unchecked TODO?
-- [ ] Intra-TODO chains set (Worker→Verify→Wrap-up→Commit)?
+- [ ] Created sub-step Tasks for each unchecked TODO?
 - [ ] Cross-TODO dependencies set from Dependency Graph?
 
 **3. Execution Phase:**
 - [ ] No pending Tasks in TaskList?
 - [ ] TaskUpdate(status="completed") on each sub-step?
 - [ ] All `:Worker` tasks delegated to worker agent?
-- [ ] All `:Verify` tasks dispatched verify worker + triaged + reconciled if needed?
-- [ ] All `:Wrap-up` tasks saved context + marked Plan `[x]` + logged triage decisions?
+- [ ] All `:Wrap-up` tasks saved context + marked Plan `[x]`?
 - [ ] All `:Commit` tasks delegated to git-master?
 - [ ] Pushed after each commit (PR mode)?
 
@@ -1068,5 +1282,20 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 **Exception Handling:**
 - [ ] `Skill("state", args="pause <PR#> <reason>")` on block? (PR)
 - [ ] `issues.md` updated on block? (Local)
+
+#### Standard mode (additional)
+- [ ] Sub-steps created: Worker, Verify, Wrap-up, Commit per TODO?
+- [ ] Intra-TODO chains set (Worker→Verify→Wrap-up→Commit)?
+- [ ] All `:Verify` tasks dispatched verify worker + triaged + reconciled if needed?
+- [ ] Triage decisions logged in `audit.md`?
+- [ ] Verify `side_effects.missing_context` merged into context files?
+
+#### ⛔ Quick mode (overrides)
+- [ ] Sub-steps created: Worker, Wrap-up, Commit per TODO (NO Verify)?
+- [ ] Intra-TODO chains set (Worker→Wrap-up→Commit)?
+- [ ] No `:Verify` tasks exist?
+- [ ] No reconciliation attempted (pass or halt only)?
+- [ ] Worker self-report trusted for acceptance criteria?
+- [ ] Abbreviated report output (not full template)?
 
 **Continue working if any item incomplete.**
