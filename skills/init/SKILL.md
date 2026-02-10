@@ -13,19 +13,63 @@ allowed-tools:
   - AskUserQuestion
 validate_prompt: |
   Must contain:
-  1. Evidence of project scanning (Glob calls for file patterns)
-  2. AskUserQuestion with multiSelect for file selection
-  3. AskUserQuestion for post_command selection
-  4. .dev/config.yml creation with valid YAML (worktree.copy_files + worktree.base_dir + worktree.post_command)
-  5. .gitignore update for: .worktrees/, .dev/local.json, .dev/state.local.json
-  6. Summary of what was created
+  1. hy CLI installation check (command -v hy) and AskUserQuestion for install
+  2. Evidence of project scanning (Glob calls for file patterns)
+  3. AskUserQuestion with multiSelect for file selection
+  4. AskUserQuestion for post_command selection
+  5. .dev/config.yml creation with valid YAML (worktree.copy_files + worktree.base_dir + worktree.post_command)
+  6. .gitignore update for: .worktrees/, .dev/local.json, .dev/state.local.json
+  7. Summary of what was created
 ---
 
 # /init — Initialize Worktree Configuration
 
 Create `.dev/config.yml` with project-specific worktree settings by scanning the project and letting the user choose which files to copy to new worktrees.
 
-## Step 1: Check Existing Config
+## Step 1: Install hy CLI
+
+`hy` CLI가 설치되어 있지 않으면 설치 제안.
+
+```bash
+# Check if hy is available
+if ! command -v hy &> /dev/null; then
+  # hy not installed
+fi
+```
+
+**If hy not installed:**
+
+```
+AskUserQuestion(
+  question: "hy CLI를 설치하시겠습니까? 터미널에서 직접 worktree 관리가 가능합니다.",
+  header: "hy CLI",
+  options: [
+    { label: "Install", description: "~/.local/bin/hy에 설치" },
+    { label: "Skip", description: "나중에 수동으로 설치" }
+  ]
+)
+```
+
+**If Install:**
+
+```bash
+# Get plugin root (where this skill is located)
+PLUGIN_ROOT="${baseDir}/../.."
+
+# Run install script
+bash "$PLUGIN_ROOT/scripts/install-hy.sh"
+```
+
+**If Skip:** 설치 방법만 안내하고 진행
+
+```
+hy CLI를 나중에 설치하려면:
+  ~/.claude/plugins/.../hoyeon/scripts/install-hy.sh
+```
+
+**If hy already installed:** 이 단계 skip, Step 2로 진행
+
+## Step 2: Check Existing Config
 
 Check if `.dev/config.yml` already exists.
 
@@ -47,9 +91,9 @@ AskUserQuestion(
 - **Merge** → 기존 copy_files를 읽어서 중복 제거 후 새 파일만 추가 후보로 표시
 - **Overwrite** → 기존 무시하고 새로 생성
 
-**If it doesn't exist:** → Step 2로 진행
+**If it doesn't exist:** → Step 3로 진행
 
-## Step 2: Scan Project
+## Step 3: Scan Project
 
 Glob으로 아래 패턴을 탐지. **실제 존재하는 파일만** 후보 목록에 포함.
 
@@ -109,11 +153,11 @@ for each pattern in scan_patterns:
     found_files.append(results)
 ```
 
-**If no files found:** 출력 "스캔 결과 복사할 파일이 없습니다. 기본 config만 생성합니다." → Step 4로 (빈 copy_files)
+**If no files found:** 출력 "스캔 결과 복사할 파일이 없습니다. 기본 config만 생성합니다." → Step 4.5로 (빈 copy_files)
 
 **If merge mode:** 기존 copy_files에 이미 있는 파일은 후보에서 제외
 
-## Step 3: Interactive File Selection
+## Step 4: Interactive File Selection
 
 발견된 파일을 AskUserQuestion multiSelect로 표시.
 
@@ -132,7 +176,7 @@ AskUserQuestion(
 
 **If user selects nothing:** 빈 copy_files로 진행 (기본값)
 
-## Step 3.5: Configure post_command
+## Step 4.5: Configure post_command
 
 worktree 이동 후 실행할 명령어를 설정.
 
@@ -175,7 +219,7 @@ AskUserQuestion(
 
 **If Custom selected:** 사용자 입력값 사용
 
-## Step 4: Validate
+## Step 5: Validate
 
 생성할 config를 검증:
 
@@ -186,7 +230,7 @@ AskUserQuestion(
 
 검증 실패 시 사용자에게 알리고 재선택 유도.
 
-## Step 5: Write Config
+## Step 6: Write Config
 
 ```bash
 mkdir -p .dev
@@ -205,7 +249,7 @@ worktree:
 
 **Merge mode:** 기존 copy_files + 새로 선택한 파일 (중복 제거) 합쳐서 작성. 기존 base_dir, post_command 유지 (사용자가 변경 원하면 Overwrite 선택).
 
-## Step 6: Update .gitignore
+## Step 7: Update .gitignore
 
 워크트리 관련 ephemeral 파일들을 `.gitignore`에 추가.
 
@@ -232,48 +276,7 @@ done
 - `.gitignore` 파일이 없으면 생성
 - 이미 있는 항목은 skip (idempotent)
 
-## Step 6.5: Install hy CLI
-
-`hy` CLI가 설치되어 있지 않으면 설치 제안.
-
-```bash
-# Check if hy is available
-if ! command -v hy &> /dev/null; then
-  # hy not installed
-fi
-```
-
-**If hy not installed:**
-
-```
-AskUserQuestion(
-  question: "hy CLI를 설치하시겠습니까? 터미널에서 직접 worktree 관리가 가능합니다.",
-  header: "hy CLI",
-  options: [
-    { label: "Install", description: "~/.local/bin/hy에 설치" },
-    { label: "Skip", description: "나중에 수동으로 설치" }
-  ]
-)
-```
-
-**If Install:**
-
-```bash
-# Get plugin root (where this skill is located)
-PLUGIN_ROOT="${baseDir}/../.."
-
-# Run install script
-bash "$PLUGIN_ROOT/scripts/install-hy.sh"
-```
-
-**If Skip:** 설치 방법만 안내하고 진행
-
-```
-hy CLI를 나중에 설치하려면:
-  ~/.claude/plugins/.../hoyeon/scripts/install-hy.sh
-```
-
-## Step 7: Summary
+## Step 8: Summary
 
 생성 결과 출력:
 
