@@ -52,6 +52,7 @@ Quick mode removes the independent verification agent and reconciliation system.
 | Sub-steps per TODO | 4 (Worker, Verify, Wrap-up, Commit) | 3 (Worker, Wrap-up, Commit) |
 | Verification | Independent verify agent (4-part) | Worker self-report trusted |
 | Reconciliation | halt/adapt/retry (3 retries, dynamic TODOs) | Pass or halt (no retry) |
+| Final Code Review | code-reviewer agent (SHIP/NEEDS_FIXES) | Skipped |
 | Context files | 4 files (all maintained) | 4 files (all maintained) |
 | Report | Full template | Abbreviated summary |
 
@@ -73,6 +74,7 @@ Quick mode removes the independent verification agent and reconciliation system.
      :Wrap-up → save context (Worker + Verify) + mark Plan checkbox [x]
      :Commit  → Task(git-master) per Commit Strategy
      :Residual Commit → git status → git-master if dirty
+     :Code Review      → [Standard only] Task(code-reviewer) with full diff → SHIP/NEEDS_FIXES
      :State Complete   → [PR only] Skill("state", "complete")
      :Report           → output final report
 5. (Init, TODO execution, and Finalize are all part of the loop)
@@ -92,6 +94,7 @@ Quick mode removes the independent verification agent and reconciliation system.
      :Wrap-up → save context (Worker only) + mark Plan checkbox [x]
      :Commit  → Task(git-master) per Commit Strategy
      :Residual Commit → git status → git-master if dirty
+     ⛔ :Code Review   → SKIPPED (no final review)
      :State Complete   → [PR only] Skill("state", "complete")
      :Report           → abbreviated summary
 5. On Worker failure → HALT (no retry, no adapt)
@@ -106,7 +109,7 @@ Quick mode removes the independent verification agent and reconciliation system.
 3. **PARALLELIZE** — Run all tasks whose `blockedBy` is empty simultaneously. Sub-step chains auto-parallelize across independent TODOs.
 4. **ONE TODO PER WORKER** — Each `:Worker` Task handles exactly one TODO.
 5. **PLAN CHECKBOX = TRUTH** — `### [x] TODO N:` is the only durable state. Sub-step Tasks are recreated each session. Standard: `{N}.1` ~ `{N}.4`. Quick: `{N}.1` ~ `{N}.3`.
-6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify` (standard only), `:Wrap-up`, `:Commit`, `:Residual Commit`, `:State Complete`, `:Report`.
+6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify` (standard only), `:Wrap-up`, `:Commit`, `:Residual Commit`, `:Code Review` (standard only), `:State Complete`, `:Report`.
 
 ---
 
@@ -176,6 +179,9 @@ FOR EACH "### [ ] TODO N: {title}" in plan:
 
 # Finalize tasks
 rc = TaskCreate(subject="Finalize:Residual Commit", ...)
+cr = TaskCreate(subject="Finalize:Code Review",
+     description="Review complete diff for integration issues, hidden bugs, side effects. Dispatch code-reviewer agent.",
+     activeForm="Reviewing all changes")
 IF pr_mode:
   sc = TaskCreate(subject="Finalize:State Complete", ...)
 rp = TaskCreate(subject="Finalize:Report", activeForm="Generating report",
@@ -201,11 +207,13 @@ all_last_steps = [task_ids[N].commit ?? task_ids[N].wrapup for each unchecked TO
 FOR EACH last_step in all_last_steps:
   TaskUpdate(taskId=last_step, addBlocks=[rc.task_id])
 
+# Finalize chain: Residual Commit → Code Review → State Complete (PR) → Report
+TaskUpdate(taskId=rc.task_id, addBlocks=[cr.task_id])
 IF pr_mode:
-  TaskUpdate(taskId=rc.task_id, addBlocks=[sc.task_id])
+  TaskUpdate(taskId=cr.task_id, addBlocks=[sc.task_id])
   TaskUpdate(taskId=sc.task_id, addBlocks=[rp.task_id])
 ELSE:
-  TaskUpdate(taskId=rc.task_id, addBlocks=[rp.task_id])
+  TaskUpdate(taskId=cr.task_id, addBlocks=[rp.task_id])
 ```
 
 ### ⛔ Quick Mode Task Creation
@@ -237,7 +245,7 @@ FOR EACH "### [ ] TODO N: {title}" in plan:
                     description="Commit TODO {N} changes. ...",
                     activeForm="{N}.3: Committing")
 
-# Finalize tasks
+# Finalize tasks — ⛔ NO Code Review in Quick mode
 rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 IF pr_mode:
   sc = TaskCreate(subject="Finalize:State Complete", ...)
@@ -262,6 +270,7 @@ all_last_steps = [task_ids[N].commit ?? task_ids[N].wrapup for each unchecked TO
 FOR EACH last_step in all_last_steps:
   TaskUpdate(taskId=last_step, addBlocks=[rc.task_id])
 
+# Finalize chain (Quick): Residual Commit → State Complete (PR) → Report (no Code Review)
 IF pr_mode:
   TaskUpdate(taskId=rc.task_id, addBlocks=[sc.task_id])
   TaskUpdate(taskId=sc.task_id, addBlocks=[rp.task_id])
@@ -306,8 +315,9 @@ Expected (PR mode, TODO 1 independent, TODO 2 depends on TODO 1):
 #11 [pending] 3.3:Wrap-up         [blocked by #10]
 #12 [pending] 3.4:Commit          [blocked by #11]
 #13 [pending] Finalize:Residual Commit [blocked by #5, #8, #12]
-#14 [pending] Finalize:State Complete  [blocked by #13]
-#15 [pending] Finalize:Report          [blocked by #14]
+#14 [pending] Finalize:Code Review     [blocked by #13]
+#15 [pending] Finalize:State Complete  [blocked by #14]
+#16 [pending] Finalize:Report          [blocked by #15]
 
 → Round 0: #1 (Init:State Begin)
 → Round 1: #2 (1.1:Worker), #9 (3.1:Worker) — parallel!
@@ -386,6 +396,7 @@ WHILE TaskList() has pending tasks:
 | `:Wrap-up` | 2c | Save context (Worker + Verify) + mark Plan `[x]` | Save context (Worker only) + mark Plan `[x]` |
 | `:Commit` | 2d | Task(git-master) per Commit Strategy | Same |
 | `:Residual Commit` | 2f | `git status --porcelain` → git-master if dirty | Same |
+| `:Code Review` | 2f.5 | Task(code-reviewer) with full diff → SHIP/NEEDS_FIXES | ⛔ **SKIPPED** (not created) |
 | `:State Complete` | 2g | `Skill("state", args="complete <PR#>")` | Same |
 | `:Report` | 2h | Full report from template | Abbreviated summary |
 
@@ -936,6 +947,86 @@ If clean: report "No uncommitted changes" and exit.
 )
 ```
 
+On completion: `TaskUpdate(taskId, status="completed")` → `:Code Review` (standard) or `:State Complete` (quick+PR) or `:Report` becomes runnable.
+
+---
+
+### 2f.5. :Code Review — Final Quality Gate [Standard Only]
+
+> **Mode Gate**: ⛔ **Quick**: SKIPPED (not created).
+
+Dispatch code-reviewer agent with the complete diff:
+
+```
+base_branch = detect_base_branch()  # main or develop
+diff = Bash("git diff ${base_branch}...HEAD")
+
+Task(
+  subagent_type="code-reviewer",
+  description="Final code review",
+  prompt="""
+## Complete PR Diff
+
+${diff}
+
+## PLAN Context
+Plan: .dev/specs/{name}/PLAN.md
+
+## Review Instructions
+Review this complete diff for:
+1. Side effects on existing codebase
+2. Design/architecture impact
+3. Structural improvements needed
+4. API contract / breaking changes
+5. Integration issues between TODOs
+6. Hidden bugs (edge cases, race conditions, null handling)
+7. Security concerns
+8. Production readiness (error handling, logging, consistency)
+
+Output verdict: SHIP or NEEDS_FIXES.
+"""
+)
+```
+
+**Routing:**
+
+**Audit Logging** (both SHIP and NEEDS_FIXES):
+
+All code review results are logged to `context/audit.md`:
+```markdown
+## Final Code Review
+
+### [YYYY-MM-DD HH:MM] Review #1
+- Verdict: SHIP | NEEDS_FIXES
+- Findings: CR-001 [critical] ..., CR-002 [warning] ...
+- Action: Proceed | Fix Worker dispatched for CR-001, CR-002
+
+### [YYYY-MM-DD HH:MM] Review #2 (if re-review)
+- Verdict: SHIP | NEEDS_FIXES
+- Remaining: ...
+- Action: Proceed | Issues logged to issues.md
+```
+
+**SHIP**:
+```
+Log to audit.md → TaskUpdate(taskId, status="completed") → next step unblocked
+```
+
+**NEEDS_FIXES**:
+1. Log verdict + findings to `context/audit.md`
+2. Extract Fix Items from code-reviewer output
+3. Create fix tasks (max 3):
+   ```
+   fix = TaskCreate(subject="Fix:CR-{id} — {title}",
+                    description="Fix: {detail}. File: {file}:{line}",
+                    activeForm="Fixing CR-{id}")
+   ```
+4. Set dependencies: fix tasks → new Residual Commit → re-run Code Review
+5. **Max 1 re-review cycle**. If still NEEDS_FIXES after retry:
+   - Log remaining issues to `context/issues.md`
+   - Log final verdict to `context/audit.md`
+   - Proceed to State Complete / Report with issues noted in report
+
 On completion: `TaskUpdate(taskId, status="completed")` → `:State Complete` (PR) or `:Report` becomes runnable.
 
 ---
@@ -1000,7 +1091,7 @@ On completion: `TaskUpdate(taskId, status="completed")` → all tasks done, exec
 
 ## STEP 3: Finalize
 
-Finalize tasks (Residual Commit, State Complete, Report) are dispatched in the execution loop as `:Residual Commit`, `:State Complete`, `:Report` handlers (2f, 2g, 2h).
+Finalize tasks (Residual Commit, Code Review, State Complete, Report) are dispatched in the execution loop as `:Residual Commit`, `:Code Review` (2f.5, standard only), `:State Complete`, `:Report` handlers (2f, 2g, 2h).
 
 ---
 
@@ -1114,8 +1205,9 @@ TaskList() after initialization:
 #11 [pending] 3.3:Wrap-up         [blocked by #10]
 #12 [pending] 3.4:Commit          [blocked by #11]
 #13 [pending] Finalize:Residual Commit [blocked by #5, #8, #12]  ← #5=1.4:Commit, #8=2.3:Wrap-up, #12=3.4:Commit
-#14 [pending] Finalize:State Complete  [blocked by #13]
-#15 [pending] Finalize:Report          [blocked by #14]
+#14 [pending] Finalize:Code Review     [blocked by #13]
+#15 [pending] Finalize:State Complete  [blocked by #14]
+#16 [pending] Finalize:Report          [blocked by #15]
 ```
 
 **Execution Rounds (auto-determined by TaskList):**
@@ -1130,8 +1222,9 @@ Round 5:  #6 2.1:Worker                           ← unblocked after #5
 Round 6:  #7 2.2:Verify
 Round 7:  #8 2.3:Wrap-up
 Round 8:  #13 Finalize:Residual Commit            ← blocked by all TODO last steps
-Round 9:  #14 Finalize:State Complete             ← blocked by #13
-Round 10: #15 Finalize:Report                     ← blocked by #14
+Round 9:  #14 Finalize:Code Review                ← blocked by #13
+Round 10: #15 Finalize:State Complete             ← blocked by #14
+Round 11: #16 Finalize:Report                     ← blocked by #15
 ```
 
 #### ⛔ Quick Mode (same setup)
@@ -1208,6 +1301,7 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 | `:Wrap-up` | `{N}.3:Wrap-up` | `{N}.2:Wrap-up` | Save context + mark Plan `[x]` |
 | `:Commit` | `{N}.4:Commit` | `{N}.3:Commit` | Commit via git-master (only if Commit Strategy row exists) |
 | `:Residual Commit` | `Finalize:Residual Commit` | Same | Check & commit remaining changes |
+| `:Code Review` | `Finalize:Code Review` | ⛔ **Not created** | Final quality gate — review entire diff |
 | `:State Complete` | `Finalize:State Complete` | Same | [PR only] Complete PR state |
 | `:Report` | `Finalize:Report` | Same (abbreviated output) | Output final orchestration report |
 
@@ -1235,7 +1329,8 @@ Standard: 1.4:Commit (or 1.3:Wrap-up) → 2.1:Worker
 Quick:    1.3:Commit (or 1.2:Wrap-up) → 2.1:Worker
 
 # Finalize chain:
-all TODO last steps → Residual Commit → State Complete (PR) → Report
+# Standard: all TODO last steps → Residual Commit → Code Review → State Complete (PR) → Report
+# Quick:    all TODO last steps → Residual Commit → State Complete (PR) → Report
 ```
 
 Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(status="completed")` — after sub-step finishes. Both are used.
@@ -1275,6 +1370,7 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 
 **4. Finalize Tasks:**
 - [ ] `Finalize:Residual Commit` task completed?
+- [ ] `Finalize:Code Review` task completed? (standard mode only)
 - [ ] `Finalize:State Complete` task completed? (PR mode only)
 - [ ] `Finalize:Report` task completed?
 - [ ] All Finalize tasks dispatched through execution loop?
@@ -1287,6 +1383,8 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 - [ ] Sub-steps created: Worker, Verify, Wrap-up, Commit per TODO?
 - [ ] Intra-TODO chains set (Worker→Verify→Wrap-up→Commit)?
 - [ ] All `:Verify` tasks dispatched verify worker + triaged + reconciled if needed?
+- [ ] `:Code Review` dispatched code-reviewer agent with full diff?
+- [ ] Code review verdict (SHIP/NEEDS_FIXES) logged to `audit.md`?
 - [ ] Triage decisions logged in `audit.md`?
 - [ ] Verify `side_effects.missing_context` merged into context files?
 
@@ -1294,6 +1392,7 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 - [ ] Sub-steps created: Worker, Wrap-up, Commit per TODO (NO Verify)?
 - [ ] Intra-TODO chains set (Worker→Wrap-up→Commit)?
 - [ ] No `:Verify` tasks exist?
+- [ ] No `:Code Review` task exist?
 - [ ] No reconciliation attempted (pass or halt only)?
 - [ ] Worker self-report trusted for acceptance criteria?
 - [ ] Abbreviated report output (not full template)?
