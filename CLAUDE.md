@@ -93,7 +93,7 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.4.0)
+## Recent Changes (v0.5.0)
 
 - Specify skill: mode support (quick/standard × interactive/autopilot)
 - Specify skill: Codex strategic synthesis via `codex-strategist` agent (cross-model analysis)
