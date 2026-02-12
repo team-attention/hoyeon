@@ -10,9 +10,9 @@ Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs
 
 | Step | Skill | What it does |
 |------|-------|-------------|
-| 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, tradeoff-analyzer, verification-planner, external-researcher), generates `PLAN.md` with reviewer approval. |
+| 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, tradeoff-analyzer, verification-planner, external-researcher), Codex strategic synthesis, generates `PLAN.md` with reviewer approval. |
 | 2 | `/open` | Creates a Draft PR on `feat/{name}` branch from the approved spec. |
-| 3 | `/execute` | Orchestrator reads `PLAN.md`, creates Tasks per TODO, delegates to worker agents, verifies results, commits atomically. |
+| 3 | `/execute` | Orchestrator reads `PLAN.md`, creates Tasks per TODO, delegates to worker agents, verifies results, Codex code review gate, commits atomically. |
 | 4 | `/publish` | Converts Draft PR to Ready for Review. |
 | 5 | `/compound` | Extracts learnings from completed PR into `docs/learnings/`. |
 
@@ -49,6 +49,7 @@ Chains the entire pipeline automatically via Stop hooks:
 |-------|---------|---------|
 | `/tech-decision` | "A vs B" | Systematic tech comparison with multi-source research |
 | `/dev-scan` | "community opinions" | Aggregate developer perspectives from Reddit, HN, Dev.to, Lobsters |
+| `/tribunal` | "review this" | 3-perspective adversarial review (Risk/Value/Feasibility → APPROVE/REVISE/REJECT) |
 | `/skill-session-analyzer` | "analyze session" | Post-hoc validation of skill execution |
 
 ### Worktree Management
@@ -70,6 +71,11 @@ Chains the entire pipeline automatically via Stop hooks:
 | `ux-reviewer` | Sonnet | UX 관점에서 변경사항 평가 — 단순성, 직관성, UX regression 방지. specify 초기에 실행 |
 | `reviewer` | Opus | Evaluates plans for clarity, verifiability, completeness, structural integrity |
 | `git-master` | Sonnet | Enforces atomic commits following project style |
+| `codex-strategist` | Haiku | Calls Codex CLI to cross-check analysis reports and find blind spots in /specify |
+| `codex-code-reviewer` | Haiku | Calls Codex CLI for cross-model final quality gate code review in /execute |
+| `codex-risk-analyst` | Haiku | /tribunal — adversarial risk analysis via Codex CLI (the challenger) |
+| `value-assessor` | Sonnet | /tribunal — constructive value and goal alignment assessment |
+| `feasibility-checker` | Sonnet | /tribunal — pragmatic feasibility and effort evaluation |
 
 ## /specify Flow
 
@@ -120,6 +126,11 @@ Chains the entire pipeline automatically via Stop hooks:
 │          │         │(선택적)       │           │            │
 │          │         └───────┬───────┘           │            │
 │          └─────────────────┼───────────────────┘            │
+│                            ▼                                │
+│  Step 2.5: Codex Strategic Synthesis (Standard mode only)   │
+│   ┌─────────────────┐                                      │
+│   │codex-strategist │ → 교차 검증, 블라인드 스팟 발견       │
+│   └────────┬────────┘                                      │
 │                            ▼                                │
 │   HIGH risk decision_points → 사용자 승인       🧑 HITL #5 │
 │                       ▼                                     │
@@ -187,11 +198,16 @@ The `/execute` skill follows an Orchestrator-Worker pattern:
 Orchestrator (reads PLAN.md)
   ├── Parse TODOs → Create Tasks with dependencies
   ├── Parallelize non-blocked Tasks
-  └── For each TODO:
-      ├── Worker agent (implementation)
-      ├── Verify (3 checks: functional, static, runtime)
-      ├── Context save (learnings, decisions, issues)
-      └── git-master (atomic commit)
+  ├── For each TODO:
+  │   ├── Worker agent (implementation)
+  │   ├── Verify (3 checks: functional, static, runtime)
+  │   ├── Context save (learnings, decisions, issues)
+  │   └── git-master (atomic commit)
+  └── Finalize:
+      ├── Residual Commit
+      ├── Code Review (codex-code-reviewer → SHIP/NEEDS_FIXES)
+      ├── State Complete (PR mode)
+      └── Report
 ```
 
 **Key rules:**
@@ -276,6 +292,36 @@ docs/
 └── learnings/           # Knowledge extracted from development
     └── lessons-learned.md
 ```
+
+## Codex Integration
+
+Cross-model strategy using OpenAI Codex CLI (`codex exec`) for adversarial analysis alongside Claude agents.
+
+| Integration Point | Agent | When | Purpose |
+|-------------------|-------|------|---------|
+| `/specify` Step 2.5 | `codex-strategist` | After 4 analysis agents | Cross-check reports, find blind spots, surface contradictions |
+| `/execute` Finalize | `codex-code-reviewer` | After residual commit | Final quality gate code review (SHIP/NEEDS_FIXES) |
+| `/tribunal` Risk | `codex-risk-analyst` | Parallel with 2 Claude agents | Adversarial risk analysis from a different model's perspective |
+
+**Graceful degradation**: If `codex` CLI is unavailable, agents return SKIPPED/DEGRADED and the pipeline continues without blocking.
+
+**Mode gate**: Codex steps run in Standard mode only. Quick mode skips them entirely.
+
+## /tribunal — Adversarial Review
+
+3-perspective review skill that evaluates any proposal (plan, PR, diff) from Risk, Value, and Feasibility angles simultaneously.
+
+```
+            ┌─ codex-risk-analyst (Codex)  ── "What can go wrong?"
+Input ──────┼─ value-assessor (Claude)     ── "What value does this deliver?"
+            └─ feasibility-checker (Claude) ── "Can this actually be built?"
+                         ↓
+               Synthesize → APPROVE / REVISE / REJECT
+```
+
+**Verdict matrix**: Risk (BLOCK/CAUTION/CLEAR) × Value (STRONG/ADEQUATE/WEAK) × Feasibility (GO/CONDITIONAL/NO-GO) → final verdict with required actions.
+
+**Usage**: `/tribunal PLAN.md`, `/tribunal --pr 42`, `/tribunal --diff`
 
 ## Lessons Learned
 

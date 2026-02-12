@@ -511,6 +511,48 @@ AskUserQuestion(
 - Version-specific behavior needed
 - Best practices unknown
 
+### Step 2.5: Codex Strategic Synthesis (Optional)
+
+> **Mode Gate**:
+> - ⛔ **Quick**: Skip entirely.
+> - Standard: Run after all Step 2 analysis agents complete, before Step 3.
+
+After all analysis agents return results, call the Codex Strategist to cross-check and synthesize:
+
+```
+Task(subagent_type="codex-strategist",
+     prompt="""
+The following are independent analysis results for a software plan.
+Synthesize them — find contradictions, blind spots, and strategic concerns.
+
+## User's Goal
+[From DRAFT What & Why]
+
+## Proposed Approach
+[From DRAFT Direction > Approach]
+
+## Gap Analysis Result
+[Full output from gap-analyzer agent]
+
+## Tradeoff Analysis Result
+[Full output from tradeoff-analyzer agent]
+
+## Verification Planning Result
+[Full output from verification-planner agent]
+
+## External Research Result
+[Full output from external-researcher agent, or "N/A - not launched" if skipped]
+""")
+```
+
+**Graceful Degradation**: If codex CLI is unavailable or the call fails, the agent returns SKIPPED/DEGRADED status. Continue to Step 3 without synthesis — it is additive, not blocking.
+
+**Use Codex Synthesis Results** (when available):
+- **Cross-Check Findings**: If contradictions found, resolve before plan generation. Present to user in Decision Summary (Step 3).
+- **Blind Spots**: Add to Gap Analysis results — include in plan's "Must NOT Do" or risk assessment.
+- **Strategic Concerns**: Surface in Decision Summary Checkpoint for user awareness.
+- **Recommendations**: Apply to plan generation where actionable (e.g., adjust TODO ordering, add rollback steps).
+
 ### Step 3: Decision Summary Checkpoint
 
 > **Mode Gate**:
@@ -541,6 +583,13 @@ AskUserQuestion(
 - [MED] Response format: JSON — follows existing pattern (src/api/response.ts:15)
 - [LOW] File location: src/services/auth/ — follows existing structure
 - [LOW] Error handling: Use existing ErrorHandler class
+
+### Codex Strategic Synthesis (if available)
+- Cross-check: [contradictions found, or "consistent"]
+- Blind spots: [items identified by Codex]
+- Strategic concerns: [big-picture issues]
+- Recommendations: [top actionable items]
+(Omit this section if Step 2.5 was skipped or returned SKIPPED/DEGRADED)
 
 ### Risk Summary
 - HIGH: 1 item (DB schema change — user approved)
@@ -804,6 +853,7 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
 ### Standard mode (additional, both interactive and autopilot)
 - [ ] Draft completeness fully validated (Patterns, Commands, Documentation, External Dependencies, UX Review)
 - [ ] Parallel analysis agents ran (gap-analyzer + tradeoff-analyzer + verification-planner, optionally external-researcher)
+- [ ] Codex Strategic Synthesis ran (Step 2.5) — or noted as SKIPPED/DEGRADED if codex unavailable
 - [ ] All HIGH risk decision_points presented to user and resolved
 
 ### Interactive mode (additional)
@@ -880,6 +930,10 @@ User: "OK, make it a plan"
    - tradeoff-analyzer: risk assessment, simpler alternatives
    - verification-planner: test infra, A-items vs H-items
    - external-researcher: (skipped - no migration/new lib)
+2.5. Codex Strategic Synthesis:
+   - Call codex-strategist with all 4 analysis results
+   - Codex finds: 1 blind spot (missing rate limit on new endpoint)
+   - Recommendation: add rate limit TODO before auth middleware
 3. Present HIGH risk decision_points → User selects option
 4. Decision Summary Checkpoint:
    "User decisions: JWT, REST API
