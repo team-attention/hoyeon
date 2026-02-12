@@ -52,7 +52,7 @@ Quick mode removes the independent verification agent and reconciliation system.
 | Sub-steps per TODO | 4 (Worker, Verify, Wrap-up, Commit) | 3 (Worker, Wrap-up, Commit) |
 | Verification | Independent verify agent (4-part) | Worker self-report trusted |
 | Reconciliation | halt/adapt/retry (3 retries, dynamic TODOs) | Pass or halt (no retry) |
-| Final Code Review | code-reviewer agent (SHIP/NEEDS_FIXES) | Skipped |
+| Final Code Review | codex-code-reviewer agent (SHIP/NEEDS_FIXES) | Skipped |
 | Context files | 4 files (all maintained) | 4 files (all maintained) |
 | Report | Full template | Abbreviated summary |
 
@@ -74,7 +74,7 @@ Quick mode removes the independent verification agent and reconciliation system.
      :Wrap-up → save context (Worker + Verify) + mark Plan checkbox [x]
      :Commit  → Task(git-master) per Commit Strategy
      :Residual Commit → git status → git-master if dirty
-     :Code Review      → [Standard only] Task(code-reviewer) with full diff → SHIP/NEEDS_FIXES
+     :Code Review      → [Standard only] Task(codex-code-reviewer) with full diff → SHIP/NEEDS_FIXES
      :State Complete   → [PR only] Skill("state", "complete")
      :Report           → output final report
 5. (Init, TODO execution, and Finalize are all part of the loop)
@@ -180,7 +180,7 @@ FOR EACH "### [ ] TODO N: {title}" in plan:
 # Finalize tasks
 rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 cr = TaskCreate(subject="Finalize:Code Review",
-     description="Review complete diff for integration issues, hidden bugs, side effects. Dispatch code-reviewer agent.",
+     description="Review complete diff for integration issues, hidden bugs, side effects. Dispatch codex-code-reviewer agent.",
      activeForm="Reviewing all changes")
 IF pr_mode:
   sc = TaskCreate(subject="Finalize:State Complete", ...)
@@ -396,7 +396,7 @@ WHILE TaskList() has pending tasks:
 | `:Wrap-up` | 2c | Save context (Worker + Verify) + mark Plan `[x]` | Save context (Worker only) + mark Plan `[x]` |
 | `:Commit` | 2d | Task(git-master) per Commit Strategy | Same |
 | `:Residual Commit` | 2f | `git status --porcelain` → git-master if dirty | Same |
-| `:Code Review` | 2f.5 | Task(code-reviewer) with full diff → SHIP/NEEDS_FIXES | ⛔ **SKIPPED** (not created) |
+| `:Code Review` | 2f.5 | Task(codex-code-reviewer) with full diff → SHIP/NEEDS_FIXES | ⛔ **SKIPPED** (not created) |
 | `:State Complete` | 2g | `Skill("state", args="complete <PR#>")` | Same |
 | `:Report` | 2h | Full report from template | Abbreviated summary |
 
@@ -955,14 +955,22 @@ On completion: `TaskUpdate(taskId, status="completed")` → `:Code Review` (stan
 
 > **Mode Gate**: ⛔ **Quick**: SKIPPED (not created).
 
-Dispatch code-reviewer agent with the complete diff:
+#### Pre-flight: Diff Size Check
 
 ```
 base_branch = detect_base_branch()  # main or develop
+diff_stat = Bash("git diff ${base_branch}...HEAD --stat")
 diff = Bash("git diff ${base_branch}...HEAD")
 
+# If diff exceeds ~30k characters, add a summary note for the reviewer:
+# "Note: Large diff ({N} files, {M} lines). Focus on cross-cutting integration issues."
+```
+
+#### Dispatch Code Review
+
+```
 Task(
-  subagent_type="code-reviewer",
+  subagent_type="codex-code-reviewer",
   description="Final code review",
   prompt="""
 ## Complete PR Diff
@@ -988,44 +996,101 @@ Output verdict: SHIP or NEEDS_FIXES.
 )
 ```
 
-**Routing:**
+#### Audit Logging
 
-**Audit Logging** (both SHIP and NEEDS_FIXES):
-
-All code review results are logged to `context/audit.md`:
+All code review results are logged to `context/audit.md` with explicit status:
 ```markdown
 ## Final Code Review
 
 ### [YYYY-MM-DD HH:MM] Review #1
-- Verdict: SHIP | NEEDS_FIXES
+- Status: SHIP | NEEDS_FIXES | SKIPPED | DEGRADED
 - Findings: CR-001 [critical] ..., CR-002 [warning] ...
-- Action: Proceed | Fix Worker dispatched for CR-001, CR-002
+- Action: Proceed | Fix tasks created for CR-001, CR-002
 
-### [YYYY-MM-DD HH:MM] Review #2 (if re-review)
-- Verdict: SHIP | NEEDS_FIXES
+### [YYYY-MM-DD HH:MM] Review #2 (if retry)
+- Status: SHIP | NEEDS_FIXES
 - Remaining: ...
-- Action: Proceed | Issues logged to issues.md
+- Action: Proceed | Remaining issues logged to issues.md
 ```
 
-**SHIP**:
+#### Routing
+
+**SHIP** (reviewed and passed):
 ```
-Log to audit.md → TaskUpdate(taskId, status="completed") → next step unblocked
+Log "Status: SHIP" to audit.md → TaskUpdate(taskId, status="completed") → next step unblocked
 ```
 
-**NEEDS_FIXES**:
+**SKIPPED / DEGRADED** (codex CLI unavailable or call failed):
+```
+Log explicit "Status: SKIPPED" or "Status: DEGRADED" to audit.md (NOT logged as SHIP)
+TaskUpdate(taskId, status="completed") → next step unblocked
+# ⚠️ Report will note: "Code review: SKIPPED (codex unavailable)" or "Code review: DEGRADED (call failed)"
+# This is distinct from SHIP — the review did NOT happen, but execution continues
+```
+
+> **Rationale**: Code review is an additive quality gate. If unavailable, per-TODO verification
+> (Worker + Verify) already provides baseline quality assurance. The explicit SKIPPED/DEGRADED
+> status ensures operators know the review was not performed.
+
+**NEEDS_FIXES** — Dynamic Fix Chain:
+
+> ⚠️ **Key constraint**: Completed tasks cannot be re-dispatched. NEEDS_FIXES creates
+> NEW task instances for the fix-and-retry cycle.
+
 1. Log verdict + findings to `context/audit.md`
-2. Extract Fix Items from code-reviewer output
-3. Create fix tasks (max 3):
+2. Extract Fix Items from codex-code-reviewer output (max 3 items)
+3. Determine the next step task (`:State Complete` or `:Report`):
    ```
-   fix = TaskCreate(subject="Fix:CR-{id} — {title}",
-                    description="Fix: {detail}. File: {file}:{line}",
-                    activeForm="Fixing CR-{id}")
+   next_step_id = sc.task_id if pr_mode else rp.task_id
    ```
-4. Set dependencies: fix tasks → new Residual Commit → re-run Code Review
-5. **Max 1 re-review cycle**. If still NEEDS_FIXES after retry:
-   - Log remaining issues to `context/issues.md`
-   - Log final verdict to `context/audit.md`
-   - Proceed to State Complete / Report with issues noted in report
+4. Create fix tasks:
+   ```
+   fix_tasks = []
+   FOR EACH fix_item (max 3):
+     fix = TaskCreate(subject="Fix:CR-{id} — {title}",
+                      description="Fix: {detail}. File: {file}:{line}. Include acceptance_criteria in output JSON.",
+                      activeForm="Fixing CR-{id}")
+     fix_tasks.append(fix)
+   ```
+5. Create new Finalize tasks for retry:
+   ```
+   rc2 = TaskCreate(subject="Finalize:Residual Commit (post-fix)",
+                    description="Commit fix changes after code review",
+                    activeForm="Committing fixes")
+   cr2 = TaskCreate(subject="Finalize:Code Review (retry)",
+                    description="Re-review complete diff after fixes. This is the FINAL review — max 1 retry.",
+                    activeForm="Re-reviewing all changes")
+   ```
+6. Set dependencies — fix tasks → RC2 → CR2 → next step:
+   ```
+   FOR EACH fix in fix_tasks:
+     TaskUpdate(taskId=fix.task_id, addBlocks=[rc2.task_id])
+   TaskUpdate(taskId=rc2.task_id, addBlocks=[cr2.task_id])
+   # CR2 must block the next step BEFORE CR1 completes:
+   TaskUpdate(taskId=cr2.task_id, addBlocks=[next_step_id])
+   ```
+7. Complete Code Review #1:
+   ```
+   TaskUpdate(taskId=cr1.task_id, status="completed")
+   # State Complete/Report is now blocked by BOTH cr1 (completed ✅) AND cr2 (pending ⏳)
+   # → remains blocked until cr2 also completes
+   ```
+
+> **Why this works**: Adding CR2 as a blocker to State Complete/Report BEFORE completing CR1
+> ensures the next step remains blocked. When CR1 completes, the next step is still blocked by CR2.
+> Fix tasks → RC2 → CR2 must all complete before the pipeline continues.
+
+**Code Review (retry)** — same dispatch as above, with one difference:
+
+If retry still returns **NEEDS_FIXES**:
+- Log remaining issues to `context/issues.md`
+- Log to `context/audit.md`: "Status: NEEDS_FIXES (max retries reached). Remaining issues logged."
+- `TaskUpdate(taskId=cr2, status="completed")` → proceed to State Complete / Report
+- Report will include unresolved code review findings
+
+> **Design note on Fix Task verification**: Fix tasks are Worker-only (no separate Verify agent).
+> The Code Review retry serves as integration-level verification for all fixes. This is intentional:
+> fixes are small targeted changes, and the retry reviews the COMPLETE diff including fixes.
 
 On completion: `TaskUpdate(taskId, status="completed")` → `:State Complete` (PR) or `:Report` becomes runnable.
 
@@ -1091,7 +1156,7 @@ On completion: `TaskUpdate(taskId, status="completed")` → all tasks done, exec
 
 ## STEP 3: Finalize
 
-Finalize tasks (Residual Commit, Code Review, State Complete, Report) are dispatched in the execution loop as `:Residual Commit`, `:Code Review` (2f.5, standard only), `:State Complete`, `:Report` handlers (2f, 2g, 2h).
+Finalize tasks (Residual Commit, Code Review, State Complete, Report) are dispatched in the execution loop as `:Residual Commit`, `:Code Review` (2f.5, standard only), `:State Complete`, `:Report` handlers (2f, 2g, 2h). If Code Review returns NEEDS_FIXES, dynamic fix tasks + retry chain are created (see 2f.5 for details).
 
 ---
 
@@ -1331,6 +1396,10 @@ Quick:    1.3:Commit (or 1.2:Wrap-up) → 2.1:Worker
 # Finalize chain:
 # Standard: all TODO last steps → Residual Commit → Code Review → State Complete (PR) → Report
 # Quick:    all TODO last steps → Residual Commit → State Complete (PR) → Report
+#
+# NEEDS_FIXES dynamic extension (Standard only):
+# ... → Code Review (NEEDS_FIXES) → [Fix:CR-xxx tasks] → Residual Commit (post-fix) → Code Review (retry) → State Complete → Report
+# New tasks are created dynamically; completed tasks are NOT re-dispatched.
 ```
 
 Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(status="completed")` — after sub-step finishes. Both are used.
@@ -1383,8 +1452,10 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 - [ ] Sub-steps created: Worker, Verify, Wrap-up, Commit per TODO?
 - [ ] Intra-TODO chains set (Worker→Verify→Wrap-up→Commit)?
 - [ ] All `:Verify` tasks dispatched verify worker + triaged + reconciled if needed?
-- [ ] `:Code Review` dispatched code-reviewer agent with full diff?
-- [ ] Code review verdict (SHIP/NEEDS_FIXES) logged to `audit.md`?
+- [ ] `:Code Review` dispatched codex-code-reviewer agent with full diff?
+- [ ] Code review status (SHIP/NEEDS_FIXES/SKIPPED/DEGRADED) logged to `audit.md`?
+- [ ] If NEEDS_FIXES: new fix tasks + Residual Commit (post-fix) + Code Review (retry) created?
+- [ ] If SKIPPED/DEGRADED: explicit status noted in report (not logged as SHIP)?
 - [ ] Triage decisions logged in `audit.md`?
 - [ ] Verify `side_effects.missing_context` merged into context files?
 
