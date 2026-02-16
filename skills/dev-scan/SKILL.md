@@ -1,7 +1,7 @@
 ---
 name: dev-scan
 description: Collect diverse opinions on technical topics from developer communities. Use for "developer reactions", "community opinions" requests. Aggregates Reddit, HN, Dev.to, Lobsters, etc.
-version: 1.0.0
+version: 1.2.0
 ---
 
 # Dev Opinions Scan
@@ -20,12 +20,31 @@ Quickly understand **diverse perspectives** on technical topics:
 
 | Platform | Method |
 |----------|--------|
-| Reddit | Gemini CLI |
+| Reddit | Vendored reddit-search.py (`python3`) — public JSON API, no key needed |
+| X (Twitter) | Vendored bird-search.mjs (`node`) |
 | Hacker News | WebSearch |
 | Dev.to | WebSearch |
 | Lobsters | WebSearch |
 
 ## Execution
+
+### Step 0: Dependency Check
+
+Run in parallel:
+```bash
+python3 skills/dev-scan/vendor/reddit-search/reddit-search.py --check
+node skills/dev-scan/vendor/bird-search/bird-search.mjs --check
+```
+
+| Result | Action |
+|--------|--------|
+| `reddit-search --check` → `available: true` | Reddit source available |
+| `reddit-search --check` → `available: false` | Skip Reddit, warn user |
+| `bird-search --check` → `authenticated: true` | X/Twitter source available |
+| `bird-search --check` → `authenticated: false` | Skip X/Twitter, warn: "브라우저에서 X 로그인 필요" |
+| `node` not found or script error | Skip X/Twitter |
+
+Report available sources before proceeding. Minimum 1 source required (WebSearch always available).
 
 ### Step 1: Topic Extraction
 Extract core topic from user request.
@@ -34,12 +53,26 @@ Examples:
 - "Developer reactions to React 19" → `React 19`
 - "Community opinions on Bun vs Deno" → `Bun vs Deno`
 
-### Step 2: Parallel Search (Single Message, 4 Sources)
+### Step 2: Parallel Search (Single Message, 5 Sources)
 
-**Reddit** (Gemini CLI - WebFetch blocked):
+**Reddit** (Vendored reddit-search.py — public JSON API):
 ```bash
-gemini -p "Search Reddit for discussions about {TOPIC}. Summarize main opinions, debates, and insights from developers. Include Reddit post URLs where possible."
+python3 skills/dev-scan/vendor/reddit-search/reddit-search.py "{TOPIC}" --count 10 --comments 5 --time month
 ```
+- Searches global Reddit + auto-discovered subreddits.
+- Returns threads with score, num_comments, upvote_ratio.
+- **Includes top comments** with author and score — use these as primary opinion sources.
+- No API key needed. Rate limit ~30 req/min.
+- Options: `--time` (hour/day/week/month/year/all), `--subreddits` (comma-separated), `--json`.
+
+**X / Twitter** (Vendored bird-search.mjs):
+```bash
+node skills/dev-scan/vendor/bird-search/bird-search.mjs "{TOPIC}" --count 20 --json
+```
+- Read-only search. Returns recent tweets with engagement metrics.
+- Cookie-based auth (Safari/Chrome session) — no API key needed.
+- `--json` output includes: text, author, permanent_url, likeCount, retweetCount.
+- Focus on: developer hot takes, viral threads, debate threads.
 
 **Other Sources** (WebSearch, parallel):
 ```
@@ -48,7 +81,7 @@ WebSearch: "{topic} site:dev.to"
 WebSearch: "{topic} site:lobste.rs"
 ```
 
-**CRITICAL**: Run all 4 searches in **one message** in parallel.
+**CRITICAL**: Run all 5 searches in **one message** in parallel.
 
 ### Step 3: Synthesize & Present
 
@@ -139,5 +172,7 @@ Find unique or deep insights:
 | Situation | Response |
 |------|------|
 | No search results | Skip that platform, focus on others |
-| Gemini CLI failure | Skip Reddit, proceed with other 3 |
+| reddit-search failure / rate limit | Skip Reddit, proceed with other sources |
+| bird-search auth failure | Skip X/Twitter (user needs active browser session) |
+| bird-search script error | Skip X/Twitter, proceed with other sources |
 | Topic too new | Note insufficient results, suggest related keywords |
