@@ -98,7 +98,7 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Specify skill: mode support (quick/standard × interactive/autopilot)
 - Specify skill: Codex strategic synthesis via `codex-strategist` agent (cross-model analysis)
 - Execute skill: quick mode (`--quick` flag) for lightweight execution without independent verification
-- Execute skill: Final Quality Gate via `codex-code-reviewer` agent (cross-model code review in Finalize chain)
+- Execute skill: Final Quality Gate via `code-reviewer` agent (multi-model cross-review: Codex, Gemini, Claude in parallel with synthesized verdict)
 - Init skill: reorganized hy CLI install to Step 1
 - Agent prompts: standardized placeholder variables
 

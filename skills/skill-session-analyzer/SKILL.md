@@ -95,11 +95,11 @@ Create checklist from SKILL.md analysis:
 ### SubAgents
 - [ ] Explore agent called (parallel, run_in_background)
 - [ ] gap-analyzer called before plan generation
-- [ ] reviewer called after plan creation
+- [ ] plan-reviewer called after plan creation
 
 ### Hooks
 - [ ] PreToolUse[Edit|Write] triggers plan-guard.sh
-- [ ] Stop hook validates reviewer approval
+- [ ] Stop hook validates plan-reviewer approval
 
 ### Artifacts
 - [ ] Draft file created at .dev/drafts/{name}.md
@@ -193,7 +193,7 @@ For files that should be deleted:
 |-----------|----------|--------|--------|
 | Explore agent | 2 parallel calls | 2 calls at 09:39:26 | ✅ |
 | gap-analyzer | Called before plan | Called at 09:43:08 | ✅ |
-| reviewer | Called after plan | 2 calls (REJECT→OKAY) | ✅ |
+| plan-reviewer | Called after plan | 2 calls (REJECT→OKAY) | ✅ |
 | PreToolUse hook | Edit\|Write matcher | Triggered for Write | ✅ |
 | Stop hook | Validates approval | Returned ok:true | ✅ |
 | Draft file | Created then deleted | Created→Deleted | ✅ |
@@ -286,7 +286,7 @@ Flag any mismatches:
 User: "Analyze session 3cc71c9f-d27a-4233-9dbc-c4f07ea6ec5b against .claude/skills/spec/SKILL.md"
 
 1. Find session files
-2. Parse SKILL.md → Expected: Explore, gap-analyzer, reviewer, hooks
+2. Parse SKILL.md → Expected: Explore, gap-analyzer, plan-reviewer, hooks
 3. Analyze debug log → Extract actual calls
 4. Verify artifacts → Check .dev/
 5. Compare → Build verification table

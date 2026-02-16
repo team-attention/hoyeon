@@ -117,7 +117,7 @@ case "$PHASE" in
       echo "📋 Ultrawork: Plan exists. Checking approval..." >&2
 
       jq -n \
-        --arg reason "Plan file exists. Check if reviewer approved it. If not, call Task(subagent_type=\"reviewer\")." \
+        --arg reason "Plan file exists. Check if plan-reviewer approved it. If not, call Task(subagent_type=\"plan-reviewer\")." \
         '{
           "decision": "block",
           "reason": $reason
@@ -139,7 +139,7 @@ Follow specify skill's Mode 2: Plan Generation:
 1. Validate draft completeness
 2. Run gap analysis
 3. Create PLAN.md
-4. Call reviewer for approval" \
+4. Call plan-reviewer for approval" \
         '{
           "decision": "block",
           "reason": $reason
@@ -195,7 +195,7 @@ Execute: Skill(\"open\", args=\"$FEATURE_NAME\")" \
 
     # Plan exists but not approved
     jq -n \
-      --arg reason "Plan exists but not approved. Call Task(subagent_type=\"reviewer\") and handle result." \
+      --arg reason "Plan exists but not approved. Call Task(subagent_type=\"plan-reviewer\") and handle result." \
       '{"decision": "block", "reason": $reason}'
     exit 0
     ;;
