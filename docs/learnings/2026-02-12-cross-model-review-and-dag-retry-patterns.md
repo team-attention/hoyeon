@@ -13,6 +13,8 @@ plan_path: null
 
 v0.5.0 introduced cross-model integration using OpenAI Codex CLI alongside Claude agents. Three codex agents were created (`codex-strategist`, `codex-code-reviewer`, `codex-risk-analyst`) following an orchestrator pattern. The `codex-code-reviewer` was integrated as a final quality gate in the Execute Finalize chain. An Agent Council (Codex + Gemini) was used to review the implementation for logical flaws.
 
+NOTE: `codex-code-reviewer` was later refactored into `code-reviewer` (multi-model: Codex + Gemini + Claude in parallel with synthesis).
+
 ## Problem
 
 1. **Per-TODO verification misses integration issues**: Individual TODO verification (Worker + Verify) catches per-file bugs but misses cross-cutting concerns (side effects, design inconsistency, API contract breaks) that only emerge when viewing all changes together.

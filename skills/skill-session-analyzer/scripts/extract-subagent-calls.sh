@@ -57,14 +57,14 @@ echo "  ],"
 # Summary counts
 explore_count=$(grep -c "SubagentStart with query: Explore" "$DEBUG_LOG" 2>/dev/null || echo "0")
 gap_analyzer_count=$(grep -c "SubagentStart with query: gap-analyzer" "$DEBUG_LOG" 2>/dev/null || echo "0")
-reviewer_count=$(grep -c "SubagentStart with query: reviewer" "$DEBUG_LOG" 2>/dev/null || echo "0")
+reviewer_count=$(grep -c "SubagentStart with query: plan-reviewer" "$DEBUG_LOG" 2>/dev/null || echo "0")
 worker_count=$(grep -c "SubagentStart with query: worker" "$DEBUG_LOG" 2>/dev/null || echo "0")
 
 cat << EOF
   "summary": {
     "Explore": $explore_count,
     "gap-analyzer": $gap_analyzer_count,
-    "reviewer": $reviewer_count,
+    "plan-reviewer": $reviewer_count,
     "worker": $worker_count,
     "total": $((explore_count + gap_analyzer_count + reviewer_count + worker_count))
   }

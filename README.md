@@ -10,7 +10,7 @@ Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs
 
 | Step | Skill | What it does |
 |------|-------|-------------|
-| 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, tradeoff-analyzer, verification-planner, external-researcher), Codex strategic synthesis, generates `PLAN.md` with reviewer approval. |
+| 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, tradeoff-analyzer, verification-planner, external-researcher), Codex strategic synthesis, generates `PLAN.md` with plan-reviewer approval. |
 | 2 | `/open` | Creates a Draft PR on `feat/{name}` branch from the approved spec. |
 | 3 | `/execute` | Orchestrator reads `PLAN.md`, creates Tasks per TODO, delegates to worker agents, verifies results, Codex code review gate, commits atomically. |
 | 4 | `/publish` | Converts Draft PR to Ready for Review. |
@@ -32,7 +32,7 @@ Chains the entire pipeline automatically via Stop hooks:
 ### Planning & Execution
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
-| `/specify` | "plan this" | Interview → DRAFT.md → PLAN.md with reviewer approval |
+| `/specify` | "plan this" | Interview → DRAFT.md → PLAN.md with plan-reviewer approval |
 | `/open` | "create PR" | Draft PR creation from spec |
 | `/execute` | "/execute" | Orchestrate TODO implementation via worker agents |
 | `/publish` | "publish PR" | Draft → Ready for Review |
@@ -69,10 +69,10 @@ Chains the entire pipeline automatically via Stop hooks:
 | `docs-researcher` | Sonnet | Searches internal docs (ADRs, READMEs, configs) for conventions and constraints |
 | `external-researcher` | Sonnet | Researches external libraries, frameworks, and official docs |
 | `ux-reviewer` | Sonnet | UX 관점에서 변경사항 평가 — 단순성, 직관성, UX regression 방지. specify 초기에 실행 |
-| `reviewer` | Opus | Evaluates plans for clarity, verifiability, completeness, structural integrity |
+| `plan-reviewer` | Opus | Evaluates plans for clarity, verifiability, completeness, structural integrity |
 | `git-master` | Sonnet | Enforces atomic commits following project style |
 | `codex-strategist` | Haiku | Calls Codex CLI to cross-check analysis reports and find blind spots in /specify |
-| `codex-code-reviewer` | Haiku | Calls Codex CLI for cross-model final quality gate code review in /execute |
+| `code-reviewer` | Sonnet | Multi-model code reviewer that runs Gemini, Codex, and Claude reviews in parallel, then synthesizes converged verdict |
 | `codex-risk-analyst` | Haiku | /tribunal — adversarial risk analysis via Codex CLI (the challenger) |
 | `value-assessor` | Sonnet | /tribunal — constructive value and goal alignment assessment |
 | `feasibility-checker` | Sonnet | /tribunal — pragmatic feasibility and effort evaluation |
@@ -142,9 +142,9 @@ Chains the entire pipeline automatically via Stop hooks:
 │                       ▼                                     │
 │  Step 4.5: Verification Summary 확인            🧑 HITL #6b│
 │                       ▼                                     │
-│  Step 5-6: Reviewer 검토 (+ Structural Integrity)            │
-│   ┌────────┐                                                │
-│   │reviewer│──OKAY──→ DRAFT 삭제 → 완료                     │
+│  Step 5-6: Plan-Reviewer 검토 (+ Structural Integrity)       │
+│   ┌─────────────┐                                           │
+│   │plan-reviewer│──OKAY──→ DRAFT 삭제 → 완료                │
 │   └───┬────┘                                                │
 │       │REJECT                                               │
 │       ├─ cosmetic → 자동 수정 → 재검토                      │
@@ -205,7 +205,7 @@ Orchestrator (reads PLAN.md)
   │   └── git-master (atomic commit)
   └── Finalize:
       ├── Residual Commit
-      ├── Code Review (codex-code-reviewer → SHIP/NEEDS_FIXES)
+      ├── Code Review (code-reviewer → SHIP/NEEDS_FIXES)
       ├── State Complete (PR mode)
       └── Report
 ```
@@ -300,7 +300,7 @@ Cross-model strategy using OpenAI Codex CLI (`codex exec`) for adversarial analy
 | Integration Point | Agent | When | Purpose |
 |-------------------|-------|------|---------|
 | `/specify` Step 2.5 | `codex-strategist` | After 4 analysis agents | Cross-check reports, find blind spots, surface contradictions |
-| `/execute` Finalize | `codex-code-reviewer` | After residual commit | Final quality gate code review (SHIP/NEEDS_FIXES) |
+| `/execute` Finalize | `code-reviewer` | After residual commit | Final quality gate code review (SHIP/NEEDS_FIXES) |
 | `/tribunal` Risk | `codex-risk-analyst` | Parallel with 2 Claude agents | Adversarial risk analysis from a different model's perspective |
 
 **Graceful degradation**: If `codex` CLI is unavailable, agents return SKIPPED/DEGRADED and the pipeline continues without blocking.

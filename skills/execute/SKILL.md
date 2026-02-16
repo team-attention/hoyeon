@@ -52,7 +52,7 @@ Quick mode removes the independent verification agent and reconciliation system.
 | Sub-steps per TODO | 4 (Worker, Verify, Wrap-up, Commit) | 3 (Worker, Wrap-up, Commit) |
 | Verification | Independent verify agent (4-part) | Worker self-report trusted |
 | Reconciliation | halt/adapt/retry (3 retries, dynamic TODOs) | Pass or halt (no retry) |
-| Final Code Review | codex-code-reviewer agent (SHIP/NEEDS_FIXES) | Skipped |
+| Final Code Review | code-reviewer agent (SHIP/NEEDS_FIXES) | Skipped |
 | Context files | 4 files (all maintained) | 4 files (all maintained) |
 | Report | Full template | Abbreviated summary |
 
@@ -74,7 +74,7 @@ Quick mode removes the independent verification agent and reconciliation system.
      :Wrap-up → save context (Worker + Verify) + mark Plan checkbox [x]
      :Commit  → Task(git-master) per Commit Strategy
      :Residual Commit → git status → git-master if dirty
-     :Code Review      → [Standard only] Task(codex-code-reviewer) with full diff → SHIP/NEEDS_FIXES
+     :Code Review      → [Standard only] Task(code-reviewer) with full diff → SHIP/NEEDS_FIXES
      :State Complete   → [PR only] Skill("state", "complete")
      :Report           → output final report
 5. (Init, TODO execution, and Finalize are all part of the loop)
@@ -180,7 +180,7 @@ FOR EACH "### [ ] TODO N: {title}" in plan:
 # Finalize tasks
 rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 cr = TaskCreate(subject="Finalize:Code Review",
-     description="Review complete diff for integration issues, hidden bugs, side effects. Dispatch codex-code-reviewer agent.",
+     description="Review complete diff for integration issues, hidden bugs, side effects. Dispatch code-reviewer agent.",
      activeForm="Reviewing all changes")
 IF pr_mode:
   sc = TaskCreate(subject="Finalize:State Complete", ...)
@@ -396,7 +396,7 @@ WHILE TaskList() has pending tasks:
 | `:Wrap-up` | 2c | Save context (Worker + Verify) + mark Plan `[x]` | Save context (Worker only) + mark Plan `[x]` |
 | `:Commit` | 2d | Task(git-master) per Commit Strategy | Same |
 | `:Residual Commit` | 2f | `git status --porcelain` → git-master if dirty | Same |
-| `:Code Review` | 2f.5 | Task(codex-code-reviewer) with full diff → SHIP/NEEDS_FIXES | ⛔ **SKIPPED** (not created) |
+| `:Code Review` | 2f.5 | Task(code-reviewer) with full diff → SHIP/NEEDS_FIXES | ⛔ **SKIPPED** (not created) |
 | `:State Complete` | 2g | `Skill("state", args="complete <PR#>")` | Same |
 | `:Report` | 2h | Full report from template | Abbreviated summary |
 
@@ -970,7 +970,7 @@ diff = Bash("git diff ${base_branch}...HEAD")
 
 ```
 Task(
-  subagent_type="codex-code-reviewer",
+  subagent_type="code-reviewer",
   description="Final code review",
   prompt="""
 ## Complete PR Diff
@@ -1038,7 +1038,7 @@ TaskUpdate(taskId, status="completed") → next step unblocked
 > NEW task instances for the fix-and-retry cycle.
 
 1. Log verdict + findings to `context/audit.md`
-2. Extract Fix Items from codex-code-reviewer output (max 3 items)
+2. Extract Fix Items from code-reviewer output (max 3 items)
 3. Determine the next step task (`:State Complete` or `:Report`):
    ```
    next_step_id = sc.task_id if pr_mode else rp.task_id
@@ -1452,7 +1452,7 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 - [ ] Sub-steps created: Worker, Verify, Wrap-up, Commit per TODO?
 - [ ] Intra-TODO chains set (Worker→Verify→Wrap-up→Commit)?
 - [ ] All `:Verify` tasks dispatched verify worker + triaged + reconciled if needed?
-- [ ] `:Code Review` dispatched codex-code-reviewer agent with full diff?
+- [ ] `:Code Review` dispatched code-reviewer agent with full diff?
 - [ ] Code review status (SHIP/NEEDS_FIXES/SKIPPED/DEGRADED) logged to `audit.md`?
 - [ ] If NEEDS_FIXES: new fix tasks + Residual Commit (post-fix) + Code Review (retry) created?
 - [ ] If SKIPPED/DEGRADED: explicit status noted in report (not logged as SHIP)?
