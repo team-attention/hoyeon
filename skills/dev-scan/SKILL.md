@@ -22,9 +22,9 @@ Quickly understand **diverse perspectives** on technical topics:
 |----------|--------|
 | Reddit | Vendored reddit-search.py (`python3`) — public JSON API, no key needed |
 | X (Twitter) | Vendored bird-search.mjs (`node`) |
-| Hacker News | WebSearch |
-| Dev.to | WebSearch |
-| Lobsters | WebSearch |
+| Hacker News | Vendored ddgs-search.sh (`uvx ddgs`) — DuckDuckGo site: search |
+| Dev.to | Vendored ddgs-search.sh (`uvx ddgs`) — DuckDuckGo site: search |
+| Lobsters | Vendored ddgs-search.sh (`uvx ddgs`) — DuckDuckGo site: search |
 
 ## Execution
 
@@ -34,6 +34,7 @@ Run in parallel:
 ```bash
 python3 skills/dev-scan/vendor/reddit-search/reddit-search.py --check
 node skills/dev-scan/vendor/bird-search/bird-search.mjs --check
+skills/dev-scan/vendor/ddgs-search/ddgs-search.sh --check
 ```
 
 | Result | Action |
@@ -43,8 +44,10 @@ node skills/dev-scan/vendor/bird-search/bird-search.mjs --check
 | `bird-search --check` → `authenticated: true` | X/Twitter source available |
 | `bird-search --check` → `authenticated: false` | Skip X/Twitter, warn: "브라우저에서 X 로그인 필요" |
 | `node` not found or script error | Skip X/Twitter |
+| `ddgs-search --check` → `available: true` | HN/Dev.to/Lobsters source available |
+| `ddgs-search --check` → `available: false` | Fall back to WebSearch for HN/Dev.to/Lobsters |
 
-Report available sources before proceeding. Minimum 1 source required (WebSearch always available).
+Report available sources before proceeding. Minimum 1 source required.
 
 ### Step 1: Topic Extraction
 Extract core topic from user request.
@@ -74,12 +77,14 @@ node skills/dev-scan/vendor/bird-search/bird-search.mjs "{TOPIC}" --count 20 --j
 - `--json` output includes: text, author, permanent_url, likeCount, retweetCount.
 - Focus on: developer hot takes, viral threads, debate threads.
 
-**Other Sources** (WebSearch, parallel):
+**Other Sources** (ddgs-search, parallel):
+```bash
+skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{TOPIC}" --site news.ycombinator.com --time m --count 10
+skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{TOPIC}" --site dev.to --time m --count 10
+skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{TOPIC}" --site lobste.rs --time m --count 10
 ```
-WebSearch: "{topic} site:news.ycombinator.com"
-WebSearch: "{topic} site:dev.to"
-WebSearch: "{topic} site:lobste.rs"
-```
+- If ddgs-search unavailable (Step 0 check failed), fall back to WebSearch:
+  `WebSearch: "{TOPIC} site:news.ycombinator.com"` etc.
 
 **CRITICAL**: Run all 5 searches in **one message** in parallel.
 
