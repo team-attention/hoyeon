@@ -1,7 +1,7 @@
 ---
 name: dev-scan
 description: Collect diverse opinions on technical topics from developer communities. Use for "developer reactions", "community opinions" requests. Aggregates Reddit, HN, Dev.to, Lobsters, etc.
-version: 1.2.0
+version: 1.3.0
 ---
 
 # Dev Opinions Scan
@@ -21,8 +21,8 @@ Quickly understand **diverse perspectives** on technical topics:
 | Platform | Method |
 |----------|--------|
 | Reddit | Vendored reddit-search.py (`python3`) — public JSON API, no key needed |
-| X (Twitter) | Vendored bird-search.mjs (`node`) |
-| Hacker News | Vendored ddgs-search.sh (`uvx ddgs`) — DuckDuckGo site: search |
+| X (Twitter) | Vendored bird-search.mjs (`node`) — cookie auth |
+| Hacker News | Vendored hn-search.py (`python3`) — Algolia API, no key needed |
 | Dev.to | Vendored ddgs-search.sh (`uvx ddgs`) — DuckDuckGo site: search |
 | Lobsters | Vendored ddgs-search.sh (`uvx ddgs`) — DuckDuckGo site: search |
 
@@ -34,6 +34,7 @@ Run in parallel:
 ```bash
 python3 skills/dev-scan/vendor/reddit-search/reddit-search.py --check
 node skills/dev-scan/vendor/bird-search/bird-search.mjs --check
+python3 skills/dev-scan/vendor/hn-search/hn-search.py --check
 skills/dev-scan/vendor/ddgs-search/ddgs-search.sh --check
 ```
 
@@ -44,8 +45,10 @@ skills/dev-scan/vendor/ddgs-search/ddgs-search.sh --check
 | `bird-search --check` → `authenticated: true` | X/Twitter source available |
 | `bird-search --check` → `authenticated: false` | Skip X/Twitter, warn: "브라우저에서 X 로그인 필요" |
 | `node` not found or script error | Skip X/Twitter |
-| `ddgs-search --check` → `available: true` | HN/Dev.to/Lobsters source available |
-| `ddgs-search --check` → `available: false` | Fall back to WebSearch for HN/Dev.to/Lobsters |
+| `hn-search --check` → `available: true` | Hacker News source available |
+| `hn-search --check` → `available: false` | Fall back to WebSearch for HN |
+| `ddgs-search --check` → `available: true` | Dev.to/Lobsters source available |
+| `ddgs-search --check` → `available: false` | Fall back to WebSearch for Dev.to/Lobsters |
 
 Report available sources before proceeding. Minimum 1 source required.
 
@@ -77,14 +80,21 @@ node skills/dev-scan/vendor/bird-search/bird-search.mjs "{TOPIC}" --count 20 --j
 - `--json` output includes: text, author, permanent_url, likeCount, retweetCount.
 - Focus on: developer hot takes, viral threads, debate threads.
 
-**Other Sources** (ddgs-search, parallel):
+**Hacker News** (Vendored hn-search.py — Algolia API):
 ```bash
-skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{TOPIC}" --site news.ycombinator.com --time m --count 10
+python3 skills/dev-scan/vendor/hn-search/hn-search.py "{TOPIC}" --count 10 --comments 5 --time month
+```
+- Searches HN stories via Algolia (fast, structured, free).
+- Returns stories with points, num_comments, and **top comments with full text**.
+- No API key needed. Options: `--time` (day/week/month/year/all), `--json`.
+
+**Dev.to / Lobsters** (ddgs-search):
+```bash
 skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{TOPIC}" --site dev.to --time m --count 10
 skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{TOPIC}" --site lobste.rs --time m --count 10
 ```
-- If ddgs-search unavailable (Step 0 check failed), fall back to WebSearch:
-  `WebSearch: "{TOPIC} site:news.ycombinator.com"` etc.
+- If ddgs-search unavailable, fall back to WebSearch:
+  `WebSearch: "{TOPIC} site:dev.to"` etc.
 
 **CRITICAL**: Run all 5 searches in **one message** in parallel.
 
@@ -180,4 +190,5 @@ Find unique or deep insights:
 | reddit-search failure / rate limit | Skip Reddit, proceed with other sources |
 | bird-search auth failure | Skip X/Twitter (user needs active browser session) |
 | bird-search script error | Skip X/Twitter, proceed with other sources |
+| hn-search failure | Skip HN, proceed with other sources |
 | Topic too new | Note insufficient results, suggest related keywords |
