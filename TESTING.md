@@ -152,6 +152,30 @@ Agent sandbox testing requires a **fully isolated environment**:
 - Idempotent seed data (can reset and rerun safely)
 - Health check before test execution (`sandbox:status`)
 
+### Sandbox Drift Prevention
+
+When DB schemas, external services, or infrastructure configs change, the sandbox environment must stay in sync. Drift between production code and sandbox setup causes false test failures and masks real bugs.
+
+**Drift-prone artifacts** — check these whenever the corresponding source changes:
+
+| Change Source | Sandbox Artifact to Update | Signal Files |
+|--------------|---------------------------|-------------|
+| DB migration added/modified | `seed.sql`, seed scripts, fixture data | `migrations/`, `prisma/migrations/`, `alembic/versions/` |
+| New env variable required | `.env.sandbox` | `.env.example`, env validation schema |
+| Service added/removed | `docker-compose.yml` (services, ports, networks) | `docker-compose.*`, `Dockerfile` |
+| API dependency changed | Mock/stub configs, fixture responses | HTTP client configs, SDK version bumps |
+| IaC config changed | Local Docker equivalent | `terraform/`, `cloudformation/`, `k8s/` |
+
+**Drift detection checklist** (for verification agents):
+- [ ] Migration files changed → seed data still compatible?
+- [ ] New env var in code → present in `.env.sandbox`?
+- [ ] `docker-compose.yml` changed → `sandbox:up` still works?
+- [ ] External API contract changed → mock/stub responses updated?
+- [ ] Seed data still idempotent after schema change?
+
+> **Principle**: Every infrastructure change PR should include sandbox updates in the same commit.
+> If sandbox cannot be updated immediately, add an explicit H-item to the verification plan.
+
 ### Sandbox Bootstrapping Patterns
 
 When a project lacks Tier 4 sandbox infrastructure, use these patterns as starter scaffolds.
