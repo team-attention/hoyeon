@@ -1,6 +1,6 @@
 ---
 name: dev-scan
-description: Collect diverse opinions on technical topics from developer communities. Use for "developer reactions", "community opinions" requests. Aggregates Reddit, HN, Dev.to, Lobsters, etc.
+description: Collect diverse opinions on technical topics from developer communities. Use for "developer reactions", "community opinions" requests. Aggregates Reddit, HN, Dev.to, Lobsters, ProductHunt, etc.
 version: 1.5.0
 ---
 
@@ -25,6 +25,7 @@ Quickly understand **diverse perspectives** on technical topics:
 | Hacker News | Vendored hn-search.py (`python3`) — Algolia API, no key needed |
 | Dev.to | Vendored ddgs-search.sh → enrich-browser.py (`agent-browser`) — DuckDuckGo search + headless browser enrichment |
 | Lobsters | Vendored ddgs-search.sh → enrich-browser.py (`agent-browser`) — DuckDuckGo search + headless browser enrichment |
+| ProductHunt | Vendored ph-search.py (`python3`) — GraphQL API, requires `PRODUCT_HUNT_TOKEN` env var |
 
 ## Execution
 
@@ -37,6 +38,7 @@ node skills/dev-scan/vendor/bird-search/bird-search.mjs --check
 python3 skills/dev-scan/vendor/hn-search/hn-search.py --check
 skills/dev-scan/vendor/ddgs-search/ddgs-search.sh --check
 python3 skills/dev-scan/vendor/browser-enrich/enrich-browser.py --check
+python3 skills/dev-scan/vendor/ph-search/ph-search.py --check
 ```
 
 | Result | Action |
@@ -52,6 +54,8 @@ python3 skills/dev-scan/vendor/browser-enrich/enrich-browser.py --check
 | `ddgs-search --check` → `available: false` | Fall back to WebSearch for Dev.to/Lobsters |
 | `enrich-browser --check` → `available: true` | Browser enrichment available (full content + comments) |
 | `enrich-browser --check` → `available: false` | Skip enrichment, use ddgs snippets only |
+| `ph-search --check` → `available: true` | ProductHunt source available |
+| `ph-search --check` → `available: false` | Skip ProductHunt (token not set or invalid) |
 
 Report available sources before proceeding. Minimum 1 source required.
 
@@ -83,15 +87,18 @@ Each platform's search engine works differently. Generate one optimized query pe
 | HN | `Q_HN` | Specific technical terms. Drop "vs" — Algolia full-text matches better without. |
 | Dev.to | `Q_DEVTO` | Add context word (`comparison`/`review`/`guide`) for better DuckDuckGo recall. |
 | Lobsters | `Q_LOBSTERS` | Simple technical terms. Small community — keep query broad for recall. |
+| ProductHunt | `Q_PH` | Product/tool names. Drop generic words — PH topics are specific slugs. **Only generate if PH is relevant (see below).** |
+
+**ProductHunt relevance check** — PH is a product launch community. Only set `Q_PH` when the query involves **specific products, tools, or SaaS** (e.g. "Cursor", "Linear", "Supabase vs Firebase"). Skip PH when the topic is abstract/conceptual (e.g. "microservices best practices", "Rust async patterns", "tech layoffs").
 
 **Query type rules:**
 
-| Type | Reddit | X/Twitter | HN | Dev.to (DuckDuckGo) | Lobsters (DuckDuckGo) |
-|------|--------|-----------|-----|------|------|
-| Comparison ("A vs B") | Keep "A vs B" | "A B since:… min_faves:5" | "A B" | "A vs B comparison" | "A B" |
-| Opinion ("reactions to X") | "X" | "X since:… min_faves:5" | "X" | "X review" | "X" |
-| Technology ("X feature") | "X feature" | "X feature since:… min_faves:5" | "X feature" | "X feature guide" | "X feature" |
-| Event ("X release") | "X release" | "X since:… min_faves:5" | "X" | "X announcement" | "X" |
+| Type | Reddit | X/Twitter | HN | Dev.to (DuckDuckGo) | Lobsters (DuckDuckGo) | ProductHunt |
+|------|--------|-----------|-----|------|------|------|
+| Comparison ("A vs B") | Keep "A vs B" | "A B since:… min_faves:5" | "A B" | "A vs B comparison" | "A B" | "A B" |
+| Opinion ("reactions to X") | "X" | "X since:… min_faves:5" | "X" | "X review" | "X" | "X" |
+| Technology ("X feature") | "X feature" | "X feature since:… min_faves:5" | "X feature" | "X feature guide" | "X feature" | "X" |
+| Event ("X release") | "X release" | "X since:… min_faves:5" | "X" | "X announcement" | "X" | "X" |
 
 **Example**: user asks "claude code vs codex"
 
@@ -102,8 +109,9 @@ Each platform's search engine works differently. Generate one optimized query pe
 | `Q_HN` | `claude code codex` |
 | `Q_DEVTO` | `claude code vs codex comparison` |
 | `Q_LOBSTERS` | `claude code codex` |
+| `Q_PH` | `claude code codex` |
 
-### Step 2: Parallel Search (Single Message, 5 Sources)
+### Step 2: Parallel Search (Single Message, 6 Sources)
 
 **Reddit** (Vendored reddit-search.py — public JSON API):
 ```bash
@@ -131,6 +139,16 @@ python3 skills/dev-scan/vendor/hn-search/hn-search.py "{Q_HN}" --count 10 --comm
 - Searches HN stories via Algolia (fast, structured, free).
 - Returns stories with points, num_comments, and **top comments with full text**.
 - No API key needed. Options: `--time` (day/week/month/year/all), `--json`.
+
+**ProductHunt** (Vendored ph-search.py — GraphQL API) — **only if `Q_PH` was generated in Step 1**:
+```bash
+python3 skills/dev-scan/vendor/ph-search/ph-search.py "{Q_PH}" --count 10 --comments 3 --time month
+```
+- Searches topics by keyword → collects posts per topic → deduplicates → sorts by votes.
+- Returns products with votesCount, commentsCount, tagline, and **top comments**.
+- Requires `PRODUCT_HUNT_TOKEN` env var (Bearer token for GraphQL API).
+- Options: `--time` (day/week/month/year/all), `--comments N`, `--json`.
+- **Skip if**: `Q_PH` not set (topic not product-related) or `--check` returned `available: false`.
 
 **Dev.to / Lobsters** (ddgs-search → browser enrichment):
 
@@ -248,6 +266,7 @@ Find unique or deep insights:
 | bird-search auth failure | Skip X/Twitter (user needs active browser session) |
 | bird-search script error | Skip X/Twitter, proceed with other sources |
 | hn-search failure | Skip HN, proceed with other sources |
+| ph-search failure / token missing | Skip ProductHunt, proceed with other sources |
 | ddgs-search failure | Fall back to WebSearch with `site:` filter |
 | enrich-browser failure / agent-browser missing | Use ddgs snippets only (no article body or comments) |
 | enrich-browser timeout on specific URL | Skip that URL, include remaining results |
