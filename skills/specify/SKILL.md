@@ -876,7 +876,7 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
   - [ ] All TODOs have "Do not run git commands" in Must NOT do
   - [ ] HIGH risk TODOs include rollback steps
   - [ ] References populated from DRAFT's Agent Findings (incl. Documentation)
-- [ ] **TODO Final: Verification** exists (type: verification, read-only, same Acceptance Criteria structure)
+- [ ] **TODO Final: Verification** exists (type: verification, Edit/Write forbidden, same Acceptance Criteria structure)
 - [ ] Reviewer returned OKAY
 - [ ] Draft file deleted
 

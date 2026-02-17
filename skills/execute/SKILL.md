@@ -373,7 +373,7 @@ WHILE TaskList() has pending tasks:
 
 **Which types can run in parallel:**
 - `:Worker` — YES (if touching disjoint files)
-- `:Verify` — YES (read-only, no conflicts)
+- `:Verify` — YES (no Edit/Write, no conflicts)
 - `:Commit` — NO (git operations must be sequential)
 - `:Wrap-up` — PARTIAL (outputs.json must be sequential, other files OK)
 - `:State Begin/Complete` — NO (single task)

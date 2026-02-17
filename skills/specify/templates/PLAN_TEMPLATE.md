@@ -22,7 +22,7 @@ Orchestrator (reads full PLAN)
 - **Inputs/Outputs** enable dependency between TODOs (with explicit types)
 - Orchestrator handles **substitution**: `${todo-1.outputs.config_path}` → actual value
 - Orchestrator handles **all commits** (Workers do NOT commit)
-- **Verification** runs once after all TODOs complete (read-only)
+- **Verification** runs once after all TODOs complete (no Edit/Write, Bash for tests allowed)
 
 ### TODO Granularity Rules
 
@@ -223,7 +223,7 @@ TODO-1 → TODO-2 → TODO-Final
 | 1 | `chore(setup): initialize config` | `config/*` | always |
 | 2 | `feat(api): add main module` | `src/api/*` | always |
 
-> **Note**: No commit after Final (Verification is read-only). Final cleanup commit only if Orchestrator detects uncommitted changes before verification.
+> **Note**: No commit after Final (Verification does not modify source code). Final cleanup commit only if Orchestrator detects uncommitted changes before verification.
 ```
 
 ### 11. Error Handling
@@ -402,6 +402,7 @@ TODO-1 → TODO-2 → TODO-Final
 - Do not add new features or fix errors (report only)
 - Do not run git commands
 - Bash is allowed for: running tests, builds, type checks, and booting test infrastructure (e.g., `sandbox:up`, `docker-compose up`)
+- Do not modify repo files via Bash (no `sed -i`, `echo >`, etc.)
 
 **Acceptance Criteria**:
 
@@ -779,6 +780,7 @@ Completion Rule: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅)
 - Do not add new features or fix errors (report only)
 - Do not run git commands
 - Bash is allowed for: running tests, builds, type checks, and booting test infrastructure (e.g., `sandbox:up`, `docker-compose up`)
+- Do not modify repo files via Bash (no `sed -i`, `echo >`, etc.)
 
 **Acceptance Criteria**:
 
