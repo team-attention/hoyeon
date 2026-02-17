@@ -1,7 +1,7 @@
 ---
 name: dev-scan
 description: Collect diverse opinions on technical topics from developer communities. Use for "developer reactions", "community opinions" requests. Aggregates Reddit, HN, Dev.to, Lobsters, etc.
-version: 1.4.0
+version: 1.5.0
 ---
 
 # Dev Opinions Scan
@@ -23,8 +23,8 @@ Quickly understand **diverse perspectives** on technical topics:
 | Reddit | Vendored reddit-search.py (`python3`) — public JSON API, no key needed |
 | X (Twitter) | Vendored bird-search.mjs (`node`) — cookie auth |
 | Hacker News | Vendored hn-search.py (`python3`) — Algolia API, no key needed |
-| Dev.to | Vendored ddgs-search.sh (`uvx ddgs`) — DuckDuckGo site: search |
-| Lobsters | Vendored ddgs-search.sh (`uvx ddgs`) — DuckDuckGo site: search |
+| Dev.to | Vendored ddgs-search.sh → enrich-browser.py (`agent-browser`) — DuckDuckGo search + headless browser enrichment |
+| Lobsters | Vendored ddgs-search.sh → enrich-browser.py (`agent-browser`) — DuckDuckGo search + headless browser enrichment |
 
 ## Execution
 
@@ -36,6 +36,7 @@ python3 skills/dev-scan/vendor/reddit-search/reddit-search.py --check
 node skills/dev-scan/vendor/bird-search/bird-search.mjs --check
 python3 skills/dev-scan/vendor/hn-search/hn-search.py --check
 skills/dev-scan/vendor/ddgs-search/ddgs-search.sh --check
+python3 skills/dev-scan/vendor/browser-enrich/enrich-browser.py --check
 ```
 
 | Result | Action |
@@ -47,8 +48,10 @@ skills/dev-scan/vendor/ddgs-search/ddgs-search.sh --check
 | `node` not found or script error | Skip X/Twitter |
 | `hn-search --check` → `available: true` | Hacker News source available |
 | `hn-search --check` → `available: false` | Fall back to WebSearch for HN |
-| `ddgs-search --check` → `available: true` | Dev.to/Lobsters source available |
+| `ddgs-search --check` → `available: true` | Dev.to/Lobsters search available |
 | `ddgs-search --check` → `available: false` | Fall back to WebSearch for Dev.to/Lobsters |
+| `enrich-browser --check` → `available: true` | Browser enrichment available (full content + comments) |
+| `enrich-browser --check` → `available: false` | Skip enrichment, use ddgs snippets only |
 
 Report available sources before proceeding. Minimum 1 source required.
 
@@ -76,7 +79,7 @@ Each platform's search engine works differently. Generate one optimized query pe
 | Source | Variable | Strategy |
 |--------|----------|----------|
 | Reddit | `Q_REDDIT` | Natural phrasing. Keep "vs" for comparisons — Reddit titles use it. Script handles broadening internally. |
-| X/Twitter | `Q_TWITTER` | Short (≤5 words). Drop filler words (vs, about, of). Key terms only. |
+| X/Twitter | `Q_TWITTER` | Short key terms + search operators. Append `since:YYYY-MM-DD` (30 days ago) and `min_faves:5` for quality filtering. Results sorted by popularity (Top). |
 | HN | `Q_HN` | Specific technical terms. Drop "vs" — Algolia full-text matches better without. |
 | Dev.to | `Q_DEVTO` | Add context word (`comparison`/`review`/`guide`) for better DuckDuckGo recall. |
 | Lobsters | `Q_LOBSTERS` | Simple technical terms. Small community — keep query broad for recall. |
@@ -85,17 +88,17 @@ Each platform's search engine works differently. Generate one optimized query pe
 
 | Type | Reddit | X/Twitter | HN | Dev.to (DuckDuckGo) | Lobsters (DuckDuckGo) |
 |------|--------|-----------|-----|------|------|
-| Comparison ("A vs B") | Keep "A vs B" | "A B" | "A B" | "A vs B comparison" | "A B" |
-| Opinion ("reactions to X") | "X" | "X" | "X" | "X review" | "X" |
-| Technology ("X feature") | "X feature" | "X feature" | "X feature" | "X feature guide" | "X feature" |
-| Event ("X release") | "X release" | "X" | "X" | "X announcement" | "X" |
+| Comparison ("A vs B") | Keep "A vs B" | "A B since:… min_faves:5" | "A B" | "A vs B comparison" | "A B" |
+| Opinion ("reactions to X") | "X" | "X since:… min_faves:5" | "X" | "X review" | "X" |
+| Technology ("X feature") | "X feature" | "X feature since:… min_faves:5" | "X feature" | "X feature guide" | "X feature" |
+| Event ("X release") | "X release" | "X since:… min_faves:5" | "X" | "X announcement" | "X" |
 
 **Example**: user asks "claude code vs codex"
 
 | Variable | Optimized Query |
 |----------|----------------|
 | `Q_REDDIT` | `claude code vs codex` |
-| `Q_TWITTER` | `claude code codex` |
+| `Q_TWITTER` | `claude code codex since:2026-01-17 min_faves:5` |
 | `Q_HN` | `claude code codex` |
 | `Q_DEVTO` | `claude code vs codex comparison` |
 | `Q_LOBSTERS` | `claude code codex` |
@@ -129,12 +132,25 @@ python3 skills/dev-scan/vendor/hn-search/hn-search.py "{Q_HN}" --count 10 --comm
 - Returns stories with points, num_comments, and **top comments with full text**.
 - No API key needed. Options: `--time` (day/week/month/year/all), `--json`.
 
-**Dev.to / Lobsters** (ddgs-search):
+**Dev.to / Lobsters** (ddgs-search → browser enrichment):
+
+When `enrich-browser` is available, pipe ddgs JSON through it for full content + comments:
+```bash
+skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{Q_DEVTO}" --site dev.to --time m --count 10 --json | python3 skills/dev-scan/vendor/browser-enrich/enrich-browser.py --stdin --comments 5 --body 500 --concurrency 5
+skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{Q_LOBSTERS}" --site lobste.rs --time m --count 10 --json | python3 skills/dev-scan/vendor/browser-enrich/enrich-browser.py --stdin --comments 5 --concurrency 5
+```
+- Uses `agent-browser --session` for parallel headless browser extraction.
+- Each URL opens in an isolated browser session → pages load in parallel.
+- Extracts: article body, author, tags, and **top comments with author**.
+- Adds ~5-8s total for 10 URLs at concurrency=5.
+
+When `enrich-browser` is NOT available, fall back to ddgs snippets only:
 ```bash
 skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{Q_DEVTO}" --site dev.to --time m --count 10
 skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{Q_LOBSTERS}" --site lobste.rs --time m --count 10
 ```
-- If ddgs-search unavailable, fall back to WebSearch:
+
+If ddgs-search also unavailable, fall back to WebSearch:
   `WebSearch: "{Q_DEVTO} site:dev.to"` etc.
 
 **CRITICAL**: Run all **available** searches in **one message** in parallel.
@@ -233,4 +249,6 @@ Find unique or deep insights:
 | bird-search script error | Skip X/Twitter, proceed with other sources |
 | hn-search failure | Skip HN, proceed with other sources |
 | ddgs-search failure | Fall back to WebSearch with `site:` filter |
+| enrich-browser failure / agent-browser missing | Use ddgs snippets only (no article body or comments) |
+| enrich-browser timeout on specific URL | Skip that URL, include remaining results |
 | Topic too new | Note insufficient results, suggest related keywords |
