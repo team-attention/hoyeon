@@ -7,7 +7,7 @@ disallowed-tools:
   - Write
   - Edit
   - Bash
-validation_prompt: |
+validate_prompt: |
   Must contain all 5 sections:
   1. Test Infrastructure (4-Tier) - Tier 1~4별 있음/없음 + 도구/경로
   2. Agent-Verifiable (A-items) - tier 번호와 method 포함
