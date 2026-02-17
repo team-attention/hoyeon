@@ -434,6 +434,17 @@ Quick assessment only:
 
 </details>
 
+**Pre-read TESTING.md**: Before launching agents, read the testing strategy file to inline into verification-planner's prompt. The file is at the plugin root — resolve from `${baseDir}` (shown in skill header) going up to the plugin root:
+```
+# Read TESTING.md from plugin root (3 levels up from skill baseDir)
+# ${baseDir} is shown in the "Base directory for this skill:" header above.
+# Resolve: ${baseDir}/../../../TESTING.md
+# Extract the content — especially the "For Verification Agents" and "Sandbox Bootstrapping Patterns" sections.
+# Store the content to include in verification-planner prompt below.
+TESTING_MD_CONTENT = Read("${baseDir}/../../../TESTING.md")
+```
+> **Why inline?** Subagents cannot resolve `${baseDir}` — it's only available as header context to the main agent. The main agent must read the file and pass the content directly.
+
 Launch gap-analyzer, tradeoff-analyzer, verification-planner, and external-researcher (if needed) **in parallel**:
 
 ```
@@ -468,6 +479,15 @@ User's Goal: [From DRAFT What & Why]
 Current Understanding: [Summary from DRAFT]
 Work Breakdown: [From DRAFT Direction > Work Breakdown]
 Agent Findings: [From DRAFT Agent Findings - patterns, structure, commands]
+
+## Testing Strategy (from TESTING.md)
+[Paste TESTING_MD_CONTENT here — the full content read in the pre-read step above.
+ If the file was not found, note this in Verification Gaps and proceed without it.]
+
+Use the 4-Tier testing model above to classify verification points:
+- A-items (agent-verifiable): automated tests, CLI checks, lint
+- H-items (human-required): UX review, visual inspection, manual QA
+- S-items (sandbox agent testing): Tier 4 scenarios requiring docker-compose/browser agents
 
 Explore test infrastructure and classify verification points.
 """)
@@ -512,11 +532,11 @@ AskUserQuestion(
 - Version-specific behavior needed
 - Best practices unknown
 
-### Step 2.5: Codex Strategic Synthesis (Optional)
+### Step 2.5: Codex Strategic Synthesis
 
 > **Mode Gate**:
 > - ⛔ **Quick**: Skip entirely.
-> - Standard: Run after all Step 2 analysis agents complete, before Step 3.
+> - ✅ **Standard**: **Required.** Run after all Step 2 analysis agents complete, before Step 3.
 
 After all analysis agents return results, call the Codex Strategist to cross-check and synthesize:
 
@@ -546,7 +566,7 @@ Synthesize them — find contradictions, blind spots, and strategic concerns.
 """)
 ```
 
-**Graceful Degradation**: If codex CLI is unavailable or the call fails, the agent returns SKIPPED/DEGRADED status. Continue to Step 3 without synthesis — it is additive, not blocking.
+**Graceful Degradation**: If codex CLI is unavailable or the call fails, the agent returns SKIPPED/DEGRADED status. You MUST still attempt the call and record the result. Continue to Step 3 only after attempting and logging the outcome.
 
 **Use Codex Synthesis Results** (when available):
 - **Cross-Check Findings**: If contradictions found, resolve before plan generation. Present to user in Decision Summary (Step 3).
@@ -606,6 +626,9 @@ AskUserQuestion(
 - A-2: [criterion] (method: [e2e/unit test])
 ### Human-Required (H-items)
 - H-1: [criterion] (reason: [why human needed])
+### Sandbox Agent Testing (S-items)
+- S-1: [scenario] (method: [agent-browser + DB check])
+(Include when verification-planner reports Tier 4 sandbox infra. Omit if no sandbox exists.)
 ### Verification Gaps
 - [environment constraints and alternatives]
 ```
@@ -633,6 +656,8 @@ Generate plan using **DRAFT → PLAN mapping**:
 | Direction > Work Breakdown | TODOs + Dependency Graph |
 | (verification-planner > A-items) | Verification Summary + TODO Final > Acceptance Criteria |
 | (verification-planner > H-items) | Verification Summary > Human-Required |
+| (verification-planner > S-items/Tier 4) | Verification Summary > Sandbox Agent Testing |
+| (verification-planner > Verification Gaps) | Verification Summary > Verification Gaps |
 | (verification-planner > External Dependencies) | External Dependencies Strategy |
 | Agent Findings > External Dependencies | External Dependencies Strategy |
 
@@ -655,11 +680,12 @@ Follow the structure in `${baseDir}/templates/PLAN_TEMPLATE.md`.
 > - 🤖 **Autopilot**: Skip. Proceed directly to plan-reviewer.
 > - ⛔ **Quick**: Skip. Proceed directly to plan-reviewer.
 
-After creating the PLAN, present the Verification Summary to the user for lightweight confirmation:
+After creating the PLAN, present the Verification Summary to the user for lightweight confirmation.
+The summary must include counts for **all three categories**: A-items, H-items, and S-items (if sandbox infra exists).
 
 ```
 AskUserQuestion(
-  question: "Here is the PLAN's Verification Summary. Shall we proceed?",
+  question: "Here is the PLAN's Verification Summary: N agent-verifiable (A), M human-required (H), K sandbox scenarios (S). Shall we proceed?",
   options: [
     { label: "Confirmed", description: "Verification strategy looks good" },
     { label: "Corrections needed", description: "I'd like to change verification items" }
@@ -765,10 +791,10 @@ Required fields for each TODO:
 
 ### Type Field
 
-| Type | Retry on Fail | Can Modify Files | Failure Handling |
-|------|---------------|------------------|------------------|
-| `work` | ✅ Up to 2x | ✅ Yes | Analyze → Fix Task or halt |
-| `verification` | ❌ No | ❌ No (read-only) | Analyze → Fix Task or halt |
+| Type | Retry on Fail | Edit/Write Tools | Bash for Testing | Failure Handling |
+|------|---------------|------------------|------------------|------------------|
+| `work` | ✅ Up to 2x | ✅ Yes | ✅ Yes | Analyze → Fix Task or halt |
+| `verification` | ❌ No | ❌ Forbidden | ✅ Yes (tests, builds, sandbox) | Analyze → Fix Task or halt |
 
 **Note**: Failure handling logic is unified for both types. Type only determines retry permission and file modification rights.
 
@@ -826,7 +852,7 @@ Each TODO receives a risk tag from the tradeoff-analyzer:
 - **TODO Final uses same Acceptance Criteria structure** (unified verification)
 
 **TODO Final**:
-- Type: `verification` (read-only, cannot modify files)
+- Type: `verification` (Edit/Write forbidden, Bash for tests/sandbox allowed)
 - Same categories: Functional, Static, Runtime
 - Same Hook verification process
 - Difference: scope is "entire project"
@@ -850,15 +876,16 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
   - [ ] All TODOs have "Do not run git commands" in Must NOT do
   - [ ] HIGH risk TODOs include rollback steps
   - [ ] References populated from DRAFT's Agent Findings (incl. Documentation)
-- [ ] **TODO Final: Verification** exists (type: verification, read-only, same Acceptance Criteria structure)
+- [ ] **TODO Final: Verification** exists (type: verification, Edit/Write forbidden, same Acceptance Criteria structure)
 - [ ] Reviewer returned OKAY
 - [ ] Draft file deleted
 
 ### Standard mode (additional, both interactive and autopilot)
 - [ ] Draft completeness fully validated (Patterns, Commands, Documentation, External Dependencies, UX Review)
 - [ ] Parallel analysis agents ran (gap-analyzer + tradeoff-analyzer + verification-planner, optionally external-researcher)
-- [ ] Codex Strategic Synthesis ran (Step 2.5) — or noted as SKIPPED/DEGRADED if codex unavailable
+- [ ] Codex Strategic Synthesis attempted (Step 2.5) — result is one of: synthesis applied / SKIPPED / DEGRADED
 - [ ] All HIGH risk decision_points presented to user and resolved
+- [ ] Verification-planner Tier 4 findings reflected: S-items in Verification Summary if sandbox infra exists, Verification Gaps populated
 
 ### Interactive mode (additional)
 - [ ] User explicitly requested plan generation (standard+interactive only; quick auto-transitions)

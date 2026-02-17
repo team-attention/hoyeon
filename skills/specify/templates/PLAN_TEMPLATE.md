@@ -14,7 +14,7 @@ Orchestrator (reads full PLAN)
     ├── Worker 1 → TODO 1 only (isolated)
     ├── Worker 2 → TODO 2 only (isolated)
     │   ...
-    └── Worker Final → Verification (read-only)
+    └── Worker Final → Verification (no Edit/Write, Bash allowed)
 ```
 
 **Key Principles**:
@@ -22,7 +22,7 @@ Orchestrator (reads full PLAN)
 - **Inputs/Outputs** enable dependency between TODOs (with explicit types)
 - Orchestrator handles **substitution**: `${todo-1.outputs.config_path}` → actual value
 - Orchestrator handles **all commits** (Workers do NOT commit)
-- **Verification** runs once after all TODOs complete (read-only)
+- **Verification** runs once after all TODOs complete (no Edit/Write, Bash for tests allowed)
 
 ### TODO Granularity Rules
 
@@ -92,6 +92,17 @@ Each TODO is executed by an isolated Worker agent (not a human). Agent call over
 | ID | Criterion | Reason | Review Material |
 |----|-----------|--------|----------------|
 | H-1 | [criterion] | Subjective judgment | [link/path] |
+
+### Sandbox Agent Testing (S-items)
+
+> Include when project has Tier 4 sandbox infrastructure (docker-compose, .feature files, sandbox fixtures).
+> If no sandbox infra exists, omit this section and note in Verification Gaps.
+
+| ID | Scenario | Agent | Method |
+|----|----------|-------|--------|
+| S-1 | [user-facing scenario] | sandbox-user (browser) + sandbox-admin (DB) | [action → verification] |
+
+**Sandbox prerequisites**: `{sandbox-up-command}` must succeed before S-items execute.
 
 ### Verification Gaps
 - [environment constraints and alternatives]
@@ -212,7 +223,7 @@ TODO-1 → TODO-2 → TODO-Final
 | 1 | `chore(setup): initialize config` | `config/*` | always |
 | 2 | `feat(api): add main module` | `src/api/*` | always |
 
-> **Note**: No commit after Final (Verification is read-only). Final cleanup commit only if Orchestrator detects uncommitted changes before verification.
+> **Note**: No commit after Final (Verification does not modify source code). Final cleanup commit only if Orchestrator detects uncommitted changes before verification.
 ```
 
 ### 11. Error Handling
@@ -369,7 +380,7 @@ TODO-1 → TODO-2 → TODO-Final
 
 ### [ ] TODO Final: Verification
 
-**Type**: verification (read-only)
+**Type**: verification
 
 **Required Tools**: (from DRAFT's Agent Findings > Project Commands)
 
@@ -384,12 +395,14 @@ TODO-1 → TODO-2 → TODO-Final
 - [ ] Run lint (if applicable)
 - [ ] Run tests
 - [ ] Verify all deliverables exist
+- [ ] Boot and run sandbox E2E tests (if S-items exist in Verification Summary)
 
 **Must NOT do**:
-- Do not modify any files
-- Do not add new features
-- Do not fix errors (report only)
+- Do not use Edit or Write tools (source code modification forbidden)
+- Do not add new features or fix errors (report only)
 - Do not run git commands
+- Bash is allowed for: running tests, builds, type checks, and booting test infrastructure (e.g., `sandbox:up`, `docker-compose up`)
+- Do not modify repo files via Bash (no `sed -i`, `echo >`, etc.)
 
 **Acceptance Criteria**:
 
@@ -529,10 +542,10 @@ Orchestrator receives Verify Worker result
 
 Declares the nature of the TODO.
 
-| Type | Description | Can Modify Files? |
-|------|-------------|-------------------|
-| `work` | Implementation task | Yes |
-| `verification` | Quality gate (read-only) | No |
+| Type | Description | Edit/Write Tools | Bash for Testing |
+|------|-------------|------------------|------------------|
+| `work` | Implementation task | ✅ Yes | ✅ Yes |
+| `verification` | Quality gate | ❌ Forbidden | ✅ Yes (tests, builds, sandbox boot) |
 
 ### Required Tools Field
 
@@ -745,7 +758,7 @@ Completion Rule: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅)
 ```markdown
 ### [ ] TODO Final: Verification
 
-**Type**: verification (read-only)
+**Type**: verification
 
 **Required Tools**: (per project - e.g., npm, cargo, go, pytest)
 
@@ -760,12 +773,14 @@ Completion Rule: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅)
 - [ ] Run lint (if applicable)
 - [ ] Run tests
 - [ ] Verify middleware is imported in routes file
+- [ ] Boot and run sandbox E2E tests (if S-items exist in Verification Summary)
 
 **Must NOT do**:
-- Do not modify any files
-- Do not add new features
-- Do not fix errors (report only)
+- Do not use Edit or Write tools (source code modification forbidden)
+- Do not add new features or fix errors (report only)
 - Do not run git commands
+- Bash is allowed for: running tests, builds, type checks, and booting test infrastructure (e.g., `sandbox:up`, `docker-compose up`)
+- Do not modify repo files via Bash (no `sed -i`, `echo >`, etc.)
 
 **Acceptance Criteria**:
 

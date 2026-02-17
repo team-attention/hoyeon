@@ -373,7 +373,7 @@ WHILE TaskList() has pending tasks:
 
 **Which types can run in parallel:**
 - `:Worker` — YES (if touching disjoint files)
-- `:Verify` — YES (read-only, no conflicts)
+- `:Verify` — YES (no Edit/Write, no conflicts)
 - `:Commit` — NO (git operations must be sequential)
 - `:Wrap-up` — PARTIAL (outputs.json must be sequential, other files OK)
 - `:State Begin/Complete` — NO (single task)
@@ -452,9 +452,14 @@ When this task is DONE, the following MUST be true:
 {Acceptance Criteria section from Plan}
 
 ## REQUIRED TOOLS
-- Read: Reference existing code
-- Edit/Write: Write code
-- Bash: Run build/tests
+IF todo_type == "work":
+  - Read: Reference existing code
+  - Edit/Write: Write code
+  - Bash: Run build/tests
+IF todo_type == "verification":
+  - Read: Reference existing code
+  - Bash: Run tests, builds, type checks, and boot test infrastructure (e.g., sandbox:up, docker-compose up)
+  - ❌ Edit/Write: FORBIDDEN — do not modify source code
 
 ## MUST DO
 - Perform only this Task
@@ -560,7 +565,17 @@ Review the Worker's output JSON and the actual code changes:
 3. **Missing context**: Did the Worker discover patterns, issues, or
    make decisions that should be in learnings/issues/decisions but aren't?
 
-## PART 4: SCOPE-RELATED BLOCKAGE DETECTION
+## PART 4: SANDBOX LIFECYCLE
+If you started any sandbox infrastructure during verification, you MUST:
+
+1. **Capture output**: Include sandbox test results in the `sandbox` field
+   of your output JSON.
+2. **Tear down**: After tests complete, shut down whatever you started.
+   Report result in `sandbox.teardown`.
+
+If no sandbox infrastructure was used, set `sandbox.used` to false.
+
+## PART 5: SCOPE-RELATED BLOCKAGE DETECTION
 If you detect a failure that stems from SCOPE limitations (not Worker error),
 populate the `suggested_adaptation` field:
 
@@ -611,6 +626,13 @@ Only suggest adaptation when the PLAN itself needs adjustment, not the Worker's 
     "suspicious_passes": ["<criterion_id that looks questionable>"],
     "undocumented_changes": ["<file or change not mentioned in output>"],
     "missing_context": ["<learning/issue/decision Worker should have reported>"]
+  },
+  "sandbox": {
+    "used": true | false,
+    "started_with": "<command used to start sandbox, e.g. docker-compose up -d>",
+    "teardown": "SUCCESS" | "FAILED" | "NOT_APPLICABLE",
+    "teardown_command": "<command used, e.g. docker-compose down>",
+    "report": "<markdown: sandbox test output, docker logs, BDD results, etc.>"
   },
   "suggested_adaptation": {
     // ⚠️ Only include this field when status is FAILED AND you detect a scope-related blockage
@@ -703,7 +725,7 @@ function triage(verify_result, todo_type) → HALT | ADAPT | RETRY:
 
   IF todo_type == "verification" AND any acceptance_criteria FAIL:
     → ADAPT (auto-generate fix TODO from failed criteria)
-    # Verification TODOs are read-only — retry cannot fix code.
+    # Verification TODOs cannot use Edit/Write — retry cannot fix code.
     # Orchestrator builds suggested_adaptation from failed criteria:
     #   title: "Fix: {failed_criterion.description}"
     #   steps: derived from failure reason + affected files
@@ -838,6 +860,8 @@ Combines context saving and checkbox marking into a single step.
 | Worker | `issues` | `issues.md` | `## {N}\n- [ ] item` append | Both |
 | Verify | `side_effects.missing_context` | `learnings.md` / `issues.md` | Merge into appropriate file | Standard only |
 | Verify | `side_effects.undocumented_changes` | `issues.md` | `- [ ] Undocumented: {change}` append | Standard only |
+| Verify | `sandbox.report` | `sandbox-report.md` | `## TODO {N}\n{report}` append (only if `sandbox.used == true`) | Standard only |
+| Verify | `sandbox.teardown == FAILED` | `issues.md` | `- [ ] Sandbox teardown failed for TODO {N}` append | Standard only |
 | Orchestrator | all reconciliation events | `audit.md` | structured entry (see section 7 format) | Standard only |
 | `acceptance_criteria` | (not saved) | Used only for verification, not saved to context | Standard only |
 
@@ -1187,6 +1211,7 @@ Substitution logic:
 | `learnings.md` | Worker → Orchestrator saves | Patterns discovered and applied |
 | `issues.md` | Worker → Orchestrator saves | Unresolved issues (`- [ ]` format) |
 | `audit.md` | Orchestrator | All reconciliation events (triage, retry, adapt, halt) |
+| `sandbox-report.md` | Verify Worker → Orchestrator saves | Sandbox test results per TODO (only when sandbox used) |
 
 **Context Lifecycle:**
 ```
