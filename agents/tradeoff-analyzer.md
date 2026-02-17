@@ -57,6 +57,7 @@ For each proposed approach, ask:
 - Can this be done **without changing the database**?
 - Can this be a **configuration change** instead of code change?
 - Is the proposed pattern **proportional** to the problem size?
+- For items with Rollback=hard/impossible: is there a **reversible alternative** that achieves the same goal? (e.g., soft delete instead of DROP, new column + migration instead of ALTER column type, feature flag instead of schema change)
 
 Output format:
 ```
@@ -126,10 +127,12 @@ Boundaries: [From DRAFT Boundaries]
 ## Tradeoff Analysis Report
 
 ### 1. Risk Assessment
-| Change Area | Risk | Blast Radius | Rollback |
-|-------------|------|-------------|----------|
-| [Area 1] | LOW/MED/HIGH | [scope] | [easy/hard/impossible] |
-| [Area 2] | LOW/MED/HIGH | [scope] | [easy/hard/impossible] |
+| Change Area | Risk | Blast Radius | Rollback | Reversible Alternative |
+|-------------|------|-------------|----------|----------------------|
+| [Area 1] | LOW/MED/HIGH | [scope] | [easy/hard/impossible] | [alternative or "-"] |
+| [Area 2] | LOW/MED/HIGH | [scope] | [easy/hard/impossible] | [alternative or "-"] |
+
+> Items with Rollback=hard/impossible MUST have a Reversible Alternative proposed (or explicit justification why none exists).
 
 ### 2. Simpler Alternatives
 - [Alternative 1]: [description] — Verdict: [KEEP|CONSIDER|SWITCH]

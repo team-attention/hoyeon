@@ -458,6 +458,7 @@ Boundaries: [From DRAFT Boundaries]
 
 Assess risk per change area, propose simpler alternatives, flag dangerous changes,
 and generate decision_points for HIGH risk items requiring human approval.
+For irreversible changes (Rollback=hard/impossible), propose a reversible alternative.
 """)
 
 # Verification planning - classify verification points as agent-verifiable vs human-required
@@ -592,9 +593,12 @@ AskUserQuestion(
 (Omit this section if Step 2.5 was skipped or returned SKIPPED/DEGRADED)
 
 ### Risk Summary
-- HIGH: 1 item (DB schema change — user approved)
-- MEDIUM: 3 items (see agent decisions above)
-- LOW: 5 items
+| 변경사항 | Risk | Rollback | 가역적 대안 | 판단 |
+|---------|------|----------|------------|------|
+| [HIGH items only — from tradeoff-analyzer Risk Assessment] | HIGH | hard/impossible | [alternative] | 사람 선택 필요 |
+
+- MEDIUM: N items (see agent decisions above)
+- LOW: N items
 
 ## Verification Strategy
 ### Agent-Verifiable (A-items)
