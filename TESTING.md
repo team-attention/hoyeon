@@ -152,6 +152,100 @@ Agent sandbox testing requires a **fully isolated environment**:
 - Idempotent seed data (can reset and rerun safely)
 - Health check before test execution (`sandbox:status`)
 
+### Sandbox Bootstrapping Patterns
+
+When a project lacks Tier 4 sandbox infrastructure, use these patterns as starter scaffolds.
+Adapt to your project's stack and constraints.
+
+> These patterns are for local dev/test environments only. Do not use directly in production.
+
+#### Pattern: Web App (SPA + API + DB)
+
+**Fits**: React/Vue/Next.js + Node/Python API + PostgreSQL/MySQL
+**Detection signals**: Separate client/server directories, DB ORM config present
+
+Directory structure:
+```
+sandbox/
+├── docker-compose.yml    # db + server + client
+├── features/
+│   ├── auth.feature      # Authentication scenarios
+│   └── core.feature      # Core feature scenarios
+├── scripts/
+│   └── status.ts         # Port/DB/service health check
+└── .env.sandbox          # Mock credentials
+```
+
+Required scripts: `sandbox:up`, `sandbox:down`, `sandbox:status`
+First features: Authentication + one core CRUD operation
+
+#### Pattern: API Server
+
+**Fits**: NestJS/FastAPI/Go API + DB (no frontend)
+**Detection signals**: Server code only, no client directory
+
+Directory structure:
+```
+sandbox/
+├── docker-compose.yml    # db + server
+├── features/
+│   └── api-core.feature  # Core API scenarios
+├── scripts/
+│   └── status.sh         # Health check
+└── seed.sql              # Seed data
+```
+
+Admin Agent: DB + API response verification (curl/httpie)
+User Agent: API client simulation
+
+#### Pattern: CLI Tool
+
+**Fits**: Input/output transformation, file processing tools
+**Detection signals**: bin field in package.json, CLI entrypoint, commander/yargs dependency
+
+Directory structure:
+```
+sandbox/
+├── fixtures/
+│   ├── input/            # Test input files
+│   └── expected/         # Expected output files
+├── features/
+│   └── cli-core.feature  # CLI scenarios
+└── scripts/
+    └── run-scenarios.sh  # Fixture-based verification
+```
+
+Docker may not be needed — fixture-based input/output comparison can suffice.
+
+#### Pattern: Monorepo
+
+**Fits**: pnpm workspace, turborepo, nx
+**Detection signals**: pnpm-workspace.yaml, turbo.json, nx.json
+
+Directory structure:
+```
+sandbox/
+├── docker-compose.yml    # Compose profiles per service
+├── features/
+│   ├── service-a.feature
+│   └── service-b.feature
+├── scripts/
+│   └── status.ts
+└── .env.sandbox
+```
+
+Use compose profiles for selective service startup.
+Shared DB with per-service seed data.
+
+#### Security Checklist
+
+Always verify when bootstrapping a sandbox:
+- [ ] All credentials are mock values (never include real keys)
+- [ ] Minimize host port bindings
+- [ ] .env.sandbox is git-tracked (safe because mock values only)
+- [ ] Volume mounts do not include sensitive host directories
+- [ ] Seed data is idempotent (safe to rerun)
+
 ---
 
 ## Decision Matrix: Which Tier to Use

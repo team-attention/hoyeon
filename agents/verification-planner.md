@@ -149,6 +149,7 @@ Agent Findings: [Discovered patterns, structure, commands]
 ### 4. Verification Gaps
 - [현재 환경에서 검증 불가능한 항목과 대안]
 - [Tier 4가 없는 경우: 어떤 항목이 agent sandbox로 검증 가능했을지 명시]
+- [Tier 4가 없는 경우: TESTING.md Sandbox Bootstrapping Patterns에서 매칭 패턴 추천]
 
 ### 5. External Dependencies
 | Dependency | Type | Dev Strategy | Pre-work (before AI) | Post-work (after AI) |
@@ -164,6 +165,7 @@ Agent Findings: [Discovered patterns, structure, commands]
 - H-items must explain WHY automation is insufficient
 - Keep the list focused on the current scope (not exhaustive project-wide)
 - If no test infrastructure exists, note it and suggest lightweight alternatives
+- **Tier 4 absent**: When no sandbox/BDD exists, reference the "Sandbox Bootstrapping Patterns" section in `${CLAUDE_PLUGIN_ROOT}/TESTING.md` and recommend the matching pattern based on detected project type. Include the pattern name and key setup steps in the Verification Gaps section.
 - For External Dependencies: always specify what the AI worker should use (mock/stub/real) and what the human must do before and after
 - If a dependency has an existing mock/fixture in the codebase, reference it by path
 - If no mock exists, recommend a strategy (in-memory mock, stub file, skip with TODO)
