@@ -94,9 +94,15 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.6.2)
+## Recent Changes (v0.6.3)
 
-- Execute skill: sandbox lifecycle in verification flow (capture output, teardown, report to `context/sandbox-report.md`)
+- fix(verify): replace ambiguous read-only constraint with Edit/Write forbidden + Bash file mutation guard
+- fix(specify): make codex-strategist Step 2.5 required in Standard mode
+- feat(execute): add sandbox lifecycle to verification flow (capture output, teardown, report to `context/sandbox-report.md`)
+- test-basedir skill: verify `${baseDir}` resolution and TESTING.md accessibility
+
+## Previous Changes (v0.6.2)
+
 - Discuss skill: Socratic discussion partner for pre-planning exploration (DIAGNOSE → PROBE → SYNTHESIZE)
 - Dev-scan v1.5: vendored bird-search.mjs for X/Twitter search with cookie auth
 - Dev-scan v1.5: browser enrichment pipeline (enrich-browser.py) for Dev.to/Lobsters full content extraction
