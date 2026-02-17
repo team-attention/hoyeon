@@ -7,7 +7,7 @@ disallowed-tools:
   - Write
   - Edit
   - Bash
-validation_prompt: |
+validate_prompt: |
   Must contain all 4 sections of Gap Analysis Report:
   1. Missing Requirements - gaps in requirements/context
   2. AI Pitfalls - common mistakes AI makes on this type of task

@@ -8,7 +8,7 @@ disallowed-tools:
   - Edit
   - Bash
   - Task
-validation_prompt: |
+validate_prompt: |
   Must provide a Project Documentation Report with:
   - Summary of relevant internal docs found
   - Key conventions, patterns, or decisions documented

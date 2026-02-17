@@ -8,7 +8,7 @@ disallowed-tools:
   - Edit
   - Bash
 permissionMode: bypassPermissions
-validation_prompt: |
+validate_prompt: |
   Must provide a Tradeoff Analysis Report with:
   - Risk assessment per proposed change (LOW/MEDIUM/HIGH)
   - Simpler alternatives considered
