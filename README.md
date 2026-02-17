@@ -64,15 +64,15 @@ Chains the entire pipeline automatically via Stop hooks:
 |-------|-------|------|
 | `worker` | Sonnet | Implements delegated TODOs (code, tests, fixes) |
 | `gap-analyzer` | Haiku | Identifies missing requirements and pitfalls before planning |
-| `tradeoff-analyzer` | Sonnet | Evaluates risk (LOW/MED/HIGH), simpler alternatives, over-engineering warnings |
-| `verification-planner` | Sonnet | 4-Tier testing model (Unit/Integration/E2E/Agent Sandbox) 기반 검증 전략 수립, A/H-items 분류, 외부 의존성 전략 |
+| `tradeoff-analyzer` | Sonnet | Evaluates risk (LOW/MED/HIGH) with reversibility analysis, simpler alternatives, over-engineering warnings |
+| `verification-planner` | Sonnet | 4-Tier testing model 기반 검증 전략 수립, A/H-items 분류, 외부 의존성 전략, sandbox drift 감지 및 bootstrapping 패턴 추천 |
 | `docs-researcher` | Sonnet | Searches internal docs (ADRs, READMEs, configs) for conventions and constraints |
 | `external-researcher` | Sonnet | Researches external libraries, frameworks, and official docs |
 | `ux-reviewer` | Sonnet | UX 관점에서 변경사항 평가 — 단순성, 직관성, UX regression 방지. specify 초기에 실행 |
 | `plan-reviewer` | Opus | Evaluates plans for clarity, verifiability, completeness, structural integrity |
 | `git-master` | Sonnet | Enforces atomic commits following project style |
 | `codex-strategist` | Haiku | Calls Codex CLI to cross-check analysis reports and find blind spots in /specify |
-| `code-reviewer` | Sonnet | Multi-model code reviewer that runs Gemini, Codex, and Claude reviews in parallel, then synthesizes converged verdict |
+| `code-reviewer` | Sonnet | Multi-model code reviewer (Gemini + Codex + Claude in foreground parallel), synthesizes converged verdict |
 | `codex-risk-analyst` | Haiku | /tribunal — adversarial risk analysis via Codex CLI (the challenger) |
 | `value-assessor` | Sonnet | /tribunal — constructive value and goal alignment assessment |
 | `feasibility-checker` | Sonnet | /tribunal — pragmatic feasibility and effort evaluation |
@@ -174,7 +174,7 @@ Chains the entire pipeline automatically via Stop hooks:
 | 7 | Semantic REJECT | 범위/요구사항 변경 |
 | 8 | 인터뷰 복귀 | 방향 전환 |
 
-**Risk Tagging:** TODO별로 LOW/MEDIUM/HIGH 위험도 태그. HIGH(DB 스키마, 인증, breaking API)는 반드시 사용자 승인 + rollback 포함.
+**Risk Tagging:** TODO별로 LOW/MEDIUM/HIGH 위험도 태그 + 되돌림 가능성(Reversible/Irreversible) 분석. HIGH(DB 스키마, 인증, breaking API)는 반드시 사용자 승인 + rollback 포함.
 
 **Verification Strategy:** PLAN 최상단에 Verification Summary (A-items: Agent 자동 검증, H-items: Human 확인 필요) + External Dependencies Strategy (Pre-work/During/Post-work). A-items는 TODO Final의 Acceptance Criteria로 흘러감.
 
