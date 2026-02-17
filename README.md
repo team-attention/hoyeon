@@ -5,11 +5,12 @@ Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs
 ## Core Workflow
 
 ```
-/specify → /open → /execute → /publish → /compound
+/discuss → /specify → /open → /execute → /publish → /compound
 ```
 
 | Step | Skill | What it does |
 |------|-------|-------------|
+| 0 | `/discuss` | Socratic discussion partner. Challenges assumptions, explores alternatives, and surfaces blind spots before planning. Saves insights for `/specify` handoff. |
 | 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, tradeoff-analyzer, verification-planner, external-researcher), Codex strategic synthesis, generates `PLAN.md` with plan-reviewer approval. |
 | 2 | `/open` | Creates a Draft PR on `feat/{name}` branch from the approved spec. |
 | 3 | `/execute` | Orchestrator reads `PLAN.md`, creates Tasks per TODO, delegates to worker agents, verifies results, Codex code review gate, commits atomically. |
@@ -32,6 +33,7 @@ Chains the entire pipeline automatically via Stop hooks:
 ### Planning & Execution
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
+| `/discuss` | "같이 생각해보자" | Socratic pre-planning exploration (DIAGNOSE → PROBE → SYNTHESIZE) |
 | `/specify` | "plan this" | Interview → DRAFT.md → PLAN.md with plan-reviewer approval |
 | `/open` | "create PR" | Draft PR creation from spec |
 | `/execute` | "/execute" | Orchestrate TODO implementation via worker agents |
@@ -48,7 +50,7 @@ Chains the entire pipeline automatically via Stop hooks:
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
 | `/tech-decision` | "A vs B" | Systematic tech comparison with multi-source research |
-| `/dev-scan` | "community opinions" | Aggregate developer perspectives from Reddit, HN, Dev.to, Lobsters |
+| `/dev-scan` | "community opinions" | Aggregate developer perspectives from Reddit, X/Twitter, HN, Dev.to, Lobsters |
 | `/tribunal` | "review this" | 3-perspective adversarial review (Risk/Value/Feasibility → APPROVE/REVISE/REJECT) |
 | `/skill-session-analyzer` | "analyze session" | Post-hoc validation of skill execution |
 
