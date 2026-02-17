@@ -1,6 +1,6 @@
 {
   "name": "hoyeon",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Development workflow automation plugin: specify → open → execute pipeline with parallel research agents, hook-based guards, and PR state management",
   "author": {
     "name": "team-attention"

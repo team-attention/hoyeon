@@ -83,9 +83,10 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 ```
 1. All features merged to develop
 2. Version bump commit on develop (plugin.json + marketplace.json)
-3. git checkout main && git merge develop --no-ff -m "Release X.Y.Z"
-4. git tag vX.Y.Z && git push origin main --tags && git push origin develop
-5. gh release create vX.Y.Z --title "vX.Y.Z" --notes "## What's New in X.Y.Z ..."
+3. Update CLAUDE.md (Recent Changes) and README.md (if new skills/agents added)
+4. git checkout main && git merge develop --no-ff -m "Release X.Y.Z"
+5. git tag vX.Y.Z && git push origin main --tags && git push origin develop
+6. gh release create vX.Y.Z --title "vX.Y.Z" --notes "## What's New in X.Y.Z ..."
 ```
 
 ## Versioning
@@ -93,7 +94,14 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.6.1)
+## Recent Changes (v0.6.2)
+
+- Discuss skill: Socratic discussion partner for pre-planning exploration (DIAGNOSE → PROBE → SYNTHESIZE)
+- Dev-scan v1.5: vendored bird-search.mjs for X/Twitter search with cookie auth
+- Dev-scan v1.5: browser enrichment pipeline (enrich-browser.py) for Dev.to/Lobsters full content extraction
+- Dev-scan v1.5: Twitter query optimization with `since:` date filter and `min_faves:5`
+
+## Previous Changes (v0.6.1)
 
 - TESTING.md: Sandbox Bootstrapping Patterns (Web App, API Server, CLI Tool, Monorepo) + Security Checklist
 - TESTING.md: Sandbox Drift Prevention section with detection checklist
@@ -103,14 +111,6 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - verification-planner: added Sandbox Drift Detection step (1.6) and bootstrapping pattern recommendations
 - tradeoff-analyzer: added Reversible Alternative column to Risk Assessment
 - specify skill: Risk Summary table format updated with reversibility info
-
-## Previous Changes (v0.6.0)
-
-- Dev-scan skill: vendored search scripts — `reddit-search.py` (Reddit JSON API), `ddgs-search.sh` (DuckDuckGo via `uvx ddgs`), `hn-search.py` (HN Algolia API)
-- Dev-scan skill: replaced WebSearch dependency for HN/Dev.to/Lobsters with vendored scripts
-- Dev-scan skill: source-specific query optimization in Step 1
-- Deep-research skill: new skill with Gemini CLI integration
-- Agents: renamed `reviewer` → `plan-reviewer`, `codex-code-reviewer` → `code-reviewer`
 
 ## Testing Strategy
 
