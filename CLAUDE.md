@@ -96,6 +96,7 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 
 ## Recent Changes (v0.6.2)
 
+- Execute skill: sandbox lifecycle in verification flow (capture output, teardown, report to `context/sandbox-report.md`)
 - Discuss skill: Socratic discussion partner for pre-planning exploration (DIAGNOSE → PROBE → SYNTHESIZE)
 - Dev-scan v1.5: vendored bird-search.mjs for X/Twitter search with cookie auth
 - Dev-scan v1.5: browser enrichment pipeline (enrich-browser.py) for Dev.to/Lobsters full content extraction
