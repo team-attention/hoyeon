@@ -26,7 +26,7 @@ NOTE: `codex-code-reviewer` was later refactored into `code-reviewer` (multi-mod
 ## Solution
 
 ### 1. Codex Orchestrator Pattern
-Lightweight haiku agent that calls `codex exec -p "..."` and returns the result as-is. Agent does NOT do the review itself — it's purely an orchestrator. Graceful degradation: SKIPPED (no CLI) / DEGRADED (call failed) / SHIP or NEEDS_FIXES (from Codex output).
+Lightweight haiku agent that calls `codex exec "..."` and returns the result as-is. Agent does NOT do the review itself — it's purely an orchestrator. Graceful degradation: SKIPPED (no CLI) / DEGRADED (call failed) / SHIP or NEEDS_FIXES (from Codex output).
 
 ### 2. Dynamic Fix Chain (New Task Instances)
 Instead of re-running completed tasks, create NEW task instances for the retry cycle:
@@ -69,7 +69,7 @@ All states are logged to `audit.md` with explicit Status field.
 
 4. **Agent Council is valuable for architectural review**: Two independent models (Codex, Gemini) converged on the same 2 Critical issues (task re-dispatch, fix verification). Cross-model consensus increases confidence in findings.
 
-5. **Codex orchestrator pattern is reusable**: The `codex exec -p "..."` wrapper with SKIPPED/DEGRADED handling can be applied to any cross-model review use case. Keep the orchestrator thin (haiku) and the prompt rich.
+5. **Codex orchestrator pattern is reusable**: The `codex exec "..."` wrapper with SKIPPED/DEGRADED handling can be applied to any cross-model review use case. Keep the orchestrator thin (haiku) and the prompt rich.
 
 6. **Graceful degradation should be visible, not silent**: Even when a system correctly degrades (continues without a feature), the degradation event should be logged and surfaced in reports.
 

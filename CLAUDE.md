@@ -93,14 +93,24 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.5.0)
+## Recent Changes (v0.6.1)
 
-- Specify skill: mode support (quick/standard × interactive/autopilot)
-- Specify skill: Codex strategic synthesis via `codex-strategist` agent (cross-model analysis)
-- Execute skill: quick mode (`--quick` flag) for lightweight execution without independent verification
-- Execute skill: Final Quality Gate via `code-reviewer` agent (multi-model cross-review: Codex, Gemini, Claude in parallel with synthesized verdict)
-- Init skill: reorganized hy CLI install to Step 1
-- Agent prompts: standardized placeholder variables
+- TESTING.md: Sandbox Bootstrapping Patterns (Web App, API Server, CLI Tool, Monorepo) + Security Checklist
+- TESTING.md: Sandbox Drift Prevention section with detection checklist
+- Agents: fixed `validate_prompt` frontmatter key in 7 agents (PostToolUse validation now active)
+- Agents: fixed `codex exec -p` → `codex exec` (positional arg, not --profile flag)
+- code-reviewer: switched to foreground parallel execution (fixes background PATH issue)
+- verification-planner: added Sandbox Drift Detection step (1.6) and bootstrapping pattern recommendations
+- tradeoff-analyzer: added Reversible Alternative column to Risk Assessment
+- specify skill: Risk Summary table format updated with reversibility info
+
+## Previous Changes (v0.6.0)
+
+- Dev-scan skill: vendored search scripts — `reddit-search.py` (Reddit JSON API), `ddgs-search.sh` (DuckDuckGo via `uvx ddgs`), `hn-search.py` (HN Algolia API)
+- Dev-scan skill: replaced WebSearch dependency for HN/Dev.to/Lobsters with vendored scripts
+- Dev-scan skill: source-specific query optimization in Step 1
+- Deep-research skill: new skill with Gemini CLI integration
+- Agents: renamed `reviewer` → `plan-reviewer`, `codex-code-reviewer` → `code-reviewer`
 
 ## Testing Strategy
 

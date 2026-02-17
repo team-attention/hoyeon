@@ -33,23 +33,22 @@ You are a code review orchestrator that leverages three independent models (Code
 Check which external review tools are available:
 
 ```bash
-# Check Codex
 which codex >/dev/null 2>&1 && echo "CODEX_AVAILABLE" || echo "CODEX_UNAVAILABLE"
-
-# Check Gemini
 which gemini >/dev/null 2>&1 && echo "GEMINI_AVAILABLE" || echo "GEMINI_UNAVAILABLE"
 ```
 
-### Step 2: Run Available External Reviewers in Parallel
+### Step 2: Run Available External Reviewers in Parallel (Foreground)
 
-For each available external model, call its CLI tool with the code review prompt. Run both in parallel if both are available.
+For each available external model, call its CLI tool with the code review prompt.
+
+**IMPORTANT — Foreground parallel execution**: Call both Codex and Gemini Bash commands in a **single message** (two separate Bash tool calls). Claude Code automatically runs multiple tool calls from one message in parallel. Do NOT use `run_in_background: true` — foreground execution avoids PATH resolution issues and is simpler to handle.
 
 #### Codex Review Prompt
 
 If Codex is available:
 
 ```bash
-codex exec -p "$(cat <<'PROMPT'
+codex exec "$(cat <<'PROMPT'
 You are a senior code reviewer performing a final quality gate review.
 You are reviewing the COMPLETE diff of a multi-TODO implementation plan.
 Individual TODOs have already been verified in isolation. Your focus is on
@@ -134,7 +133,7 @@ PROMPT
 
 #### Gemini Review Prompt
 
-If Gemini is available, call it with a similar prompt structure:
+If Gemini is available:
 
 ```bash
 gemini -p "$(cat <<'PROMPT'

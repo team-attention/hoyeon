@@ -15,7 +15,7 @@ disallowed-tools:
   - Task
   - Write
   - Edit
-validation_prompt: |
+validate_prompt: |
   Must create atomic commits and output COMMIT SUMMARY:
   - STYLE DETECTION RESULT: detected language + style from git log
   - COMMIT PLAN: files grouped into logical commits

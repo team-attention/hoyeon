@@ -7,7 +7,7 @@ disallowed-tools:
   - Write
   - Edit
   - Bash
-validation_prompt: |
+validate_prompt: |
   Must contain all 5 sections:
   1. Test Infrastructure (4-Tier) - Tier 1~4별 있음/없음 + 도구/경로
   2. Agent-Verifiable (A-items) - tier 번호와 method 포함
@@ -83,6 +83,20 @@ Search for:
 - API client instantiation (`axios.create`, `fetch`, SDK init patterns)
 - Mock/stub directories (`__mocks__/`, `tests/fixtures/`, `tests/stubs/`)
 
+### 1.6. Sandbox Drift Detection
+
+When the current work breakdown includes DB schema changes, new env variables, or infrastructure modifications, check if sandbox artifacts need updating. Reference the "Sandbox Drift Prevention" section in `${CLAUDE_PLUGIN_ROOT}/TESTING.md` for the full checklist.
+
+**Drift signals to scan for in the planned changes:**
+- DB migration files being added/modified → check `seed.sql`, seed scripts, fixture data
+- New environment variables in code → check `.env.sandbox`
+- `docker-compose.yml` modifications → verify `sandbox:up` compatibility
+- External API dependency changes → check mock/stub response files
+
+**Action**: If drift is detected, add corresponding items to:
+- **A-items**: `sandbox:up && sandbox:status` to verify sandbox still boots
+- **H-items**: Manual review of seed data compatibility, mock response accuracy
+
 ### 2. Classify Acceptance Criteria by Tier
 
 For each acceptance criterion in the work breakdown, assign a tier:
@@ -149,6 +163,7 @@ Agent Findings: [Discovered patterns, structure, commands]
 ### 4. Verification Gaps
 - [현재 환경에서 검증 불가능한 항목과 대안]
 - [Tier 4가 없는 경우: 어떤 항목이 agent sandbox로 검증 가능했을지 명시]
+- [Tier 4가 없는 경우: TESTING.md Sandbox Bootstrapping Patterns에서 매칭 패턴 추천]
 
 ### 5. External Dependencies
 | Dependency | Type | Dev Strategy | Pre-work (before AI) | Post-work (after AI) |
@@ -164,7 +179,9 @@ Agent Findings: [Discovered patterns, structure, commands]
 - H-items must explain WHY automation is insufficient
 - Keep the list focused on the current scope (not exhaustive project-wide)
 - If no test infrastructure exists, note it and suggest lightweight alternatives
+- **Tier 4 absent**: When no sandbox/BDD exists, reference the "Sandbox Bootstrapping Patterns" section in `${CLAUDE_PLUGIN_ROOT}/TESTING.md` and recommend the matching pattern based on detected project type. Include the pattern name and key setup steps in the Verification Gaps section.
 - For External Dependencies: always specify what the AI worker should use (mock/stub/real) and what the human must do before and after
 - If a dependency has an existing mock/fixture in the codebase, reference it by path
 - If no mock exists, recommend a strategy (in-memory mock, stub file, skip with TODO)
 - Mark Pre-work as "(none)" if no setup needed, not blank
+- **Sandbox drift**: When planned changes touch DB migrations, docker-compose, env vars, or external API contracts, check sandbox artifacts for drift per `${CLAUDE_PLUGIN_ROOT}/TESTING.md` "Sandbox Drift Prevention". Flag drift as A-item (sandbox:up test) or H-item (seed data review) in Verification Gaps.

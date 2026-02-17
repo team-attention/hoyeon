@@ -45,7 +45,7 @@ If UNAVAILABLE, immediately return:
 Construct the prompt from the analysis results provided to you, then call:
 
 ```bash
-codex exec -p "$(cat <<'PROMPT'
+codex exec "$(cat <<'PROMPT'
 You are a strategic engineering analyst. You have received 4 independent analysis reports
 for a software development plan. Your job is to SYNTHESIZE these reports and find what
 the individual analysts missed.

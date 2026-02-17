@@ -152,6 +152,124 @@ Agent sandbox testing requires a **fully isolated environment**:
 - Idempotent seed data (can reset and rerun safely)
 - Health check before test execution (`sandbox:status`)
 
+### Sandbox Drift Prevention
+
+When DB schemas, external services, or infrastructure configs change, the sandbox environment must stay in sync. Drift between production code and sandbox setup causes false test failures and masks real bugs.
+
+**Drift-prone artifacts** — check these whenever the corresponding source changes:
+
+| Change Source | Sandbox Artifact to Update | Signal Files |
+|--------------|---------------------------|-------------|
+| DB migration added/modified | `seed.sql`, seed scripts, fixture data | `migrations/`, `prisma/migrations/`, `alembic/versions/` |
+| New env variable required | `.env.sandbox` | `.env.example`, env validation schema |
+| Service added/removed | `docker-compose.yml` (services, ports, networks) | `docker-compose.*`, `Dockerfile` |
+| API dependency changed | Mock/stub configs, fixture responses | HTTP client configs, SDK version bumps |
+| IaC config changed | Local Docker equivalent | `terraform/`, `cloudformation/`, `k8s/` |
+
+**Drift detection checklist** (for verification agents):
+- [ ] Migration files changed → seed data still compatible?
+- [ ] New env var in code → present in `.env.sandbox`?
+- [ ] `docker-compose.yml` changed → `sandbox:up` still works?
+- [ ] External API contract changed → mock/stub responses updated?
+- [ ] Seed data still idempotent after schema change?
+
+> **Principle**: Every infrastructure change PR should include sandbox updates in the same commit.
+> If sandbox cannot be updated immediately, add an explicit H-item to the verification plan.
+
+### Sandbox Bootstrapping Patterns
+
+When a project lacks Tier 4 sandbox infrastructure, use these patterns as starter scaffolds.
+Adapt to your project's stack and constraints.
+
+> These patterns are for local dev/test environments only. Do not use directly in production.
+
+#### Pattern: Web App (SPA + API + DB)
+
+**Fits**: React/Vue/Next.js + Node/Python API + PostgreSQL/MySQL
+**Detection signals**: Separate client/server directories, DB ORM config present
+
+Directory structure:
+```
+sandbox/
+├── docker-compose.yml    # db + server + client
+├── features/
+│   ├── auth.feature      # Authentication scenarios
+│   └── core.feature      # Core feature scenarios
+├── scripts/
+│   └── status.ts         # Port/DB/service health check
+└── .env.sandbox          # Mock credentials
+```
+
+Required scripts: `sandbox:up`, `sandbox:down`, `sandbox:status`
+First features: Authentication + one core CRUD operation
+
+#### Pattern: API Server
+
+**Fits**: NestJS/FastAPI/Go API + DB (no frontend)
+**Detection signals**: Server code only, no client directory
+
+Directory structure:
+```
+sandbox/
+├── docker-compose.yml    # db + server
+├── features/
+│   └── api-core.feature  # Core API scenarios
+├── scripts/
+│   └── status.sh         # Health check
+└── seed.sql              # Seed data
+```
+
+Admin Agent: DB + API response verification (curl/httpie)
+User Agent: API client simulation
+
+#### Pattern: CLI Tool
+
+**Fits**: Input/output transformation, file processing tools
+**Detection signals**: bin field in package.json, CLI entrypoint, commander/yargs dependency
+
+Directory structure:
+```
+sandbox/
+├── fixtures/
+│   ├── input/            # Test input files
+│   └── expected/         # Expected output files
+├── features/
+│   └── cli-core.feature  # CLI scenarios
+└── scripts/
+    └── run-scenarios.sh  # Fixture-based verification
+```
+
+Docker may not be needed — fixture-based input/output comparison can suffice.
+
+#### Pattern: Monorepo
+
+**Fits**: pnpm workspace, turborepo, nx
+**Detection signals**: pnpm-workspace.yaml, turbo.json, nx.json
+
+Directory structure:
+```
+sandbox/
+├── docker-compose.yml    # Compose profiles per service
+├── features/
+│   ├── service-a.feature
+│   └── service-b.feature
+├── scripts/
+│   └── status.ts
+└── .env.sandbox
+```
+
+Use compose profiles for selective service startup.
+Shared DB with per-service seed data.
+
+#### Security Checklist
+
+Always verify when bootstrapping a sandbox:
+- [ ] All credentials are mock values (never include real keys)
+- [ ] Minimize host port bindings
+- [ ] .env.sandbox is git-tracked (safe because mock values only)
+- [ ] Volume mounts do not include sensitive host directories
+- [ ] Seed data is idempotent (safe to rerun)
+
 ---
 
 ## Decision Matrix: Which Tier to Use

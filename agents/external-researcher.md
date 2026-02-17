@@ -15,7 +15,7 @@ disallowed-tools:
   - Bash
   - Task
 permissionMode: bypassPermissions
-validation_prompt: |
+validate_prompt: |
   Must provide a complete Research Report with:
   - Summary: 2-3 sentence answer to the main question
   - Key Findings: specific findings with sources
