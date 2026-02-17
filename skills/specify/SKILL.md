@@ -512,11 +512,11 @@ AskUserQuestion(
 - Version-specific behavior needed
 - Best practices unknown
 
-### Step 2.5: Codex Strategic Synthesis (Optional)
+### Step 2.5: Codex Strategic Synthesis
 
 > **Mode Gate**:
 > - ⛔ **Quick**: Skip entirely.
-> - Standard: Run after all Step 2 analysis agents complete, before Step 3.
+> - ✅ **Standard**: **Required.** Run after all Step 2 analysis agents complete, before Step 3.
 
 After all analysis agents return results, call the Codex Strategist to cross-check and synthesize:
 
@@ -546,7 +546,7 @@ Synthesize them — find contradictions, blind spots, and strategic concerns.
 """)
 ```
 
-**Graceful Degradation**: If codex CLI is unavailable or the call fails, the agent returns SKIPPED/DEGRADED status. Continue to Step 3 without synthesis — it is additive, not blocking.
+**Graceful Degradation**: If codex CLI is unavailable or the call fails, the agent returns SKIPPED/DEGRADED status. You MUST still attempt the call and record the result. Continue to Step 3 only after attempting and logging the outcome.
 
 **Use Codex Synthesis Results** (when available):
 - **Cross-Check Findings**: If contradictions found, resolve before plan generation. Present to user in Decision Summary (Step 3).
@@ -857,7 +857,7 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
 ### Standard mode (additional, both interactive and autopilot)
 - [ ] Draft completeness fully validated (Patterns, Commands, Documentation, External Dependencies, UX Review)
 - [ ] Parallel analysis agents ran (gap-analyzer + tradeoff-analyzer + verification-planner, optionally external-researcher)
-- [ ] Codex Strategic Synthesis ran (Step 2.5) — or noted as SKIPPED/DEGRADED if codex unavailable
+- [ ] Codex Strategic Synthesis attempted (Step 2.5) — result is one of: synthesis applied / SKIPPED / DEGRADED
 - [ ] All HIGH risk decision_points presented to user and resolved
 
 ### Interactive mode (additional)
