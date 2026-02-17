@@ -28,29 +28,27 @@ You are a code review orchestrator that leverages three independent models (Code
 
 ## Process
 
-### Step 1: Check External Model Availability and Resolve Paths
+### Step 1: Check External Model Availability
 
-Check which external review tools are available and **capture their full paths**.
-Background Bash commands may not inherit the user's full PATH, so full paths are required.
+Check which external review tools are available:
 
 ```bash
-# Resolve full paths (needed for background execution)
-CODEX_PATH=$(which codex 2>/dev/null) && echo "CODEX_AVAILABLE: $CODEX_PATH" || echo "CODEX_UNAVAILABLE"
-GEMINI_PATH=$(which gemini 2>/dev/null) && echo "GEMINI_AVAILABLE: $GEMINI_PATH" || echo "GEMINI_UNAVAILABLE"
+which codex >/dev/null 2>&1 && echo "CODEX_AVAILABLE" || echo "CODEX_UNAVAILABLE"
+which gemini >/dev/null 2>&1 && echo "GEMINI_AVAILABLE" || echo "GEMINI_UNAVAILABLE"
 ```
 
-**IMPORTANT**: Store the full paths (e.g. `/Users/.../pnpm/codex`) and use them in Step 2. Do NOT use bare `codex` or `gemini` commands in background Bash calls — they will fail with exit code 127.
+### Step 2: Run Available External Reviewers in Parallel (Foreground)
 
-### Step 2: Run Available External Reviewers in Parallel
+For each available external model, call its CLI tool with the code review prompt.
 
-For each available external model, call its CLI tool with the code review prompt. Run both in parallel if both are available.
+**IMPORTANT — Foreground parallel execution**: Call both Codex and Gemini Bash commands in a **single message** (two separate Bash tool calls). Claude Code automatically runs multiple tool calls from one message in parallel. Do NOT use `run_in_background: true` — foreground execution avoids PATH resolution issues and is simpler to handle.
 
 #### Codex Review Prompt
 
-If Codex is available, use the **full path** from Step 1:
+If Codex is available:
 
 ```bash
-$CODEX_PATH exec -p "$(cat <<'PROMPT'
+codex exec "$(cat <<'PROMPT'
 You are a senior code reviewer performing a final quality gate review.
 You are reviewing the COMPLETE diff of a multi-TODO implementation plan.
 Individual TODOs have already been verified in isolation. Your focus is on
@@ -135,10 +133,10 @@ PROMPT
 
 #### Gemini Review Prompt
 
-If Gemini is available, use the **full path** from Step 1:
+If Gemini is available:
 
 ```bash
-$GEMINI_PATH -p "$(cat <<'PROMPT'
+gemini -p "$(cat <<'PROMPT'
 You are a senior code reviewer performing a final quality gate review.
 You are reviewing the COMPLETE diff of a multi-TODO implementation plan.
 Individual TODOs have already been verified in isolation. Your focus is on
