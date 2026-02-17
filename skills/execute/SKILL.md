@@ -452,9 +452,14 @@ When this task is DONE, the following MUST be true:
 {Acceptance Criteria section from Plan}
 
 ## REQUIRED TOOLS
-- Read: Reference existing code
-- Edit/Write: Write code
-- Bash: Run build/tests
+IF todo_type == "work":
+  - Read: Reference existing code
+  - Edit/Write: Write code
+  - Bash: Run build/tests
+IF todo_type == "verification":
+  - Read: Reference existing code
+  - Bash: Run tests, builds, type checks, and boot test infrastructure (e.g., sandbox:up, docker-compose up)
+  - ❌ Edit/Write: FORBIDDEN — do not modify source code
 
 ## MUST DO
 - Perform only this Task
@@ -703,7 +708,7 @@ function triage(verify_result, todo_type) → HALT | ADAPT | RETRY:
 
   IF todo_type == "verification" AND any acceptance_criteria FAIL:
     → ADAPT (auto-generate fix TODO from failed criteria)
-    # Verification TODOs are read-only — retry cannot fix code.
+    # Verification TODOs cannot use Edit/Write — retry cannot fix code.
     # Orchestrator builds suggested_adaptation from failed criteria:
     #   title: "Fix: {failed_criterion.description}"
     #   steps: derived from failure reason + affected files
