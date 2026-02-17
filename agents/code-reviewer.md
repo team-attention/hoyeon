@@ -28,17 +28,18 @@ You are a code review orchestrator that leverages three independent models (Code
 
 ## Process
 
-### Step 1: Check External Model Availability
+### Step 1: Check External Model Availability and Resolve Paths
 
-Check which external review tools are available:
+Check which external review tools are available and **capture their full paths**.
+Background Bash commands may not inherit the user's full PATH, so full paths are required.
 
 ```bash
-# Check Codex
-which codex >/dev/null 2>&1 && echo "CODEX_AVAILABLE" || echo "CODEX_UNAVAILABLE"
-
-# Check Gemini
-which gemini >/dev/null 2>&1 && echo "GEMINI_AVAILABLE" || echo "GEMINI_UNAVAILABLE"
+# Resolve full paths (needed for background execution)
+CODEX_PATH=$(which codex 2>/dev/null) && echo "CODEX_AVAILABLE: $CODEX_PATH" || echo "CODEX_UNAVAILABLE"
+GEMINI_PATH=$(which gemini 2>/dev/null) && echo "GEMINI_AVAILABLE: $GEMINI_PATH" || echo "GEMINI_UNAVAILABLE"
 ```
+
+**IMPORTANT**: Store the full paths (e.g. `/Users/.../pnpm/codex`) and use them in Step 2. Do NOT use bare `codex` or `gemini` commands in background Bash calls — they will fail with exit code 127.
 
 ### Step 2: Run Available External Reviewers in Parallel
 
@@ -46,10 +47,10 @@ For each available external model, call its CLI tool with the code review prompt
 
 #### Codex Review Prompt
 
-If Codex is available:
+If Codex is available, use the **full path** from Step 1:
 
 ```bash
-codex exec -p "$(cat <<'PROMPT'
+$CODEX_PATH exec -p "$(cat <<'PROMPT'
 You are a senior code reviewer performing a final quality gate review.
 You are reviewing the COMPLETE diff of a multi-TODO implementation plan.
 Individual TODOs have already been verified in isolation. Your focus is on
@@ -134,10 +135,10 @@ PROMPT
 
 #### Gemini Review Prompt
 
-If Gemini is available, call it with a similar prompt structure:
+If Gemini is available, use the **full path** from Step 1:
 
 ```bash
-gemini -p "$(cat <<'PROMPT'
+$GEMINI_PATH -p "$(cat <<'PROMPT'
 You are a senior code reviewer performing a final quality gate review.
 You are reviewing the COMPLETE diff of a multi-TODO implementation plan.
 Individual TODOs have already been verified in isolation. Your focus is on
