@@ -5,18 +5,27 @@ description: |
   "similar implementation", "오픈소스 있나", "how others do this", "레퍼런스 찾아줘",
   or needs to find existing patterns (internal) and open-source examples (external)
   for implementing a feature.
-version: 0.1.0
+version: 2.0.0
+validate_prompt: |
+  Must contain all of these sections:
+  - Internal References section (with content or "No existing patterns found" message)
+  - GitHub References section with at least 1 repo entry including stars, license, and updated date
+  - At least 1 repo with actual code excerpt (Key Code block with real source lines)
+  - Usage Suggestions section with numbered recommendations
+  Output must start with "## Reference Seek:" header.
 ---
 
-# Reference Seek - Find Implementation References
+# Reference Seek - Find Implementation References (v2.0.0)
 
-Find internal patterns and external open-source examples to reference when implementing features.
+Find internal patterns, quality-filtered GitHub repos with code-level insights, official docs, and external examples.
 
 ## Purpose
 
 When building a feature, find what you can **reuse** or **learn from**:
 - Internal: Existing patterns in the codebase
-- External: Open-source projects, implementation examples, blog posts
+- GitHub: Quality-filtered repos with actual code excerpts
+- Official Docs: context7-powered library documentation
+- External: Blog posts, tutorials, best practices
 
 ## Use Cases
 
@@ -27,20 +36,46 @@ When building a feature, find what you can **reuse** or **learn from**:
 
 ## Execution
 
-### Step 1: Topic Extraction
+### Step 0: Dependency Check + Topic Classification (1 message)
 
-Extract the implementation topic from user request.
+Run in parallel:
+
+**0-A. gh auth check:**
+```bash
+gh auth status
+```
+
+| Result | Variable |
+|--------|----------|
+| Authenticated | `GH_AVAILABLE=true` |
+| Not authenticated / gh not found | `GH_AVAILABLE=false` |
+
+**0-B. Topic extraction + classification (reasoning, same message):**
+
+Extract from user request:
+- `TOPIC`: Normalized English topic (e.g., "rate limiting", "OAuth authentication")
+- `TOPIC_CLASS`: `library` | `pattern` | `concept`
+- `GH_QUERY`: GitHub search query (e.g., `rate+limiter`, `oauth+middleware`)
+- `GH_LANG_FILTER`: Language filter inferred from codebase (e.g., `+language:typescript`)
+- `CONTEXT7_LIB`: Library name for context7 resolve (if `library` class, use directly; otherwise best guess or skip)
 
 Examples:
-- "OAuth 로그인 구현" → `OAuth authentication`
-- "rate limiter 참고할 만한 거" → `rate limiting`
-- "pagination 레퍼런스" → `pagination implementation`
+- "rate limiter 참고할 만한 거" → TOPIC: `rate limiting`, CLASS: `pattern`, GH_QUERY: `rate+limiter+middleware`, CONTEXT7_LIB: `rate-limiter-flexible`
+- "NextAuth 구현 레퍼런스" → TOPIC: `NextAuth authentication`, CLASS: `library`, GH_QUERY: `nextauth+authentication`, CONTEXT7_LIB: `next-auth`
+- "pagination 레퍼런스" → TOPIC: `pagination implementation`, CLASS: `pattern`, GH_QUERY: `pagination+cursor`, CONTEXT7_LIB: skip
 
-### Step 2: Parallel Search (Single Message)
+### Step 1: Parallel Search (1 message, up to 4 sources)
 
-Run internal and external searches **in parallel**:
+**CRITICAL**: Run all available tracks in **one message** in parallel.
 
-**Internal (Explore agent)**:
+| Track | Tool | Purpose |
+|-------|------|---------|
+| 1-A | `Task(Explore)` | Internal codebase pattern search |
+| 1-B | `Bash: gh api search/repositories` | GitHub repo search (stars-sorted, top 10) |
+| 1-C | `mcp__context7__resolve-library-id` | Library docs ID lookup |
+| 1-D | `WebSearch` | Blog/tutorial search (1 query only) |
+
+**1-A. Internal Search (Explore agent):**
 ```
 Task(subagent_type="Explore",
      prompt="""
@@ -54,102 +89,178 @@ Report as file:line format with brief description of what's reusable.
 """)
 ```
 
-**External (WebSearch, parallel)**:
+**1-B. GitHub Search (only if GH_AVAILABLE=true):**
+```bash
+gh api "search/repositories?q={GH_QUERY}+{GH_LANG_FILTER}&sort=stars&per_page=10" \
+  --jq '.items[] | select(.archived == false) | {
+    full_name, stars: .stargazers_count, lang: .language,
+    topics, license: .license.spdx_id, desc: .description,
+    pushed: .pushed_at, url: .html_url, default_branch
+  }'
 ```
-WebSearch: "{topic} implementation github"
-WebSearch: "{topic} open source example"
-WebSearch: "{topic} tutorial best practices"
+
+**1-C. context7 resolve (if CONTEXT7_LIB is set):**
+```
+mcp__context7__resolve-library-id(libraryName="{CONTEXT7_LIB}")
 ```
 
-**CRITICAL**: Run all 4 searches in **one message** in parallel.
+**1-D. WebSearch (1 query only):**
+```
+WebSearch: "{TOPIC} implementation tutorial best practices 2024 2025"
+```
 
-### Step 3: Synthesize & Present
+**When GH_AVAILABLE=false:** Skip 1-B. Run WebSearch 3 times instead (v1.0 fallback):
+```
+WebSearch: "{TOPIC} implementation github"
+WebSearch: "{TOPIC} open source example"
+WebSearch: "{TOPIC} tutorial best practices"
+```
+Add warning at top of output: `> ⚠️ GitHub API unavailable (gh not authenticated). Results from web search only.`
 
-#### 3-1. Internal References
+### Step 2: Quality Filter + context7 Query (sequential after Step 1)
 
-From Explore results, identify:
-- **Directly Reusable**: Code that can be used as-is or with minor changes
-- **Pattern Reference**: Similar patterns to follow
-- **Integration Points**: Where the new feature would connect
+**2-A. Quality Filter (reasoning, applied to 1-B results):**
 
-#### 3-2. External References
+| Criteria | Threshold |
+|----------|-----------|
+| Stars | >= 100 (relax to >= 50 if fewer than 2 pass) |
+| Last push | Within 24 months |
+| License | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0 |
+| Archived | Excluded (already filtered by jq) |
 
-From WebSearch results, categorize:
-- **Open Source Projects**: GitHub repos with similar functionality
-- **Implementation Examples**: Blog posts, tutorials with code
-- **Best Practices**: Guides on how to approach the problem
+→ Top 5 passing repos = `QUALIFIED_REPOS`
+→ Top 1-2 repos = `DEEP_DIVE_TARGETS`
 
-#### 3-3. Usage Suggestions
+If all repos filtered out: relax stars to >= 50. If still none, take top 3 with warning badge `⚠️ Below quality threshold`.
 
-Synthesize actionable advice:
-- What internal code to reuse
-- Which external examples are most relevant
-- Potential pitfalls mentioned in references
+**2-B. context7 docs query (only if 1-C resolve succeeded):**
+```
+mcp__context7__query-docs(
+  libraryId="{resolved_id}",
+  query="{TOPIC} implementation patterns examples"
+)
+```
+If resolve failed in 1-C, skip this step entirely.
+
+### Step 3: Repo Deep Dive (sequential after Step 2)
+
+For each repo in `DEEP_DIVE_TARGETS` (1-2 repos):
+
+**3-1. File tree lookup:**
+```bash
+gh api "repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1" \
+  --jq '[.tree[] | select(.type=="blob") | select(.path | test("^(src|source|lib|pkg|core)/")) | {path, size}]'
+```
+
+**3-2. File selection (reasoning):**
+- Match files by topic keywords
+- Prioritize: entry points, types/interfaces, core logic
+- Skip files > 20KB
+- Select max 3 files per repo
+
+**3-3. File content fetch:**
+```bash
+curl -s "https://raw.githubusercontent.com/{owner}/{repo}/{default_branch}/{path}"
+```
+
+**3-4. Code analysis (reasoning):**
+Extract from each file:
+- Key data structures
+- Algorithm / approach
+- Configuration options
+- Notable patterns worth adopting
+
+If file tree or fetch fails for a repo, skip its deep dive and move to the next target.
+
+### Step 4: Synthesize & Present
+
+Combine all sources into the output format below.
 
 ## Output Format
 
 ```markdown
-## 🔍 Reference Seek: [{TOPIC}]
+## Reference Seek: [{TOPIC}]
+
+> Sources: Internal | GitHub ({N} repos, quality-filtered) | context7 | Web
+
+---
 
 ### Internal References (코드베이스)
 
 #### Directly Reusable
-- `{file}:{lines}` - {description}, {how to reuse}
+- `{file}:{lines}` - {description}
 
 #### Pattern Reference
-- `{file}:{lines}` - {pattern description}, {how it applies}
+- `{file}:{lines}` - {pattern description}
 
 #### Integration Points
-- `{file}:{lines}` - {where new feature connects}
+- `{file}:{lines}` - {connection point}
 
 ---
 
-### External References (오픈소스/사례)
+### GitHub References (품질 필터링됨)
 
-#### Open Source Projects
-1. **[{project-name}]({github-url})**
-   - What: {brief description}
-   - Relevant: {specific file or feature to look at}
-   - Stars: {N}k
+1. **[{owner}/{repo}]({url})** ★{stars} | {lang} | {license} | Updated {date}
+   - What: {description}
+   - Topics: {topics}
+   - **Key Code (`{path}`):**
+     ```{lang}
+     {10-30 lines of key code}
+     ```
+   - Takeaway: {actionable insight}
 
-#### Implementation Examples
-1. **[{title}]({url})**
-   - Key insight: {what you can learn}
+2. **[{owner}/{repo}]({url})** ★{stars} | {lang} | {license} | Updated {date}
+   - What: {description}
+   - Topics: {topics}
+   - **Key Code (`{path}`):**
+     ```{lang}
+     {10-30 lines of key code}
+     ```
+   - Takeaway: {actionable insight}
 
-#### Best Practices
-- {practice 1} - Source: [{title}]({url})
-- {practice 2} - Source: [{title}]({url})
+3-5. (metadata only, no code excerpt)
+3. **[{owner}/{repo}]({url})** ★{stars} | {lang} | {license} | Updated {date}
+   - What: {description}
+
+*(Filtered out: {N} repos excluded — low stars / outdated / incompatible license)*
 
 ---
 
-### 💡 Usage Suggestions
+### Official Docs (context7)
 
-1. **Reuse**: {what internal code to leverage}
-2. **Reference**: {which external example is most relevant and why}
-3. **Watch out**: {potential pitfalls from references}
+> Only include this section if context7 resolve succeeded in Step 1-C.
+
+- {key concept}: {docs content}
+- **Official Code Example:**
+  ```{lang}
+  {official example from docs}
+  ```
+
+---
+
+### External References (블로그/튜토리얼)
+
+1. **[{title}]({url})** - Key insight: {content}
+
+---
+
+### Usage Suggestions
+
+1. **Reuse**: {how to leverage internal code}
+2. **Reference**: {most relevant repo + why}
+3. **Official**: {key takeaway from context7/docs}
+4. **Watch out**: {pitfalls or caveats}
 ```
-
-## Search Query Tips
-
-| Topic Type | Query Pattern |
-|------------|---------------|
-| Feature impl | `"{feature} implementation github"` |
-| Library usage | `"{library} example tutorial"` |
-| Pattern | `"{pattern} best practices"` |
-| Specific tech | `"{tech} {feature} open source"` |
 
 ## Error Handling
 
 | Situation | Response |
 |-----------|----------|
-| No internal matches | Note "No existing patterns found", focus on external |
-| No external results | Try alternative keywords, broaden search |
-| Topic too vague | Ask user to clarify specific aspect |
-| Too many results | Prioritize by stars (GitHub) or recency |
-
-## Notes
-
-1. **Prioritize actionability**: Focus on what can actually be used, not just "related" code
-2. **Include context**: Why each reference is relevant
-3. **Be specific**: Link to exact files/lines, not just repos
-4. **Freshness matters**: Note if external references are outdated
+| gh not authenticated | Skip 1-B, use WebSearch 3x fallback, add warning at top |
+| gh rate limit (403) | Fallback: `gh search repos "{GH_QUERY}" --sort stars --limit 10 --json ...` (different rate limit bucket) |
+| GH results 0 | Remove language filter, retry. If still 0, show "No GitHub results found" |
+| All repos filtered out | Relax stars to >= 50. If still none, show top 3 with warning badge |
+| context7 resolve fails | Omit "Official Docs" section entirely |
+| File tree / fetch fails | Skip that repo's deep dive, proceed to next target |
+| Explore returns nothing | Show "No existing patterns found in codebase" |
+| Topic too vague | Ask user for clarification before proceeding |
