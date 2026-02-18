@@ -104,7 +104,7 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - fix(verify): replace ambiguous read-only constraint with Edit/Write forbidden + Bash file mutation guard
 - fix(specify): make codex-strategist Step 2.5 required in Standard mode
 - feat(execute): add sandbox lifecycle to verification flow (capture output, teardown, report to `context/sandbox-report.md`)
-- test-basedir skill: verify `${baseDir}` resolution and TESTING.md accessibility
+
 
 ## Previous Changes (v0.6.2)
 
