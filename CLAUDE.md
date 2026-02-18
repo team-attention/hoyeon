@@ -94,7 +94,14 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.6.4)
+## Recent Changes (v0.6.5)
+
+- feat(verify): add S-items 3-way classification to verification-planner (A/H/S separate sections, pattern detection for BDD features, UI screenshot verification)
+- feat(reference-seek): upgrade to v2.0.0 with GitHub API, context7, and code deep dive
+- feat(hooks): add session ID capture and Claude-Session trailer support
+- fix(agents): remove dead ${CLAUDE_PLUGIN_ROOT} refs and add sandbox verification checks
+
+## Previous Changes (v0.6.4)
 
 - feat(specify): add Plan Approval Summary to plan finalization (TODO overview, verification A/H/S, pre/post-work, key decisions, assumptions)
 - feat(dev-scan): add ProductHunt as 6th data source
