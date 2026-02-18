@@ -94,7 +94,12 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.6.3)
+## Recent Changes (v0.6.4)
+
+- feat(specify): add Plan Approval Summary to plan finalization (TODO overview, verification A/H/S, pre/post-work, key decisions, assumptions)
+- feat(dev-scan): add ProductHunt as 6th data source
+
+## Previous Changes (v0.6.3)
 
 - fix(verify): replace ambiguous read-only constraint with Edit/Write forbidden + Bash file mutation guard
 - fix(specify): make codex-strategist Step 2.5 required in Standard mode
