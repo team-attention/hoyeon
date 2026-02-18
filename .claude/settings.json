@@ -22,6 +22,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": ".claude/scripts/capture-session.sh"
+          },
+          {
+            "type": "command",
             "command": ".claude/scripts/ultrawork-init-hook.sh"
           },
           {
