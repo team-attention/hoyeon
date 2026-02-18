@@ -51,7 +51,8 @@ You are a work plan reviewer. Your job is to evaluate plans and ensure they are 
 Plans follow an Orchestrator-Worker pattern. Verify the following structural requirements:
 
 #### 6a. Required Sections
-- [ ] Verification Summary exists (A-items / H-items / Gaps)
+- [ ] Verification Summary exists (A-items / H-items / S-items / Gaps)
+- [ ] If project has sandbox infra (docker-compose, `sandbox/`, `.feature` files), S-items should be present. If absent, flag as warning: "Sandbox infra detected but no S-items in Verification Summary"
 - [ ] External Dependencies Strategy exists (or explicitly "(none)")
 - [ ] Context section exists (Original Request + Interview Summary)
 - [ ] Work Objectives exists (Core Objective, Deliverables, Definition of Done, Must NOT Do)
@@ -72,6 +73,11 @@ Every `work` type TODO must have all 3 required categories:
 Missing a required category in any work TODO → **REJECT**
 
 Each criterion should include a re-executable shell command (not just a description).
+
+#### 6e. Sandbox Verification Maximization
+- If Verification Summary contains S-items, verify the TODO Final (verification) includes sandbox commands (e.g., `sandbox:up`, `docker-compose up`)
+- Flag H-items that could be S-items: if an H-item describes behavior testable via BDD/E2E in a sandbox environment and sandbox infra exists, flag as warning: "H-item could be promoted to S-item"
+- This is a **warning** (not auto-reject) but should be noted to maximize agent-verifiable coverage
 
 #### 6d. TODO Granularity
 - **Over-splitting**: Flag if any TODO modifies only 1 trivial file AND its Input description is longer than its Steps — suggest merging with adjacent TODO
