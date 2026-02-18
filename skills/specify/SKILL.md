@@ -879,6 +879,7 @@ See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
 - [ ] **TODO Final: Verification** exists (type: verification, Edit/Write forbidden, same Acceptance Criteria structure)
 - [ ] Reviewer returned OKAY
 - [ ] Draft file deleted
+- [ ] Plan Approval Summary presented (TODO overview, verification A/H/S, pre/post-work, key decisions)
 
 ### Standard mode (additional, both interactive and autopilot)
 - [ ] Draft completeness fully validated (Patterns, Commands, Documentation, External Dependencies, UX Review)
@@ -980,7 +981,8 @@ User: "OK, make it a plan"
 9. Call plan-reviewer again
 10. Reviewer says OKAY
 11. Delete draft
-12. Guide user to next steps: /open or /execute
+12. Present Plan Approval Summary (TODO overview, verification A/H/S, pre/post-work, key decisions)
+13. AskUserQuestion: next step → /open or /execute or /worktree
 ```
 
 ### Quick Mode Example
@@ -1014,29 +1016,119 @@ User: "/specify --quick Fix typo in README header"
 9. ⛔ Quick: Verification Summary skipped
 10. Call reviewer (1 round max)
 11. Reviewer OKAY → Delete draft
-12. 🤖 Autopilot: Print plan path, stop (no AskUser)
-    "Plan ready: .dev/specs/fix-readme/PLAN.md"
+12. 🤖 Autopilot: Print Plan Approval Summary, stop (no AskUser)
+    "Plan ready: .dev/specs/fix-readme/PLAN.md
+     TODO 1: Fix README typo [work] → README.md
+     TODO Final: Verification [verification]
+     ✅ Verification: A-2, H-0, S-0
+     ⚠️ Pre-work: (none)
+     📌 Post-work: (none)
+     🤖 Assumptions: standard approach, minimal change
+        ⚠️ Not confirmed by user — re-run with --interactive to override"
 ```
 
 ---
 
-## Next Steps (Guide User)
+## Next Steps (Plan Approval Summary)
+
+After plan approval (reviewer OKAY + DRAFT deleted), present a **comprehensive summary** extracted from the PLAN.md before asking the user to proceed. This summary gives the user a complete picture before execution begins.
 
 > **Mode Gate**:
-> - 🤖 **Autopilot**: Skip `AskUserQuestion`. Print the plan file location and stop.
->   ```
->   "Plan approved: .dev/specs/{name}/PLAN.md
->    Next: run /open or /execute to proceed."
->   ```
+> - 🖐️ **Interactive**: Print the summary + `AskUserQuestion` (next step selection).
+> - 🤖 **Autopilot**: Print the summary and plan path, then stop (no `AskUserQuestion`).
 
-After plan approval, ask the user to select next step using `AskUserQuestion`:
+### Summary Format
+
+Present the following sections, extracted from the generated PLAN.md:
+
+```
+Plan approved! .dev/specs/{name}/PLAN.md is ready.
+
+────────────────────────────────────────
+📋 TODO Overview
+────────────────────────────────────────
+TODO 1: {title}                          [{type}]
+  Key files: {key files from Steps/Outputs}
+TODO 2: {title}                          [{type}]
+  Key files: {key files}
+  ⤷ depends on: TODO 1
+...
+TODO Final: Verification                 [verification]
+────────────────────────────────────────
+
+✅ Verification (recap — no additional confirmation needed)
+────────────────────────────────────────
+Agent-verifiable (A): {count}
+  - {A-1 criterion} → {method}
+  - {A-2 criterion} → {method}
+Human-required (H): {count}
+  - {H-1 criterion} — {reason}
+Sandbox (S): {count} (or "none" if no S-items)
+  - {S-1 scenario} (if exists)
+Gaps: {gap summary or "none"}
+────────────────────────────────────────
+
+⚠️ Pre-work (must complete before /execute)
+────────────────────────────────────────
+{If Pre-work items exist in External Dependencies Strategy:}
+  🔴 [Blocking] {dependency}: {action} → {command}
+  ⚪ [Optional] {dependency}: {action} → {command}
+{If no pre-work: "(none)"}
+────────────────────────────────────────
+
+📌 Post-work (user actions after completion)
+────────────────────────────────────────
+{If Post-work items exist in External Dependencies Strategy:}
+  - {task}: {action} → {command}
+{If no post-work: "(none)"}
+────────────────────────────────────────
+
+🔑 Key Decisions (from Context > Interview Summary)
+────────────────────────────────────────
+  - {decision point 1}: {chosen approach}
+  - {decision point 2}: {chosen approach}
+────────────────────────────────────────
+
+{If quick or autopilot mode (Assumptions section exists in PLAN):}
+🤖 Assumptions (auto-decided — not confirmed by user)
+────────────────────────────────────────
+  - {decision point}: {assumed choice} ({rationale})
+  - {decision point}: {assumed choice} ({rationale})
+  ⚠️ These decisions were applied without user confirmation.
+     Re-run with --interactive to override.
+────────────────────────────────────────
+```
+
+### Extraction Rules
+
+| Section | Source in PLAN.md | When |
+|---------|------------------|------|
+| TODO Overview | `## TODOs` (including TODO Final) — title, type, key output files, dependency from `Inputs` | Always |
+| Verification | `## Verification Summary` — count A/H/S items, list first 3-5 of each | Always |
+| Pre-work | `## External Dependencies Strategy > Pre-work` — list all, mark Blocking | Always |
+| Post-work | `## External Dependencies Strategy > Post-work` — list all | Always |
+| Key Decisions | `## Context > Interview Summary > Key Discussions` | Always |
+| Assumptions | `## Assumptions` — decision point, assumed choice, rationale | quick/autopilot only |
+
+### Condensing Rules
+
+- **TODO Overview**: One line per TODO. Show title + type. List key files (max 3). Show dependency chain with `⤷ depends on:` only when non-obvious (skip if sequential 1→2→3).
+- **Verification**: Show counts for A/H/S. List individual items only if ≤5 per category; otherwise show count + "details: see PLAN.md". Gaps: show 1-line summary or "none". S-items: show count or "none" if section absent in PLAN.
+- **Pre-work**: Always show all items (these are critical for user action).
+- **Post-work**: Always show all items.
+- **Key Decisions**: Max 5 items. Pick the most impactful decisions.
+- **Assumptions** (quick/autopilot only): Show all items. Include rationale in parentheses. Always append the `--interactive` re-run hint.
+
+### Then Ask Next Step (Interactive only)
+
+> 🤖 **Autopilot**: Skip this step. Summary output is the final action.
 
 ```
 AskUserQuestion(
   question: "Plan approved. Select the next step.",
   options: [
     { label: "/open", description: "Create Draft PR (get reviewer feedback first)" },
-    { label: "/execute", description: "Start implementation immediately (on current branch)" },
+    { label: "/execute", description: "Start implementation immediately (current branch)" },
     { label: "/worktree create {name}", description: "Work in isolated worktree (spec auto-moves)" }
   ]
 )
