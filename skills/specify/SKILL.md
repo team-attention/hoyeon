@@ -627,8 +627,10 @@ AskUserQuestion(
 ### Human-Required (H-items)
 - H-1: [criterion] (reason: [why human needed])
 ### Sandbox Agent Testing (S-items)
-- S-1: [scenario] (method: [agent-browser + DB check])
-(Include when verification-planner reports Tier 4 sandbox infra. Omit if no sandbox exists.)
+- S-1: [BDD scenario] (method: [agent-browser + DB check], feature: [.feature path])
+- S-2: [screenshot verification] (method: [screenshot vs design spec], route: [/path])
+(Include when sandbox infra exists. For UI work, always include screenshot verification.
+ If planner omitted S-items despite sandbox infra existing, apply S-items fallback rule.)
 ### Verification Gaps
 - [environment constraints and alternatives]
 ```
@@ -660,6 +662,10 @@ Generate plan using **DRAFT → PLAN mapping**:
 | (verification-planner > Verification Gaps) | Verification Summary > Verification Gaps |
 | (verification-planner > External Dependencies) | External Dependencies Strategy |
 | Agent Findings > External Dependencies | External Dependencies Strategy |
+
+**S-items fallback**: If the verification-planner output has Tier 4 items under A-items instead of S-items (e.g., `A-N: ... (tier: 4, ...)`), reclassify them as S-items when writing the PLAN. Also: if the project has sandbox infra (docker-compose, `sandbox/features/`) but the planner's S-items section says 0 or is empty, flag this as a warning and check if Tier 4 items were misclassified as A-items.
+
+**UI screenshot S-items**: If the work involves UI/frontend changes and the planner did not include screenshot-based S-items, add them: screenshot capture at affected routes + comparison against design spec (`.pen` files via Pencil MCP if available).
 
 ```
 Write(".dev/specs/{name}/PLAN.md", plan_content)
@@ -1113,7 +1119,7 @@ Gaps: {gap summary or "none"}
 ### Condensing Rules
 
 - **TODO Overview**: One line per TODO. Show title + type. List key files (max 3). Show dependency chain with `⤷ depends on:` only when non-obvious (skip if sequential 1→2→3).
-- **Verification**: Show counts for A/H/S. List individual items only if ≤5 per category; otherwise show count + "details: see PLAN.md". Gaps: show 1-line summary or "none". S-items: show count or "none" if section absent in PLAN.
+- **Verification**: Show counts for A/H/S. List individual items only if ≤5 per category; otherwise show count + "details: see PLAN.md". Gaps: show 1-line summary or "none". S-items: show count, or "none — no sandbox infra" if project lacks sandbox. If S: 0 despite sandbox infra existing, flag as "⚠️ S: 0 (sandbox exists — check planner output)".
 - **Pre-work**: Always show all items (these are critical for user action).
 - **Post-work**: Always show all items.
 - **Key Decisions**: Max 5 items. Pick the most impactful decisions.

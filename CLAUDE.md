@@ -94,7 +94,14 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.6.4)
+## Recent Changes (v0.6.5)
+
+- feat(verify): add S-items 3-way classification to verification-planner (A/H/S separate sections, pattern detection for BDD features, UI screenshot verification)
+- feat(reference-seek): upgrade to v2.0.0 with GitHub API, context7, and code deep dive
+- feat(hooks): add session ID capture and Claude-Session trailer support
+- fix(agents): remove dead ${CLAUDE_PLUGIN_ROOT} refs and add sandbox verification checks
+
+## Previous Changes (v0.6.4)
 
 - feat(specify): add Plan Approval Summary to plan finalization (TODO overview, verification A/H/S, pre/post-work, key decisions, assumptions)
 - feat(dev-scan): add ProductHunt as 6th data source
@@ -104,7 +111,7 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - fix(verify): replace ambiguous read-only constraint with Edit/Write forbidden + Bash file mutation guard
 - fix(specify): make codex-strategist Step 2.5 required in Standard mode
 - feat(execute): add sandbox lifecycle to verification flow (capture output, teardown, report to `context/sandbox-report.md`)
-- test-basedir skill: verify `${baseDir}` resolution and TESTING.md accessibility
+
 
 ## Previous Changes (v0.6.2)
 
