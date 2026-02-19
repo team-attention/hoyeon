@@ -94,9 +94,13 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.6.5)
+## Recent Changes (v0.6.6)
 
 - feat(bugfix): add `/bugfix` skill and `debugger` agent for root cause-based one-shot bug fixing (DIAGNOSE → FIX → REVIEW & COMMIT, adaptive SIMPLE/COMPLEX mode, circuit breaker with `/specify` escalation)
+- feat(persist): add `!rph` (Ralph Loop) and `!rv` (Re-validate) magic keyword hooks with DoD guard, zombie cleanup, orphan GC
+
+## Previous Changes (v0.6.5)
+
 - feat(verify): add S-items 3-way classification to verification-planner (A/H/S separate sections, pattern detection for BDD features, UI screenshot verification)
 - feat(reference-seek): upgrade to v2.0.0 with GitHub API, context7, and code deep dive
 - feat(hooks): add session ID capture and Claude-Session trailer support
