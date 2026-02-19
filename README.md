@@ -6,6 +6,8 @@ Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs
 
 ```
 /discuss → /specify → /open → /execute → /publish → /compound
+                                  ↑
+/bugfix ──(circuit breaker)──→ /specify
 ```
 
 | Step | Skill | What it does |
@@ -46,6 +48,11 @@ Chains the entire pipeline automatically via Stop hooks:
 | `/state` | "PR status" | PR state management (queue, begin, pause, complete) |
 | `/compound` | "document learnings" | Extract knowledge from completed PRs |
 
+### Bug Fixing
+| Skill | Trigger | Purpose |
+|-------|---------|---------|
+| `/bugfix` | "/bugfix 에러 설명" | Root cause 기반 원샷 버그픽스. debugger 진단 → worker 수정 → verify → commit. 3회 실패 시 `/specify`로 에스컬레이션 |
+
 ### Research & Analysis
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
@@ -64,6 +71,7 @@ Chains the entire pipeline automatically via Stop hooks:
 
 | Agent | Model | Role |
 |-------|-------|------|
+| `debugger` | Sonnet | Root cause 분석 전문. Backward call stack tracing, Bug Type 분류, Severity 판정 (SIMPLE/COMPLEX). Read-only |
 | `worker` | Sonnet | Implements delegated TODOs (code, tests, fixes) |
 | `gap-analyzer` | Haiku | Identifies missing requirements and pitfalls before planning |
 | `tradeoff-analyzer` | Sonnet | Evaluates risk (LOW/MED/HIGH) with reversibility analysis, simpler alternatives, over-engineering warnings |
@@ -217,6 +225,30 @@ Orchestrator (reads PLAN.md)
 - Plan checkboxes (`### [x] TODO N:`) are the single source of truth
 - Failed tasks retry up to 3 times (reconciliation)
 - Independent TODOs run in parallel
+
+## /bugfix — One-shot Bug Fixing
+
+Root cause 기반 원샷 버그픽스. Adaptive mode가 debugger의 Severity 판정에 따라 파이프라인 depth를 자동 선택.
+
+```
+/bugfix "에러 설명"
+  ├── Phase 1: DIAGNOSE
+  │   ├── debugger + verification-planner (병렬)
+  │   ├── [COMPLEX] gap-analyzer 추가
+  │   └── User 확인 (Root Cause 맞는지)
+  ├── Phase 2: FIX (max 3 attempts)
+  │   ├── worker (최소 수정 + 리그레션 테스트)
+  │   ├── Bash verify (A-items 독립 실행)
+  │   └── 3회 실패 → Circuit Breaker → /specify 에스컬레이션
+  └── Phase 3: REVIEW & COMMIT
+      ├── [COMPLEX] code-reviewer (multi-model)
+      └── git-master (atomic commit)
+```
+
+| Severity | Agents | 조건 |
+|----------|--------|------|
+| **SIMPLE** | 4개 (debugger, v-planner, worker, git-master) | 단일 파일, 명확한 원인 |
+| **COMPLEX** | 6개 (+gap-analyzer, +code-reviewer) | 다중 파일, INTEGRATION, 보안 경로 |
 
 ## Worktree Management
 

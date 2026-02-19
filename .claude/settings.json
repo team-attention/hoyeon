@@ -16,6 +16,17 @@
     ]
   },
   "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/rph-cleanup.sh"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "matcher": "",
@@ -35,6 +46,14 @@
           {
             "type": "command",
             "command": "scripts/hy-session-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/rv-detector.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/rph-detector.sh"
           }
         ]
       }
@@ -63,6 +82,10 @@
           {
             "type": "command",
             "command": ".claude/scripts/dev-orchestrator-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/rph-dod-guard.sh"
           }
         ]
       }
@@ -93,6 +116,14 @@
           {
             "type": "command",
             "command": ".claude/scripts/dev-specify-stop-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/rv-validator.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/rph-loop.sh"
           }
         ]
       }
