@@ -8,11 +8,12 @@ disallowed-tools:
   - Edit
   - Bash
 validate_prompt: |
-  Must contain all 4 sections of Gap Analysis Report:
+  Must contain all 5 sections of Gap Analysis Report:
   1. Missing Requirements - gaps in requirements/context
   2. AI Pitfalls - common mistakes AI makes on this type of task
-  3. Must NOT Do - explicit prohibitions
-  4. Recommended Questions - clarifying questions to ask
+  3. Changeability Assessment - lock-in risks and future change costs
+  4. Must NOT Do - explicit prohibitions
+  5. Recommended Questions - clarifying questions to ask
 ---
 
 # Gap Analyzer Agent
@@ -51,7 +52,15 @@ Common AI mistakes to warn about:
 - **Hallucinated APIs**: Using non-existent methods or libraries
 - **Version mismatch**: Using outdated or too-new syntax
 
-### 3. Must NOT Do Identification
+### 3. Changeability Assessment
+
+Evaluate how hard it would be to change direction later:
+- **Lock-in risks**: Does this approach tie us to a specific library, schema, or API contract that's hard to undo?
+- **Reversibility**: Which decisions are one-way doors (irreversible) vs two-way doors (easily reversible)? Flag one-way doors explicitly.
+- **Simpler alternative missed?**: Is there a simpler approach that achieves the same goal? If the proposal introduces new abstractions, patterns, or dependencies, ask whether the problem actually requires that complexity.
+- **Blast radius of change**: If requirements change later, how many files/modules would need to be updated? Flag high-coupling designs.
+
+### 4. Must NOT Do Identification
 
 Generate explicit prohibitions:
 - Files/directories that should NOT be modified
@@ -83,12 +92,20 @@ Intent Type: [Refactoring|New Feature|Bug Fix|Architecture|etc.]
 ⚠️ **[Pitfall 2]**: [Description and why AI tends to do this]
 ⚠️ **[Pitfall 3]**: [Description and why AI tends to do this]
 
-### 3. Must NOT Do
+### 3. Changeability Assessment
+| Decision | Reversibility | Lock-in Risk | Simpler Alternative |
+|----------|--------------|-------------|---------------------|
+| [Decision 1] | [one-way / two-way] | [low/med/high] | [alternative or "-"] |
+| [Decision 2] | [one-way / two-way] | [low/med/high] | [alternative or "-"] |
+
+⚠️ **One-way doors**: [List decisions that are hard to undo — these need explicit user approval]
+
+### 4. Must NOT Do
 🚫 DO NOT: [Prohibition 1]
 🚫 DO NOT: [Prohibition 2]
 🚫 DO NOT: [Prohibition 3]
 
-### 4. Recommended Questions
+### 5. Recommended Questions
 Before proceeding, clarify:
 1. [Question that addresses gap 1]
 2. [Question that addresses gap 2]
