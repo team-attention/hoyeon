@@ -53,6 +53,7 @@ Quick mode removes the independent verification agent and reconciliation system.
 | Verification | Independent verify agent (4-part) | Worker self-report trusted |
 | Reconciliation | halt/adapt/retry (3 retries, dynamic TODOs) | Pass or halt (no retry) |
 | Final Code Review | code-reviewer agent (SHIP/NEEDS_FIXES) | Skipped |
+| Final Verification | Verify worker re-runs project-level acceptance commands | Skipped |
 | Context files | 4 files (all maintained) | 4 files (all maintained) |
 | Report | Full template | Abbreviated summary |
 
@@ -75,6 +76,7 @@ Quick mode removes the independent verification agent and reconciliation system.
      :Commit  → Task(git-master) per Commit Strategy
      :Residual Commit → git status → git-master if dirty
      :Code Review      → [Standard only] Task(code-reviewer) with full diff → SHIP/NEEDS_FIXES
+     :Final Verify     → [Standard only] dispatch verify worker with project-level acceptance commands → VERIFIED/FAILED
      :State Complete   → [PR only] Skill("state", "complete")
      :Report           → output final report
 5. (Init, TODO execution, and Finalize are all part of the loop)
@@ -95,6 +97,7 @@ Quick mode removes the independent verification agent and reconciliation system.
      :Commit  → Task(git-master) per Commit Strategy
      :Residual Commit → git status → git-master if dirty
      ⛔ :Code Review   → SKIPPED (no final review)
+     ⛔ :Final Verify  → SKIPPED (no final verification)
      :State Complete   → [PR only] Skill("state", "complete")
      :Report           → abbreviated summary
 5. On Worker failure → HALT (no retry, no adapt)
@@ -109,7 +112,7 @@ Quick mode removes the independent verification agent and reconciliation system.
 3. **PARALLELIZE** — Run all tasks whose `blockedBy` is empty simultaneously. Sub-step chains auto-parallelize across independent TODOs.
 4. **ONE TODO PER WORKER** — Each `:Worker` Task handles exactly one TODO.
 5. **PLAN CHECKBOX = TRUTH** — `### [x] TODO N:` is the only durable state. Sub-step Tasks are recreated each session. Standard: `{N}.1` ~ `{N}.4`. Quick: `{N}.1` ~ `{N}.3`.
-6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify` (standard only), `:Wrap-up`, `:Commit`, `:Residual Commit`, `:Code Review` (standard only), `:State Complete`, `:Report`.
+6. **DISPATCH BY TYPE** — The loop dispatches each runnable task by its suffix: `:State Begin`, `:Worker`, `:Verify` (standard only), `:Wrap-up`, `:Commit`, `:Residual Commit`, `:Code Review` (standard only), `:Final Verify` (standard only), `:State Complete`, `:Report`.
 
 ---
 
@@ -182,6 +185,9 @@ rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 cr = TaskCreate(subject="Finalize:Code Review",
      description="Review complete diff for integration issues, hidden bugs, side effects. Dispatch code-reviewer agent.",
      activeForm="Reviewing all changes")
+fv = TaskCreate(subject="Finalize:Final Verify",
+     description="Post-review integration verification. Dispatch verify worker to re-run project-level acceptance criteria commands. Ensures no regressions after code review fixes.",
+     activeForm="Running final verification")
 IF pr_mode:
   sc = TaskCreate(subject="Finalize:State Complete", ...)
 rp = TaskCreate(subject="Finalize:Report", activeForm="Generating report",
@@ -207,13 +213,14 @@ all_last_steps = [task_ids[N].commit ?? task_ids[N].wrapup for each unchecked TO
 FOR EACH last_step in all_last_steps:
   TaskUpdate(taskId=last_step, addBlocks=[rc.task_id])
 
-# Finalize chain: Residual Commit → Code Review → State Complete (PR) → Report
+# Finalize chain: Residual Commit → Code Review → Final Verify → State Complete (PR) → Report
 TaskUpdate(taskId=rc.task_id, addBlocks=[cr.task_id])
+TaskUpdate(taskId=cr.task_id, addBlocks=[fv.task_id])
 IF pr_mode:
-  TaskUpdate(taskId=cr.task_id, addBlocks=[sc.task_id])
+  TaskUpdate(taskId=fv.task_id, addBlocks=[sc.task_id])
   TaskUpdate(taskId=sc.task_id, addBlocks=[rp.task_id])
 ELSE:
-  TaskUpdate(taskId=cr.task_id, addBlocks=[rp.task_id])
+  TaskUpdate(taskId=fv.task_id, addBlocks=[rp.task_id])
 ```
 
 ### ⛔ Quick Mode Task Creation
@@ -245,7 +252,7 @@ FOR EACH "### [ ] TODO N: {title}" in plan:
                     description="Commit TODO {N} changes. ...",
                     activeForm="{N}.3: Committing")
 
-# Finalize tasks — ⛔ NO Code Review in Quick mode
+# Finalize tasks — ⛔ NO Code Review or Final Verify in Quick mode
 rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 IF pr_mode:
   sc = TaskCreate(subject="Finalize:State Complete", ...)
@@ -397,6 +404,7 @@ WHILE TaskList() has pending tasks:
 | `:Commit` | 2d | Task(git-master) per Commit Strategy | Same |
 | `:Residual Commit` | 2f | `git status --porcelain` → git-master if dirty | Same |
 | `:Code Review` | 2f.5 | Task(code-reviewer) with full diff → SHIP/NEEDS_FIXES | ⛔ **SKIPPED** (not created) |
+| `:Final Verify` | 2f.6 | dispatch verify worker → VERIFIED/FAILED | ⛔ **SKIPPED** (not created) |
 | `:State Complete` | 2g | `Skill("state", args="complete <PR#>")` | Same |
 | `:Report` | 2h | Full report from template | Abbreviated summary |
 
@@ -1063,9 +1071,9 @@ TaskUpdate(taskId, status="completed") → next step unblocked
 
 1. Log verdict + findings to `context/audit.md`
 2. Extract Fix Items from code-reviewer output (max 3 items)
-3. Determine the next step task (`:State Complete` or `:Report`):
+3. Determine the next step task (`:Final Verify`):
    ```
-   next_step_id = sc.task_id if pr_mode else rp.task_id
+   next_step_id = fv.task_id  # CR2 → Final Verify (FV already blocks SC/RP)
    ```
 4. Create fix tasks:
    ```
@@ -1085,23 +1093,23 @@ TaskUpdate(taskId, status="completed") → next step unblocked
                     description="Re-review complete diff after fixes. This is the FINAL review — max 1 retry.",
                     activeForm="Re-reviewing all changes")
    ```
-6. Set dependencies — fix tasks → RC2 → CR2 → next step:
+6. Set dependencies — fix tasks → RC2 → CR2 → Final Verify:
    ```
    FOR EACH fix in fix_tasks:
      TaskUpdate(taskId=fix.task_id, addBlocks=[rc2.task_id])
    TaskUpdate(taskId=rc2.task_id, addBlocks=[cr2.task_id])
-   # CR2 must block the next step BEFORE CR1 completes:
+   # CR2 must block Final Verify BEFORE CR1 completes:
    TaskUpdate(taskId=cr2.task_id, addBlocks=[next_step_id])
    ```
 7. Complete Code Review #1:
    ```
    TaskUpdate(taskId=cr1.task_id, status="completed")
-   # State Complete/Report is now blocked by BOTH cr1 (completed ✅) AND cr2 (pending ⏳)
+   # Final Verify is now blocked by BOTH cr1 (completed ✅) AND cr2 (pending ⏳)
    # → remains blocked until cr2 also completes
    ```
 
-> **Why this works**: Adding CR2 as a blocker to State Complete/Report BEFORE completing CR1
-> ensures the next step remains blocked. When CR1 completes, the next step is still blocked by CR2.
+> **Why this works**: Adding CR2 as a blocker to Final Verify BEFORE completing CR1
+> ensures the next step remains blocked. When CR1 completes, Final Verify is still blocked by CR2.
 > Fix tasks → RC2 → CR2 must all complete before the pipeline continues.
 
 **Code Review (retry)** — same dispatch as above, with one difference:
@@ -1109,12 +1117,144 @@ TaskUpdate(taskId, status="completed") → next step unblocked
 If retry still returns **NEEDS_FIXES**:
 - Log remaining issues to `context/issues.md`
 - Log to `context/audit.md`: "Status: NEEDS_FIXES (max retries reached). Remaining issues logged."
-- `TaskUpdate(taskId=cr2, status="completed")` → proceed to State Complete / Report
+- `TaskUpdate(taskId=cr2, status="completed")` → proceed to Final Verify
 - Report will include unresolved code review findings
 
 > **Design note on Fix Task verification**: Fix tasks are Worker-only (no separate Verify agent).
 > The Code Review retry serves as integration-level verification for all fixes. This is intentional:
 > fixes are small targeted changes, and the retry reviews the COMPLETE diff including fixes.
+
+On completion: `TaskUpdate(taskId, status="completed")` → `:Final Verify` becomes runnable.
+
+---
+
+### 2f.6. :Final Verify — Post-Review Integration Verification [Standard Only]
+
+> **Mode Gate**: ⛔ **Quick**: SKIPPED (not created).
+
+After Code Review (and any NEEDS_FIXES fix cycle), this step re-runs project-level acceptance commands to confirm no regressions were introduced.
+
+#### Command Extraction
+
+Collect verification commands from these sources (deduplicated):
+
+1. **PLAN's TODO Final `Verify:` commands block** — if present
+2. **Acceptance Criteria** — commands from all TODO acceptance criteria
+3. **Verification Summary A-items** — agent-verifiable items from the plan
+
+#### Dispatch Verify Worker
+
+```
+Task(
+  subagent_type="worker",
+  description="Final Verify: re-run project-level acceptance commands",
+  prompt="""
+## TASK
+You are a FINAL VERIFICATION worker. Re-run all project-level acceptance
+commands to confirm the entire implementation works after code review fixes.
+
+DO NOT write or modify any code. Only READ and RUN verification commands.
+
+## COMMANDS TO RUN
+{deduplicated list of verification commands from extraction above}
+
+## OUTPUT FORMAT (strict JSON)
+{
+  "status": "VERIFIED" | "FAILED",
+  "commands": [
+    {
+      "command": "<command run>",
+      "status": "PASS" | "FAIL",
+      "output": "<relevant output snippet>"
+    }
+  ],
+  "summary": "<N/total passed>"
+}
+
+## MUST NOT DO
+- Do not modify any files
+- Do not write code or fix issues
+- Do not run git commands (except read-only: git diff, git status)
+- Only verify — report results objectively
+"""
+)
+```
+
+#### Routing
+
+**VERIFIED** (all commands pass):
+```
+Log "Status: VERIFIED" to context/audit.md
+TaskUpdate(taskId, status="completed") → next step unblocked
+```
+
+**SKIPPED / DEGRADED** (orchestrator-determined states, not worker-returned):
+> SKIPPED = no verification commands found (decided before dispatch). DEGRADED = worker dispatch failed (decided after failed dispatch attempt).
+
+```
+Log explicit "Status: SKIPPED" or "Status: DEGRADED" to context/audit.md
+TaskUpdate(taskId, status="completed") → next step unblocked
+```
+
+**FAILED** — Dynamic Fix Chain:
+
+> Mirrors the 2f.5 NEEDS_FIXES pattern. Max 1 retry.
+
+1. Log verdict + failed commands to `context/audit.md`
+2. Extract failed commands (max 3 items)
+3. Create fix tasks + retry chain:
+   ```
+   fix_tasks = []
+   FOR EACH failed_command (max 3):
+     fix = TaskCreate(subject="Fix:FV-{id} — {command}",
+                      description="Fix failure: {command} returned {output}.",
+                      activeForm="Fixing FV-{id}")
+     fix_tasks.append(fix)
+
+   rc3 = TaskCreate(subject="Finalize:Residual Commit (post-FV-fix)",
+                    description="Commit fix changes after final verify failure",
+                    activeForm="Committing FV fixes")
+   fv2 = TaskCreate(subject="Finalize:Final Verify (retry)",
+                    description="Re-run project-level commands after fixes. FINAL attempt — max 1 retry.",
+                    activeForm="Re-running final verification")
+   ```
+4. Set dependencies — fix tasks → RC3 → FV2 → next step:
+   ```
+   next_step_id = sc.task_id if pr_mode else rp.task_id
+
+   FOR EACH fix in fix_tasks:
+     TaskUpdate(taskId=fix.task_id, addBlocks=[rc3.task_id])
+   TaskUpdate(taskId=rc3.task_id, addBlocks=[fv2.task_id])
+   # FV2 must block the next step BEFORE FV1 completes:
+   TaskUpdate(taskId=fv2.task_id, addBlocks=[next_step_id])
+   ```
+5. Complete Final Verify #1:
+   ```
+   TaskUpdate(taskId=fv1.task_id, status="completed")
+   ```
+
+**Final Verify (retry)** — same dispatch as above. If retry still **FAILED**:
+- Log remaining failures to `context/issues.md`
+- Log to `context/audit.md`: "Status: FAILED (max retries reached). Remaining failures logged."
+- `TaskUpdate(taskId=fv2, status="completed")` → proceed to State Complete / Report
+- Report will include unresolved final verification failures
+
+#### Audit Logging
+
+```markdown
+## Final Verification
+
+### [YYYY-MM-DD HH:MM] Verify #1
+- Status: VERIFIED | FAILED | SKIPPED | DEGRADED
+- Commands: {N}/{total} passed
+- Failed: {command1}, {command2}
+- Action: Proceed | Fix tasks created for FV-001, FV-002
+
+### [YYYY-MM-DD HH:MM] Verify #2 (if retry)
+- Status: VERIFIED | FAILED
+- Remaining: ...
+- Action: Proceed | Remaining failures logged to issues.md
+```
 
 On completion: `TaskUpdate(taskId, status="completed")` → `:State Complete` (PR) or `:Report` becomes runnable.
 
@@ -1180,7 +1320,7 @@ On completion: `TaskUpdate(taskId, status="completed")` → all tasks done, exec
 
 ## STEP 3: Finalize
 
-Finalize tasks (Residual Commit, Code Review, State Complete, Report) are dispatched in the execution loop as `:Residual Commit`, `:Code Review` (2f.5, standard only), `:State Complete`, `:Report` handlers (2f, 2g, 2h). If Code Review returns NEEDS_FIXES, dynamic fix tasks + retry chain are created (see 2f.5 for details).
+Finalize tasks (Residual Commit, Code Review, Final Verify, State Complete, Report) are dispatched in the execution loop as `:Residual Commit`, `:Code Review` (2f.5, standard only), `:Final Verify` (2f.6, standard only), `:State Complete`, `:Report` handlers (2f, 2g, 2h). If Code Review returns NEEDS_FIXES, dynamic fix tasks + retry chain are created (see 2f.5 for details). If Final Verify returns FAILED, dynamic fix tasks + retry chain are created (see 2f.6 for details).
 
 ---
 
@@ -1296,8 +1436,9 @@ TaskList() after initialization:
 #12 [pending] 3.4:Commit          [blocked by #11]
 #13 [pending] Finalize:Residual Commit [blocked by #5, #8, #12]  ← #5=1.4:Commit, #8=2.3:Wrap-up, #12=3.4:Commit
 #14 [pending] Finalize:Code Review     [blocked by #13]
-#15 [pending] Finalize:State Complete  [blocked by #14]
-#16 [pending] Finalize:Report          [blocked by #15]
+#15 [pending] Finalize:Final Verify    [blocked by #14]
+#16 [pending] Finalize:State Complete  [blocked by #15]
+#17 [pending] Finalize:Report          [blocked by #16]
 ```
 
 **Execution Rounds (auto-determined by TaskList):**
@@ -1313,8 +1454,9 @@ Round 6:  #7 2.2:Verify
 Round 7:  #8 2.3:Wrap-up
 Round 8:  #13 Finalize:Residual Commit            ← blocked by all TODO last steps
 Round 9:  #14 Finalize:Code Review                ← blocked by #13
-Round 10: #15 Finalize:State Complete             ← blocked by #14
-Round 11: #16 Finalize:Report                     ← blocked by #15
+Round 10: #15 Finalize:Final Verify               ← blocked by #14
+Round 11: #16 Finalize:State Complete             ← blocked by #15
+Round 12: #17 Finalize:Report                     ← blocked by #16
 ```
 
 #### ⛔ Quick Mode (same setup)
@@ -1350,7 +1492,7 @@ Round 7:  #11 Finalize:State Complete
 Round 8:  #12 Finalize:Report
 ```
 
-> Quick mode saves 2 rounds (no Verify rounds) — 8 rounds vs 10 rounds for the same plan.
+> Quick mode saves 4 rounds (no Verify rounds, no Code Review, no Final Verify) — 8 rounds vs 12 rounds for the same plan.
 
 ### F. Session Recovery
 
@@ -1392,6 +1534,7 @@ Plan checkbox is the only durable state, so recovery = fresh start:
 | `:Commit` | `{N}.4:Commit` | `{N}.3:Commit` | Commit via git-master (only if Commit Strategy row exists) |
 | `:Residual Commit` | `Finalize:Residual Commit` | Same | Check & commit remaining changes |
 | `:Code Review` | `Finalize:Code Review` | ⛔ **Not created** | Final quality gate — review entire diff |
+| `:Final Verify` | `Finalize:Final Verify` | ⛔ **Not created** | Re-run project-level acceptance criteria commands |
 | `:State Complete` | `Finalize:State Complete` | Same | [PR only] Complete PR state |
 | `:Report` | `Finalize:Report` | Same (abbreviated output) | Output final orchestration report |
 
@@ -1419,11 +1562,13 @@ Standard: 1.4:Commit (or 1.3:Wrap-up) → 2.1:Worker
 Quick:    1.3:Commit (or 1.2:Wrap-up) → 2.1:Worker
 
 # Finalize chain:
-# Standard: all TODO last steps → Residual Commit → Code Review → State Complete (PR) → Report
+# Standard: all TODO last steps → Residual Commit → Code Review → Final Verify → State Complete (PR) → Report
 # Quick:    all TODO last steps → Residual Commit → State Complete (PR) → Report
 #
 # NEEDS_FIXES dynamic extension (Standard only):
-# ... → Code Review (NEEDS_FIXES) → [Fix:CR-xxx tasks] → Residual Commit (post-fix) → Code Review (retry) → State Complete → Report
+# ... → Code Review (NEEDS_FIXES) → [Fix:CR-xxx tasks] → Residual Commit (post-fix) → Code Review (retry) → Final Verify → State Complete → Report
+# FAILED (FV) dynamic extension (Standard only):
+# ... → Final Verify (FAILED) → [Fix:FV-xxx tasks] → Residual Commit (post-FV-fix) → Final Verify (retry) → State Complete → Report
 # New tasks are created dynamically; completed tasks are NOT re-dispatched.
 ```
 
@@ -1465,6 +1610,7 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 **4. Finalize Tasks:**
 - [ ] `Finalize:Residual Commit` task completed?
 - [ ] `Finalize:Code Review` task completed? (standard mode only)
+- [ ] `Finalize:Final Verify` task completed? (standard mode only)
 - [ ] `Finalize:State Complete` task completed? (PR mode only)
 - [ ] `Finalize:Report` task completed?
 - [ ] All Finalize tasks dispatched through execution loop?
@@ -1481,6 +1627,9 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 - [ ] Code review status (SHIP/NEEDS_FIXES/SKIPPED/DEGRADED) logged to `audit.md`?
 - [ ] If NEEDS_FIXES: new fix tasks + Residual Commit (post-fix) + Code Review (retry) created?
 - [ ] If SKIPPED/DEGRADED: explicit status noted in report (not logged as SHIP)?
+- [ ] `:Final Verify` dispatched verify worker with project-level acceptance commands?
+- [ ] Final verify status (VERIFIED/FAILED/SKIPPED/DEGRADED) logged to `audit.md`?
+- [ ] If FAILED: new fix tasks + Residual Commit (post-FV-fix) + Final Verify (retry) created?
 - [ ] Triage decisions logged in `audit.md`?
 - [ ] Verify `side_effects.missing_context` merged into context files?
 
@@ -1489,6 +1638,7 @@ Usage: `TaskUpdate(status="in_progress")` — before dispatching. `TaskUpdate(st
 - [ ] Intra-TODO chains set (Worker→Wrap-up→Commit)?
 - [ ] No `:Verify` tasks exist?
 - [ ] No `:Code Review` task exist?
+- [ ] No `:Final Verify` task exist?
 - [ ] No reconciliation attempted (pass or halt only)?
 - [ ] Worker self-report trusted for acceptance criteria?
 - [ ] Abbreviated report output (not full template)?
