@@ -1,0 +1,131 @@
+name: specify-standard-interactive
+type: sequential
+description: Full planning with user interaction (standard depth)
+
+blocks:
+  - id: init
+    type: cli
+    command: "dev-cli init {name} --standard --interactive"
+
+  - id: classify-intent
+    type: llm
+    instruction: |
+      Classify the user intent for this session. Choose the single best category:
+        Feature / Bug / Refactor / Architecture / Migration / Performance / Research
+      Output a short intent statement (1-2 sentences) naming the category and the goal.
+    save: "dev-cli draft update {name} --section intent"
+
+  - id: explore-full
+    type: subagent
+    agents:
+      - type: Explore
+        promptHint: "Find existing code patterns and prior implementations relevant to {name}"
+        output: "findings/explore-1.md"
+      - type: Explore
+        promptHint: "Find project structure, commands, entry points, and dependency graph"
+        output: "findings/explore-2.md"
+      - type: docs-researcher
+        promptHint: "Find ADRs, design documents, coding conventions, and known constraints"
+        output: "findings/docs.md"
+      - type: ux-reviewer
+        promptHint: "Evaluate UX impact and surface usability concerns for {name}"
+        output: "findings/ux.md"
+    parallel: true
+    onComplete: "dev-cli draft import {name}"
+    onError: continue
+
+  - id: interview
+    type: llm-loop
+    instruction: |
+      You are guiding a structured requirements interview. Your goal is to surface the key decisions
+      and constraints the user has not yet articulated, using the exploration findings as your basis.
+
+      WHAT TO ASK:
+      - Ask about the intended user experience and expected behavior at the boundaries
+      - Ask about explicit scope: what is in and what is deliberately out of scope
+      - Ask about success criteria: how will we know this is done and correct
+      - Ask about failure modes: what happens when things go wrong
+
+      WHAT TO INVESTIGATE:
+      - Investigate any conflicts or ambiguities found in the exploration findings
+      - Investigate compatibility concerns (existing APIs, conventions, data formats)
+      - Investigate any non-obvious dependencies or ordering constraints
+      - Investigate whether similar problems have been solved elsewhere in the codebase
+
+      WHAT TO PROPOSE:
+      - After each answer, propose a concrete decision or assumption if the user confirms your framing
+      - Offer trade-off options (e.g., simple-now vs. flexible-later) and let the user pick
+      - Summarize agreed decisions at the end of each exchange
+      - Minimize the number of questions; prefer offering proposals backed by research
+
+      Conclude the loop when all critical decisions have been recorded and validated.
+    save: "dev-cli draft update {name} --section decisions"
+    exitCheck: "dev-cli draft validate {name}"
+    onError: halt
+
+  - id: decision-confirm
+    type: llm
+    instruction: |
+      Review all decisions collected during the interview phase.
+      Produce a concise decision summary: list each decision as a bullet, noting any remaining
+      open questions. Confirm with the user before proceeding to analysis.
+    save: "dev-cli draft update {name} --section decisions"
+
+  - id: analyze-full
+    type: subagent
+    agents:
+      - type: tradeoff-analyzer
+        promptHint: "Analyze architectural trade-offs for {name} given the collected decisions"
+        output: "analysis/tradeoff.md"
+      - type: gap-analyzer
+        promptHint: "Identify implementation gaps and missing context for {name}"
+        output: "analysis/gaps.md"
+      - type: simplicity-checker
+        promptHint: "Evaluate the simplest viable approach for {name}"
+        output: "analysis/simplicity.md"
+      - type: risk-assessor
+        promptHint: "Assess risks and unknowns for {name} before planning"
+        output: "analysis/risks.md"
+    parallel: true
+    onComplete: "dev-cli draft import {name}"
+    onError: continue
+
+  - id: codex-synth
+    type: subagent
+    agents:
+      - type: codex-strategist
+        promptHint: "Synthesize exploration and analysis into a coherent implementation strategy for {name}"
+        output: "analysis/strategy.md"
+    onComplete: "dev-cli draft import {name}"
+
+  - id: generate-plan
+    type: llm+cli
+    instruction: |
+      Using all findings, decisions, analysis, and the synthesized strategy, write a structured
+      implementation plan as JSON into plan-content.json. The plan must include:
+        - title, goal, intent
+        - ordered tasks with id, description, acceptance criteria
+        - key decisions and their rationale
+        - assumptions made during planning
+        - risks and mitigations
+    command: "dev-cli plan generate {name} --data plan-content.json"
+
+  - id: review-full
+    type: subagent-loop
+    agents:
+      - type: plan-reviewer
+        promptHint: "Review the plan for {name}: completeness, clarity, and feasibility"
+        output: "analysis/review.md"
+      - type: gap-analyzer
+        promptHint: "Check the plan for {name} against the requirements for any remaining gaps"
+        output: "analysis/review-gaps.md"
+    maxRounds: 3
+    exitWhen: "dev-cli plan validate {name}"
+
+  - id: summary
+    type: cli
+    command: "dev-cli plan summary {name}"
+
+  - id: cleanup
+    type: cli
+    command: "dev-cli cleanup {name}"

@@ -1,0 +1,98 @@
+name: specify-standard-autopilot
+type: sequential
+description: Full planning without user interaction (standard depth, autopilot mode)
+
+blocks:
+  - id: init
+    type: cli
+    command: "dev-cli init {name} --standard --autopilot"
+
+  - id: classify-intent
+    type: llm
+    instruction: |
+      Classify the user intent for this session. Choose the single best category:
+        Feature / Bug / Refactor / Architecture / Migration / Performance / Research
+      Output a short intent statement (1-2 sentences) naming the category and the goal.
+    save: "dev-cli draft update {name} --section intent"
+
+  - id: explore-full
+    type: subagent
+    agents:
+      - type: Explore
+        promptHint: "Find existing code patterns and prior implementations relevant to {name}"
+        output: "findings/explore-1.md"
+      - type: Explore
+        promptHint: "Find project structure, commands, entry points, and dependency graph"
+        output: "findings/explore-2.md"
+      - type: docs-researcher
+        promptHint: "Find ADRs, design documents, coding conventions, and known constraints"
+        output: "findings/docs.md"
+      - type: ux-reviewer
+        promptHint: "Evaluate UX impact and surface usability concerns for {name}"
+        output: "findings/ux.md"
+    parallel: true
+    onComplete: "dev-cli draft import {name}"
+    onError: continue
+
+  - id: auto-assume
+    type: cli
+    command: "dev-cli draft auto-assume {name}"
+
+  - id: analyze-full
+    type: subagent
+    agents:
+      - type: tradeoff-analyzer
+        promptHint: "Analyze architectural trade-offs for {name} given the auto-assumed decisions"
+        output: "analysis/tradeoff.md"
+      - type: gap-analyzer
+        promptHint: "Identify implementation gaps and missing context for {name}"
+        output: "analysis/gaps.md"
+      - type: simplicity-checker
+        promptHint: "Evaluate the simplest viable approach for {name}"
+        output: "analysis/simplicity.md"
+      - type: risk-assessor
+        promptHint: "Assess risks and unknowns for {name} before planning"
+        output: "analysis/risks.md"
+    parallel: true
+    onComplete: "dev-cli draft import {name}"
+    onError: continue
+
+  - id: codex-synth
+    type: subagent
+    agents:
+      - type: codex-strategist
+        promptHint: "Synthesize exploration and analysis into a coherent implementation strategy for {name}"
+        output: "analysis/strategy.md"
+    onComplete: "dev-cli draft import {name}"
+
+  - id: generate-plan
+    type: llm+cli
+    instruction: |
+      Using all findings, auto-assumed decisions, analysis, and the synthesized strategy, write a
+      structured implementation plan as JSON into plan-content.json. The plan must include:
+        - title, goal, intent
+        - ordered tasks with id, description, acceptance criteria
+        - key decisions and their rationale
+        - assumptions made during planning
+        - risks and mitigations
+    command: "dev-cli plan generate {name} --data plan-content.json"
+
+  - id: review-full
+    type: subagent-loop
+    agents:
+      - type: plan-reviewer
+        promptHint: "Review the plan for {name}: completeness, clarity, and feasibility"
+        output: "analysis/review.md"
+      - type: gap-analyzer
+        promptHint: "Check the plan for {name} against the requirements for any remaining gaps"
+        output: "analysis/review-gaps.md"
+    maxRounds: 3
+    exitWhen: "dev-cli plan validate {name}"
+
+  - id: summary
+    type: cli
+    command: "dev-cli plan summary {name}"
+
+  - id: cleanup
+    type: cli
+    command: "dev-cli cleanup {name}"

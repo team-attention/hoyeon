@@ -1,0 +1,81 @@
+name: specify-quick-interactive
+type: sequential
+description: Quick planning with user interaction (quick depth)
+
+blocks:
+  - id: init
+    type: cli
+    command: "dev-cli init {name} --quick --interactive"
+
+  - id: classify-intent
+    type: llm
+    instruction: |
+      Classify the user intent for this session. Choose the single best category:
+        Feature / Bug / Refactor / Architecture / Migration / Performance / Research
+      Output a short intent statement (1-2 sentences) naming the category and the goal.
+    save: "dev-cli draft update {name} --section intent"
+
+  - id: explore-lite
+    type: subagent
+    agents:
+      - type: Explore
+        promptHint: "Find existing code patterns and entry points relevant to {name}"
+        output: "findings/explore-1.md"
+      - type: Explore
+        promptHint: "Find project structure and key conventions for {name}"
+        output: "findings/explore-2.md"
+    parallel: true
+    onComplete: "dev-cli draft import {name}"
+    onError: continue
+
+  - id: interview
+    type: llm-loop
+    instruction: |
+      You are guiding a focused, time-boxed requirements interview. Keep it concise — quick mode
+      means fewer questions and faster decisions. Use the exploration findings as your basis.
+
+      WHAT TO ASK:
+      - Ask about the most important success criterion: what does "done" look like
+      - Ask about scope boundaries: what is explicitly out of scope for this change
+      - Ask one question at a time; do not pile up questions in a single message
+
+      WHAT TO INVESTIGATE:
+      - Investigate any single critical ambiguity discovered during exploration
+      - Investigate whether there are any hard constraints (performance, compatibility, API contract)
+
+      WHAT TO PROPOSE:
+      - After each answer, immediately propose a decision or assumption and ask for confirmation
+      - Prefer concrete proposals over open-ended questions
+      - Summarize all agreed decisions at the end of the interview
+
+      Exit when the key success criterion and scope boundary are confirmed.
+    save: "dev-cli draft update {name} --section decisions"
+    exitCheck: "dev-cli draft validate {name}"
+    onError: halt
+
+  - id: generate-plan
+    type: llm+cli
+    instruction: |
+      Using the exploration findings and the interview decisions, write a focused implementation
+      plan as JSON into plan-content.json. The plan must include:
+        - title, goal, intent
+        - ordered tasks (keep it concise — quick mode)
+        - key decisions and assumptions
+    command: "dev-cli plan generate {name} --data plan-content.json"
+
+  - id: review-once
+    type: subagent
+    agents:
+      - type: plan-reviewer
+        promptHint: "Review the plan for {name}: is it clear, complete, and actionable"
+        output: "analysis/review.md"
+    maxRounds: 1
+    onComplete: "dev-cli draft import {name}"
+
+  - id: summary
+    type: cli
+    command: "dev-cli plan summary {name}"
+
+  - id: cleanup
+    type: cli
+    command: "dev-cli cleanup {name}"
