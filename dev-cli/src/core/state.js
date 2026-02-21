@@ -18,6 +18,9 @@ import { randomBytes } from 'node:crypto';
  * Resolves relative to process.cwd() so callers can control the working dir.
  */
 export function statePath(name) {
+  if (!name || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name)) {
+    throw new Error(`Invalid session name: "${name}". Must be 1-64 alphanumeric/dash/underscore characters.`);
+  }
   return join(process.cwd(), '.dev', 'specs', name, 'state.json');
 }
 
@@ -130,7 +133,11 @@ export function loadState(name) {
     throw new Error(`No state found for session '${name}' at ${target}`);
   }
   const raw = readFileSync(target, 'utf8');
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Corrupted state file at ${target}: ${err.message}`);
+  }
 }
 
 /**

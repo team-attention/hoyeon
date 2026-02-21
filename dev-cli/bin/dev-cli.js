@@ -27,7 +27,7 @@ function printHelp() {
   console.log('  --help    Show this help message and exit');
   console.log('');
   console.log('Examples:');
-  console.log('  dev-cli init my-feature --recipe specify-standard-interactive');
+  console.log('  dev-cli init my-feature --quick --autopilot');
   console.log('  dev-cli next my-feature');
   console.log('  dev-cli step my-feature complete');
 }

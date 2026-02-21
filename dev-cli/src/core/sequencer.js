@@ -7,7 +7,6 @@
 import {
   loadState,
   updateState,
-  setPendingAction,
   acknowledgePendingAction,
   hasPendingAction,
   appendEvent,
@@ -189,17 +188,19 @@ export async function next(name) {
       continue;
     }
 
-    // Non-cli block: set pendingAction and return
+    // Non-cli block: set pendingAction, currentBlock, and blockIndex atomically
     const response = buildBlockResponse(block, name);
 
-    setPendingAction(name, {
+    const now = new Date().toISOString();
+    const pendingAction = {
       block: block.id,
       action: response.action,
       instruction: response.instruction ?? JSON.stringify(response),
-    });
-
-    // Update currentBlock in state
-    updateState(name, { currentBlock: block.id, blockIndex });
+      issuedAt: now,
+      acknowledged: false,
+    };
+    updateState(name, { pendingAction, currentBlock: block.id, blockIndex });
+    appendEvent(name, 'pendingAction.set', { action: response.action, block: block.id });
 
     if (chainedCli) {
       // Prepend cli-chain results to the response

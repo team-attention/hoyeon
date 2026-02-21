@@ -117,7 +117,7 @@ export function initSpec(name, options = {}) {
   mkdirSync(join(specDir, 'analysis'), { recursive: true });
 
   // Create state.json
-  const state = createState(name, { depth, interaction });
+  const state = createState(name, { depth, interaction, recipe: options.recipe, skill: options.skill });
 
   // Create DRAFT.md
   const draftPath = join(specDir, 'DRAFT.md');

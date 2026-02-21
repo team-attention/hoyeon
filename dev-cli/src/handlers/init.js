@@ -16,6 +16,6 @@ export default async function handler(args) {
   const depth = flags.has('quick') ? 'quick' : 'standard';
   const interaction = flags.has('autopilot') ? 'autopilot' : 'interactive';
   const recipe = `specify-${depth}-${interaction}`;
-  const result = await initSpec(name, { recipe, depth, interaction });
+  const result = await initSpec(name, { recipe, depth, interaction, skill: 'specify' });
   console.log(JSON.stringify(result, null, 2));
 }
