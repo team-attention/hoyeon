@@ -1,6 +1,11 @@
 /**
  * engine.js — Core execute engine driver
  *
+ * @deprecated Runtime orchestration moved to TaskList-based model.
+ * Logic extracted to plan-to-tasks.js (task generation) and prompt-factory.js (prompt building).
+ * This module is retained for specify workflow compatibility via sequencer.js.
+ * New code should import from plan-to-tasks.js and prompt-factory.js instead.
+ *
  * Orchestrates plan execution via DAG scheduling, prompt building,
  * context management, and reconciliation. All LLM interaction happens
  * externally — this module only produces instruction JSON.
