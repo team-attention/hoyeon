@@ -9,11 +9,19 @@ import { initSpec } from '../blocks/init.js';
 export default async function handler(args) {
   const name = args.find((a) => !a.startsWith('--'));
   if (!name) {
-    console.error('Usage: dev-cli init <name> [--quick] [--autopilot]');
+    console.error('Usage: dev-cli init <name> [--quick] [--autopilot] [--execute]');
     process.exit(1);
   }
   const flags = new Set(args.filter((a) => a.startsWith('--')).map((a) => a.slice(2)));
   const depth = flags.has('quick') ? 'quick' : 'standard';
+
+  if (flags.has('execute')) {
+    const recipe = `execute-${depth}`;
+    const result = await initSpec(name, { recipe, depth, interaction: 'autopilot', skill: 'execute' });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
   const interaction = flags.has('autopilot') ? 'autopilot' : 'interactive';
   const recipe = `specify-${depth}-${interaction}`;
   const result = await initSpec(name, { recipe, depth, interaction, skill: 'specify' });

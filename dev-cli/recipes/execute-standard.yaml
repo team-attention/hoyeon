@@ -1,0 +1,8 @@
+name: execute-standard
+type: sequential
+description: Execute plan with full verification (standard depth)
+
+blocks:
+  - id: execute-engine
+    type: engine
+    mode: standard

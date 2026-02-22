@@ -1,0 +1,8 @@
+name: execute-quick
+type: sequential
+description: Execute plan with quick verification (skip verify, code-review, final-verify)
+
+blocks:
+  - id: execute-engine
+    type: engine
+    mode: quick

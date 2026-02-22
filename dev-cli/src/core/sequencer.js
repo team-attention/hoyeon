@@ -13,6 +13,7 @@ import {
 } from '../core/state.js';
 import { loadRecipe } from '../core/recipe-loader.js';
 import { findingsDir, analysisDir } from './paths.js';
+import { engineNext as _engineNext, engineStepComplete as _engineStepComplete } from '../engine/engine.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -141,6 +142,11 @@ function buildBlockResponse(block, name) {
       };
     }
 
+    case 'engine': {
+      // Delegate entirely to the engine module
+      return _engineNext(name);
+    }
+
     default:
       // Should not reach here — validated on load
       throw new Error(`Unknown block type '${block.type}' for block '${block.id}'`);
@@ -219,6 +225,16 @@ export async function next(name) {
       continue;
     }
 
+    // Engine blocks manage their own pending state
+    if (block.type === 'engine') {
+      updateState(name, { currentBlock: block.id, blockIndex });
+      const response = buildBlockResponse(block, name);
+      if (chainedCli) {
+        return { ...response, cliChain: cliResults };
+      }
+      return response;
+    }
+
     // Non-cli block: set pendingAction, currentBlock, and blockIndex atomically
     const response = buildBlockResponse(block, name);
 
@@ -254,8 +270,13 @@ export async function next(name) {
  * @returns {object} Updated state object
  */
 export function stepComplete(name, step, result = null) {
-  // Resolve step: default to pendingAction.block or currentBlock if not provided
+  // Delegate to engine when engine state exists
   const state = loadState(name);
+  if (state.engine?.initialized) {
+    return _engineStepComplete(name, step, result);
+  }
+
+  // Resolve step: default to pendingAction.block or currentBlock if not provided
   const resolvedStep = step ?? state.pendingAction?.block ?? state.currentBlock;
 
   if (!resolvedStep) {

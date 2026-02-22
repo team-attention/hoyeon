@@ -24,7 +24,6 @@ const RECIPES_DIR = join(__dirname, '..', '..', 'recipes');
 
 /**
  * Valid block types supported by the CLI.
- * Note: 'engine' type is NOT included (Execute scope, not implemented here).
  */
 const VALID_BLOCK_TYPES = new Set([
   'cli',
@@ -33,6 +32,7 @@ const VALID_BLOCK_TYPES = new Set([
   'llm+cli',
   'subagent',
   'subagent-loop',
+  'engine',
 ]);
 
 // ---------------------------------------------------------------------------
