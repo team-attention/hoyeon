@@ -3,32 +3,82 @@
  *
  * Wraps draft operations from ../blocks/.
  *
- * For 'update': reads JSON from stdin. Expected format: { "section": "<id>", "data": <value> }
+ * For 'update':
+ *   Option A (flags):  dev-cli draft <name> update --section <id> --data '<json>'
+ *   Option B (stdin):  echo '{"section":"<id>","data":<value>}' | dev-cli draft <name> update
  */
 
 import { draftUpdate } from '../blocks/draft-update.js';
 import { draftImport } from '../blocks/draft-import.js';
 import { draftValidate } from '../blocks/draft-validate.js';
 
+function showUpdateUsage() {
+  console.error(`Usage: dev-cli draft <name> update --section <id> --data '<json>'`);
+  console.error(`   or: echo '{"section":"<id>","data":<value>}' | dev-cli draft <name> update`);
+}
+
 export default async function handler(args) {
   const name = args[0];
   const action = args[1]; // 'update', 'import', 'validate'
   if (!name || !action) {
     console.error('Usage: dev-cli draft <name> update|import|validate [options]');
+    console.error('');
+    console.error('Actions:');
+    console.error('  update    Update a draft section (via --section/--data flags or stdin JSON)');
+    console.error('  import    Import subagent findings into the draft');
+    console.error('  validate  Validate draft completeness');
     process.exit(1);
   }
 
   let result;
   if (action === 'update') {
-    // Reads JSON from stdin for section data.
-    // Expected format: { "section": "<sectionId>", "data": <value> }
-    const chunks = [];
-    for await (const chunk of process.stdin) chunks.push(chunk);
-    const parsed = JSON.parse(Buffer.concat(chunks).toString());
-    const section = parsed.section;
-    const data = parsed.data;
+    let section;
+    let data;
+
+    // Try flags first: --section <id> --data '<json>'
+    const sectionIdx = args.indexOf('--section');
+    const dataIdx = args.indexOf('--data');
+
+    if (sectionIdx >= 0 && args[sectionIdx + 1]) {
+      section = args[sectionIdx + 1];
+      if (dataIdx >= 0 && args[dataIdx + 1]) {
+        try {
+          data = JSON.parse(args[dataIdx + 1]);
+        } catch (err) {
+          console.error(`Error: --data value is not valid JSON: ${err.message}`);
+          showUpdateUsage();
+          process.exit(1);
+        }
+      }
+      // --section without --data: data is optional (section can be a string value)
+    } else if (sectionIdx >= 0) {
+      console.error('Error: --section requires a value.');
+      showUpdateUsage();
+      process.exit(1);
+    } else {
+      // Fallback: read JSON from stdin
+      const chunks = [];
+      for await (const chunk of process.stdin) chunks.push(chunk);
+      const raw = Buffer.concat(chunks).toString().trim();
+      if (!raw) {
+        console.error('Error: No input provided. Use --section/--data flags or pipe JSON to stdin.');
+        showUpdateUsage();
+        process.exit(1);
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        section = parsed.section;
+        data = parsed.data;
+      } catch (err) {
+        console.error(`Error: Invalid JSON from stdin: ${err.message}`);
+        showUpdateUsage();
+        process.exit(1);
+      }
+    }
+
     if (!section) {
-      console.error('Error: stdin JSON must include a "section" field.');
+      console.error('Error: "section" is required (via --section flag or stdin JSON "section" field).');
+      showUpdateUsage();
       process.exit(1);
     }
     result = await draftUpdate(name, section, data);
@@ -37,7 +87,9 @@ export default async function handler(args) {
   } else if (action === 'validate') {
     result = await draftValidate(name);
   } else {
-    console.error(`Unknown draft action: ${action}. Use 'update', 'import', or 'validate'.`);
+    console.error(`Unknown draft action: '${action}'. Use 'update', 'import', or 'validate'.`);
+    console.error('');
+    console.error('Usage: dev-cli draft <name> update|import|validate [options]');
     process.exit(1);
   }
   console.log(JSON.stringify(result, null, 2));

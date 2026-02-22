@@ -87,31 +87,42 @@ function buildBlockResponse(block, name) {
     }
 
     case 'llm+cli': {
+      const cliCommand = block.then ?? block.command ?? null;
       return {
         action: 'llm+cli',
         block: block.id,
         instruction: block.instruction ?? null,
-        then: block.then ?? null,
+        then: cliCommand,
       };
     }
 
     case 'subagent': {
+      const specDir = `.dev/specs/${name}`;
       return {
         action: 'dispatch-subagents',
         block: block.id,
-        agents: block.agents ?? [],
+        agents: (block.agents ?? []).map(a => ({
+          ...a,
+          outputPath: a.output ? `${specDir}/${a.output}` : null,
+        })),
         parallel: block.parallel ?? false,
         onComplete: block.onComplete ?? null,
+        fileInstruction: 'Each agent MUST write full results (Markdown with YAML frontmatter) to its outputPath using the Write tool. Return only a 1-2 line summary.',
       };
     }
 
     case 'subagent-loop': {
+      const specDirLoop = `.dev/specs/${name}`;
       return {
         action: 'dispatch-subagents-loop',
         block: block.id,
-        agents: block.agents ?? [],
+        agents: (block.agents ?? []).map(a => ({
+          ...a,
+          outputPath: a.output ? `${specDirLoop}/${a.output}` : null,
+        })),
         maxRounds: block.maxRounds ?? null,
         exitWhen: block.exitWhen ?? null,
+        fileInstruction: 'Each agent MUST write full results (Markdown with YAML frontmatter) to its outputPath using the Write tool. Return only a 1-2 line summary.',
       };
     }
 
@@ -139,6 +150,11 @@ function buildBlockResponse(block, name) {
  */
 export async function next(name) {
   const state = loadState(name);
+
+  // Guard: if session was aborted, return done immediately
+  if (state.phase === 'aborted') {
+    return { done: true, aborted: true, reason: state.abortReason ?? 'session was aborted' };
+  }
 
   // Idempotency: return same instruction if pendingAction is unacknowledged
   if (state.pendingAction && !state.pendingAction.acknowledged) {
@@ -223,16 +239,28 @@ export async function next(name) {
  * @returns {object} Updated state object
  */
 export function stepComplete(name, step, result = null) {
-  // Acknowledge the pending action
-  acknowledgePendingAction(name);
+  // Resolve step: default to pendingAction.block or currentBlock if not provided
+  const state = loadState(name);
+  const resolvedStep = step ?? state.pendingAction?.block ?? state.currentBlock;
+
+  if (!resolvedStep) {
+    throw new Error(
+      'stepComplete: no block to complete. Provide --step <blockId> or ensure a pending action exists.'
+    );
+  }
+
+  // Acknowledge the pending action (if one exists)
+  if (hasPendingAction(name)) {
+    acknowledgePendingAction(name);
+  }
 
   // Advance blockIndex
-  const state = loadState(name);
-  const newIndex = (state.blockIndex ?? 0) + 1;
+  const freshState = loadState(name);
+  const newIndex = (freshState.blockIndex ?? 0) + 1;
 
   // Update steps record
-  const steps = { ...(state.steps ?? {}) };
-  steps[step] = {
+  const steps = { ...(freshState.steps ?? {}) };
+  steps[resolvedStep] = {
     status: 'done',
     at: new Date().toISOString(),
     result,
@@ -243,7 +271,7 @@ export function stepComplete(name, step, result = null) {
     steps,
   });
 
-  appendEvent(name, 'block.complete', { block: step, result });
+  appendEvent(name, 'block.complete', { block: resolvedStep, result });
 
   return updated;
 }

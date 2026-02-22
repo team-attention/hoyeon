@@ -101,13 +101,59 @@ blocks:
   - id: generate-plan
     type: llm+cli
     instruction: |
-      Using all findings, decisions, analysis, and the synthesized strategy, write a structured
-      implementation plan as JSON into plan-content.json. The plan must include:
-        - title, goal, intent
-        - ordered tasks with id, description, acceptance criteria
-        - key decisions and their rationale
-        - assumptions made during planning
-        - risks and mitigations
+      Using all findings, interview decisions, analysis, and the synthesized strategy, write
+      plan-content.json following this EXACT schema. Standard mode: comprehensive todos with
+      detailed acceptance criteria, inputs/outputs, and verification items.
+
+      Required JSON structure:
+      {
+        "context": {
+          "originalRequest": "<user's original request>",
+          "interviewSummary": "<summary of interview decisions and rationale>",
+          "researchFindings": "<comprehensive findings from exploration and analysis>",
+          "assumptions": "<optional: explicit assumptions>"
+        },
+        "objectives": {
+          "core": "<single sentence core objective>",
+          "deliverables": ["<concrete deliverable 1>", ...],
+          "dod": ["<definition of done item>", ...],
+          "mustNotDo": ["<explicit exclusion>", ...]
+        },
+        "todos": [
+          {
+            "id": "todo-1",
+            "title": "<action title>",
+            "type": "work|verification",
+            "inputs": [{"name": "<input>", "type": "file|api|config", "ref": "<path or reference>"}],
+            "outputs": [{"name": "<output>", "type": "file|api|config", "value": "<path>", "description": "<what it produces>"}],
+            "steps": ["<step 1>", "<step 2>", ...],
+            "mustNotDo": ["<what to avoid>"],
+            "references": ["<relevant file or doc>"],
+            "acceptanceCriteria": {
+              "functional": ["<functional check>"],
+              "static": ["<lint/type check>"],
+              "runtime": ["<runtime check>"],
+              "cleanup": ["<optional cleanup>"]
+            },
+            "risk": "LOW|MEDIUM|HIGH"
+          }
+        ],
+        "taskFlow": "<text description of task execution order and parallelism>",
+        "dependencyGraph": [
+          {"todo": "todo-1", "requires": [], "produces": ["<artifact>"]}
+        ],
+        "commitStrategy": [
+          {"afterTodo": "todo-1", "message": "<commit message>", "files": ["<file>"], "condition": "<when to commit>"}
+        ],
+        "verificationSummary": {
+          "aItems": ["<agent-verifiable item>"],
+          "hItems": ["<human-required item>"],
+          "sItems": ["<sandbox testable item>"],
+          "gaps": ["<verification gap if any>"]
+        }
+      }
+
+      Write the JSON to plan-content.json file using the Write tool, then the CLI will validate and generate PLAN.md.
     command: "dev-cli plan generate {name} --data plan-content.json"
 
   - id: review-full

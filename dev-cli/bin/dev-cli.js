@@ -11,6 +11,7 @@ const SUBCOMMANDS = {
   draft: 'Draft output for the current block',
   plan: 'Show the plan / recipe blocks for the session',
   step: 'Mark a step as complete or report step result',
+  abort: 'Abort a session early with a reason',
   cleanup: 'Clean up session state and artifacts',
 };
 

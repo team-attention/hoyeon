@@ -122,6 +122,13 @@ function validateBlock(block, index) {
       `Valid types: ${[...VALID_BLOCK_TYPES].join(', ')}`
     );
   }
+
+  // llm+cli blocks require 'then' or 'command'
+  if (block.type === 'llm+cli' && !block.then && !block.command) {
+    throw new Error(
+      `Block '${block.id}' (index ${index}) is type 'llm+cli' but missing 'then' or 'command' field`
+    );
+  }
 }
 
 /**
