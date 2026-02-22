@@ -7,10 +7,11 @@
  * and updates state: phase → "completed", pendingAction → null.
  */
 
-import { rmSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { loadState, updateState } from '../core/state.js';
-import { draftPath as _draftPath, findingsDir as _findingsDir, analysisDir as _analysisDir } from '../core/paths.js';
+import { draftPath as _draftPath, findingsDir as _findingsDir, analysisDir as _analysisDir, statePath as _statePath } from '../core/paths.js';
+import { generateSummary } from '../core/manifest.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -35,6 +36,14 @@ export function cleanup(name) {
 
   const devDir = join(process.cwd(), '.dev');
   const removed = [];
+
+  // Generate summary.md in session dir before deleting work artifacts
+  const statePath = _statePath(name);
+  const summaryDir = dirname(statePath);
+  const summaryPath = join(summaryDir, 'summary.md');
+  const summaryContent = generateSummary(name);
+  mkdirSync(summaryDir, { recursive: true });
+  writeFileSync(summaryPath, summaryContent, 'utf8');
 
   // Delete DRAFT.md from session dir (dual-path resolution via paths.js)
   const draftPath = _draftPath(name);

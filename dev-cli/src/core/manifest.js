@@ -204,6 +204,98 @@ function buildNextAction(state, missingFields) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Generate a markdown-formatted recovery summary for a completed session.
+ * Suitable for writing to summary.md in the session directory.
+ *
+ * Includes: spec name, session ID, recipe used, decisions count, plan path,
+ * and final status from state.
+ *
+ * @param {string} name - Session name
+ * @returns {string} Markdown-formatted summary string
+ */
+export function generateSummary(name) {
+  // Load state
+  const p = statePath(name);
+  if (!existsSync(p)) {
+    return `# Session Summary: ${name}\n\n_No state found for this session._\n`;
+  }
+
+  const raw = readFileSync(p, 'utf8');
+  const state = JSON.parse(raw);
+
+  const sessionId = state.sessionId ?? 'unknown';
+  const recipe = state.recipe ?? 'none';
+  const phase = state.phase ?? 'unknown';
+  const specName = state.specName ?? state.name ?? name;
+  const createdAt = state.createdAt ?? 'unknown';
+  const updatedAt = state.updatedAt ?? 'unknown';
+
+  // Decisions count
+  const decisions = extractDecisions(state);
+  const decisionsCount = decisions.length;
+
+  // Plan path
+  const planFilePath = _planPath(name);
+  // Express as relative path for portability
+  const cwd = process.cwd();
+  const relPlanPath = planFilePath.startsWith(cwd)
+    ? planFilePath.slice(cwd.length + 1)
+    : planFilePath;
+
+  // Step completion status from state.steps
+  const steps = state.steps ?? {};
+  const stepEntries = Object.entries(steps);
+  const stepLines = stepEntries.map(([stepId, stepData]) => {
+    const status = stepData.status ?? 'unknown';
+    const mark = status === 'done' ? 'x' : ' ';
+    return `- [${mark}] ${stepId}: ${status}`;
+  });
+
+  const lines = [
+    `# Session Summary: ${specName}`,
+    '',
+    '## Identity',
+    '',
+    `- **Spec name**: ${specName}`,
+    `- **Session ID**: ${sessionId}`,
+    `- **Recipe**: ${recipe}`,
+    `- **Created**: ${createdAt}`,
+    `- **Completed**: ${updatedAt}`,
+    '',
+    '## Plan',
+    '',
+    `- **Plan location**: ${relPlanPath}`,
+    `- **Final status**: ${phase}`,
+    '',
+    '## Decisions',
+    '',
+    `- **Total decisions recorded**: ${decisionsCount}`,
+  ];
+
+  if (decisions.length > 0) {
+    for (const d of decisions) {
+      lines.push(`  - ${d}`);
+    }
+  }
+
+  lines.push('');
+  lines.push('## Step Completion');
+  lines.push('');
+
+  if (stepLines.length > 0) {
+    for (const sl of stepLines) {
+      lines.push(sl);
+    }
+  } else {
+    lines.push('_No steps recorded._');
+  }
+
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+/**
  * Generate a compact recovery summary for the given session.
  *
  * @param {string} name - Session name
