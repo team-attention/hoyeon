@@ -12,7 +12,7 @@ import {
   appendEvent,
 } from '../core/state.js';
 import { loadRecipe } from '../core/recipe-loader.js';
-import { specDir } from './paths.js';
+import { findingsDir, analysisDir } from './paths.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -98,14 +98,23 @@ function buildBlockResponse(block, name) {
     }
 
     case 'subagent': {
-      const specDirPath = specDir(name);
+      // Resolve output paths via session-aware helpers.
+      // findingsDir(name) and analysisDir(name) resolve to session dir when session.ref exists.
+      // Recipe agents use output: "findings/foo.md" or "analysis/bar.md" — strip the prefix
+      // and join with the resolved directory.
+      const resolvedFindingsDir = findingsDir(name);
+      const resolvedAnalysisDir = analysisDir(name);
       return {
         action: 'dispatch-subagents',
         block: block.id,
-        agents: (block.agents ?? []).map(a => ({
-          ...a,
-          outputPath: a.output ? `${specDirPath}/${a.output}` : null,
-        })),
+        agents: (block.agents ?? []).map(a => {
+          if (!a.output) return { ...a, outputPath: null };
+          if (a.output.startsWith('analysis/')) {
+            return { ...a, outputPath: `${resolvedAnalysisDir}/${a.output.slice('analysis/'.length)}` };
+          }
+          const file = a.output.startsWith('findings/') ? a.output.slice('findings/'.length) : a.output;
+          return { ...a, outputPath: `${resolvedFindingsDir}/${file}` };
+        }),
         parallel: block.parallel ?? false,
         onComplete: block.onComplete ?? null,
         fileInstruction: 'Each agent MUST write full results (Markdown with YAML frontmatter) to its outputPath using the Write tool. Return only a 1-2 line summary.',
@@ -113,14 +122,19 @@ function buildBlockResponse(block, name) {
     }
 
     case 'subagent-loop': {
-      const specDirLoopPath = specDir(name);
+      const resolvedFindingsDirLoop = findingsDir(name);
+      const resolvedAnalysisDirLoop = analysisDir(name);
       return {
         action: 'dispatch-subagents-loop',
         block: block.id,
-        agents: (block.agents ?? []).map(a => ({
-          ...a,
-          outputPath: a.output ? `${specDirLoopPath}/${a.output}` : null,
-        })),
+        agents: (block.agents ?? []).map(a => {
+          if (!a.output) return { ...a, outputPath: null };
+          if (a.output.startsWith('analysis/')) {
+            return { ...a, outputPath: `${resolvedAnalysisDirLoop}/${a.output.slice('analysis/'.length)}` };
+          }
+          const file = a.output.startsWith('findings/') ? a.output.slice('findings/'.length) : a.output;
+          return { ...a, outputPath: `${resolvedFindingsDirLoop}/${file}` };
+        }),
         maxRounds: block.maxRounds ?? null,
         exitWhen: block.exitWhen ?? null,
         fileInstruction: 'Each agent MUST write full results (Markdown with YAML frontmatter) to its outputPath using the Write tool. Return only a 1-2 line summary.',

@@ -61,13 +61,15 @@ function atomicWriteJSON(targetPath, data) {
 /**
  * Build a fresh state object for a new session.
  * @param {string} name - Session name (e.g. "add-auth")
- * @param {{ depth?: string, interaction?: string, recipe?: string, skill?: string }} opts
+ * @param {{ depth?: string, interaction?: string, recipe?: string, skill?: string, sessionId?: string }} opts
  */
 function buildInitialState(name, opts = {}) {
   const now = new Date().toISOString();
   return {
     schemaVersion: 1,
     name,
+    specName: name,
+    sessionId: opts.sessionId ?? null,
     recipe: opts.recipe ?? null,
     mode: {
       depth: opts.depth ?? 'standard',
