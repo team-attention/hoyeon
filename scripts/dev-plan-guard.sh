@@ -3,7 +3,9 @@
 #
 # Purpose: Block file modifications outside .dev/ directory during planning
 # Activation (dual-source):
-#   Primary:  .dev/active-spec → .dev/specs/{name}/state.json skill field
+#   Primary:  .dev/active-spec → .dev/specs/{name}/session.ref → .dev/.sessions/{sessionId}/state.json
+#             (2-hop resolution for session-based state)
+#             Fallback: .dev/specs/{name}/state.json (legacy path when no session.ref)
 #   Fallback: .dev/state.local.json session-based check (backward compat)
 #
 # Hook Input Fields (PreToolUse):
@@ -24,12 +26,24 @@ FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // 
 
 SPECIFY_ACTIVE=false
 
-# ── Primary source: .dev/active-spec → state.json ──────────────────────────
+# ── Primary source: .dev/active-spec → state.json (2-hop via session.ref) ──
 ACTIVE_SPEC_FILE="$CWD/.dev/active-spec"
 if [[ -f "$ACTIVE_SPEC_FILE" ]]; then
   SPEC_NAME=$(cat "$ACTIVE_SPEC_FILE")
-  STATE_FILE="$CWD/.dev/specs/$SPEC_NAME/state.json"
-  if [[ -f "$STATE_FILE" ]]; then
+  SESSION_REF="$CWD/.dev/specs/$SPEC_NAME/session.ref"
+  if [[ -f "$SESSION_REF" ]]; then
+    # 2-hop: read sessionId from session.ref → resolve state.json in session dir
+    SESSION_ID_REF=$(cat "$SESSION_REF" | tr -d '[:space:]')
+    if [[ -n "$SESSION_ID_REF" ]]; then
+      STATE_FILE="$CWD/.dev/.sessions/$SESSION_ID_REF/state.json"
+    else
+      STATE_FILE=""
+    fi
+  else
+    # Legacy fallback: state.json in spec dir
+    STATE_FILE="$CWD/.dev/specs/$SPEC_NAME/state.json"
+  fi
+  if [[ -n "$STATE_FILE" ]] && [[ -f "$STATE_FILE" ]]; then
     SKILL=$(jq -r '.skill // "none"' "$STATE_FILE" 2>/dev/null || echo "none")
     if [[ "$SKILL" == "specify" ]]; then
       SPECIFY_ACTIVE=true
@@ -60,7 +74,7 @@ fi
 
 # Specify mode active - enforce path restrictions
 if [[ "$FILE_PATH" == *".dev/"* ]]; then
-  # Allow modifications inside .dev/ (drafts/, specs/, etc.)
+  # Allow modifications inside .dev/ (drafts/, specs/, .sessions/, etc.)
   cat << 'EOF'
 {
   "hookSpecificOutput": {
