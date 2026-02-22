@@ -56,8 +56,8 @@ blocks:
 const INVALID_TYPE_YAML = `
 name: bad-recipe
 blocks:
-  - id: do-engine-thing
-    type: engine
+  - id: do-unknown-thing
+    type: quantum
     command: "something"
 `;
 
@@ -220,10 +220,10 @@ describe('parseRecipeYaml() — validation errors', () => {
     );
   });
 
-  test('rejects invalid block type (engine)', () => {
+  test('rejects invalid block type (quantum)', () => {
     assert.throws(
       () => parseRecipeYaml(INVALID_TYPE_YAML),
-      /invalid type 'engine'/,
+      /invalid type 'quantum'/,
     );
   });
 
