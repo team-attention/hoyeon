@@ -20,7 +20,7 @@ allowed-tools:
 # /execute - Orchestrator Mode
 
 **You are the conductor. You do not play instruments directly.**
-Delegate to SubAgents via `Task()`, run deterministic ops via `dev-cli`, orchestrate via `TaskList/TaskCreate/TaskUpdate`.
+Delegate to SubAgents via `Task()`, run deterministic ops via `node dev-cli/bin/dev-cli.js`, orchestrate via `TaskList/TaskCreate/TaskUpdate`.
 
 ---
 
@@ -50,7 +50,7 @@ Examples: `/execute`, `/execute --quick`, `/execute --quick my-feature`, `/execu
 ### 1.2 Create Tasks from Plan
 
 ```bash
-dev-cli plan-to-tasks {name} --mode {mode}
+node dev-cli/bin/dev-cli.js plan-to-tasks {name} --mode {mode}
 ```
 
 This outputs `{ tasks, dependencies }`. For each task, call `TaskCreate`:
@@ -71,7 +71,7 @@ For each dep in result.dependencies:
 ### 1.3 Init Context
 
 ```bash
-dev-cli init {name} --execute --{mode}
+node dev-cli/bin/dev-cli.js init {name} --execute --{mode}
 ```
 
 ---
@@ -97,7 +97,7 @@ Each task's `metadata.substep` determines the dispatch:
 #### :Worker (metadata.substep = "worker")
 
 ```bash
-prompt=$(dev-cli build-prompt {name} --todo {todoId} --type worker)
+prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo {todoId} --type worker)
 ```
 
 Then dispatch:
@@ -112,7 +112,7 @@ TaskUpdate(taskId, { status: "completed" })
 #### :Verify (metadata.substep = "verify") [Standard only]
 
 ```bash
-prompt=$(echo '{workerResult}' | dev-cli build-prompt {name} --todo {todoId} --type verify)
+prompt=$(echo '{workerResult}' | node dev-cli/bin/dev-cli.js build-prompt {name} --todo {todoId} --type verify)
 ```
 
 Dispatch verify worker, then triage:
@@ -123,7 +123,7 @@ verifyResult = Task(worker, prompt, model=sonnet)
 
 Triage the result:
 ```bash
-triageResult=$(echo '{verifyResult}' | dev-cli triage {name} --todo {todoId} --retries {N} --depth {D})
+triageResult=$(echo '{verifyResult}' | node dev-cli/bin/dev-cli.js triage {name} --todo {todoId} --retries {N} --depth {D})
 ```
 
 Route by disposition:
@@ -138,8 +138,8 @@ Route by disposition:
 
 Two deterministic CLI calls:
 ```bash
-echo '{"outputs":{...},"learnings":"...","issues":"..."}' | dev-cli wrapup {name} --todo {todoId}
-dev-cli checkpoint {name} --todo {todoId} --mode {mode}
+echo '{"outputs":{...},"learnings":"...","issues":"..."}' | node dev-cli/bin/dev-cli.js wrapup {name} --todo {todoId}
+node dev-cli/bin/dev-cli.js checkpoint {name} --todo {todoId} --mode {mode}
 ```
 
 `TaskUpdate(taskId, { status: "completed" })`
@@ -149,7 +149,7 @@ dev-cli checkpoint {name} --todo {todoId} --mode {mode}
 #### :Commit (metadata.substep = "commit")
 
 ```bash
-prompt=$(dev-cli build-prompt {name} --todo {todoId} --type commit)
+prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo {todoId} --type commit)
 ```
 
 Dispatch:
@@ -176,7 +176,7 @@ TaskUpdate(taskId, { status: "completed" })
 #### :Code Review (metadata.substep = "code-review") [Standard only]
 
 ```bash
-prompt=$(dev-cli build-prompt {name} --todo finalize --type code-review)
+prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type code-review)
 ```
 
 ```
@@ -192,7 +192,7 @@ If verdict = NEEDS_FIXES, log issues but continue.
 #### :Final Verify (metadata.substep = "final-verify") [Standard only]
 
 ```bash
-prompt=$(dev-cli build-prompt {name} --todo finalize --type final-verify)
+prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type final-verify)
 ```
 
 ```
@@ -215,7 +215,7 @@ TaskUpdate(taskId, { status: "completed" })
 #### :Report (metadata.substep = "report")
 
 ```bash
-prompt=$(dev-cli build-prompt {name} --todo finalize --type report)
+prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type report)
 ```
 
 Output the final execution report to the user.
@@ -239,7 +239,7 @@ Quick mode skips: Verify substep, Code Review, Final Verify, retry/adapt reconci
 
 ## Recovery (Resume)
 
-`dev-cli plan-to-tasks` automatically skips checked TODOs in PLAN.md. To resume:
+`node dev-cli/bin/dev-cli.js plan-to-tasks` automatically skips checked TODOs in PLAN.md. To resume:
 1. Run `/execute` again — checked TODOs are excluded from task generation
 2. Remaining unchecked TODOs become new tasks
 3. Context files (outputs.json, learnings.md) are preserved
@@ -252,9 +252,9 @@ Quick mode skips: Verify substep, Code Review, Final Verify, retry/adapt reconci
 
 Allowed tools:
 - `Read`, `Grep`, `Glob` — inspect codebase
-- `Bash` — ONLY for `dev-cli` commands
+- `Bash` — ONLY for `node dev-cli/bin/dev-cli.js` commands
 - `Task` — dispatch SubAgents (worker, git-master, code-reviewer)
 - `TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet` — orchestration
-- `Edit` — FORBIDDEN for code changes (only `dev-cli checkpoint` handles PLAN.md)
+- `Edit` — FORBIDDEN for code changes (only `node dev-cli/bin/dev-cli.js checkpoint` handles PLAN.md)
 
-All code changes happen through `Task(worker)`. All deterministic ops through `dev-cli`.
+All code changes happen through `Task(worker)`. All deterministic ops through `node dev-cli/bin/dev-cli.js`.
