@@ -1,14 +1,24 @@
 /**
  * init.js — dev-cli init <name> [flags]
  *
- * Creates a new specify session directory with DRAFT.md, state.json,
- * active-spec pointer, findings/ and analysis/ subdirectories.
+ * Creates a new specify session:
+ *   - Spec dir: .dev/specs/<name>/ (PLAN.md deliverables will go here)
+ *   - Session dir: .dev/.sessions/<sessionId>/ (state.json, DRAFT.md, findings/, analysis/)
+ *   - session.ref: .dev/specs/<name>/session.ref (pointer to sessionId)
+ *   - active-spec: .dev/active-spec (pointer file)
  */
 
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createState } from '../core/state.js';
-import { specDir as _specDir, draftPath as _draftPath, findingsDir as _findingsDir, analysisDir as _analysisDir } from '../core/paths.js';
+import { createSession, linkToSpec } from '../core/session.js';
+import {
+  specDir as _specDir,
+  draftPath as _draftPath,
+  findingsDir as _findingsDir,
+  analysisDir as _analysisDir,
+  sessionDir as _sessionDir,
+} from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // DRAFT.md template
@@ -95,14 +105,17 @@ _No assumptions recorded._
  * Initialize a new specify session.
  *
  * Creates:
- *   <sessionDir>/state.json
- *   <sessionDir>/DRAFT.md
- *   <sessionDir>/findings/
- *   <sessionDir>/analysis/
- *   .dev/active-spec  (pointer file)
+ *   .dev/specs/<name>/               (spec dir for deliverables)
+ *   .dev/specs/<name>/session.ref    (pointer to sessionId)
+ *   .dev/.sessions/<sessionId>/      (session work dir)
+ *   .dev/.sessions/<sessionId>/state.json
+ *   .dev/.sessions/<sessionId>/DRAFT.md
+ *   .dev/.sessions/<sessionId>/findings/
+ *   .dev/.sessions/<sessionId>/analysis/
+ *   .dev/active-spec                 (pointer file)
  *
  * @param {string} name - Session name
- * @param {{ depth?: string, interaction?: string }} options
+ * @param {{ depth?: string, interaction?: string, recipe?: string, skill?: string }} options
  * @returns {{ specDir: string, state: object }} Created spec directory and state
  */
 export function initSpec(name, options = {}) {
@@ -112,22 +125,34 @@ export function initSpec(name, options = {}) {
   const specDirPath = _specDir(name);
   const devDir = join(process.cwd(), '.dev');
 
-  // Create directory structure
+  // Create spec directory (for deliverables)
   mkdirSync(specDirPath, { recursive: true });
-  mkdirSync(_findingsDir(name), { recursive: true });
-  mkdirSync(_analysisDir(name), { recursive: true });
 
-  // Create state.json
-  const state = createState(name, { depth, interaction, recipe: options.recipe, skill: options.skill });
+  // Create session directory with findings/ and analysis/ subdirs
+  const sessionId = createSession(name);
 
-  // Create DRAFT.md
+  // Write session.ref in spec dir
+  linkToSpec(name, sessionId);
+
+  // Now that session.ref exists, paths.js dual-path resolution will route
+  // state.json, DRAFT.md, findings/, analysis/ to the session dir.
+
+  // Create state.json in session dir (via dual-path resolution)
+  const state = createState(name, {
+    depth,
+    interaction,
+    recipe: options.recipe,
+    skill: options.skill,
+    sessionId,
+  });
+
+  // Create DRAFT.md in session dir (via dual-path resolution)
   const draftPathVal = _draftPath(name);
   writeFileSync(draftPathVal, buildDraftTemplate(name), 'utf8');
 
   // Write active-spec pointer
-  const activeSpecPath = join(devDir, 'active-spec');
   if (!existsSync(devDir)) mkdirSync(devDir, { recursive: true });
-  writeFileSync(activeSpecPath, name, 'utf8');
+  writeFileSync(join(devDir, 'active-spec'), name, 'utf8');
 
   return { specDir: specDirPath, state };
 }
