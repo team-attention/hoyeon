@@ -6,24 +6,8 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { statePath } from '../core/state.js';
-
-// ---------------------------------------------------------------------------
-// Path helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Return the directory containing state.json for a given session name.
- *
- * @param {string} name
- * @returns {string}
- */
-function sessionDir(name) {
-  const p = statePath(name);
-  // statePath returns <cwd>/.dev/specs/<name>/state.json
-  return join(process.cwd(), '.dev', 'specs', name);
-}
+import { draftPath as _draftPath, planPath as _planPath } from './paths.js';
 
 // ---------------------------------------------------------------------------
 // DRAFT.md parsing
@@ -235,12 +219,10 @@ export function manifest(name) {
   const raw = readFileSync(p, 'utf8');
   const state = JSON.parse(raw);
 
-  const dir = sessionDir(name);
-
   // Parse DRAFT.md if it exists
   let draftSummary = null;
   let missingFields = [];
-  const draftPath = join(dir, 'DRAFT.md');
+  const draftPath = _draftPath(name);
   if (existsSync(draftPath)) {
     const draftContent = readFileSync(draftPath, 'utf8');
     const { filled, total, missing } = parseDraftSections(draftContent);
@@ -250,7 +232,7 @@ export function manifest(name) {
 
   // Parse PLAN.md if it exists
   let planSummary = null;
-  const planPath = join(dir, 'PLAN.md');
+  const planPath = _planPath(name);
   if (existsSync(planPath)) {
     const planContent = readFileSync(planPath, 'utf8');
     const { done, total } = parsePlanTodos(planContent);

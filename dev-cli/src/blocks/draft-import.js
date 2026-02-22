@@ -13,6 +13,7 @@ import { computeHash } from '../utils/hash.js';
 import { writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { specDir as _specDir, findingsDir as _findingsDir, draftPath as _draftPath } from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,7 +78,7 @@ function parseSimpleYaml(yaml) {
 // ---------------------------------------------------------------------------
 
 /**
- * Import findings from .dev/specs/{name}/findings/*.md into DRAFT.md.
+ * Import findings from the session findings/ directory into DRAFT.md.
  *
  * For each findings file:
  *  - Extracts YAML frontmatter
@@ -91,9 +92,9 @@ function parseSimpleYaml(yaml) {
  * @returns {{ imported: number, agents: object }} Summary of imported findings
  */
 export function draftImport(name) {
-  const specDir = join(process.cwd(), '.dev', 'specs', name);
-  const findingsDir = join(specDir, 'findings');
-  const draftPath = join(specDir, 'DRAFT.md');
+  const specDir = _specDir(name);
+  const findingsDir = _findingsDir(name);
+  const draftPath = _draftPath(name);
 
   // Read all .md files from findings/
   let files;

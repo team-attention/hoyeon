@@ -1,13 +1,14 @@
 /**
  * state.js — state.json CRUD for dev-cli sessions
  *
- * State files live at: .dev/specs/{name}/state.json
+ * State files live at: <sessionDir>/state.json (see paths.js)
  * Writes are atomic: write to tmp file, then rename.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { statePath as _statePath } from './paths.js';
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -21,7 +22,7 @@ export function statePath(name) {
   if (!name || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name)) {
     throw new Error(`Invalid session name: "${name}". Must be 1-64 alphanumeric/dash/underscore characters.`);
   }
-  return join(process.cwd(), '.dev', 'specs', name, 'state.json');
+  return _statePath(name);
 }
 
 // ---------------------------------------------------------------------------

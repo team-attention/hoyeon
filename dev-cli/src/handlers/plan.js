@@ -4,12 +4,12 @@
  * Wraps plan operations from ../blocks/.
  *
  * For 'generate': requires --data <path> pointing to a plan-content.json file.
- *   Default path: .dev/specs/<name>/plan-content.json
+ *   Default path: <sessionDir>/plan-content.json (see planContentPath())
  */
 
 import { planGenerate } from '../blocks/plan-generate.js';
 import { planSummary } from '../blocks/plan-summary.js';
-import { join } from 'node:path';
+import { planContentPath } from '../core/paths.js';
 
 export default async function handler(args) {
   const name = args[0];
@@ -21,12 +21,12 @@ export default async function handler(args) {
 
   let result;
   if (action === 'generate') {
-    // Determine the data path: --data <path> or default to .dev/specs/<name>/plan-content.json
+    // Determine the data path: --data <path> or default to planContentPath(name)
     const dataIdx = args.indexOf('--data');
     const dataPath =
       dataIdx >= 0
         ? args[dataIdx + 1]
-        : join(process.cwd(), '.dev', 'specs', name, 'plan-content.json');
+        : planContentPath(name);
     result = await planGenerate(name, dataPath);
   } else if (action === 'summary') {
     result = await planSummary(name);

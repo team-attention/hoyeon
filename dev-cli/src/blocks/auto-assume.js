@@ -6,12 +6,12 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { parseSection, updateSection } from '../utils/markdown.js';
 import { loadState } from '../core/state.js';
 import { writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { draftPath as _draftPath } from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,7 +105,7 @@ function generateAssumptions(state, findingsContent, directionContent) {
  * @returns {string} Updated DRAFT.md content
  */
 export function autoAssume(name) {
-  const draftPath = join(process.cwd(), '.dev', 'specs', name, 'DRAFT.md');
+  const draftPath = _draftPath(name);
   const content = readFileSync(draftPath, 'utf8');
 
   // Load state for mode information

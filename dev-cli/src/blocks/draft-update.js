@@ -5,9 +5,10 @@
  */
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { parseSection, updateSection } from '../utils/markdown.js';
+import { draftPath as _draftPath } from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,7 +66,7 @@ function formatDataAsMarkdown(data) {
  * @returns {string} Updated DRAFT.md content
  */
 export function draftUpdate(name, section, data) {
-  const draftPath = join(process.cwd(), '.dev', 'specs', name, 'DRAFT.md');
+  const draftPath = _draftPath(name);
   const content = readFileSync(draftPath, 'utf8');
 
   // Verify the section exists

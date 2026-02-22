@@ -5,9 +5,10 @@
  * and updates state: phase → "completed", pendingAction → null.
  */
 
-import { rmSync, existsSync, writeFileSync } from 'node:fs';
+import { rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadState, updateState } from '../core/state.js';
+import { specDir as _specDir, draftPath as _draftPath } from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -16,7 +17,7 @@ import { loadState, updateState } from '../core/state.js';
 /**
  * Clean up a completed specify session.
  *
- * - Deletes .dev/specs/{name}/DRAFT.md
+ * - Deletes DRAFT.md from the session directory
  * - Removes .dev/active-spec pointer
  * - Updates state: phase = "completed", pendingAction = null
  *
@@ -28,12 +29,11 @@ export function cleanup(name) {
   // Verify state exists (throws if not found)
   loadState(name);
 
-  const specDir = join(process.cwd(), '.dev', 'specs', name);
   const devDir = join(process.cwd(), '.dev');
   const removed = [];
 
   // Delete DRAFT.md
-  const draftPath = join(specDir, 'DRAFT.md');
+  const draftPath = _draftPath(name);
   if (existsSync(draftPath)) {
     rmSync(draftPath);
     removed.push(draftPath);

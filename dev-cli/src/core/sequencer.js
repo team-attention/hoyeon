@@ -12,6 +12,7 @@ import {
   appendEvent,
 } from '../core/state.js';
 import { loadRecipe } from '../core/recipe-loader.js';
+import { specDir } from './paths.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -97,13 +98,13 @@ function buildBlockResponse(block, name) {
     }
 
     case 'subagent': {
-      const specDir = `.dev/specs/${name}`;
+      const specDirPath = specDir(name);
       return {
         action: 'dispatch-subagents',
         block: block.id,
         agents: (block.agents ?? []).map(a => ({
           ...a,
-          outputPath: a.output ? `${specDir}/${a.output}` : null,
+          outputPath: a.output ? `${specDirPath}/${a.output}` : null,
         })),
         parallel: block.parallel ?? false,
         onComplete: block.onComplete ?? null,
@@ -112,13 +113,13 @@ function buildBlockResponse(block, name) {
     }
 
     case 'subagent-loop': {
-      const specDirLoop = `.dev/specs/${name}`;
+      const specDirLoopPath = specDir(name);
       return {
         action: 'dispatch-subagents-loop',
         block: block.id,
         agents: (block.agents ?? []).map(a => ({
           ...a,
-          outputPath: a.output ? `${specDirLoop}/${a.output}` : null,
+          outputPath: a.output ? `${specDirLoopPath}/${a.output}` : null,
         })),
         maxRounds: block.maxRounds ?? null,
         exitWhen: block.exitWhen ?? null,

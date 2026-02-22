@@ -1,12 +1,12 @@
 /**
  * plan-summary.js — dev-cli plan summary <name>
  *
- * Reads PLAN.md from .dev/specs/{name}/PLAN.md, extracts key metadata,
+ * Reads PLAN.md from the session directory, extracts key metadata,
  * and formats as a compact Plan Approval Summary.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { planPath as _planPath } from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // Extraction helpers
@@ -213,7 +213,7 @@ function formatSummary(name, summary) {
  * @throws {Error} If PLAN.md does not exist
  */
 export function planSummary(name) {
-  const planPath = join(process.cwd(), '.dev', 'specs', name, 'PLAN.md');
+  const planPath = _planPath(name);
 
   if (!existsSync(planPath)) {
     throw new Error(

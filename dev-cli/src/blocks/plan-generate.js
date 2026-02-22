@@ -2,13 +2,14 @@
  * plan-generate.js — dev-cli plan generate <name> --data <path>
  *
  * Reads plan-content.json, validates it, renders PLAN.md from a template,
- * and writes it atomically to .dev/specs/{name}/PLAN.md.
+ * and writes it atomically to PLAN.md in the session directory.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { validatePlanContent } from '../schemas/plan-content.schema.js';
+import { planPath as _planPath } from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // Atomic write helper
@@ -301,7 +302,7 @@ export function planGenerate(name, dataPath) {
   const planContent = renderPlan(name, data);
 
   // Write PLAN.md atomically
-  const planPath = join(process.cwd(), '.dev', 'specs', name, 'PLAN.md');
+  const planPath = _planPath(name);
   atomicWrite(planPath, planContent);
 
   return { planPath };

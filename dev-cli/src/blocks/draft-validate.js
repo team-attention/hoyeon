@@ -6,9 +6,9 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { parseSection, listSections } from '../utils/markdown.js';
 import { loadState } from '../core/state.js';
+import { draftPath as _draftPath } from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // Required sections per mode
@@ -59,7 +59,7 @@ function isFilled(content) {
  * @returns {{ ready: boolean, missing: string[], sections: string[] }}
  */
 export function draftValidate(name) {
-  const draftPath = join(process.cwd(), '.dev', 'specs', name, 'DRAFT.md');
+  const draftPath = _draftPath(name);
   const content = readFileSync(draftPath, 'utf8');
 
   // Determine mode from state

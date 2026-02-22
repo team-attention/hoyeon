@@ -8,6 +8,7 @@
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createState } from '../core/state.js';
+import { specDir as _specDir, draftPath as _draftPath, findingsDir as _findingsDir, analysisDir as _analysisDir } from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // DRAFT.md template
@@ -94,10 +95,10 @@ _No assumptions recorded._
  * Initialize a new specify session.
  *
  * Creates:
- *   .dev/specs/{name}/state.json
- *   .dev/specs/{name}/DRAFT.md
- *   .dev/specs/{name}/findings/
- *   .dev/specs/{name}/analysis/
+ *   <sessionDir>/state.json
+ *   <sessionDir>/DRAFT.md
+ *   <sessionDir>/findings/
+ *   <sessionDir>/analysis/
  *   .dev/active-spec  (pointer file)
  *
  * @param {string} name - Session name
@@ -108,24 +109,25 @@ export function initSpec(name, options = {}) {
   const depth = options.depth ?? 'standard';
   const interaction = options.interaction ?? 'interactive';
 
-  const specDir = join(process.cwd(), '.dev', 'specs', name);
+  const specDirPath = _specDir(name);
   const devDir = join(process.cwd(), '.dev');
 
   // Create directory structure
-  mkdirSync(specDir, { recursive: true });
-  mkdirSync(join(specDir, 'findings'), { recursive: true });
-  mkdirSync(join(specDir, 'analysis'), { recursive: true });
+  mkdirSync(specDirPath, { recursive: true });
+  mkdirSync(_findingsDir(name), { recursive: true });
+  mkdirSync(_analysisDir(name), { recursive: true });
 
   // Create state.json
   const state = createState(name, { depth, interaction, recipe: options.recipe, skill: options.skill });
 
   // Create DRAFT.md
-  const draftPath = join(specDir, 'DRAFT.md');
-  writeFileSync(draftPath, buildDraftTemplate(name), 'utf8');
+  const draftPathVal = _draftPath(name);
+  writeFileSync(draftPathVal, buildDraftTemplate(name), 'utf8');
 
   // Write active-spec pointer
   const activeSpecPath = join(devDir, 'active-spec');
+  if (!existsSync(devDir)) mkdirSync(devDir, { recursive: true });
   writeFileSync(activeSpecPath, name, 'utf8');
 
-  return { specDir, state };
+  return { specDir: specDirPath, state };
 }
