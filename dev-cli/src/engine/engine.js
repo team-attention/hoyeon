@@ -306,6 +306,16 @@ function buildTodoSubstepResponse(substep, todo, engine, name, plan) {
 
   switch (substep) {
     case 'worker': {
+      // On retry, use fixContext instead of rebuilding from scratch
+      if (todoState.fixContext) {
+        return {
+          action: 'engine-worker',
+          todoId: todo.id,
+          substep: 'worker',
+          instruction: todoState.fixContext,
+          dispatch: { type: 'subagent', subagent_type: 'worker', model: 'sonnet' },
+        };
+      }
       const outputs = readOutputs(name);
       const resolved = resolveInputs(todo, outputs);
       const context = buildWorkerContextSync(name);
@@ -315,6 +325,7 @@ function buildTodoSubstepResponse(substep, todo, engine, name, plan) {
         todoId: todo.id,
         substep: 'worker',
         instruction,
+        dispatch: { type: 'subagent', subagent_type: 'worker', model: 'sonnet' },
       };
     }
 
@@ -326,6 +337,7 @@ function buildTodoSubstepResponse(substep, todo, engine, name, plan) {
         todoId: todo.id,
         substep: 'verify',
         instruction,
+        dispatch: { type: 'subagent', subagent_type: 'worker', model: 'sonnet' },
       };
     }
 
@@ -336,6 +348,7 @@ function buildTodoSubstepResponse(substep, todo, engine, name, plan) {
         todoId: todo.id,
         substep: 'wrapup',
         instruction,
+        dispatch: { type: 'direct' },
       };
     }
 
@@ -347,6 +360,7 @@ function buildTodoSubstepResponse(substep, todo, engine, name, plan) {
         todoId: todo.id,
         substep: 'commit',
         instruction,
+        dispatch: { type: 'subagent', subagent_type: 'git-master', model: 'sonnet' },
       };
     }
 
@@ -362,6 +376,7 @@ function buildFinalizeResponse(substep, engine, plan, mode) {
         action: 'engine-finalize',
         substep: 'residual-commit',
         instruction: 'Check `git status --porcelain`. If there are uncommitted changes, create a residual commit. Otherwise skip.',
+        dispatch: { type: 'subagent', subagent_type: 'git-master', model: 'sonnet' },
       };
 
     case 'code-review': {
@@ -370,6 +385,7 @@ function buildFinalizeResponse(substep, engine, plan, mode) {
         action: 'engine-finalize',
         substep: 'code-review',
         instruction,
+        dispatch: { type: 'subagent', subagent_type: 'code-reviewer', model: 'sonnet' },
       };
     }
 
@@ -380,6 +396,7 @@ function buildFinalizeResponse(substep, engine, plan, mode) {
         action: 'engine-finalize',
         substep: 'final-verify',
         instruction,
+        dispatch: { type: 'subagent', subagent_type: 'worker', model: 'sonnet' },
       };
     }
 
@@ -388,6 +405,7 @@ function buildFinalizeResponse(substep, engine, plan, mode) {
         action: 'engine-finalize',
         substep: 'state-complete',
         instruction: 'Mark the execution state as complete.',
+        dispatch: { type: 'direct' },
       };
 
     case 'report': {
@@ -397,6 +415,7 @@ function buildFinalizeResponse(substep, engine, plan, mode) {
         action: 'engine-finalize',
         substep: 'report',
         instruction,
+        dispatch: { type: 'direct' },
       };
     }
 

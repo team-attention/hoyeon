@@ -147,8 +147,11 @@ export function initSpec(name, options = {}) {
   });
 
   // Create DRAFT.md in session dir (via dual-path resolution)
-  const draftPathVal = _draftPath(name);
-  writeFileSync(draftPathVal, buildDraftTemplate(name), 'utf8');
+  // Execute sessions don't need DRAFT.md (a specify artifact)
+  if (options.skill !== 'execute') {
+    const draftPathVal = _draftPath(name);
+    writeFileSync(draftPathVal, buildDraftTemplate(name), 'utf8');
+  }
 
   // Write active-spec pointer
   if (!existsSync(devDir)) mkdirSync(devDir, { recursive: true });

@@ -4,6 +4,7 @@
  * Wraps stepComplete() and stepInvalidate() from ../core/sequencer.js.
  */
 
+import { readFileSync } from 'node:fs';
 import { stepComplete, stepInvalidate } from '../core/sequencer.js';
 
 export default async function handler(args) {
@@ -17,7 +18,17 @@ export default async function handler(args) {
   const blockId = stepIdx >= 0 ? args[stepIdx + 1] : undefined;
 
   if (action === 'complete') {
-    const result = await stepComplete(name, blockId);
+    // Read result data from stdin if piped
+    let resultData = null;
+    if (!process.stdin.isTTY) {
+      try {
+        const input = readFileSync(0, 'utf8').trim();
+        if (input) resultData = JSON.parse(input);
+      } catch {
+        // Ignore parse errors — proceed without result data
+      }
+    }
+    const result = await stepComplete(name, blockId, resultData);
     console.log(JSON.stringify(result, null, 2));
   } else if (action === 'invalidate') {
     const reasonIdx = args.indexOf('--reason');
