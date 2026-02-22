@@ -90,6 +90,90 @@ function resolveTemplates(blocks, vars) {
 }
 
 // ---------------------------------------------------------------------------
+// Execute recipe substep/finalize validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Valid types for todo_substeps and finalize entries.
+ */
+const VALID_SUBSTEP_TYPES = new Set(['dispatch_llm', 'deterministic']);
+
+/**
+ * Validate a single substep entry in todo_substeps or finalize.
+ *
+ * @param {unknown} entry - The substep entry to validate
+ * @param {number} index - Entry index for error messages
+ * @param {string} section - 'todo_substeps' | 'finalize'
+ * @throws {Error} If validation fails
+ */
+function validateSubstepEntry(entry, index, section) {
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw new Error(`${section}[${index}] must be an object`);
+  }
+
+  if (!entry.suffix || typeof entry.suffix !== 'string') {
+    throw new Error(`${section}[${index}] is missing required field 'suffix' (must be a non-empty string)`);
+  }
+
+  if (!entry.type || typeof entry.type !== 'string') {
+    throw new Error(`${section}[${index}] is missing required field 'type'`);
+  }
+
+  if (!VALID_SUBSTEP_TYPES.has(entry.type)) {
+    throw new Error(
+      `${section}[${index}] has invalid type '${entry.type}'. ` +
+      `Valid types: ${[...VALID_SUBSTEP_TYPES].join(', ')}`
+    );
+  }
+
+  // dispatch_llm must have an agent
+  if (entry.type === 'dispatch_llm' && !entry.agent) {
+    throw new Error(`${section}[${index}] is type 'dispatch_llm' but missing 'agent' field`);
+  }
+}
+
+/**
+ * Validate execute recipe extensions (todo_substeps and finalize).
+ * Only called when these fields are present.
+ *
+ * @param {object} recipe - The parsed recipe
+ * @throws {Error} If validation fails
+ */
+function validateExecuteExtensions(recipe) {
+  if (recipe.todo_substeps) {
+    if (!Array.isArray(recipe.todo_substeps)) {
+      throw new Error("Recipe 'todo_substeps' must be an array");
+    }
+    if (recipe.todo_substeps.length === 0) {
+      throw new Error("Recipe 'todo_substeps' array must not be empty");
+    }
+    for (let i = 0; i < recipe.todo_substeps.length; i++) {
+      validateSubstepEntry(recipe.todo_substeps[i], i, 'todo_substeps');
+    }
+  }
+
+  if (recipe.finalize) {
+    if (!Array.isArray(recipe.finalize)) {
+      throw new Error("Recipe 'finalize' must be an array");
+    }
+    if (recipe.finalize.length === 0) {
+      throw new Error("Recipe 'finalize' array must not be empty");
+    }
+    for (let i = 0; i < recipe.finalize.length; i++) {
+      validateSubstepEntry(recipe.finalize[i], i, 'finalize');
+    }
+  }
+
+  // If one is present, both must be
+  if (recipe.todo_substeps && !recipe.finalize) {
+    throw new Error("Recipe has 'todo_substeps' but missing 'finalize'");
+  }
+  if (recipe.finalize && !recipe.todo_substeps) {
+    throw new Error("Recipe has 'finalize' but missing 'todo_substeps'");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 
@@ -157,6 +241,9 @@ function validateRecipe(recipe) {
   for (let i = 0; i < recipe.blocks.length; i++) {
     validateBlock(recipe.blocks[i], i);
   }
+
+  // Validate execute recipe extensions if present
+  validateExecuteExtensions(recipe);
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +303,14 @@ export function parseRecipeYaml(yamlString, vars = {}) {
     ...parsed,
     blocks: resolveTemplates(parsed.blocks, vars),
   };
+
+  // Preserve and resolve execute extensions if present
+  if (parsed.todo_substeps) {
+    recipe.todo_substeps = resolveTemplates(parsed.todo_substeps, vars);
+  }
+  if (parsed.finalize) {
+    recipe.finalize = resolveTemplates(parsed.finalize, vars);
+  }
 
   return recipe;
 }

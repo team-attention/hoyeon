@@ -262,3 +262,186 @@ describe('parseRecipeYaml() — validation errors', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests: execute recipe format (todo_substeps + finalize)
+// ---------------------------------------------------------------------------
+
+const VALID_EXECUTE_YAML = `
+name: execute-standard
+type: sequential
+description: Execute plan with full verification
+blocks:
+  - id: execute-engine
+    type: engine
+    mode: standard
+todo_substeps:
+  - { suffix: Worker, type: dispatch_llm, agent: worker, prompt_type: worker }
+  - { suffix: Verify, type: dispatch_llm, agent: worker, prompt_type: verify, read_only: true }
+  - { suffix: Wrap-up, type: deterministic, cmd: wrapup+checkpoint }
+  - { suffix: Commit, type: dispatch_llm, agent: git-master, prompt_type: commit, conditional: commit_strategy }
+finalize:
+  - { suffix: Residual Commit, type: dispatch_llm, agent: git-master }
+  - { suffix: Code Review, type: dispatch_llm, agent: code-reviewer }
+  - { suffix: Final Verify, type: dispatch_llm, agent: worker, read_only: true }
+  - { suffix: State Complete, type: deterministic, pr_only: true }
+  - { suffix: Report, type: deterministic }
+`;
+
+const VALID_EXECUTE_QUICK_YAML = `
+name: execute-quick
+type: sequential
+description: Quick mode
+blocks:
+  - id: execute-engine
+    type: engine
+    mode: quick
+todo_substeps:
+  - { suffix: Worker, type: dispatch_llm, agent: worker, prompt_type: worker }
+  - { suffix: Wrap-up, type: deterministic, cmd: wrapup+checkpoint }
+  - { suffix: Commit, type: dispatch_llm, agent: git-master, prompt_type: commit }
+finalize:
+  - { suffix: Residual Commit, type: dispatch_llm, agent: git-master }
+  - { suffix: State Complete, type: deterministic, pr_only: true }
+  - { suffix: Report, type: deterministic }
+`;
+
+describe('parseRecipeYaml() — execute recipe extensions', () => {
+  test('parses todo_substeps and finalize', () => {
+    const recipe = parseRecipeYaml(VALID_EXECUTE_YAML);
+
+    assert.ok(Array.isArray(recipe.todo_substeps));
+    assert.equal(recipe.todo_substeps.length, 4);
+    assert.ok(Array.isArray(recipe.finalize));
+    assert.equal(recipe.finalize.length, 5);
+  });
+
+  test('preserves substep fields', () => {
+    const recipe = parseRecipeYaml(VALID_EXECUTE_YAML);
+    const worker = recipe.todo_substeps[0];
+
+    assert.equal(worker.suffix, 'Worker');
+    assert.equal(worker.type, 'dispatch_llm');
+    assert.equal(worker.agent, 'worker');
+    assert.equal(worker.prompt_type, 'worker');
+  });
+
+  test('quick recipe has no Verify, Code Review, Final Verify', () => {
+    const recipe = parseRecipeYaml(VALID_EXECUTE_QUICK_YAML);
+
+    assert.equal(recipe.todo_substeps.length, 3);
+    const substepNames = recipe.todo_substeps.map((s) => s.suffix);
+    assert.ok(!substepNames.includes('Verify'));
+
+    assert.equal(recipe.finalize.length, 3);
+    const finalizeNames = recipe.finalize.map((s) => s.suffix);
+    assert.ok(!finalizeNames.includes('Code Review'));
+    assert.ok(!finalizeNames.includes('Final Verify'));
+  });
+
+  test('specify recipes still work without todo_substeps', () => {
+    // Specify recipes don't have todo_substeps — should not break
+    const recipe = parseRecipeYaml(VALID_RECIPE_YAML);
+    assert.equal(recipe.todo_substeps, undefined);
+    assert.equal(recipe.finalize, undefined);
+  });
+});
+
+describe('parseRecipeYaml() — execute recipe validation errors', () => {
+  test('throws if todo_substeps entry missing suffix', () => {
+    const yaml = `
+name: bad
+blocks:
+  - id: e
+    type: engine
+todo_substeps:
+  - { type: dispatch_llm, agent: worker }
+finalize:
+  - { suffix: Report, type: deterministic }
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /missing required field 'suffix'/,
+    );
+  });
+
+  test('throws if substep has invalid type', () => {
+    const yaml = `
+name: bad
+blocks:
+  - id: e
+    type: engine
+todo_substeps:
+  - { suffix: Worker, type: quantum, agent: worker }
+finalize:
+  - { suffix: Report, type: deterministic }
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /invalid type 'quantum'/,
+    );
+  });
+
+  test('throws if dispatch_llm missing agent', () => {
+    const yaml = `
+name: bad
+blocks:
+  - id: e
+    type: engine
+todo_substeps:
+  - { suffix: Worker, type: dispatch_llm }
+finalize:
+  - { suffix: Report, type: deterministic }
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /missing 'agent' field/,
+    );
+  });
+
+  test('throws if todo_substeps present but finalize missing', () => {
+    const yaml = `
+name: bad
+blocks:
+  - id: e
+    type: engine
+todo_substeps:
+  - { suffix: Worker, type: dispatch_llm, agent: worker }
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /missing 'finalize'/,
+    );
+  });
+
+  test('throws if finalize present but todo_substeps missing', () => {
+    const yaml = `
+name: bad
+blocks:
+  - id: e
+    type: engine
+finalize:
+  - { suffix: Report, type: deterministic }
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /missing 'todo_substeps'/,
+    );
+  });
+
+  test('throws if todo_substeps is empty array', () => {
+    const yaml = `
+name: bad
+blocks:
+  - id: e
+    type: engine
+todo_substeps: []
+finalize:
+  - { suffix: Report, type: deterministic }
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /must not be empty/,
+    );
+  });
+});

@@ -6,3 +6,16 @@ blocks:
   - id: execute-engine
     type: engine
     mode: standard
+
+todo_substeps:
+  - { suffix: Worker, type: dispatch_llm, agent: worker, prompt_type: worker }
+  - { suffix: Verify, type: dispatch_llm, agent: worker, prompt_type: verify, read_only: true }
+  - { suffix: Wrap-up, type: deterministic, cmd: wrapup+checkpoint }
+  - { suffix: Commit, type: dispatch_llm, agent: git-master, prompt_type: commit, conditional: commit_strategy }
+
+finalize:
+  - { suffix: Residual Commit, type: dispatch_llm, agent: git-master }
+  - { suffix: Code Review, type: dispatch_llm, agent: code-reviewer }
+  - { suffix: Final Verify, type: dispatch_llm, agent: worker, read_only: true }
+  - { suffix: State Complete, type: deterministic, pr_only: true }
+  - { suffix: Report, type: deterministic }
