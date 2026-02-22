@@ -16,6 +16,27 @@ allowed-tools:
 
 ## Layer 1: Execution Flow (CLI-driven)
 
+### Session Model
+
+**Session vs. Spec** — these are separate concepts:
+
+| Concept | Directory | Contents |
+|---------|-----------|----------|
+| **Spec** | `.dev/specs/{name}/` | Deliverables: `PLAN.md`, `plan-content.json`, `context/`, `session.ref` |
+| **Session** | `.dev/.sessions/{sessionId}/` | Work artifacts: `state.json`, `DRAFT.md`, `findings/`, `analysis/` |
+
+**session.ref** is a pointer file at `.dev/specs/{name}/session.ref` containing just the `{sessionId}` UUID.
+It links a spec to its active session, enabling dual-path resolution: when `session.ref` exists, the CLI reads work artifacts from the session dir; otherwise it falls back to the spec dir (backward compatibility).
+
+**Path resolution** (handled by `paths.js` in dev-cli):
+- `DRAFT.md` → `.dev/.sessions/{sessionId}/DRAFT.md` (via session.ref) or `.dev/specs/{name}/DRAFT.md` (legacy)
+- `state.json` → `.dev/.sessions/{sessionId}/state.json` (via session.ref) or `.dev/specs/{name}/state.json` (legacy)
+- `findings/` → `.dev/.sessions/{sessionId}/findings/` (via session.ref) or `.dev/specs/{name}/findings/` (legacy)
+- `analysis/` → `.dev/.sessions/{sessionId}/analysis/` (via session.ref) or `.dev/specs/{name}/analysis/` (legacy)
+- `PLAN.md` → always `.dev/specs/{name}/PLAN.md` (deliverable, never in session dir)
+
+You do not need to compute these paths manually. The CLI resolves them automatically based on `session.ref`.
+
 ### Rules
 - Subagents: Write full results to the `outputPath` provided by CLI using the Write tool. Return only 1-2 line summary.
 - Subagent output format: Markdown with YAML frontmatter (agent, timestamp, summary).
@@ -25,6 +46,8 @@ allowed-tools:
 
 ### Flow
 1. `node dev-cli/bin/dev-cli.js init {name} [--quick] [--autopilot]`
+   - Creates session dir at `.dev/.sessions/{sessionId}/`
+   - Writes `session.ref` into `.dev/specs/{name}/session.ref`
 2. Loop: call `node dev-cli/bin/dev-cli.js next {name}` → follow the returned instruction
 3. Until CLI returns `{ "done": true }`
 
@@ -32,8 +55,12 @@ allowed-tools:
 Use flags: `node dev-cli/bin/dev-cli.js draft {name} update --section <id> --data '<json>'`
 Or stdin: `echo '{"section":"<id>","data":<value>}' | node dev-cli/bin/dev-cli.js draft {name} update`
 
+> The CLI resolves DRAFT.md path automatically via `session.ref`. Do not hardcode paths.
+
 ### On Context Compaction
 Call `node dev-cli/bin/dev-cli.js manifest {name}` to recover full state.
+
+The manifest command outputs all active paths (spec dir, session dir, session ID, and locations of key files) so you can resume without re-running init.
 
 ---
 
@@ -365,9 +392,10 @@ Top-level required fields:
 - [ ] `dev-cli next` returned `{ "done": true }` (or `abort` was called)
 - [ ] No pending `onComplete` commands left unexecuted
 - [ ] All subagent `outputPath` files written
-- [ ] Plan file exists at `.dev/specs/{name}/PLAN.md`
-- [ ] `plan-content.json` correctly populated (all required fields present)
+- [ ] Plan file (deliverable) exists at `.dev/specs/{name}/PLAN.md`
+- [ ] `plan-content.json` correctly populated (all required fields present) — at `.dev/specs/{name}/plan-content.json`
 - [ ] Reviewer returned OKAY
+- [ ] DRAFT.md (work artifact) is at `.dev/.sessions/{sessionId}/DRAFT.md` (post-refactor) or `.dev/specs/{name}/DRAFT.md` (legacy)
 
 **Standard mode** (additional):
 - [ ] All 4 analysis agents ran (gap-analyzer, tradeoff-analyzer, simplicity-checker, risk-assessor)

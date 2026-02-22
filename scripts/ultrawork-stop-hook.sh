@@ -61,15 +61,73 @@ if [[ $MAX_ITERATIONS -gt 0 ]] && [[ $ITERATION -ge $MAX_ITERATIONS ]]; then
   exit 0
 fi
 
-# Find spec directory: scan .dev/specs/ for the most recently modified DRAFT.md or PLAN.md
+# Find spec directory: scan both .dev/specs/ (PLAN.md deliverables) and
+# .dev/.sessions/ (DRAFT.md work artifacts, post-refactor) for the most
+# recently modified relevant file.
+# Dual scan provides backward compatibility: pre-refactor specs keep DRAFT.md
+# in the spec dir; post-refactor specs store DRAFT.md in the session dir.
 SPECS_ROOT="$CWD/.dev/specs"
+SESSIONS_ROOT="$CWD/.dev/.sessions"
 SPEC_DIR=""
+DRAFT_DIR=""   # Directory containing DRAFT.md (may differ from SPEC_DIR post-refactor)
 FEATURE_NAME=""
+
+# Collect candidate files from both locations
+CANDIDATE=""
+
+# Scan specs dir for PLAN.md or DRAFT.md (legacy location for DRAFT.md)
 if [[ -d "$SPECS_ROOT" ]]; then
-  SPEC_DIR=$(find "$SPECS_ROOT" -maxdepth 2 \( -name "DRAFT.md" -o -name "PLAN.md" \) -exec stat -f '%m %N' {} \; 2>/dev/null \
-    | sort -rn | head -1 | cut -d' ' -f2- | xargs dirname 2>/dev/null || echo "")
-  if [[ -n "$SPEC_DIR" ]]; then
-    FEATURE_NAME=$(basename "$SPEC_DIR")
+  SPEC_CANDIDATE=$(find "$SPECS_ROOT" -maxdepth 2 \( -name "DRAFT.md" -o -name "PLAN.md" \) -exec stat -f '%m %N' {} \; 2>/dev/null \
+    | sort -rn | head -1 | cut -d' ' -f2- || echo "")
+  CANDIDATE="$SPEC_CANDIDATE"
+fi
+
+# Scan sessions dir for DRAFT.md (new location post-refactor)
+SESSION_CANDIDATE=""
+if [[ -d "$SESSIONS_ROOT" ]]; then
+  SESSION_CANDIDATE=$(find "$SESSIONS_ROOT" -maxdepth 2 -name "DRAFT.md" -exec stat -f '%m %N' {} \; 2>/dev/null \
+    | sort -rn | head -1 | cut -d' ' -f2- || echo "")
+fi
+
+# Pick the more recently modified candidate
+if [[ -n "$SESSION_CANDIDATE" ]] && [[ -n "$CANDIDATE" ]]; then
+  # Compare modification timestamps numerically; take the newer one
+  SESSION_TS=$(find "$SESSIONS_ROOT" -maxdepth 2 -name "DRAFT.md" -exec stat -f '%m' {} \; 2>/dev/null | sort -rn | head -1 || echo "0")
+  SPEC_TS=$(find "$SPECS_ROOT" -maxdepth 2 \( -name "DRAFT.md" -o -name "PLAN.md" \) -exec stat -f '%m' {} \; 2>/dev/null | sort -rn | head -1 || echo "0")
+  if [[ "$SESSION_TS" -gt "$SPEC_TS" ]]; then
+    CANDIDATE="$SESSION_CANDIDATE"
+  fi
+elif [[ -n "$SESSION_CANDIDATE" ]]; then
+  CANDIDATE="$SESSION_CANDIDATE"
+fi
+
+# Resolve SPEC_DIR and DRAFT_DIR from the winning candidate
+if [[ -n "$CANDIDATE" ]]; then
+  CANDIDATE_DIR=$(echo "$CANDIDATE" | xargs dirname 2>/dev/null || echo "")
+  if [[ -n "$CANDIDATE_DIR" ]]; then
+    # If candidate came from .sessions/, resolve the feature name via session.ref
+    # by searching for a spec whose session.ref points to this session dir
+    if [[ "$CANDIDATE_DIR" == "$SESSIONS_ROOT"* ]]; then
+      RESOLVED_SESSION_ID=$(basename "$CANDIDATE_DIR")
+      DRAFT_DIR="$CANDIDATE_DIR"
+      # Find the spec dir whose session.ref contains this RESOLVED_SESSION_ID
+      if [[ -d "$SPECS_ROOT" ]]; then
+        for REF_FILE in "$SPECS_ROOT"/*/session.ref; do
+          [[ -f "$REF_FILE" ]] || continue
+          REF_CONTENT=$(cat "$REF_FILE" 2>/dev/null | tr -d '[:space:]')
+          if [[ "$REF_CONTENT" == "$RESOLVED_SESSION_ID" ]]; then
+            SPEC_DIR=$(dirname "$REF_FILE")
+            FEATURE_NAME=$(basename "$SPEC_DIR")
+            break
+          fi
+        done
+      fi
+      # If no session.ref match found, skip (cannot resolve feature name)
+    else
+      SPEC_DIR="$CANDIDATE_DIR"
+      DRAFT_DIR="$CANDIDATE_DIR"   # Legacy: DRAFT.md colocated with spec deliverables
+      FEATURE_NAME=$(basename "$SPEC_DIR")
+    fi
   fi
 fi
 
@@ -108,7 +166,7 @@ case "$PHASE" in
   # Check: DRAFT.md exists → trigger plan generation
   # --------------------------------------------------------
   "specify_interview")
-    DRAFT_FILE="$SPEC_DIR/DRAFT.md"
+    DRAFT_FILE="${DRAFT_DIR:-$SPEC_DIR}/DRAFT.md"
     PLAN_FILE="$SPEC_DIR/PLAN.md"
 
     if [[ -f "$PLAN_FILE" ]]; then
@@ -157,7 +215,7 @@ Follow specify skill's Mode 2: Plan Generation:
   # --------------------------------------------------------
   "specify_plan")
     PLAN_FILE="$SPEC_DIR/PLAN.md"
-    DRAFT_FILE="$SPEC_DIR/DRAFT.md"
+    DRAFT_FILE="${DRAFT_DIR:-$SPEC_DIR}/DRAFT.md"
 
     if [[ ! -f "$PLAN_FILE" ]]; then
       echo "⏳ Ultrawork: Waiting for plan..." >&2
