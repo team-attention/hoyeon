@@ -53,10 +53,19 @@ Examples: `/execute`, `/execute --quick`, `/execute --quick my-feature`, `/execu
 node dev-cli/bin/dev-cli.js plan-to-tasks {name} --mode {mode}
 ```
 
-This outputs `{ tasks, dependencies }`. For each task, call `TaskCreate`:
+This outputs `{ tasks, dependencies }`.
+
+**⚠️ BATCH CREATE all tasks in minimal turns to avoid overhead.**
+
+**Strategy**: Call ALL TaskCreate calls in a single turn (multiple tool calls in one message). Then set ALL dependencies in one follow-up turn.
 
 ```
-For each task in result.tasks:
+# ═══════════════════════════════════════════════════
+# TURN 1: Create ALL tasks in PARALLEL (single message)
+# ═══════════════════════════════════════════════════
+# Send ALL TaskCreate calls in ONE message simultaneously.
+
+FOR EACH task in result.tasks (ALL in one message):
   TaskCreate({
     subject: task.subject,
     description: task.description,
@@ -64,19 +73,31 @@ For each task in result.tasks:
     metadata: task.metadata
   })
 
-For each dep in result.dependencies:
+# ═══════════════════════════════════════════════════
+# TURN 2: Set ALL dependencies in PARALLEL (single message)
+# ═══════════════════════════════════════════════════
+# After Turn 1 returns all task IDs, send ALL TaskUpdate calls
+# for dependencies in ONE message simultaneously.
+
+FOR EACH dep in result.dependencies (ALL in one message):
   TaskUpdate(dep.to, { addBlockedBy: [dep.from] })
 ```
+
+**⚠️ Key rule**: NEVER create tasks one-by-one across multiple turns. All TaskCreate in Turn 1, all TaskUpdate in Turn 2. Two turns total.
 
 ### 1.3 Init Context
 
 ```bash
-node dev-cli/bin/dev-cli.js init {name} --execute --{mode}
+node dev-cli/bin/dev-cli.js init {name} --execute [--quick if mode=quick]
 ```
 
 ---
 
 ## STEP 2: Execute Loop
+
+**⚠️ CRITICAL: True parallel dispatch requires `run_in_background: true`.**
+
+If you call `Task(...)` without `run_in_background`, Claude Code blocks until the agent returns — making execution sequential even if multiple tasks are runnable. To achieve real parallelism:
 
 ```
 LOOP:
@@ -85,8 +106,31 @@ LOOP:
   IF no runnable AND all completed → DONE
   IF no runnable AND some failed → HALTED (report failures)
 
-  Pick first runnable task → read metadata → dispatch by substep type
+  IF len(runnable) > 1 AND all are :Worker or :Verify:
+    # PARALLEL dispatch — mark in_progress FIRST, then send ALL in ONE message
+    FOR EACH task in runnable:
+      TaskUpdate(taskId=task.id, status="in_progress")
+    FOR EACH task in runnable (in single message):
+      build prompt via CLI, then dispatch(task, run_in_background=true)
+    # Poll for completion
+    WAIT until any background task completes (check TaskOutput periodically)
+    # Process completed tasks, mark completed, loop
+  ELSE:
+    # Single task — foreground dispatch
+    Pick first runnable task → read metadata → dispatch by substep type
 ```
+
+**Which substep types can run in parallel:**
+- `:Worker` — YES (if touching disjoint files)
+- `:Verify` — YES (read-only, no conflicts)
+- `:Commit` — NO (git operations must be sequential)
+- `:Wrap-up` — PARTIAL (outputs.json must be sequential, other files OK)
+- `:State Begin/Complete` — NO (single task)
+
+**Overhead Reduction Rules:**
+- Do NOT re-read context files between worker dispatches
+- Worker results come back in the Task return value — use that directly
+- After a worker completes: `TaskUpdate(completed)` → `TaskList()` → dispatch next runnable. No extra Read/Bash calls.
 
 ### Dispatch Rules
 
@@ -123,7 +167,7 @@ verifyResult = Task(worker, prompt, model=sonnet)
 
 Triage the result:
 ```bash
-triageResult=$(echo '{verifyResult}' | node dev-cli/bin/dev-cli.js triage {name} --todo {todoId} --retries {N} --depth {D})
+triageResult=$(echo '{verifyResult}' | node dev-cli/bin/dev-cli.js triage {name} --todo {todoId} --retries {N} --depth 0)
 ```
 
 Route by disposition:
@@ -214,11 +258,46 @@ TaskUpdate(taskId, { status: "completed" })
 
 #### :Report (metadata.substep = "report")
 
-```bash
-prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type report)
+> **Mode Gate**:
+> - **Standard**: Read report template → output verbatim with placeholders replaced.
+> - ⛔ **Quick**: Output abbreviated inline format (no template needed).
+
+**Standard mode:**
+
+```
+TaskUpdate(taskId, { status: "in_progress" })
+template = Read(".claude/skills/execute/references/report-template.md")
+# Output report verbatim, replacing {placeholders} with real values
+# Do NOT invent your own format — follow the template exactly
+TaskUpdate(taskId, { status: "completed" })
 ```
 
-Output the final execution report to the user.
+**⛔ Quick mode:**
+
+```
+TaskUpdate(taskId, { status: "in_progress" })
+# Output abbreviated summary — no template file needed
+```
+
+Quick mode report format (output exactly this, replacing placeholders):
+```
+═══════════════════════════════════════════════════════════
+                    ORCHESTRATION COMPLETE
+═══════════════════════════════════════════════════════════
+
+PLAN: {plan_path}
+MODE: {Local | PR #N} (quick)
+
+RESULT: {completed}/{total} TODOs completed
+COMMITS: {count} commits created
+FILES: {count} files modified
+
+{If any issues exist:}
+ISSUES:
+  {from context/issues.md, or "None"}
+═══════════════════════════════════════════════════════════
+```
+
 ```
 TaskUpdate(taskId, { status: "completed" })
 ```
