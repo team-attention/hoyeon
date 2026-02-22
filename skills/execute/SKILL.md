@@ -269,6 +269,7 @@ TaskUpdate(taskId, { status: "in_progress" })
 template = Read(".claude/skills/execute/references/report-template.md")
 # Output report verbatim, replacing {placeholders} with real values
 # Do NOT invent your own format — follow the template exactly
+node dev-cli/bin/dev-cli.js finalize {name}
 TaskUpdate(taskId, { status: "completed" })
 ```
 
@@ -299,6 +300,7 @@ ISSUES:
 ```
 
 ```
+node dev-cli/bin/dev-cli.js finalize {name}
 TaskUpdate(taskId, { status: "completed" })
 ```
 

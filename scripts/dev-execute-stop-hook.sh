@@ -141,7 +141,7 @@ $ERROR_SUMMARY
 - Iteration: $NEXT_ITERATION / $MAX_ITERATIONS
 
 **Next Actions:**
-Continue calling \`node dev-cli/bin/dev-cli.js next {name}\` until the engine returns \`{ done: true }\`.
+After all tasks are complete, call \`node dev-cli/bin/dev-cli.js finalize $SPEC_NAME\` to mark engine as done.
 
 Continue working until all items are complete."
 

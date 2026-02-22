@@ -16,6 +16,7 @@ const SUBCOMMANDS = {
   wrapup: 'Write execution context (outputs, learnings, issues)',
   checkpoint: 'Mark a TODO as checked in PLAN.md',
   triage: 'Triage a verify result into a disposition',
+  finalize: 'Mark engine finalize as done (signals stop hook)',
 };
 
 function printHelp() {
