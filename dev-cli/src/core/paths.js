@@ -150,3 +150,14 @@ export function planPath(name) {
 export function planContentPath(name) {
   return join(specDir(name), 'plan-content.json');
 }
+
+/**
+ * Returns the absolute path to the context directory for a given spec name.
+ * context/ is a deliverable — always lives in spec dir.
+ *
+ * @param {string} name - Spec name
+ * @returns {string} Absolute path to .dev/specs/<name>/context/
+ */
+export function contextDir(name) {
+  return join(specDir(name), 'context');
+}
