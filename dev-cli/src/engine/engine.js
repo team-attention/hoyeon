@@ -22,6 +22,8 @@ import {
   buildFinalVerifyPrompt,
   buildReportPrompt,
 } from './prompt-builder.js';
+import { readFileSync as _readFileSync, existsSync as _existsSync } from 'node:fs';
+import { contextDir as _contextDir } from '../core/paths.js';
 
 // ---------------------------------------------------------------------------
 // Internal: graph serialization (Map → plain object for JSON storage)
@@ -73,9 +75,7 @@ function extractVerificationCommands(plan) {
   const commands = [];
   for (const todo of plan.todos) {
     for (const cmd of todo.acceptanceCriteria.runtime ?? []) {
-      if (cmd.includes('node --test') || cmd.includes('npm test')) {
-        commands.push({ run: cmd, expect: 'exit 0' });
-      }
+      commands.push({ run: cmd, expect: 'exit 0' });
     }
   }
   return commands;
@@ -85,9 +85,6 @@ function extractVerificationCommands(plan) {
 // Internal: build context for worker prompt
 // ---------------------------------------------------------------------------
 
-import { readFileSync as _readFileSync, existsSync as _existsSync } from 'node:fs';
-import { contextDir as _contextDir } from '../core/paths.js';
-
 function buildWorkerContextSync(name) {
   const dir = _contextDir(name);
   let learnings = '';
@@ -95,11 +92,15 @@ function buildWorkerContextSync(name) {
   try {
     const lPath = `${dir}/learnings.md`;
     if (_existsSync(lPath)) learnings = _readFileSync(lPath, 'utf8');
-  } catch { /* empty */ }
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
   try {
     const iPath = `${dir}/issues.md`;
     if (_existsSync(iPath)) issues = _readFileSync(iPath, 'utf8');
-  } catch { /* empty */ }
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
   return { learnings, issues };
 }
 

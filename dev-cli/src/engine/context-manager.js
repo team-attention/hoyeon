@@ -8,7 +8,7 @@
  *   audit.md       — chronological audit trail of execution events
  */
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { contextDir } from '../core/paths.js';
@@ -26,10 +26,18 @@ import { contextDir } from '../core/paths.js';
 export function initContext(name) {
   const dir = contextDir(name);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'outputs.json'), '{}');
-  writeFileSync(join(dir, 'learnings.md'), '');
-  writeFileSync(join(dir, 'issues.md'), '');
-  writeFileSync(join(dir, 'audit.md'), '');
+  const defaults = [
+    ['outputs.json', '{}'],
+    ['learnings.md', ''],
+    ['issues.md', ''],
+    ['audit.md', ''],
+  ];
+  for (const [filename, content] of defaults) {
+    const filePath = join(dir, filename);
+    if (!existsSync(filePath)) {
+      writeFileSync(filePath, content);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -93,8 +101,7 @@ export function writeOutput(name, todoId, outputs) {
 export function appendLearning(name, todoId, text) {
   const filePath = join(contextDir(name), 'learnings.md');
   const entry = `\n## TODO ${todoId}\n\n${text}\n`;
-  const current = existsSync(filePath) ? readFileSync(filePath, 'utf8') : '';
-  writeFileSync(filePath, current + entry);
+  appendFileSync(filePath, entry);
 }
 
 /**
@@ -107,8 +114,7 @@ export function appendLearning(name, todoId, text) {
 export function appendIssue(name, todoId, text) {
   const filePath = join(contextDir(name), 'issues.md');
   const entry = `\n## TODO ${todoId}\n\n- [ ] ${text}\n`;
-  const current = existsSync(filePath) ? readFileSync(filePath, 'utf8') : '';
-  writeFileSync(filePath, current + entry);
+  appendFileSync(filePath, entry);
 }
 
 /**
@@ -120,6 +126,5 @@ export function appendIssue(name, todoId, text) {
 export function appendAudit(name, entry) {
   const filePath = join(contextDir(name), 'audit.md');
   const block = `\n---\n\n${entry}\n`;
-  const current = existsSync(filePath) ? readFileSync(filePath, 'utf8') : '';
-  writeFileSync(filePath, current + block);
+  appendFileSync(filePath, block);
 }

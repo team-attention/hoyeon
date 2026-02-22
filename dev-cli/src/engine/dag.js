@@ -223,6 +223,13 @@ export function insertDynamicTodo(graph, parentId, newTodo, mode) {
 
   const newIds = addChain(graph, newTodo.id, steps, new Set([parentCommitId]));
 
+  // Update finalize chain's first node to also block on this dynamic TODO's last step
+  const newLastStepId = `${newTodo.id}.${lastStep}`;
+  const finalizeFirst = graph.nodes.get('finalize.residual-commit');
+  if (finalizeFirst) {
+    finalizeFirst.blockedBy.add(newLastStepId);
+  }
+
   graph.dynamicCounts.set(parentId, count + 1);
 
   return newIds;

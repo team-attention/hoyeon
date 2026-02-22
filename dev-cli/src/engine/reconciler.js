@@ -101,17 +101,14 @@ export function triage(verifyResult, todoType, todoState, depth = 0) {
     (v) => v.violated === true,
   );
   if (criticalViolations.length > 0) {
-    // Check if any are critical severity side effects
     const criticalSideEffects = (verifyResult.sideEffects ?? []).filter(
       (s) => s.severity === 'critical',
     );
-    if (criticalSideEffects.length > 0 || criticalViolations.length > 0) {
-      return {
-        disposition: 'halt',
-        reason: 'Critical must-not-do violation',
-        details: { violations: criticalViolations, sideEffects: criticalSideEffects },
-      };
-    }
+    return {
+      disposition: 'halt',
+      reason: 'Critical must-not-do violation',
+      details: { violations: criticalViolations, sideEffects: criticalSideEffects },
+    };
   }
 
   // Check for env_error in side effects → halt
