@@ -107,6 +107,20 @@ blocks:
         }
       }
 
+      QUALITY RULES (mandatory):
+      1. Each todo MUST have ≥3 functional acceptance criteria — specific, testable, not vague.
+         BAD:  "Works correctly"
+         GOOD: "Click button increments score by 1 and updates display"
+      2. verificationSummary.aItems: each item MUST include verification method in parentheses.
+         Example: "HTML file loads without console errors (method: open in browser, check DevTools)"
+      3. verificationSummary.hItems: each item MUST explain WHY human verification is needed.
+         Example: "Game feels responsive and fun (reason: subjective UX quality, no automated proxy)"
+      4. commitStrategy: NEVER leave empty. If no commits needed (e.g., git-ignored dir), add:
+         [{"afterTodo":"todo-1","message":"N/A","files":[],"condition":"Directory is git-ignored, no commit needed"}]
+      5. objectives.mustNotDo: minimum 2 items — always include at least "Do not modify existing files" type guard.
+      6. Each todo.steps: must be concrete actions, not categories. Include specific file paths when known.
+      7. taskFlow: describe execution order AND parallelism potential, not just "sequential".
+
       Write the JSON to plan-content.json file using the Write tool, then the CLI will validate and generate PLAN.md.
     command: "dev-cli plan generate {name} --data plan-content.json"
 
