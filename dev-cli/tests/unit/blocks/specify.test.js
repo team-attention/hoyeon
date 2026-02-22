@@ -15,6 +15,7 @@ import { draftImport } from '../../../src/blocks/draft-import.js';
 import { draftValidate } from '../../../src/blocks/draft-validate.js';
 import { autoAssume } from '../../../src/blocks/auto-assume.js';
 import { loadState } from '../../../src/core/state.js';
+import { findingsDir as _findingsDir, analysisDir as _analysisDir, draftPath as _draftPath, statePath as _statePath } from '../../../src/core/paths.js';
 
 // ---------------------------------------------------------------------------
 // Temp dir management (same pattern as state.test.js)
@@ -43,8 +44,9 @@ function specDir(name) {
   return join(tmpDir, '.dev', 'specs', name);
 }
 
+// Session-aware: resolves DRAFT.md via session.ref when present (paths.js dual-path)
 function draftPath(name) {
-  return join(specDir(name), 'DRAFT.md');
+  return _draftPath(name);
 }
 
 function activeSpecPath() {
@@ -62,10 +64,11 @@ describe('initSpec()', () => {
   test('creates state.json at the correct path', () => {
     initSpec('test-spec', { depth: 'standard', interaction: 'interactive' });
 
-    const statePath = join(specDir('test-spec'), 'state.json');
-    assert.ok(existsSync(statePath), `Expected state.json at ${statePath}`);
+    // Use session-aware statePath (resolves via session.ref to session dir)
+    const stateFilePath = _statePath('test-spec');
+    assert.ok(existsSync(stateFilePath), `Expected state.json at ${stateFilePath}`);
 
-    const state = JSON.parse(readFileSync(statePath, 'utf8'));
+    const state = JSON.parse(readFileSync(stateFilePath, 'utf8'));
     assert.equal(state.name, 'test-spec');
     assert.equal(state.mode.depth, 'standard');
     assert.equal(state.mode.interaction, 'interactive');
@@ -99,14 +102,16 @@ describe('initSpec()', () => {
   test('creates findings/ subdirectory', () => {
     initSpec('findings-spec', {});
 
-    const findingsDir = join(specDir('findings-spec'), 'findings');
+    // findings/ now lives in session dir — use session-aware path helper
+    const findingsDir = _findingsDir('findings-spec');
     assert.ok(existsSync(findingsDir), `Expected findings/ dir at ${findingsDir}`);
   });
 
   test('creates analysis/ subdirectory', () => {
     initSpec('analysis-spec', {});
 
-    const analysisDir = join(specDir('analysis-spec'), 'analysis');
+    // analysis/ now lives in session dir — use session-aware path helper
+    const analysisDir = _analysisDir('analysis-spec');
     assert.ok(existsSync(analysisDir), `Expected analysis/ dir at ${analysisDir}`);
   });
 
@@ -223,8 +228,8 @@ describe('draftImport()', () => {
   test('imports findings from findings/*.md files', () => {
     initSpec('import-spec', {});
 
-    // Create findings file with frontmatter
-    const findingsDir = join(specDir('import-spec'), 'findings');
+    // Create findings file with frontmatter (in session dir via dual-path resolution)
+    const findingsDir = _findingsDir('import-spec');
     writeFileSync(
       join(findingsDir, 'explore.md'),
       `---
@@ -247,7 +252,7 @@ summary: Found 3 patterns related to authentication
   test('populates findings section in DRAFT.md', () => {
     initSpec('import-draft-spec', {});
 
-    const findingsDir = join(specDir('import-draft-spec'), 'findings');
+    const findingsDir = _findingsDir('import-draft-spec');
     writeFileSync(
       join(findingsDir, 'analysis.md'),
       `---
@@ -271,7 +276,7 @@ summary: The codebase uses Express.js for routing
   test('extracts summary from YAML frontmatter', () => {
     initSpec('yaml-spec', {});
 
-    const findingsDir = join(specDir('yaml-spec'), 'findings');
+    const findingsDir = _findingsDir('yaml-spec');
     writeFileSync(
       join(findingsDir, 'agent1.md'),
       `---
@@ -307,7 +312,7 @@ Body content here.
   test('updates state.agents with agent info and hash', () => {
     initSpec('agent-state-spec', {});
 
-    const findingsDir = join(specDir('agent-state-spec'), 'findings');
+    const findingsDir = _findingsDir('agent-state-spec');
     writeFileSync(
       join(findingsDir, 'finder.md'),
       `---
@@ -330,7 +335,7 @@ summary: Found important patterns
   test('imports multiple findings files', () => {
     initSpec('multi-import-spec', {});
 
-    const findingsDir = join(specDir('multi-import-spec'), 'findings');
+    const findingsDir = _findingsDir('multi-import-spec');
     writeFileSync(
       join(findingsDir, 'agent1.md'),
       `---
@@ -496,7 +501,7 @@ describe('autoAssume()', () => {
     initSpec('assume-with-findings', { depth: 'quick', interaction: 'autopilot' });
 
     // Add some findings first
-    const findingsDir = join(specDir('assume-with-findings'), 'findings');
+    const findingsDir = _findingsDir('assume-with-findings');
     writeFileSync(
       join(findingsDir, 'research.md'),
       `---
