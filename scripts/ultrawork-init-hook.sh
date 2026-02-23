@@ -1,7 +1,7 @@
 #!/bin/bash
 # ultrawork-init-hook.sh - UserPromptSubmit hook
 #
-# Purpose: Initialize ultrawork state with correct session_id
+# Purpose: Initialize ultrawork state with correct session_id and feature name
 # Activation: UserPromptSubmit when user types "/ultrawork"
 #
 # Hook Input Fields (UserPromptSubmit):
@@ -40,22 +40,42 @@ if [[ -n "$EXISTING" ]] && [[ "$EXISTING" != "null" ]]; then
   exit 0
 fi
 
-# Initialize ultrawork state with actual session_id
+# Extract feature name from prompt
+# "/ultrawork dark-mode" → "dark-mode"
+# "/ultrawork add dark mode support" → "add-dark-mode-support"
+# Strip the /ultrawork prefix, then kebab-case the rest
+NAME=$(echo "$PROMPT" | sed -E 's/^\/?(ultrawork|ULTRAWORK)[[:space:]]*//' | \
+  tr '[:upper:]' '[:lower:]' | \
+  tr -cs '[:alnum:]' '-' | \
+  sed 's/^-//;s/-$//')
+
+# If no name was extracted, leave empty (SKILL.md will parse it)
+if [[ -z "$NAME" ]]; then
+  NAME=""
+fi
+
+# Initialize ultrawork state with actual session_id and feature name
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 TEMP_FILE="${STATE_FILE}.tmp.$$"
 
 jq --arg sid "$SESSION_ID" \
    --arg ts "$TIMESTAMP" \
+   --arg name "$NAME" \
    '.[$sid] = {
      "created_at": $ts,
      "agents": {},
      "ultrawork": {
+       "name": $name,
        "phase": "specify_interview",
        "iteration": 0,
        "max_iterations": 10
      }
    }' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
 
-echo "🚀 Ultrawork initialized (session: ${SESSION_ID:0:8}...)" >&2
+if [[ -n "$NAME" ]]; then
+  echo "🚀 Ultrawork initialized: $NAME (session: ${SESSION_ID:0:8}...)" >&2
+else
+  echo "🚀 Ultrawork initialized (session: ${SESSION_ID:0:8}...)" >&2
+fi
 
 exit 0
