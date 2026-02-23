@@ -6,8 +6,10 @@
  * stdout: prompt string
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildPromptForTodo } from '../engine/prompt-factory.js';
+import { contextDir } from '../core/paths.js';
 
 export default async function handler(args) {
   const name = args.find((a) => !a.startsWith('--'));
@@ -35,6 +37,18 @@ export default async function handler(args) {
       if (input) inputData = JSON.parse(input);
     } catch {
       // Ignore parse errors — proceed without input data
+    }
+  }
+
+  // Fallback: read persisted worker result for compact recovery
+  if (!inputData && type === 'verify') {
+    const persistedPath = join(contextDir(name), `worker-result-${todoId}.json`);
+    if (existsSync(persistedPath)) {
+      try {
+        const envelope = JSON.parse(readFileSync(persistedPath, 'utf8'));
+        inputData = envelope.result;
+        console.error(`[recovery] Using persisted worker result for ${todoId}`);
+      } catch { /* proceed without */ }
     }
   }
 

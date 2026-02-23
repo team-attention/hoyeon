@@ -18,6 +18,7 @@ const SUBCOMMANDS = {
   checkpoint: 'Mark a TODO as checked in PLAN.md',
   triage: 'Triage a verify result into a disposition',
   finalize: 'Mark engine finalize as done (signals stop hook)',
+  'persist-result': 'Persist worker result for compact recovery',
 };
 
 function printHelp() {

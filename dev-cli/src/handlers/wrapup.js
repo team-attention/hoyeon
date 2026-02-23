@@ -5,7 +5,9 @@
  * stdin: JSON { outputs, learnings, issues, auditEntry }
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { contextDir } from '../core/paths.js';
 import { initContext, writeOutput, appendLearning, appendIssue, appendAudit } from '../engine/context-manager.js';
 
 export default async function handler(args) {
@@ -55,6 +57,12 @@ export default async function handler(args) {
   // Append audit entry
   if (data.auditEntry && typeof data.auditEntry === 'string') {
     appendAudit(name, data.auditEntry);
+  }
+
+  // Cleanup: remove persisted worker result (compact recovery artifact)
+  const persistedPath = join(contextDir(name), `worker-result-${todoId}.json`);
+  if (existsSync(persistedPath)) {
+    try { unlinkSync(persistedPath); } catch { /* best-effort */ }
   }
 
   console.log(JSON.stringify({ ok: true, todoId }));
