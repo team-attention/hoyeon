@@ -45,7 +45,8 @@ You do not need to compute these paths manually. The CLI resolves them automatic
 - Early exit: if the task is clearly unnecessary, call `node dev-cli/bin/dev-cli.js abort {name} --reason "..."` instead of silently stopping.
 
 ### Flow
-1. `node dev-cli/bin/dev-cli.js init {name} [--quick] [--autopilot]`
+1. `node dev-cli/bin/dev-cli.js init {name} --recipe specify-{depth}-{interaction} --skill specify [--quick] [--autopilot]`
+   - `{depth}` = `standard` or `quick`, `{interaction}` = `interactive` or `autopilot` (from mode selection)
    - Creates session dir at `.dev/.sessions/{sessionId}/`
    - Writes `session.ref` into `.dev/specs/{name}/session.ref`
 2. Loop: call `node dev-cli/bin/dev-cli.js next {name}` → follow the returned instruction

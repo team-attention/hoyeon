@@ -88,8 +88,10 @@ FOR EACH dep in result.dependencies (ALL in one message):
 ### 1.3 Init Context
 
 ```bash
-node dev-cli/bin/dev-cli.js init {name} --execute [--quick if mode=quick]
+node dev-cli/bin/dev-cli.js init {name} --recipe execute-{mode} --skill execute [--quick if mode=quick]
 ```
+
+Where `{mode}` = `standard` or `quick` based on the flag.
 
 ---
 
