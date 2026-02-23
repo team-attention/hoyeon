@@ -37,10 +37,6 @@
           },
           {
             "type": "command",
-            "command": ".claude/scripts/ultrawork-init-hook.sh"
-          },
-          {
-            "type": "command",
             "command": ".claude/scripts/dev-init-hook.sh"
           },
           {
@@ -101,10 +97,6 @@
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/scripts/ultrawork-stop-hook.sh"
-          },
           {
             "type": "command",
             "command": ".claude/scripts/dev-execute-stop-hook.sh"

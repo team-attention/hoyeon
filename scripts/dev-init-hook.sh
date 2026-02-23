@@ -1,11 +1,11 @@
 #!/bin/bash
 # dev-init-hook.sh - Unified init hook (UserPromptSubmit + PreToolUse[Skill])
 #
-# Purpose: Initialize session state for /specify, /execute, /ultrawork
+# Purpose: Initialize session state for /specify, /execute
 # Idempotent: safe to call multiple times per session
 #
 # Supported events:
-#   - UserPromptSubmit: user types /specify, /execute, /ultrawork
+#   - UserPromptSubmit: user types /specify, /execute
 #   - PreToolUse[Skill]: code calls Skill("specify"), Skill("execute")
 
 set -euo pipefail
@@ -24,10 +24,7 @@ SKILL_ARGS=$(echo "$HOOK_INPUT" | jq -r '.tool_input.args // ""')
 MODE=""
 FEATURE_NAME=""
 
-if echo "$PROMPT" | grep -qiE "^/ultrawork|^ultrawork"; then
-  MODE="ultrawork"
-  FEATURE_NAME=$(echo "$PROMPT" | sed -E 's/^\/?(ultrawork|ULTRAWORK)[[:space:]]+//i' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | head -c 50)
-elif echo "$PROMPT" | grep -qiE "^/specify|^specify"; then
+if echo "$PROMPT" | grep -qiE "^/specify|^specify"; then
   MODE="specify"
 elif echo "$PROMPT" | grep -qiE "^/execute|^execute"; then
   MODE="execute"
@@ -60,42 +57,8 @@ TEMP_FILE="${STATE_FILE}.tmp.$$"
 EXISTING_SESSION=$(jq -r --arg sid "$SESSION_ID" '.[$sid] // empty' "$STATE_FILE" 2>/dev/null || echo "")
 
 case "$MODE" in
-  ultrawork)
-    # Skip if ultrawork already initialized
-    EXISTING_UW=$(jq -r --arg sid "$SESSION_ID" '.[$sid].ultrawork // empty' "$STATE_FILE" 2>/dev/null || echo "")
-    if [[ -n "$EXISTING_UW" && "$EXISTING_UW" != "null" ]]; then
-      exit 0
-    fi
-    [[ -z "$FEATURE_NAME" ]] && FEATURE_NAME="unnamed-feature"
-    jq --arg sid "$SESSION_ID" \
-       --arg name "$FEATURE_NAME" \
-       --arg ts "$TIMESTAMP" \
-       '.[$sid] = ((.[$sid] // {}) + {
-         "created_at": ((.[$sid].created_at) // $ts),
-         "agents": ((.[$sid].agents) // {}),
-         "ultrawork": {
-           "name": $name,
-           "phase": "specify_interview",
-           "iteration": 0,
-           "max_iterations": 10
-         }
-       })' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
-    echo "🚀 Ultrawork initialized: $FEATURE_NAME (session: ${SESSION_ID:0:8}...)" >&2
-    ;;
-
   specify)
-    # If ultrawork session exists, sync spec name from skill args
-    EXISTING_UW=$(jq -r --arg sid "$SESSION_ID" '.[$sid].ultrawork // empty' "$STATE_FILE" 2>/dev/null || echo "")
-    if [[ -n "$EXISTING_UW" && "$EXISTING_UW" != "null" && -n "$SKILL_ARGS" ]]; then
-      jq --arg sid "$SESSION_ID" \
-         --arg name "$SKILL_ARGS" \
-         '.[$sid].ultrawork.name = $name' \
-         "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
-      echo "📋 Specify mode: Synced spec name → $SKILL_ARGS" >&2
-      exit 0
-    fi
-
-    # Skip if session already exists (non-ultrawork)
+    # Skip if session already exists
     if [[ -n "$EXISTING_SESSION" && "$EXISTING_SESSION" != "null" ]]; then
       exit 0
     fi

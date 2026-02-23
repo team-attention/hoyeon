@@ -19,27 +19,11 @@ allowed-tools:
 # /ultrawork Skill - Automated Development Pipeline
 
 You are initiating an **ultrawork** session - a fully automated pipeline that chains:
-1. `/specify` - Interview and plan generation
-2. `/open` - Draft PR creation
+1. `/specify` - Interview and plan generation (autopilot mode)
+2. Draft PR creation (inline)
 3. `/execute` - Implementation
 
-## How It Works
-
-The ultrawork pipeline runs automatically through **Stop hooks**:
-- When you complete Interview (DRAFT.md created) → Hook triggers Plan generation
-- When Plan is approved → Hook triggers `/open`
-- When PR is created → Hook triggers `/execute`
-- When all TODOs complete → Pipeline ends
-
-**You don't need to manually trigger the next step** - the hooks handle transitions.
-
-## Your Role
-
-1. **Extract the feature name** from user's request
-2. **Initialize ultrawork state** (CRITICAL - must do before anything else)
-3. **Start the specify skill** with the feature name
-4. **Follow specify's interview process** normally
-5. The rest happens automatically via hooks
+**You drive each step sequentially.** No hooks, no external state tracking.
 
 ## Execution
 
@@ -50,39 +34,65 @@ Extract a short, kebab-case name for the feature:
 - "Implement payment processing" → `payment-processing`
 - "Fix login bug" → `fix-login-bug`
 
-> **Note:** State initialization is handled automatically by `UserPromptSubmit` hook (`ultrawork-init-hook.sh`).
-
 ### Step 2: Announce Ultrawork Mode
 
+Output:
 ```
-🚀 Ultrawork Mode Activated
+Ultrawork Mode Activated
 
 Feature: {name}
 Pipeline: specify → open → execute
 
-Starting interview phase...
+Starting specify phase (autopilot)...
 ```
 
-### Step 3: Invoke Specify
+### Step 3: Run Specify (Autopilot)
 
 ```
-Skill("specify", args="{name}")
+Skill("specify", args="--autopilot {name}")
 ```
 
-The specify skill will:
-1. Run Interview Mode (gather requirements)
-2. Wait for DRAFT.md to be created
-3. **[Hook auto-triggers]** → Generate Plan when DRAFT is ready
-4. Run Reviewer approval
-5. **[Hook auto-triggers]** → Call /open when Plan is approved
+Wait for specify to complete. Verify outputs exist:
+- `.dev/specs/{name}/PLAN.md`
+- `.dev/specs/{name}/plan-content.json`
 
-### Step 4: Let Hooks Handle the Rest
+If specify fails or outputs are missing, stop and report the error.
 
-After specify completes with an approved plan:
-- `ultrawork-stop-hook.sh` detects PLAN.md with "APPROVED"
-- Hook automatically injects `/open {name}`
-- After PR creation, hook injects `/execute`
-- Execute runs until all TODOs complete
+### Step 4: Create Draft PR
+
+Inline the PR creation workflow (no separate `/open` call):
+
+1. **Read plan content**: Read `.dev/specs/{name}/plan-content.json` → extract `objectives.core` for PR title/summary
+2. **Read PR body template**: Read `${baseDir}/../open/references/pr-body-template.md` for template structure
+3. **Verify gh auth**: Run `gh auth status`
+4. **Check existing PR**: `gh pr list --head "feat/{name}" --json number -q '.[0].number'` — if exists, skip to Step 5
+5. **Create branch**: `git checkout -b feat/{name}`
+6. **Push branch**: `git push -u origin feat/{name}`
+7. **Determine base branch**: Use `develop` if it exists (check with `git rev-parse --verify origin/develop`), else `main`
+8. **Create PR**: `gh pr create --draft --title "feat: {summary}" --body "{composed body}" --base {base}`
+9. **Output**: `PR #{number} created (Draft) — Branch: feat/{name}`
+
+### Step 5: Run Execute
+
+```
+Skill("execute", args="{name}")
+```
+
+Wait for execute to complete (all TODOs checked, report output).
+
+### Step 6: Done
+
+Output final summary:
+```
+Ultrawork Complete
+
+Feature: {name}
+- Specify: PLAN.md created
+- PR: #{number} (Draft)
+- Execute: All TODOs completed
+
+Pipeline finished.
+```
 
 ## User Interruption
 
@@ -93,56 +103,45 @@ User can stop the pipeline at any time by saying:
 
 This will halt the current phase and await further instructions.
 
-## State Tracking
-
-The hook tracks progress in `.dev/state.local.json`:
-```json
-{
-  "session-id": {
-    "ultrawork": {
-      "name": "feature-name",
-      "phase": "specify_interview",
-      "iteration": 0
-    }
-  }
-}
-```
-
-Phases: `specify_interview` → `specify_plan` → `opening` → `executing` → `done`
-
 ## Example Flow
 
 ```
 User: "/ultrawork add dark mode support"
 
-[Hook auto-initializes state for "dark-mode"]
-
 [You]
 1. Parse: feature name = "dark-mode"
 
 2. Announce:
-   🚀 Ultrawork Mode Activated
+   Ultrawork Mode Activated
    Feature: dark-mode
    Pipeline: specify → open → execute
-   Starting interview phase...
+   Starting specify phase (autopilot)...
 
-3. Invoke: Skill("specify", args="dark-mode")
+3. Run: Skill("specify", args="--autopilot dark-mode")
+   → PLAN.md + plan-content.json created
 
-[Specify Interview runs...]
-[DRAFT.md created]
-[Hook detects → triggers "Generate the plan"]
-[Plan created, Reviewer approves]
-[Hook detects → triggers "/open dark-mode"]
-[PR created]
-[Hook detects → triggers "/execute"]
-[TODOs completed]
-[Pipeline ends]
+4. Create Draft PR:
+   → Read plan-content.json for summary
+   → git checkout -b feat/dark-mode
+   → gh pr create --draft ...
+   → PR #42 created (Draft)
+
+5. Run: Skill("execute", args="dark-mode")
+   → TODOs dispatched and completed
+
+6. Done:
+   Ultrawork Complete
+   Feature: dark-mode
+   - Specify: PLAN.md created
+   - PR: #42 (Draft)
+   - Execute: All TODOs completed
+   Pipeline finished.
 ```
 
 ## Important Notes
 
-- **State is auto-initialized** by `UserPromptSubmit` hook - no manual setup needed
-- **Do NOT manually call /open or /execute** - hooks handle this
-- **Follow specify's interview process** - gather requirements properly
-- **The pipeline is autonomous** - just start it and let it run
+- **Agent drives sequentially** — no hooks, no state machine
+- **Specify runs in autopilot mode** — no interactive interview
+- **PR creation is inlined** — avoids overhead of separate `/open` skill call
+- **Each sub-skill uses its own recipe** — specify and execute are unchanged
 - **User can interrupt** at any time for manual control

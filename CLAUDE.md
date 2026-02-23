@@ -60,7 +60,6 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 
 | Script | Type | Purpose |
 |--------|------|---------|
-| `ultrawork-init-hook.sh` | UserPromptSubmit | Initialize ultrawork pipeline state when `/ultrawork` is typed |
 | `dev-specify-stop-hook.sh` | Stop | Auto-transition specify → open when plan is approved |
 | `validate-output.sh` | PostToolUse | Validate agent/skill output against `validate_prompt` frontmatter |
 | `dev-execute-init-hook.sh` | PreToolUse | Initialize execution context at `/execute` start |
