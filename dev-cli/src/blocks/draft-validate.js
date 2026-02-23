@@ -52,6 +52,9 @@ function isFilled(content) {
 // Public API
 // ---------------------------------------------------------------------------
 
+// Re-export isFilled and PLACEHOLDER_PATTERNS for reuse (e.g. draft-show.js)
+export { isFilled, PLACEHOLDER_PATTERNS };
+
 /**
  * Validate DRAFT.md completeness for a session.
  *

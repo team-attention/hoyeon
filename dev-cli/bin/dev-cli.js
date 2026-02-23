@@ -9,6 +9,7 @@ const SUBCOMMANDS = {
   manifest: 'Show or update the session manifest',
   draft: 'Draft output for the current block',
   plan: 'Show the plan / recipe blocks for the session',
+  findings: 'Aggregate findings and analysis files as structured JSON',
   abort: 'Abort a session early with a reason',
   cleanup: 'Clean up session state and artifacts',
   'plan-to-tasks': 'Convert plan into TaskCreate-compatible JSON',

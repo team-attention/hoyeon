@@ -31,7 +31,8 @@ elif echo "$PROMPT" | grep -qiE "^/specify|^specify"; then
   MODE="specify"
 elif echo "$PROMPT" | grep -qiE "^/execute|^execute"; then
   MODE="execute"
-  FEATURE_NAME=$(echo "$PROMPT" | sed -E 's/^\/?(execute|EXECUTE)[[:space:]]+//i' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | head -c 50)
+  # Strip command prefix, then remove --* flags, trim, convert spaces to hyphens
+  FEATURE_NAME=$(echo "$PROMPT" | sed -E 's/^\/?(execute|EXECUTE)[[:space:]]+//i' | sed -E 's/--[a-zA-Z][-a-zA-Z]*//g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | head -c 50)
 elif [[ "$SKILL_NAME" == "specify" || "$SKILL_NAME" == "dev.specify" ]]; then
   MODE="specify"
 elif [[ "$SKILL_NAME" == "execute" || "$SKILL_NAME" == "dev.execute" ]]; then

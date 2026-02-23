@@ -11,6 +11,7 @@
 import { draftUpdate } from '../blocks/draft-update.js';
 import { draftImport } from '../blocks/draft-import.js';
 import { draftValidate } from '../blocks/draft-validate.js';
+import { draftShow } from '../blocks/draft-show.js';
 
 function showUpdateUsage() {
   console.error(`Usage: dev-cli draft <name> update --section <id> --data '<json>'`);
@@ -21,12 +22,13 @@ export default async function handler(args) {
   const name = args[0];
   const action = args[1]; // 'update', 'import', 'validate'
   if (!name || !action) {
-    console.error('Usage: dev-cli draft <name> update|import|validate [options]');
+    console.error('Usage: dev-cli draft <name> update|import|validate|show [options]');
     console.error('');
     console.error('Actions:');
     console.error('  update    Update a draft section (via --section/--data flags or stdin JSON)');
     console.error('  import    Import subagent findings into the draft');
     console.error('  validate  Validate draft completeness');
+    console.error('  show      Show draft as structured JSON with fill status');
     process.exit(1);
   }
 
@@ -86,10 +88,12 @@ export default async function handler(args) {
     result = await draftImport(name);
   } else if (action === 'validate') {
     result = await draftValidate(name);
+  } else if (action === 'show') {
+    result = draftShow(name);
   } else {
-    console.error(`Unknown draft action: '${action}'. Use 'update', 'import', or 'validate'.`);
+    console.error(`Unknown draft action: '${action}'. Use 'update', 'import', 'validate', or 'show'.`);
     console.error('');
-    console.error('Usage: dev-cli draft <name> update|import|validate [options]');
+    console.error('Usage: dev-cli draft <name> update|import|validate|show [options]');
     process.exit(1);
   }
   console.log(JSON.stringify(result, null, 2));
