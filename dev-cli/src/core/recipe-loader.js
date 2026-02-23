@@ -25,6 +25,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * @returns {string} Absolute path to the skill's recipes directory
  */
 export function recipesDir(skillName) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(skillName)) {
+    throw new Error(`Invalid skillName '${skillName}': must match [a-z0-9][a-z0-9-]*`);
+  }
   return join(__dirname, '..', '..', '..', '.claude', 'skills', skillName, 'recipes');
 }
 
