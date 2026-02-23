@@ -25,21 +25,19 @@ You are initiating an **ultrawork** session - a fully automated pipeline that ch
 
 ## How It Works
 
-The ultrawork pipeline runs automatically through **Stop hooks**:
-- When you complete Interview (DRAFT.md created) → Hook triggers Plan generation
-- When Plan is approved → Hook triggers `/open`
+The pipeline is fully autonomous via **Stop hooks**:
+- Specify runs in `--autopilot` mode (no user questions)
+- When specify creates PLAN.md + plan-content.json → Hook triggers `/open`
 - When PR is created → Hook triggers `/execute`
 - When all TODOs complete → Pipeline ends
 
-**You don't need to manually trigger the next step** - the hooks handle transitions.
+**You don't need to manually trigger the next step** — hooks handle all transitions.
 
 ## Your Role
 
 1. **Extract the feature name** from user's request
-2. **Initialize ultrawork state** (CRITICAL - must do before anything else)
-3. **Start the specify skill** with the feature name
-4. **Follow specify's interview process** normally
-5. The rest happens automatically via hooks
+2. **Start specify in autopilot mode** — no user interaction, fully autonomous
+3. The rest happens automatically via hooks (open → execute → done)
 
 ## Execution
 
@@ -63,26 +61,28 @@ Pipeline: specify → open → execute
 Starting interview phase...
 ```
 
-### Step 3: Invoke Specify
+### Step 3: Invoke Specify (Autopilot)
 
 ```
-Skill("specify", args="{name}")
+Skill("specify", args="--autopilot {name}")
 ```
 
-The specify skill will:
-1. Run Interview Mode (gather requirements)
-2. Wait for DRAFT.md to be created
-3. **[Hook auto-triggers]** → Generate Plan when DRAFT is ready
-4. Run Reviewer approval
-5. **[Hook auto-triggers]** → Call /open when Plan is approved
+**CRITICAL**: Always pass `--autopilot`. This makes specify:
+- Skip user interview questions (auto-assume based on codebase patterns)
+- Skip Decision Summary Checkpoint (log to DRAFT instead)
+- Skip Verification Summary Confirmation
+- Complete without AskUserQuestion — plan generated and approved autonomously
 
-### Step 4: Let Hooks Handle the Rest
+Without `--autopilot`, specify will ask interactive questions and the pipeline stalls.
 
-After specify completes with an approved plan:
-- `ultrawork-stop-hook.sh` detects PLAN.md with "APPROVED"
-- Hook automatically injects `/open {name}`
-- After PR creation, hook injects `/execute`
-- Execute runs until all TODOs complete
+### Step 4: Hooks Handle the Rest
+
+After specify completes (PLAN.md + plan-content.json created):
+1. Stop hook detects plan ready → blocks with "Run /open"
+2. Claude runs `Skill("open", args="{name}")` → creates Draft PR
+3. Stop hook detects PR exists → blocks with "Run /execute"
+4. Claude runs `Skill("execute", args="{name}")` → implements all TODOs
+5. Stop hook detects all TODOs checked → cleanup, pipeline done
 
 ## User Interruption
 
@@ -115,34 +115,32 @@ Phases: `specify_interview` → `specify_plan` → `opening` → `executing` →
 ```
 User: "/ultrawork add dark mode support"
 
-[Hook auto-initializes state for "dark-mode"]
+[Hook auto-initializes state: name="add-dark-mode-support"]
 
 [You]
-1. Parse: feature name = "dark-mode"
+1. Parse: feature name = "add-dark-mode-support"
 
 2. Announce:
    🚀 Ultrawork Mode Activated
-   Feature: dark-mode
+   Feature: add-dark-mode-support
    Pipeline: specify → open → execute
-   Starting interview phase...
 
-3. Invoke: Skill("specify", args="dark-mode")
+3. Invoke: Skill("specify", args="--autopilot add-dark-mode-support")
 
-[Specify Interview runs...]
-[DRAFT.md created]
-[Hook detects → triggers "Generate the plan"]
-[Plan created, Reviewer approves]
-[Hook detects → triggers "/open dark-mode"]
-[PR created]
-[Hook detects → triggers "/execute"]
-[TODOs completed]
-[Pipeline ends]
+[Specify runs autonomously — no user questions]
+[DRAFT.md → PLAN.md + plan-content.json created]
+[Claude stops → Stop hook blocks: "Run /open"]
+[Claude runs Skill("open", args="add-dark-mode-support")]
+[PR created → Stop hook blocks: "Run /execute"]
+[Claude runs Skill("execute", args="add-dark-mode-support")]
+[All TODOs completed → Stop hook cleans up]
+[Pipeline done]
 ```
 
 ## Important Notes
 
-- **State is auto-initialized** by `UserPromptSubmit` hook - no manual setup needed
-- **Do NOT manually call /open or /execute** - hooks handle this
-- **Follow specify's interview process** - gather requirements properly
-- **The pipeline is autonomous** - just start it and let it run
+- **State is auto-initialized** by `UserPromptSubmit` hook — no manual setup needed
+- **Always use `--autopilot`** for specify — interactive mode will stall the pipeline
+- **Do NOT manually call /open or /execute** — hooks handle transitions
+- **The pipeline is fully autonomous** — just start it and let it run
 - **User can interrupt** at any time for manual control
