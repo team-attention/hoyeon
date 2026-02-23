@@ -137,7 +137,7 @@ todo-1 (build memo app) → todo-final (verification). Sequential — verificati
 
 ## TODOs
 
-### [ ] TODO 1: Build memo app HTML file
+### [x] TODO 1: Build memo app HTML file
 
 **Type**: Work
 **Risk**: LOW
@@ -219,7 +219,7 @@ todo-1 (build memo app) → todo-final (verification). Sequential — verificati
 
 ---
 
-### [ ] TODO 2: Verification
+### [x] TODO 2: Verification
 
 **Type**: Verification
 **Risk**: LOW
