@@ -6,7 +6,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseRecipeYaml } from '../../src/core/recipe-loader.js';
+import { parseRecipeYaml, loadRecipe, recipesDir } from '../../src/core/recipe-loader.js';
 
 // ---------------------------------------------------------------------------
 // Inline YAML fixtures
@@ -442,6 +442,36 @@ finalize:
     assert.throws(
       () => parseRecipeYaml(yaml),
       /must not be empty/,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: loadRecipe() skillName requirement and recipesDir()
+// ---------------------------------------------------------------------------
+
+describe('loadRecipe() — skillName parameter enforcement', () => {
+  test('loadRecipe without skillName throws', () => {
+    assert.throws(
+      () => loadRecipe('foo', {}),
+      /skillName/,
+    );
+  });
+
+  test('loadRecipe with undefined skillName throws', () => {
+    assert.throws(
+      () => loadRecipe('foo', {}, undefined),
+      /skillName/,
+    );
+  });
+});
+
+describe('recipesDir() — path resolution', () => {
+  test('recipesDir("specify") returns path ending with .claude/skills/specify/recipes', () => {
+    const dir = recipesDir('specify');
+    assert.ok(
+      dir.endsWith('.claude/skills/specify/recipes'),
+      `Expected path to end with .claude/skills/specify/recipes, got: ${dir}`,
     );
   });
 });

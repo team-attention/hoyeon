@@ -26,23 +26,27 @@ import { engineNext as _engineNext, engineStepComplete as _engineStepComplete } 
 /**
  * Load and return the recipe blocks for the given session state.
  * Priority:
- *   1. Load from recipe file (if state.recipe is set and file exists)
+ *   1. Load from recipe file (if state.recipe is set) — MUST succeed or throws
  *   2. Fall back to recipeBlocks embedded in state (state.recipeBlocks)
  *   3. Return null if neither is available
+ *
+ * When state.recipe is set, the recipe MUST load successfully. Any failure
+ * (missing file, parse error, etc.) is propagated as an error — it is never
+ * silently swallowed.
  *
  * @param {object} state - Session state object
  * @param {string} name - Session name (for template vars)
  * @returns {object[]|null}
+ * @throws {Error} If state.recipe is set but loadRecipe() fails for any reason
  */
 function getRecipeBlocks(state, name) {
   if (state.recipe) {
-    const vars = { name };
-    try {
-      const recipe = loadRecipe(state.recipe, vars);
-      return recipe.blocks;
-    } catch {
-      // If recipe file doesn't exist yet, fall back to recipeBlocks stored in state
+    if (!state.skill) {
+      throw new Error('Session state has recipe but missing skill field. This session may predate the recipe migration.');
     }
+    const vars = { name };
+    const recipe = loadRecipe(state.recipe, vars, state.skill);
+    return recipe.blocks;
   }
   // Fall back to recipeBlocks embedded in state
   return state.recipeBlocks ?? null;

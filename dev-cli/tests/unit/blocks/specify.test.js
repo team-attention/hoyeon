@@ -13,6 +13,7 @@ import { initSpec } from '../../../src/blocks/init.js';
 import { draftUpdate } from '../../../src/blocks/draft-update.js';
 import { draftImport } from '../../../src/blocks/draft-import.js';
 import { draftValidate } from '../../../src/blocks/draft-validate.js';
+import { draftShow } from '../../../src/blocks/draft-show.js';
 import { autoAssume } from '../../../src/blocks/auto-assume.js';
 import { loadState } from '../../../src/core/state.js';
 import { findingsDir as _findingsDir, analysisDir as _analysisDir, draftPath as _draftPath, statePath as _statePath } from '../../../src/core/paths.js';
@@ -554,5 +555,91 @@ summary: Found relevant patterns in existing code
 
     assert.equal(typeof result, 'string');
     assert.ok(result.includes('<!-- BEGIN:assumptions -->'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// draftShow tests
+// ---------------------------------------------------------------------------
+
+describe('draftShow()', () => {
+  beforeEach(useTmpDir);
+  afterEach(restoreCwd);
+
+  test('returns all sections with fill status for fresh draft', () => {
+    initSpec('show-fresh', { depth: 'standard', interaction: 'interactive' });
+
+    const result = draftShow('show-fresh');
+
+    assert.ok(result.path, 'Expected path in result');
+    assert.equal(result.mode, 'standard');
+    assert.ok(result.sections, 'Expected sections in result');
+    assert.ok(result.sections.intent, 'Expected intent section');
+    assert.equal(result.sections.intent.filled, false);
+    assert.ok(result.fillStatus, 'Expected fillStatus');
+    assert.equal(result.fillStatus.ready, false);
+    assert.ok(result.fillStatus.missing.length > 0);
+  });
+
+  test('marks filled sections correctly', () => {
+    initSpec('show-filled', { depth: 'standard', interaction: 'interactive' });
+
+    draftUpdate('show-filled', 'intent', 'Feature: Add JWT authentication');
+    draftUpdate('show-filled', 'what-why', 'Need secure login for API');
+
+    const result = draftShow('show-filled');
+
+    assert.equal(result.sections.intent.filled, true);
+    assert.ok(result.sections.intent.content.includes('Feature: Add JWT authentication'));
+    assert.equal(result.sections['what-why'].filled, true);
+    assert.equal(result.sections.boundaries.filled, false);
+    assert.ok(result.fillStatus.filled.includes('intent'));
+    assert.ok(result.fillStatus.filled.includes('what-why'));
+    assert.ok(result.fillStatus.missing.includes('boundaries'));
+  });
+
+  test('reports correct fillStatus counts', () => {
+    initSpec('show-counts', { depth: 'standard', interaction: 'interactive' });
+
+    draftUpdate('show-counts', 'intent', 'A feature');
+    draftUpdate('show-counts', 'what-why', 'Because reasons');
+    draftUpdate('show-counts', 'boundaries', 'In scope: X. Out of scope: Y');
+
+    const result = draftShow('show-counts');
+
+    // meta is auto-filled by initSpec
+    assert.equal(result.fillStatus.filledCount, 4); // meta + intent + what-why + boundaries
+    assert.equal(result.fillStatus.total, 10); // all 10 sections
+  });
+
+  test('returns correct mode from state', () => {
+    initSpec('show-quick', { depth: 'quick', interaction: 'autopilot' });
+
+    const result = draftShow('show-quick');
+
+    assert.equal(result.mode, 'quick');
+  });
+
+  test('returns absolute path to DRAFT.md', () => {
+    initSpec('show-path', {});
+
+    const result = draftShow('show-path');
+
+    assert.ok(result.path.includes('DRAFT.md'));
+    assert.ok(result.path.startsWith('/'), 'Path should be absolute');
+  });
+
+  test('ready is true when all sections are filled', () => {
+    initSpec('show-ready', { depth: 'standard', interaction: 'interactive' });
+
+    const allSections = ['intent', 'what-why', 'boundaries', 'criteria', 'decisions', 'findings', 'questions', 'direction', 'assumptions'];
+    for (const section of allSections) {
+      draftUpdate('show-ready', section, `Content for ${section}`);
+    }
+
+    const result = draftShow('show-ready');
+
+    assert.equal(result.fillStatus.ready, true);
+    assert.equal(result.fillStatus.missing.length, 0);
   });
 });

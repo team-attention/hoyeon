@@ -42,7 +42,7 @@ function restoreCwd() {
 // ---------------------------------------------------------------------------
 
 function createSessionWithRecipe(sessionName, recipeName) {
-  createState(sessionName, { recipe: recipeName });
+  createState(sessionName, { recipe: recipeName, skill: 'specify' });
   return loadState(sessionName);
 }
 
@@ -52,7 +52,7 @@ function createSessionWithRecipe(sessionName, recipeName) {
 
 describe('loadRecipe() — integration with real recipe files', () => {
   test('loads specify-standard-interactive with template vars', () => {
-    const recipe = loadRecipe('specify-standard-interactive', { name: 'add-oauth' });
+    const recipe = loadRecipe('specify-standard-interactive', { name: 'add-oauth' }, 'specify');
     assert.equal(recipe.name, 'specify-standard-interactive');
     assert.equal(recipe.blocks.length, 11);
     assert.equal(recipe.blocks[0].id, 'init');
@@ -62,7 +62,7 @@ describe('loadRecipe() — integration with real recipe files', () => {
   });
 
   test('loads specify-quick-autopilot with template vars', () => {
-    const recipe = loadRecipe('specify-quick-autopilot', { name: 'fix-bug-42' });
+    const recipe = loadRecipe('specify-quick-autopilot', { name: 'fix-bug-42' }, 'specify');
     assert.equal(recipe.name, 'specify-quick-autopilot');
     assert.equal(recipe.blocks.length, 9);
     assert.equal(recipe.blocks[0].id, 'init');
@@ -300,8 +300,8 @@ describe('initSpec() + recipe reference integration', () => {
       interaction: 'autopilot',
     });
 
-    // Attach recipe to the state
-    updateState('init-recipe-combo', { recipe: 'specify-quick-autopilot' });
+    // Attach recipe and skill to the state
+    updateState('init-recipe-combo', { recipe: 'specify-quick-autopilot', skill: 'specify' });
 
     // Verify next() drives through the recipe
     const result = await next('init-recipe-combo');
@@ -313,7 +313,7 @@ describe('initSpec() + recipe reference integration', () => {
 
   test('state.mode fields set by initSpec persist after recipe attachment', async () => {
     initSpec('mode-persist', { depth: 'standard', interaction: 'interactive' });
-    updateState('mode-persist', { recipe: 'specify-standard-interactive' });
+    updateState('mode-persist', { recipe: 'specify-standard-interactive', skill: 'specify' });
 
     const state = loadState('mode-persist');
     assert.equal(state.mode.depth, 'standard');

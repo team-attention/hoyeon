@@ -17,10 +17,16 @@ import yaml from 'js-yaml';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Absolute path to the recipes directory.
- * Recipes are stored at dev-cli/recipes/ relative to the package root.
+ * Resolve the absolute path to the recipes directory for a given skill.
+ * Recipes are stored at .claude/skills/{skillName}/recipes/ relative to the plugin root.
+ * Path traversal: src/core/ → dev-cli/ → project root (assumes dev-cli/ is a direct child of plugin root).
+ *
+ * @param {string} skillName - The skill name (e.g. 'specify', 'execute')
+ * @returns {string} Absolute path to the skill's recipes directory
  */
-const RECIPES_DIR = join(__dirname, '..', '..', 'recipes');
+export function recipesDir(skillName) {
+  return join(__dirname, '..', '..', '..', '.claude', 'skills', skillName, 'recipes');
+}
 
 /**
  * Valid block types supported by the CLI.
@@ -251,18 +257,25 @@ function validateRecipe(recipe) {
 // ---------------------------------------------------------------------------
 
 /**
- * Load and parse a named recipe from the recipes directory.
+ * Load and parse a named recipe from the skill's recipes directory.
  * Template variables in block fields are resolved using the provided vars.
  *
  * @param {string} recipeName - Name of the recipe (without extension)
  * @param {Record<string, string>} [vars={}] - Template variables to substitute
+ * @param {string} skillName - The skill name (e.g. 'specify', 'execute')
  * @returns {object} Parsed and validated recipe object with resolved templates
  * @throws {Error} If the recipe file cannot be found, parsed, or validated
  */
-export function loadRecipe(recipeName, vars = {}) {
+export function loadRecipe(recipeName, vars = {}, skillName) {
+  if (!skillName || typeof skillName !== 'string') {
+    throw new Error("loadRecipe() requires a skillName argument (e.g. specify, execute)");
+  }
+
+  const dir = recipesDir(skillName);
+
   // Try .yaml first, then .yml
-  const yamlPath = join(RECIPES_DIR, `${recipeName}.yaml`);
-  const ymlPath = join(RECIPES_DIR, `${recipeName}.yml`);
+  const yamlPath = join(dir, `${recipeName}.yaml`);
+  const ymlPath = join(dir, `${recipeName}.yml`);
 
   let filePath;
   if (existsSync(yamlPath)) {
@@ -271,7 +284,7 @@ export function loadRecipe(recipeName, vars = {}) {
     filePath = ymlPath;
   } else {
     throw new Error(
-      `Recipe '${recipeName}' not found. Looked for:\n  ${yamlPath}\n  ${ymlPath}`
+      `Recipe '${recipeName}' not found in ${dir}. Looked for:\n  ${yamlPath}\n  ${ymlPath}`
     );
   }
 

@@ -7,14 +7,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { loadRecipe, parseRecipeYaml } from '../../src/core/recipe-loader.js';
+import { loadRecipe, parseRecipeYaml, recipesDir } from '../../src/core/recipe-loader.js';
 import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const RECIPES_DIR = join(__dirname, '..', '..', 'recipes');
 
 // Valid block types from recipe-loader
 const VALID_BLOCK_TYPES = new Set([
@@ -30,8 +25,15 @@ const VALID_BLOCK_TYPES = new Set([
 // Helper
 // ---------------------------------------------------------------------------
 
+function getSkillNameFromRecipeName(recipeName) {
+  if (recipeName.startsWith('execute-')) return 'execute';
+  if (recipeName.startsWith('specify-')) return 'specify';
+  throw new Error(`Cannot determine skill from recipe name: ${recipeName}`);
+}
+
 function readRawYaml(recipeName) {
-  const filePath = join(RECIPES_DIR, `${recipeName}.yaml`);
+  const skillName = getSkillNameFromRecipeName(recipeName);
+  const filePath = `${recipesDir(skillName)}/${recipeName}.yaml`;
   return readFileSync(filePath, 'utf8');
 }
 
@@ -42,25 +44,25 @@ function readRawYaml(recipeName) {
 describe('loadRecipe() — all 4 recipes load without error', () => {
   test('specify-standard-interactive loads successfully', () => {
     assert.doesNotThrow(() => {
-      loadRecipe('specify-standard-interactive', { name: 'test-session' });
+      loadRecipe('specify-standard-interactive', { name: 'test-session' }, 'specify');
     });
   });
 
   test('specify-standard-autopilot loads successfully', () => {
     assert.doesNotThrow(() => {
-      loadRecipe('specify-standard-autopilot', { name: 'test-session' });
+      loadRecipe('specify-standard-autopilot', { name: 'test-session' }, 'specify');
     });
   });
 
   test('specify-quick-interactive loads successfully', () => {
     assert.doesNotThrow(() => {
-      loadRecipe('specify-quick-interactive', { name: 'test-session' });
+      loadRecipe('specify-quick-interactive', { name: 'test-session' }, 'specify');
     });
   });
 
   test('specify-quick-autopilot loads successfully', () => {
     assert.doesNotThrow(() => {
-      loadRecipe('specify-quick-autopilot', { name: 'test-session' });
+      loadRecipe('specify-quick-autopilot', { name: 'test-session' }, 'specify');
     });
   });
 });
@@ -71,22 +73,22 @@ describe('loadRecipe() — all 4 recipes load without error', () => {
 
 describe('Block counts', () => {
   test('specify-standard-interactive has 11 blocks', () => {
-    const recipe = loadRecipe('specify-standard-interactive');
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
     assert.equal(recipe.blocks.length, 11, `Expected 11 blocks, got ${recipe.blocks.length}`);
   });
 
   test('specify-standard-autopilot has 10 blocks', () => {
-    const recipe = loadRecipe('specify-standard-autopilot');
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
     assert.equal(recipe.blocks.length, 10, `Expected 10 blocks, got ${recipe.blocks.length}`);
   });
 
   test('specify-quick-interactive has 8 blocks', () => {
-    const recipe = loadRecipe('specify-quick-interactive');
+    const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
     assert.equal(recipe.blocks.length, 8, `Expected 8 blocks, got ${recipe.blocks.length}`);
   });
 
   test('specify-quick-autopilot has 9 blocks', () => {
-    const recipe = loadRecipe('specify-quick-autopilot');
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
     assert.equal(recipe.blocks.length, 9, `Expected 9 blocks, got ${recipe.blocks.length}`);
   });
 });
@@ -105,13 +107,13 @@ describe('First block is init, last block is cleanup', () => {
 
   for (const recipeName of recipeNames) {
     test(`${recipeName}: first block is 'init'`, () => {
-      const recipe = loadRecipe(recipeName);
+      const recipe = loadRecipe(recipeName, {}, 'specify');
       const first = recipe.blocks[0];
       assert.equal(first.id, 'init', `First block should be 'init', got '${first.id}'`);
     });
 
     test(`${recipeName}: last block is 'cleanup'`, () => {
-      const recipe = loadRecipe(recipeName);
+      const recipe = loadRecipe(recipeName, {}, 'specify');
       const last = recipe.blocks[recipe.blocks.length - 1];
       assert.equal(last.id, 'cleanup', `Last block should be 'cleanup', got '${last.id}'`);
     });
@@ -132,7 +134,7 @@ describe('Block IDs are unique within each recipe', () => {
 
   for (const recipeName of recipeNames) {
     test(`${recipeName}: all block IDs are unique`, () => {
-      const recipe = loadRecipe(recipeName);
+      const recipe = loadRecipe(recipeName, {}, 'specify');
       const ids = recipe.blocks.map((b) => b.id);
       const uniqueIds = new Set(ids);
       assert.equal(
@@ -158,7 +160,7 @@ describe('All block types are valid', () => {
 
   for (const recipeName of recipeNames) {
     test(`${recipeName}: all block types are valid`, () => {
-      const recipe = loadRecipe(recipeName);
+      const recipe = loadRecipe(recipeName, {}, 'specify');
       for (const block of recipe.blocks) {
         assert.ok(
           VALID_BLOCK_TYPES.has(block.type),
@@ -216,7 +218,7 @@ describe('parseRecipeYaml() round-trip from file content', () => {
 
 describe('specify-standard-interactive block sequence', () => {
   test('contains all 11 expected block IDs in order', () => {
-    const recipe = loadRecipe('specify-standard-interactive');
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
     const ids = recipe.blocks.map((b) => b.id);
     const expected = [
       'init',
@@ -235,14 +237,14 @@ describe('specify-standard-interactive block sequence', () => {
   });
 
   test('interview block is llm-loop type', () => {
-    const recipe = loadRecipe('specify-standard-interactive');
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
     const interview = recipe.blocks.find((b) => b.id === 'interview');
     assert.ok(interview, 'interview block must exist');
     assert.equal(interview.type, 'llm-loop');
   });
 
   test('interview instruction is rich (>100 words)', () => {
-    const recipe = loadRecipe('specify-standard-interactive');
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
     const interview = recipe.blocks.find((b) => b.id === 'interview');
     assert.ok(interview, 'interview block must exist');
     assert.ok(typeof interview.instruction === 'string', 'instruction must be a string');
@@ -254,7 +256,7 @@ describe('specify-standard-interactive block sequence', () => {
   });
 
   test('interview instruction contains question principles (ASK, INVESTIGATE, PROPOSE)', () => {
-    const recipe = loadRecipe('specify-standard-interactive');
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
     const interview = recipe.blocks.find((b) => b.id === 'interview');
     const instr = interview.instruction;
     assert.ok(instr.includes('ASK'), 'instruction should mention what to ASK');
@@ -263,14 +265,14 @@ describe('specify-standard-interactive block sequence', () => {
   });
 
   test('explore-full has 4 agents', () => {
-    const recipe = loadRecipe('specify-standard-interactive');
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
     const explore = recipe.blocks.find((b) => b.id === 'explore-full');
     assert.ok(explore, 'explore-full block must exist');
     assert.equal(explore.agents.length, 4);
   });
 
   test('review-full is subagent-loop type', () => {
-    const recipe = loadRecipe('specify-standard-interactive');
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
     const review = recipe.blocks.find((b) => b.id === 'review-full');
     assert.ok(review, 'review-full block must exist');
     assert.equal(review.type, 'subagent-loop');
@@ -283,7 +285,7 @@ describe('specify-standard-interactive block sequence', () => {
 
 describe('specify-quick-autopilot block sequence', () => {
   test('contains all 9 expected block IDs in order', () => {
-    const recipe = loadRecipe('specify-quick-autopilot');
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
     const ids = recipe.blocks.map((b) => b.id);
     const expected = [
       'init',
@@ -300,14 +302,14 @@ describe('specify-quick-autopilot block sequence', () => {
   });
 
   test('explore-lite has 2 agents', () => {
-    const recipe = loadRecipe('specify-quick-autopilot');
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
     const explore = recipe.blocks.find((b) => b.id === 'explore-lite');
     assert.ok(explore, 'explore-lite block must exist');
     assert.equal(explore.agents.length, 2);
   });
 
   test('analyze-lite has 1 agent (tradeoff-analyzer)', () => {
-    const recipe = loadRecipe('specify-quick-autopilot');
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
     const analyze = recipe.blocks.find((b) => b.id === 'analyze-lite');
     assert.ok(analyze, 'analyze-lite block must exist');
     assert.equal(analyze.agents.length, 1);
@@ -315,7 +317,7 @@ describe('specify-quick-autopilot block sequence', () => {
   });
 
   test('does not contain interview or decision-confirm blocks', () => {
-    const recipe = loadRecipe('specify-quick-autopilot');
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
     const ids = recipe.blocks.map((b) => b.id);
     assert.ok(!ids.includes('interview'), 'quick-autopilot should not have interview block');
     assert.ok(
@@ -325,7 +327,7 @@ describe('specify-quick-autopilot block sequence', () => {
   });
 
   test('auto-assume block is cli type', () => {
-    const recipe = loadRecipe('specify-quick-autopilot');
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
     const autoAssume = recipe.blocks.find((b) => b.id === 'auto-assume');
     assert.ok(autoAssume, 'auto-assume block must exist');
     assert.equal(autoAssume.type, 'cli');
@@ -338,7 +340,7 @@ describe('specify-quick-autopilot block sequence', () => {
 
 describe('specify-standard-autopilot block sequence', () => {
   test('contains 10 expected block IDs', () => {
-    const recipe = loadRecipe('specify-standard-autopilot');
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
     const ids = recipe.blocks.map((b) => b.id);
     const expected = [
       'init',
@@ -356,13 +358,13 @@ describe('specify-standard-autopilot block sequence', () => {
   });
 
   test('does not contain interview block', () => {
-    const recipe = loadRecipe('specify-standard-autopilot');
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
     const ids = recipe.blocks.map((b) => b.id);
     assert.ok(!ids.includes('interview'), 'standard-autopilot should not have interview block');
   });
 
   test('does not contain decision-confirm block', () => {
-    const recipe = loadRecipe('specify-standard-autopilot');
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
     const ids = recipe.blocks.map((b) => b.id);
     assert.ok(
       !ids.includes('decision-confirm'),
@@ -377,7 +379,7 @@ describe('specify-standard-autopilot block sequence', () => {
 
 describe('specify-quick-interactive block sequence', () => {
   test('contains 8 expected block IDs', () => {
-    const recipe = loadRecipe('specify-quick-interactive');
+    const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
     const ids = recipe.blocks.map((b) => b.id);
     const expected = [
       'init',
@@ -393,21 +395,21 @@ describe('specify-quick-interactive block sequence', () => {
   });
 
   test('explore-lite has 2 agents', () => {
-    const recipe = loadRecipe('specify-quick-interactive');
+    const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
     const explore = recipe.blocks.find((b) => b.id === 'explore-lite');
     assert.ok(explore, 'explore-lite block must exist');
     assert.equal(explore.agents.length, 2);
   });
 
   test('does not contain analyze-full or codex-synth', () => {
-    const recipe = loadRecipe('specify-quick-interactive');
+    const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
     const ids = recipe.blocks.map((b) => b.id);
     assert.ok(!ids.includes('analyze-full'), 'quick-interactive should not have analyze-full');
     assert.ok(!ids.includes('codex-synth'), 'quick-interactive should not have codex-synth');
   });
 
   test('review-once is subagent type', () => {
-    const recipe = loadRecipe('specify-quick-interactive');
+    const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
     const review = recipe.blocks.find((b) => b.id === 'review-once');
     assert.ok(review, 'review-once block must exist');
     assert.equal(review.type, 'subagent');
@@ -420,14 +422,14 @@ describe('specify-quick-interactive block sequence', () => {
 
 describe('Template variable substitution in recipe files', () => {
   test('standard-interactive: {name} resolved in init command', () => {
-    const recipe = loadRecipe('specify-standard-interactive', { name: 'my-feature' });
+    const recipe = loadRecipe('specify-standard-interactive', { name: 'my-feature' }, 'specify');
     const init = recipe.blocks.find((b) => b.id === 'init');
     assert.ok(init.command.includes('my-feature'), 'init command should contain resolved name');
     assert.ok(!init.command.includes('{name}'), 'init command should not contain unresolved {name}');
   });
 
   test('quick-autopilot: {name} resolved in auto-assume command', () => {
-    const recipe = loadRecipe('specify-quick-autopilot', { name: 'add-login' });
+    const recipe = loadRecipe('specify-quick-autopilot', { name: 'add-login' }, 'specify');
     const autoAssume = recipe.blocks.find((b) => b.id === 'auto-assume');
     assert.ok(
       autoAssume.command.includes('add-login'),

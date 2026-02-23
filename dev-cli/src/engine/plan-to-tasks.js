@@ -25,6 +25,9 @@ import { loadRecipe } from '../core/recipe-loader.js';
  */
 function buildTodoTaskSpecs(todo, substeps, commitEntry) {
   const tasks = [];
+  // Extract numeric part from todo.id (e.g., "todo-1" → "1")
+  const todoNum = todo.id.replace(/^todo-/, '');
+  let stepNum = 0;
 
   for (const step of substeps) {
     // Skip commit substep if no commit entry and conditional
@@ -32,14 +35,19 @@ function buildTodoTaskSpecs(todo, substeps, commitEntry) {
       continue;
     }
 
+    stepNum++;
     const taskId = `${todo.id}.${step.suffix.toLowerCase().replace(/\s+/g, '-')}`;
-    const subject = `TODO ${todo.id}: ${step.suffix}`;
-    const activeForm = `${step.suffix}ing ${todo.id}`;
+    // Legacy-compatible naming: "{N}.{step}:{Suffix} — {title}" for Worker, "{N}.{step}:{Suffix}" otherwise
+    const suffix = step.suffix;
+    const subject = suffix === 'Worker'
+      ? `${todoNum}.${stepNum}:${suffix} — ${todo.title}`
+      : `${todoNum}.${stepNum}:${suffix}`;
+    const activeForm = `${todoNum}.${stepNum}: Running ${suffix}`;
 
     tasks.push({
       id: taskId,
       subject,
-      description: `${step.suffix} substep for ${todo.id}: ${todo.title}`,
+      description: `${suffix} substep for ${todo.id}: ${todo.title}`,
       activeForm,
       metadata: {
         todoId: todo.id,
@@ -68,7 +76,7 @@ function buildFinalizeTaskSpecs(finalizeSteps) {
     const taskId = `finalize.${step.suffix.toLowerCase().replace(/\s+/g, '-')}`;
     return {
       id: taskId,
-      subject: `Finalize: ${step.suffix}`,
+      subject: `Finalize:${step.suffix}`,
       description: `Finalize substep: ${step.suffix}`,
       activeForm: `Running ${step.suffix}`,
       metadata: {
@@ -177,7 +185,7 @@ function buildDependencies(todoTasks, finalizeTasks, todos, substeps, dependency
 export function planToTasks(name, mode = 'standard') {
   const plan = parsePlan(name);
   const recipeName = `execute-${mode}`;
-  const recipe = loadRecipe(recipeName);
+  const recipe = loadRecipe(recipeName, {}, 'execute');
 
   const substeps = recipe.todo_substeps;
   const finalizeSteps = recipe.finalize;
