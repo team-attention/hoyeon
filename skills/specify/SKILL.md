@@ -52,6 +52,35 @@ You do not need to compute these paths manually. The CLI resolves them automatic
 2. Loop: call `node dev-cli/bin/dev-cli.js next {name}` → follow the returned instruction
 3. Until CLI returns `{ "done": true }`
 
+### CLI Output Examples
+
+**`init` response:**
+```json
+{
+  "status": "ok",
+  "sessionId": "abc-123-def",
+  "specDir": ".dev/specs/{name}",
+  "sessionDir": ".dev/.sessions/abc-123-def"
+}
+```
+
+**`next` response (step instruction):**
+```json
+{
+  "step": "explore-full",
+  "instruction": "Launch 4 parallel exploration agents...",
+  "outputPath": ".dev/.sessions/abc-123-def/findings/explore-1.md",
+  "onComplete": "node dev-cli/bin/dev-cli.js step-complete {name} --step explore-full"
+}
+```
+
+**`next` response (done):**
+```json
+{ "done": true }
+```
+
+> **Rule**: Do not construct paths manually. Use `outputPath` from CLI responses for subagent output files. Use `onComplete` commands exactly as returned.
+
 ### Draft Update
 Use flags: `node dev-cli/bin/dev-cli.js draft {name} update --section <id> --data '<json>'`
 Or stdin: `echo '{"section":"<id>","data":<value>}' | node dev-cli/bin/dev-cli.js draft {name} update`
@@ -258,6 +287,17 @@ Since recipes use `simplicity-checker` and `risk-assessor` (not `verification-pl
 
 **UI screenshot S-items**: If work involves UI/frontend changes, add screenshot-based S-items: capture at affected routes + compare against design spec (`.pen` files via Pencil MCP if available).
 
+**Quick Classification Table:**
+
+| Signal | → Category | Example |
+|--------|-----------|---------|
+| Can run as CLI command with exit code | A-item | `test -f file`, `npm test`, `tsc --noEmit`, `grep pattern file` |
+| Needs human judgment/eye | H-item | "Visual theme matches spec", "UX feels intuitive", "Layout is responsive" |
+| Requires docker-compose/browser/multi-service | S-item | BDD feature file execution, screenshot comparison, API integration |
+| `type: verification` TODO's acceptance criteria | A-item | Functional + static + runtime checks from plan |
+| ux-reviewer flagged concern | H-item | "Current flow changes", "New interaction pattern" |
+| Project has `docker-compose.yml` or `sandbox/features/` | Check for S-items | If present but S-items empty → flag as gap |
+
 #### TESTING.md Pre-Read
 
 Before generating plan-content.json, read TESTING.md from the plugin root to inform verification strategy. Resolve path: `${baseDir}/../../../TESTING.md` (baseDir shown in skill header). Extract the "For Verification Agents" and "Sandbox Bootstrapping Patterns" sections. Use this to correctly classify A/H/S items and select sandbox bootstrapping patterns.
@@ -386,6 +426,74 @@ Top-level required fields:
 **TODO types**: `work` (implementation) or `verification` (testing/validation)
 **Risk values**: `LOW`, `MEDIUM`, `HIGH`
 **Acceptance Criteria categories**: functional (behavior), static (lint/type), runtime (test execution), cleanup (optional post-work)
+
+**Minimal Example** (1 work TODO + 1 verification TODO):
+
+```json
+{
+  "context": {
+    "originalRequest": "Build a TODO app in .playground/",
+    "interviewSummary": "- Tech: Vanilla HTML/CSS/JS, single file\n- Features: CRUD, filter, localStorage",
+    "researchFindings": "- .playground/ is git-ignored, single-file pattern"
+  },
+  "objectives": {
+    "core": "Build a TODO app as a single HTML file",
+    "deliverables": [".playground/todo-app.html"],
+    "dod": ["Can add/toggle/delete items", "Data persists via localStorage"],
+    "mustNotDo": ["No frameworks", "No external dependencies"]
+  },
+  "todos": [
+    {
+      "id": "todo-1",
+      "title": "Build TODO app",
+      "type": "work",
+      "inputs": [],
+      "outputs": [{"name": "app_path", "type": "file", "value": ".playground/todo-app.html", "description": "TODO app"}],
+      "steps": ["Create HTML file", "Add CSS", "Add JS"],
+      "mustNotDo": ["No frameworks", "Do not run git commands"],
+      "references": [".playground/tetris.html — pattern reference"],
+      "acceptanceCriteria": {
+        "functional": ["File exists", "Add/toggle/delete work"],
+        "static": ["No console errors"],
+        "runtime": ["Manual browser test"]
+      },
+      "risk": "LOW"
+    },
+    {
+      "id": "todo-final",
+      "title": "Verification",
+      "type": "verification",
+      "inputs": [{"name": "app_path", "type": "file", "ref": "${todo-1.outputs.app_path}"}],
+      "outputs": [],
+      "steps": ["Verify file exists", "Check functions"],
+      "mustNotDo": ["Do not use Edit/Write", "Do not run git commands"],
+      "references": [],
+      "acceptanceCriteria": {
+        "functional": ["File exists", "Functions defined"],
+        "static": ["grep confirms functions"],
+        "runtime": []
+      },
+      "risk": "LOW"
+    }
+  ],
+  "taskFlow": "todo-1 → todo-final",
+  "dependencyGraph": [
+    {"todo": "todo-1", "requires": [], "produces": ["app_path"]},
+    {"todo": "todo-final", "requires": ["app_path"], "produces": []}
+  ],
+  "commitStrategy": [
+    {"afterTodo": "todo-1", "message": "feat: build TODO app", "files": [".playground/todo-app.html"], "condition": "always"}
+  ],
+  "verificationSummary": {
+    "aItems": ["A-1: File exists (test -f)"],
+    "hItems": ["H-1: Visual appearance (browser)"],
+    "sItems": [],
+    "gaps": ["No automated E2E"]
+  }
+}
+```
+
+> **Note**: `todo.id` format is `todo-N` (e.g., `todo-1`, `todo-2`) for work TODOs, and `todo-final` for the verification TODO. These IDs are used by execute's `build-prompt`, `triage`, `wrapup`, `checkpoint` commands.
 
 ### Checklist Before Stopping
 

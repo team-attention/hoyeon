@@ -32,6 +32,23 @@ Delegate to SubAgents via `Task()`, run deterministic ops via `node dev-cli/bin/
 
 Examples: `/execute`, `/execute --quick`, `/execute --quick my-feature`, `/execute --quick #42`
 
+### TODO ID Reference
+
+CLI commands use `{todoId}` to identify TODOs. These IDs come from `plan-content.json`:
+
+| ID Format | Example | Meaning |
+|-----------|---------|---------|
+| `todo-N` | `todo-1`, `todo-2` | Work TODO (N = sequential number) |
+| `todo-final` | `todo-final` | Verification TODO (always last) |
+| `finalize` | `finalize` | Reserved: used with `build-prompt --type code-review` and `--type final-verify` |
+
+**How IDs map to PLAN.md checkboxes:**
+- `todo-1` → `### [ ] TODO 1: {title}`
+- `todo-2` → `### [ ] TODO 2: {title}`
+- `todo-final` → `### [ ] TODO 2: Verification` (or the last TODO number in PLAN.md)
+
+> **Important**: `todo-final` is the ID in `plan-content.json`, but in PLAN.md the checkbox uses the actual TODO number (e.g., `TODO 2`). The `checkpoint` command handles this mapping automatically — do not manually edit PLAN.md checkboxes.
+
 ---
 
 ## STEP 1: Initialize
@@ -92,6 +109,32 @@ node dev-cli/bin/dev-cli.js init {name} --recipe execute-{mode} --skill execute 
 ```
 
 Where `{mode}` = `standard` or `quick` based on the flag.
+
+### Path Resolution
+
+All file paths are managed by dev-cli. Do NOT:
+- Manually read `session.ref`
+- Construct paths like `.dev/specs/{name}/context/outputs.json`
+- Guess session directory locations
+
+Use CLI commands to interact with state:
+- `build-prompt` → returns complete prompt with all context inlined
+- `wrapup` → saves outputs/learnings/issues to correct locations
+- `checkpoint` → marks PLAN.md checkboxes automatically
+- `finalize` → handles finalization state
+
+### CLI Error Handling
+
+| CLI Exit Code | Meaning | Action |
+|---------------|---------|--------|
+| 0 + JSON output | Success | Parse and use result |
+| 0 + `{ "ok": true, "marked": false }` | Checkpoint no-op | Already checked or ID not found — verify todoId matches PLAN.md |
+| Non-zero | Error | Read stderr message, do NOT retry blindly |
+
+**Common errors:**
+- `Cannot read PLAN.md` → spec name incorrect or plan not generated yet
+- `No matching checkbox found` → todoId doesn't match PLAN.md format (see TODO ID Reference above)
+- `Failed to parse from stdin` → ensure JSON is valid before piping
 
 ---
 
