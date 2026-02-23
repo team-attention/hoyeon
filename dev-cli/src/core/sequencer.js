@@ -27,8 +27,7 @@ import { engineNext as _engineNext, engineStepComplete as _engineStepComplete } 
  * Load and return the recipe blocks for the given session state.
  * Priority:
  *   1. Load from recipe file (if state.recipe is set) — MUST succeed or throws
- *   2. Fall back to recipeBlocks embedded in state (state.recipeBlocks)
- *   3. Return null if neither is available
+ *   2. Return null if state.recipe is not set
  *
  * When state.recipe is set, the recipe MUST load successfully. Any failure
  * (missing file, parse error, etc.) is propagated as an error — it is never
@@ -48,8 +47,7 @@ function getRecipeBlocks(state, name) {
     const recipe = loadRecipe(state.recipe, vars, state.skill);
     return recipe.blocks;
   }
-  // Fall back to recipeBlocks embedded in state
-  return state.recipeBlocks ?? null;
+  return null;
 }
 
 /**

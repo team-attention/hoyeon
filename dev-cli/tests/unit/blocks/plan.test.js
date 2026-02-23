@@ -18,6 +18,8 @@ import { join } from 'node:path';
 
 // State management
 import { createState, loadState, updateState } from '../../../src/core/state.js';
+import { recipesDir } from '../../../src/core/recipe-loader.js';
+import yaml from 'js-yaml';
 
 // Blocks under test
 import { planGenerate } from '../../../src/blocks/plan-generate.js';
@@ -42,6 +44,11 @@ function restoreCwd() {
   process.cwd = originalCwd;
   if (tmpDir && existsSync(tmpDir)) {
     rmSync(tmpDir, { recursive: true, force: true });
+  }
+  // Clean up temp recipe files
+  while (_tempRecipeFiles.length > 0) {
+    const f = _tempRecipeFiles.pop();
+    if (existsSync(f)) rmSync(f);
   }
 }
 
@@ -141,11 +148,19 @@ function writePlanContentFixture(data) {
 }
 
 /**
- * Initialize a session with recipe blocks stored in state.
+ * Initialize a session with a temp recipe YAML file.
+ * Writes blocks to .claude/skills/specify/recipes/test-{name}.yaml
+ * and sets state.recipe + state.skill accordingly.
  */
+const _tempRecipeFiles = [];
 function createSessionWithBlocks(sessionName, blocks) {
-  createState(sessionName, { recipe: null });
-  updateState(sessionName, { recipeBlocks: blocks });
+  const tempRecipeName = `test-${sessionName}`;
+  const dir = recipesDir('specify');
+  mkdirSync(dir, { recursive: true });
+  const filePath = join(dir, `${tempRecipeName}.yaml`);
+  writeFileSync(filePath, yaml.dump({ name: tempRecipeName, blocks }));
+  _tempRecipeFiles.push(filePath);
+  createState(sessionName, { recipe: tempRecipeName, skill: 'specify' });
   return loadState(sessionName);
 }
 

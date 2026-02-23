@@ -203,22 +203,15 @@ describe('advanceBlock()', () => {
     assert.equal(third.blockIndex, 3);
   });
 
-  test('updates currentBlock/phase when recipeBlocks are present', () => {
+  test('advanceBlock increments blockIndex without recipeBlocks (removed legacy)', () => {
     createState('recipe-advance', {});
     updateState('recipe-advance', {
-      recipeBlocks: [
-        { id: 'init', phase: 'init' },
-        { id: 'interview', phase: 'interview' },
-        { id: 'draft', phase: 'drafting' },
-      ],
       currentBlock: 'init',
       phase: 'init',
     });
 
     const updated = advanceBlock('recipe-advance');
     assert.equal(updated.blockIndex, 1);
-    assert.equal(updated.currentBlock, 'interview');
-    assert.equal(updated.phase, 'interview');
   });
 });
 

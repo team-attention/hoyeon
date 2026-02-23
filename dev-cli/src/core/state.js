@@ -178,14 +178,6 @@ export function advanceBlock(name) {
     blockIndex: nextIndex,
   };
 
-  // If the state has recipe block definitions, update currentBlock/phase
-  if (current.recipeBlocks && Array.isArray(current.recipeBlocks)) {
-    const nextBlock = current.recipeBlocks[nextIndex] ?? null;
-    if (nextBlock) {
-      patch.currentBlock = nextBlock.id ?? nextBlock.name ?? null;
-      patch.phase = nextBlock.phase ?? nextBlock.id ?? current.phase;
-    }
-  }
 
   return updateState(name, patch);
 }
