@@ -59,10 +59,12 @@ export default async function handler(args) {
     appendAudit(name, data.auditEntry);
   }
 
-  // Cleanup: remove persisted worker result (compact recovery artifact)
-  const persistedPath = join(contextDir(name), `worker-result-${todoId}.json`);
-  if (existsSync(persistedPath)) {
-    try { unlinkSync(persistedPath); } catch { /* best-effort */ }
+  // Cleanup: remove persisted result files
+  for (const prefix of ['worker-result', 'verify-result']) {
+    const persistedPath = join(contextDir(name), `${prefix}-${todoId}.json`);
+    if (existsSync(persistedPath)) {
+      try { unlinkSync(persistedPath); } catch { /* best-effort */ }
+    }
   }
 
   console.log(JSON.stringify({ ok: true, todoId }));

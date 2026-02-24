@@ -31,9 +31,28 @@ export default async function handler(args) {
     process.exit(1);
   }
 
-  // Read optional input data from stdin
+  // --result-file: read from persisted file instead of stdin
+  const useResultFile = args.includes('--result-file');
+
   let inputData = null;
-  if (!process.stdin.isTTY) {
+  if (useResultFile) {
+    // Determine which persisted file to read based on type
+    // verify, fix → worker-result (needs the worker's output)
+    // finalize-fix → verify-result or code-review/final-verify result
+    const resultPrefix = (type === 'finalize-fix') ? 'verify-result' : 'worker-result';
+    const persistedPath = join(contextDir(name), `${resultPrefix}-${todoId}.json`);
+    if (existsSync(persistedPath)) {
+      try {
+        const envelope = JSON.parse(readFileSync(persistedPath, 'utf8'));
+        inputData = envelope.result;
+      } catch {
+        console.error(`[result-file] Failed to read ${persistedPath}`);
+      }
+    } else {
+      console.error(`[result-file] File not found: ${persistedPath}`);
+    }
+  } else if (!process.stdin.isTTY) {
+    // Legacy: read from stdin
     try {
       const input = readFileSync(0, 'utf8').trim();
       if (input) inputData = JSON.parse(input);

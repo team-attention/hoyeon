@@ -196,23 +196,29 @@ result = Task(worker, prompt, model=sonnet)
 TaskUpdate(taskId, { status: "completed" })
 ```
 
+Persist worker result for downstream steps (verify, fix):
+```bash
+echo '{result}' | node dev-cli/bin/dev-cli.js persist-result {name} --todo {todoId}
+```
+
 ---
 
 #### :Verify (metadata.substep = "verify") [Standard only]
 
 ```bash
-prompt=$(echo '{workerResult}' | node dev-cli/bin/dev-cli.js build-prompt {name} --todo {todoId} --type verify)
+prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo {todoId} --type verify --result-file)
 ```
 
-Dispatch verify worker, then triage:
+Dispatch verify worker, then persist and triage:
 ```
 TaskUpdate(taskId, { status: "in_progress" })
 verifyResult = Task(worker, prompt, model=sonnet)
 ```
 
-Triage the result:
+Persist verify result and triage:
 ```bash
-triageResult=$(echo '{verifyResult}' | node dev-cli/bin/dev-cli.js triage {name} --todo {todoId} --retries {N} --depth 0)
+echo '{verifyResult}' | node dev-cli/bin/dev-cli.js persist-result {name} --todo {todoId} --type verify
+triageResult=$(node dev-cli/bin/dev-cli.js triage {name} --todo {todoId} --result-file --retries {N} --depth 0)
 ```
 
 Route by disposition:

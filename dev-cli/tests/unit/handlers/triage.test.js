@@ -4,7 +4,7 @@
 
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -206,6 +206,31 @@ describe('dev-cli triage --phase finalize', () => {
 
     const parsed = JSON.parse(result);
     assert.equal(parsed.disposition, 'fix');
+  });
+
+  test('reads verify-result from persisted file with --result-file', () => {
+    setupSpec('test-spec');
+
+    // Write persisted verify result
+    const contextDirPath = join(tmpDir, '.dev', 'specs', 'test-spec', 'context');
+    mkdirSync(contextDirPath, { recursive: true });
+    const envelope = {
+      todoId: 'todo-1',
+      result: { status: 'VERIFIED', criteria: [], mustNotDoViolations: [], sideEffects: [] },
+      persistedAt: new Date().toISOString(),
+    };
+    writeFileSync(join(contextDirPath, 'verify-result-todo-1.json'), JSON.stringify(envelope, null, 2));
+
+    // Triage with --result-file (no stdin)
+    const result = execFileSync('node', [
+      CLI_PATH, 'triage', 'test-spec', '--todo', 'todo-1', '--result-file',
+    ], {
+      cwd: tmpDir,
+      encoding: 'utf8',
+    });
+
+    const parsed = JSON.parse(result);
+    assert.equal(parsed.disposition, 'pass');
   });
 
   test('includes auditEntry with finalize prefix', () => {

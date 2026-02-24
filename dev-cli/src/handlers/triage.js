@@ -6,9 +6,11 @@
  * stdout: { disposition, reason, auditEntry }
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { triage, triageFinalize, buildAuditEntry } from '../engine/reconciler.js';
 import { parsePlan } from '../engine/plan-parser.js';
+import { contextDir } from '../core/paths.js';
 
 export default async function handler(args) {
   const name = args.find((a) => !a.startsWith('--'));
@@ -18,9 +20,29 @@ export default async function handler(args) {
     process.exit(1);
   }
 
-  // Read result from stdin (shared by both paths)
+  // --result-file: read from persisted file instead of stdin
+  const useResultFile = args.includes('--result-file');
+
   let inputResult = null;
-  if (!process.stdin.isTTY) {
+  if (useResultFile) {
+    // Determine todoId early for file lookup
+    const todoIdxEarly = args.indexOf('--todo');
+    const todoIdEarly = todoIdxEarly >= 0 ? args[todoIdxEarly + 1] : undefined;
+    if (todoIdEarly) {
+      const persistedPath = join(contextDir(name), `verify-result-${todoIdEarly}.json`);
+      if (existsSync(persistedPath)) {
+        try {
+          const envelope = JSON.parse(readFileSync(persistedPath, 'utf8'));
+          inputResult = envelope.result;
+        } catch {
+          console.error(`[result-file] Failed to read ${persistedPath}`);
+        }
+      } else {
+        console.error(`[result-file] File not found: ${persistedPath}`);
+      }
+    }
+  } else if (!process.stdin.isTTY) {
+    // Legacy: read from stdin
     try {
       const input = readFileSync(0, 'utf8').trim();
       if (input) inputResult = JSON.parse(input);
