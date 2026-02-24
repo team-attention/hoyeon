@@ -14,9 +14,13 @@ allowed-tools:
 ---
 # /specify - CLI-Orchestrated Planning
 
-## Layer 1: Execution Flow (CLI-driven)
+**You are the boss. dev-cli is your utility belt.**
+You follow this algorithm step by step. Call `node dev-cli/bin/dev-cli.js` for deterministic operations only.
+Recipe files are pure data (agent lists, config values) — you never ask dev-cli to "give you the next step."
 
-### Session Model
+---
+
+## Session Model
 
 **Session vs. Spec** — these are separate concepts:
 
@@ -26,77 +30,53 @@ allowed-tools:
 | **Session** | `.dev/.sessions/{sessionId}/` | Work artifacts: `state.json`, `DRAFT.md`, `findings/`, `analysis/` |
 
 **session.ref** is a pointer file at `.dev/specs/{name}/session.ref` containing just the `{sessionId}` UUID.
-It links a spec to its active session, enabling dual-path resolution: when `session.ref` exists, the CLI reads work artifacts from the session dir; otherwise it falls back to the spec dir (backward compatibility).
+It links a spec to its active session, enabling dual-path resolution.
 
 **Path resolution** (handled by `paths.js` in dev-cli):
 - `DRAFT.md` → `.dev/.sessions/{sessionId}/DRAFT.md` (via session.ref) or `.dev/specs/{name}/DRAFT.md` (legacy)
-- `state.json` → `.dev/.sessions/{sessionId}/state.json` (via session.ref) or `.dev/specs/{name}/state.json` (legacy)
-- `findings/` → `.dev/.sessions/{sessionId}/findings/` (via session.ref) or `.dev/specs/{name}/findings/` (legacy)
-- `analysis/` → `.dev/.sessions/{sessionId}/analysis/` (via session.ref) or `.dev/specs/{name}/analysis/` (legacy)
+- `state.json` → `.dev/.sessions/{sessionId}/state.json` (via session.ref)
+- `findings/` → `.dev/.sessions/{sessionId}/findings/`
+- `analysis/` → `.dev/.sessions/{sessionId}/analysis/`
 - `PLAN.md` → always `.dev/specs/{name}/PLAN.md` (deliverable, never in session dir)
 
 You do not need to compute these paths manually. The CLI resolves them automatically based on `session.ref`.
 
 ### Rules
-- Subagents: Write full results to the `outputPath` provided by CLI using the Write tool. Return only 1-2 line summary.
+- Subagents: Write full results to the output path (from recipe `steps[].agents[].output`, resolved relative to session dir). Return only 1-2 line summary.
 - Subagent output format: Markdown with YAML frontmatter (agent, timestamp, summary).
-- When CLI returns `onComplete` field, execute that command AFTER all subagents finish, BEFORE calling `step complete`.
-- When CLI returns `fileInstruction`, follow it exactly.
 - Early exit: if the task is clearly unnecessary, call `node dev-cli/bin/dev-cli.js abort {name} --reason "..."` instead of silently stopping.
 
-### Flow
-1. `node dev-cli/bin/dev-cli.js init {name} --recipe specify-{depth}-{interaction} --skill specify [--quick] [--autopilot]`
-   - `{depth}` = `standard` or `quick`, `{interaction}` = `interactive` or `autopilot` (from mode selection)
-   - Creates session dir at `.dev/.sessions/{sessionId}/`
-   - Writes `session.ref` into `.dev/specs/{name}/session.ref`
-2. Loop: call `node dev-cli/bin/dev-cli.js next {name}` → follow the returned instruction
-3. Until CLI returns `{ "done": true }`
+### CLI Error Handling
 
-### CLI Output Examples
-
-**`init` response:**
-```json
-{
-  "status": "ok",
-  "sessionId": "abc-123-def",
-  "specDir": ".dev/specs/{name}",
-  "sessionDir": ".dev/.sessions/abc-123-def"
-}
-```
-
-**`next` response (step instruction):**
-```json
-{
-  "step": "explore-full",
-  "instruction": "Launch 4 parallel exploration agents...",
-  "outputPath": ".dev/.sessions/abc-123-def/findings/explore-1.md",
-  "onComplete": "node dev-cli/bin/dev-cli.js step-complete {name} --step explore-full"
-}
-```
-
-**`next` response (done):**
-```json
-{ "done": true }
-```
-
-> **Rule**: Do not construct paths manually. Use `outputPath` from CLI responses for subagent output files. Use `onComplete` commands exactly as returned.
-
-### Draft Update
-Use flags: `node dev-cli/bin/dev-cli.js draft {name} update --section <id> --data '<json>'`
-Or stdin: `echo '{"section":"<id>","data":<value>}' | node dev-cli/bin/dev-cli.js draft {name} update`
-
-> The CLI resolves DRAFT.md path automatically via `session.ref`. Do not hardcode paths.
+| CLI Exit Code | Meaning | Action |
+|---------------|---------|--------|
+| 0 + JSON output | Success | Parse and use result |
+| 0 + `{ "ok": true, "noop": true }` | Idempotent no-op | Already done — safe to proceed |
+| Non-zero | Error | Read stderr message, do NOT retry blindly |
 
 ### On Context Compaction
-Call `node dev-cli/bin/dev-cli.js manifest {name}` to recover full state.
 
-The manifest command outputs all active paths (spec dir, session dir, session ID, and locations of key files) so you can resume without re-running init.
+Call `node dev-cli/bin/dev-cli.js manifest {name} --json` to recover full state.
+
+Returns:
+```json
+{
+  "name": "my-feature",
+  "sessionId": "abc-123",
+  "mode": "standard-interactive",
+  "completedSteps": ["init", "classify", "explore"],
+  "currentStep": "interview",
+  "artifacts": { "draft": "...", "findings": [...], "analysis": [...], "plan": "..." }
+}
+```
+
+Resume from `currentStep`. Read artifacts listed. Continue the algorithm below.
 
 ---
 
-## Layer 2: Judgment Rules & Knowledge
+## STEP 1: Mode Selection & Init
 
-### Mode Selection
+### 1.1 Parse Input & Select Mode
 
 | Flag | Effect | Default |
 |------|--------|---------|
@@ -111,7 +91,7 @@ The manifest command outputs all active paths (spec dir, session dir, session ID
 | "fix", "typo", "rename", "bump", "update version" | quick |
 | **Everything else** | **standard** |
 
-**STRICT RULE**: Only the EXACT keywords above trigger `quick`. Do NOT infer quick from words like "simple", "간단", "초간단", "easy", "small", or "빠르게". A request to create, add, or implement anything — regardless of perceived simplicity — MUST use `standard`.
+**STRICT RULE**: Only the EXACT keywords above trigger `quick`. Do NOT infer quick from words like "simple", "easy", "small". A request to create, add, or implement anything — regardless of perceived simplicity — MUST use `standard`.
 
 **Intent → Depth override** (applied after keyword check):
 
@@ -127,19 +107,23 @@ The manifest command outputs all active paths (spec dir, session dir, session ID
 
 **Interaction Defaults**: quick → autopilot, standard → interactive
 
-**Autopilot Decision Rules**:
+### 1.2 Initialize Session
 
-| Decision Point | Rule |
-|----------------|------|
-| Tech choices | Use existing stack; prefer codebase patterns |
-| Trade-off questions | Choose lower-risk, simpler option |
-| Ambiguous scope | Interpret narrowly (minimum viable scope) |
-| HIGH risk items | HALT and ask user (override autopilot) |
-| Missing info | Assume standard/conventional; log in Assumptions |
+```bash
+node dev-cli/bin/dev-cli.js init {name} --recipe specify-{depth}-{interaction} --skill specify [--quick if depth=quick] [--autopilot if interaction=autopilot]
+```
 
-### Intent Classification
+If init returns `{ "resumed": true }`, a session already exists — read the state and resume from the current step.
 
-Classify each task into one of 7 categories, then apply the corresponding strategy:
+```bash
+node dev-cli/bin/dev-cli.js step-done {name} --step init
+```
+
+---
+
+## STEP 2: Classify Intent
+
+Classify the user intent into one of 7 categories:
 
 | Intent | Keywords | Strategy |
 |--------|----------|----------|
@@ -151,22 +135,64 @@ Classify each task into one of 7 categories, then apply the corresponding strate
 | **Migration** | "migration", "upgrade" | Phased approach, rollback plan |
 | **Performance** | "optimize", "slow" | Measure first, profile → optimize |
 
+Output a short intent statement (1-2 sentences) naming the category and the goal.
+
+```bash
+echo '{"section":"intent","data":"<intent statement>"}' | node dev-cli/bin/dev-cli.js draft {name} update
+node dev-cli/bin/dev-cli.js step-done {name} --step classify
+```
+
 ### Tech-Decision Integration
 
 > **Mode Gate**: Quick/Autopilot → skip entirely. Use existing stack; log in Assumptions.
 
-**Initial trigger** (after Intent Classification):
-- Intent is **Architecture** or **Migration**, OR
-- Request contains comparison keywords: "vs", "versus", "compare", "which one", "what should I use"
+**Trigger**: Intent is **Architecture** or **Migration**, OR request contains comparison keywords: "vs", "versus", "compare", "which one".
 
-If triggered, propose `Skill("tech-decision")` to user via AskUserQuestion:
-- "Yes, run analysis" → `Skill("tech-decision", args="[comparison topic]")` → incorporate results into DRAFT
-- "No, proceed quickly" → skip, proceed to exploration
+If triggered, propose `Skill("tech-decision")` to user via AskUserQuestion.
 
-**Mid-interview trigger** (during interview, interactive only):
-When user expresses uncertainty ("which is better?", "what should I use?"), offer tech-decision as an option via AskUserQuestion. If declined, recommend based on existing codebase patterns.
+---
 
-### Interview Principles (Interactive Mode)
+## STEP 3: Exploration
+
+> **Mode Gate**:
+> - **Standard**: 4 agents (Explore ×2 + docs-researcher + ux-reviewer)
+> - **Quick**: 2 agents (Explore ×2 only)
+
+Agent types and outputs come from the recipe's `steps[id=explore].agents` array.
+
+Launch all exploration agents in parallel. Each agent MUST write full results (Markdown with YAML frontmatter) to its output path (resolved relative to session findings dir). Return only a 1-2 line summary.
+
+After all agents complete:
+```bash
+node dev-cli/bin/dev-cli.js draft import {name}
+node dev-cli/bin/dev-cli.js step-done {name} --step explore
+```
+
+### Exploration Summary Presentation
+
+| Mode | Behavior |
+|------|----------|
+| Quick | Abbreviated: patterns + commands only (2-3 lines) |
+| Autopilot | Log to DRAFT, no confirmation wait, proceed immediately |
+| Interactive | Present full summary, ask user to confirm context is correct |
+
+**What to present** (interactive full summary):
+- Structure: key directory layout
+- Related patterns: 2-3 discovered patterns (file:line)
+- Internal docs: relevant ADR/convention summary
+- Project commands: lint/test/build
+- UX review: current flow summary + key concerns
+
+---
+
+## STEP 4: Interview / Auto-Assume
+
+> **Mode Gate**:
+> - **Standard+Interactive**: Full interview loop (STEP 4a)
+> - **Quick+Interactive**: Brief interview (STEP 4a, time-boxed)
+> - **Autopilot** (any depth): Auto-assume (STEP 4b)
+
+### STEP 4a: Interview (Interactive)
 
 **ASK** (user knows, agent doesn't):
 - Boundaries: "Any restrictions on what not to do?"
@@ -185,24 +211,34 @@ When user expresses uncertainty ("which is better?", "what should I use?"), offe
 - Summarize agreed decisions at end of each exchange
 - Minimize questions; prefer proposals backed by research
 
-### Exploration Summary Presentation
+**Update DRAFT after each exchange:**
+```bash
+echo '{"section":"decisions","data":"<decisions table>"}' | node dev-cli/bin/dev-cli.js draft {name} update
+```
 
-After exploration agents complete, present findings to user **before** starting interview.
+**Exit when**: All critical decisions recorded and validated.
 
-| Mode | Behavior |
-|------|----------|
-| Quick | Abbreviated: patterns + commands only (2-3 lines) |
-| Autopilot | Log to DRAFT, no confirmation wait, proceed immediately |
-| Interactive | Present full summary, ask user to confirm context is correct |
+```bash
+node dev-cli/bin/dev-cli.js step-done {name} --step interview
+```
 
-**What to present** (interactive full summary):
-- Structure: key directory layout
-- Related patterns: 2-3 discovered patterns (file:line)
-- Internal docs: relevant ADR/convention summary
-- Project commands: lint/test/build
-- UX review: current flow summary + key concerns
+### STEP 4b: Auto-Assume (Autopilot)
 
-> **Purpose**: Let the user verify the agent's codebase understanding before the interview goes in the wrong direction.
+**Autopilot Decision Rules**:
+
+| Decision Point | Rule |
+|----------------|------|
+| Tech choices | Use existing stack; prefer codebase patterns |
+| Trade-off questions | Choose lower-risk, simpler option |
+| Ambiguous scope | Interpret narrowly (minimum viable scope) |
+| HIGH risk items | HALT and ask user (override autopilot) |
+| Missing info | Assume standard/conventional; log in Assumptions |
+
+Log all decisions in the Assumptions section of DRAFT:
+```bash
+echo '{"section":"assumptions","data":"<assumptions table>"}' | node dev-cli/bin/dev-cli.js draft {name} update
+node dev-cli/bin/dev-cli.js step-done {name} --step auto-assume
+```
 
 ### Draft Continuous Update Rules
 
@@ -220,7 +256,76 @@ Update DRAFT incrementally after each event. Never batch updates.
 | Direction agreed | Direction > Approach + Work Breakdown | Numbered list with deps/outputs |
 | Assumption made (autopilot) | Assumptions table | `\| decision point \| choice \| rationale \| source \|` |
 
-### Plan Transition (Interactive Mode)
+---
+
+## STEP 5: Decision Confirmation
+
+> **Mode Gate**: Standard+Interactive only. Autopilot: log to DRAFT, skip user confirmation. Quick: skip entirely.
+
+### STEP 5a: Decision Summary (Standard+Interactive)
+
+Before analysis, present a summary of all decisions to user via AskUserQuestion:
+- "All confirmed" → proceed to analysis
+- "Corrections needed" → ask which items to change, update DRAFT
+
+```bash
+node dev-cli/bin/dev-cli.js step-done {name} --step decision-confirm
+```
+
+---
+
+## STEP 6: Analysis
+
+> **Mode Gate**:
+> - **Standard**: 4 agents (tradeoff-analyzer, gap-analyzer, simplicity-checker, risk-assessor)
+> - **Quick**: 1 agent (tradeoff-analyzer lite only)
+
+Agent types and outputs come from the recipe's `steps[id=analyze].agents` array.
+
+Launch all analysis agents in parallel. Each agent writes results to its output path (resolved relative to session analysis dir).
+
+After all agents complete:
+```bash
+node dev-cli/bin/dev-cli.js draft import {name}
+node dev-cli/bin/dev-cli.js step-done {name} --step analyze
+```
+
+---
+
+## STEP 6.5: Codex Synthesis (Standard only)
+
+> **Mode Gate**: Standard → required. Quick → skip.
+
+Agent type from recipe's `steps[id=codex-synth].agents` array.
+
+```bash
+node dev-cli/bin/dev-cli.js draft import {name}
+node dev-cli/bin/dev-cli.js step-done {name} --step codex-synth
+```
+
+---
+
+## STEP 7: Decision Summary Checkpoint
+
+> **Mode Gate**: Standard+Interactive only. Autopilot: log to DRAFT, skip. Quick: skip.
+
+Present a comprehensive summary of ALL decisions for user confirmation via AskUserQuestion:
+
+1. **User Decisions**: items user explicitly chose
+2. **Agent Decisions**: items agent decided, with risk tag `[LOW]`/`[MED]`/`[HIGH]`
+3. **Codex Synthesis** (if ran): contradictions, blind spots, strategic concerns
+4. **Risk Summary**: table for HIGH items only. MEDIUM/LOW as aggregate counts.
+5. **Verification Strategy**: A-items (criterion + method), H-items (criterion + reason), S-items (scenario + method)
+
+Options: "All confirmed" / "Corrections needed"
+
+If "Corrections needed": ask which items to change, update DRAFT, re-run affected analysis if needed.
+
+---
+
+## STEP 8: Plan Generation
+
+### Plan Transition Conditions (Interactive Mode)
 
 **Conditions** (all must be met):
 - Critical Open Questions all resolved
@@ -230,161 +335,93 @@ Update DRAFT incrementally after each event. Never batch updates.
 
 **DO NOT** generate a plan just because you have enough information.
 
-### Mode Gates by Step
+> **Mode Gate**: Quick auto-transitions after analysis. Autopilot auto-transitions after analysis.
 
-| Step | Quick | Standard |
-|------|-------|----------|
-| Exploration | 2 agents (Explore ×2) | 4 agents (+docs-researcher, +ux-reviewer) |
-| Interview | Skip → auto-assume | Full interview loop |
-| Analysis | tradeoff-lite only (1 agent) | 4 agents (gap-analyzer, tradeoff-analyzer, simplicity-checker, risk-assessor) |
-| Codex synthesis | Skip | Required (Step 2.5) |
-| Plan review | 1 round | Up to 3 rounds |
+### 8.1 TESTING.md Pre-Read
 
-### Plan Generation Judgment
+Before generating plan-content.json, read TESTING.md from the plugin root: `${baseDir}/../../../TESTING.md`
+Extract "For Verification Agents" and "Sandbox Bootstrapping Patterns" sections.
 
-#### DRAFT → plan-content.json Mapping
+### 8.2 Generate plan-content.json
 
-When generating `plan-content.json`, map DRAFT sections as follows:
+Write `plan-content.json` to `.dev/specs/{name}/plan-content.json` using the Write tool.
 
-| DRAFT Section | plan-content.json Field |
-|---------------|------------------------|
-| What & Why | `context.originalRequest` |
-| User Decisions | `context.interviewSummary` |
-| Agent Findings (all) | `context.researchFindings` |
-| Assumptions | `context.assumptions` |
-| Deliverables | `objectives.deliverables` |
-| Boundaries + gap-analyzer mustNotDo | `objectives.mustNotDo` |
-| Success Criteria | `objectives.dod` |
-| Direction > Work Breakdown | `todos[]` + `taskFlow` + `dependencyGraph` |
-| Agent Findings > Patterns + Documentation | `todos[].references` |
-| Agent Findings > Commands | TODO Final `acceptanceCriteria` commands |
-| Agent Findings > External Dependencies | Include in `context.researchFindings` |
-| Agent Findings > UX Review | `objectives.mustNotDo` (UX items) + `todos[].mustNotDo` |
+**Required JSON structure:** (see plan-content.json Schema Reference below)
 
-#### Using Analysis Agent Results
+### 8.3 Generate PLAN.md
 
-**gap-analyzer**: Add missing requirements to relevant todos. Include AI Pitfalls in `objectives.mustNotDo` and relevant `todos[].mustNotDo`.
-
-**tradeoff-analyzer**:
-- Apply risk tags (LOW/MEDIUM/HIGH) to each todo
-- Replace over-engineered approaches with simpler alternatives (SWITCH verdicts)
-- For HIGH risk items: include rollback steps in todo steps
-- Present `decision_points` to user (interactive) or auto-select conservative option (autopilot, except HIGH → HALT and ask)
-
-**simplicity-checker**: Validate approach isn't over-engineered. Simplify todos where checker flags unnecessary complexity.
-
-**risk-assessor**: Cross-reference with tradeoff-analyzer risk tags. Elevate risk level if assessor flags additional concerns not caught by tradeoff analysis.
-
-#### A/H/S Verification Synthesis
-
-Since recipes use `simplicity-checker` and `risk-assessor` (not `verification-planner`), the agent must synthesize A/H/S items during the `generate-plan` LLM step itself:
-
-- **A-items** (agent-verifiable): automated tests, CLI checks, lint, type-check — derive from Agent Findings > Commands and todo acceptance criteria
-- **H-items** (human-required): UX review, visual inspection, subjective quality — derive from ux-reviewer findings
-- **S-items** (sandbox): Tier 4 scenarios requiring docker-compose/browser — check if project has sandbox infra (`docker-compose.yml`, `sandbox/features/`)
-
-**S-items fallback**: If any verification items are Tier 4 (E2E browser tests, multi-service integration), classify as S-items, not A-items. If project has sandbox infra but `sItems` is empty, flag as a warning in `gaps`.
-
-**UI screenshot S-items**: If work involves UI/frontend changes, add screenshot-based S-items: capture at affected routes + compare against design spec (`.pen` files via Pencil MCP if available).
-
-**Quick Classification Table:**
-
-| Signal | → Category | Example |
-|--------|-----------|---------|
-| Can run as CLI command with exit code | A-item | `test -f file`, `npm test`, `tsc --noEmit`, `grep pattern file` |
-| Needs human judgment/eye | H-item | "Visual theme matches spec", "UX feels intuitive", "Layout is responsive" |
-| Requires docker-compose/browser/multi-service | S-item | BDD feature file execution, screenshot comparison, API integration |
-| `type: verification` TODO's acceptance criteria | A-item | Functional + static + runtime checks from plan |
-| ux-reviewer flagged concern | H-item | "Current flow changes", "New interaction pattern" |
-| Project has `docker-compose.yml` or `sandbox/features/` | Check for S-items | If present but S-items empty → flag as gap |
-
-#### TESTING.md Pre-Read
-
-Before generating plan-content.json, read TESTING.md from the plugin root to inform verification strategy. Resolve path: `${baseDir}/../../../TESTING.md` (baseDir shown in skill header). Extract the "For Verification Agents" and "Sandbox Bootstrapping Patterns" sections. Use this to correctly classify A/H/S items and select sandbox bootstrapping patterns.
-
-> **Why inline?** Subagents cannot resolve `${baseDir}`. The main agent must read the file and use the content directly in the generate-plan step.
-
-#### Risk Tag Application
-
-| Risk | Plan Requirements |
-|------|-------------------|
-| LOW | Standard verification only |
-| MEDIUM | Verify block + reviewer scrutiny |
-| HIGH | Verify block + rollback steps + human approval before execution |
-
-HIGH risk todos MUST include explicit rollback steps. If tradeoff-analyzer flags an irreversible change (Rollback=hard/impossible), propose a reversible alternative in the plan.
-
-### Decision Summary Checkpoint
-
-> **Mode Gate**: standard+interactive only. Autopilot: log to DRAFT, skip user confirmation. Quick: skip entirely.
-
-Before plan generation, present a summary of **all decisions** for user confirmation via AskUserQuestion ("All confirmed" / "Corrections needed").
-
-**Summary sections**:
-
-1. **User Decisions**: items user explicitly chose
-2. **Agent Decisions**: items agent decided, with risk tag `[LOW]`/`[MED]`/`[HIGH]`
-3. **Codex Synthesis** (if Step 2.5 ran): contradictions, blind spots, strategic concerns, recommendations. Omit if SKIPPED/DEGRADED.
-4. **Risk Summary**: table for HIGH items only (change, risk, rollback, reversible alternative, judgment). MEDIUM/LOW as aggregate counts.
-5. **Verification Strategy**: A-items (criterion + method), H-items (criterion + reason), S-items (scenario + method if applicable), Verification Gaps
-
-If user selects "Corrections needed": ask which items to change, update DRAFT, re-run affected analysis if needed.
-
-> **Purpose**: Give the user a chance to review agent-decided LOW/MEDIUM items. Prevents silent scope drift.
+```bash
+node dev-cli/bin/dev-cli.js plan generate {name} --data plan-content.json
+node dev-cli/bin/dev-cli.js step-done {name} --step generate-plan
+```
 
 ### Verification Summary Confirmation
 
-> **Mode Gate**: standard+interactive only. Autopilot/Quick: skip.
+> **Mode Gate**: Standard+Interactive only. Autopilot/Quick: skip.
 
-After plan is generated (PLAN.md created), present a lightweight verification count before sending to reviewer:
+After plan is generated, present a lightweight verification count:
 - A-items: count
 - H-items: count
 - S-items: count (or "none — no sandbox infra")
 
-Offer via AskUserQuestion: "Confirmed" or "Corrections needed". If corrections, update PLAN verification section before proceeding to reviewer.
+Offer via AskUserQuestion: "Confirmed" or "Corrections needed".
+
+---
+
+## STEP 9: Plan Review
+
+> **Mode Gate**:
+> - **Standard**: Up to 3 review rounds (from recipe `steps[id=review].maxRounds`)
+> - **Quick**: 1 round max
+
+Agent types from recipe's `steps[id=review].agents` array.
 
 ### Reviewer Rejection Handling
-
-**Classification**:
 
 | Type | What changes | Examples |
 |------|-------------|----------|
 | **Cosmetic** | Wording, formatting, field completeness | Missing field, unclear description |
-| **Semantic** | Scope, deliverables, DoD, risk, mustNotDo, acceptance criteria | Requirements change, missing logic |
+| **Semantic** | Scope, deliverables, DoD, risk, mustNotDo | Requirements change, missing logic |
 
 **Per-mode handling**:
 
 | Mode | Cosmetic | Semantic |
 |------|----------|----------|
 | Standard+Interactive | Auto-fix | Present to user via AskUserQuestion |
-| Standard+Autopilot | Auto-fix | Auto-fix if no scope change; HALT if scope change detected |
-| Quick+Interactive | Auto-fix (counts as 1 round) | HALT, inform user |
-| Quick+Autopilot | Auto-fix (counts as 1 round) | HALT always |
-
-**Max review rounds**: standard = 3, quick = 1.
+| Standard+Autopilot | Auto-fix | Auto-fix if no scope change; HALT if scope change |
+| Quick+Interactive | Auto-fix (1 round) | HALT, inform user |
+| Quick+Autopilot | Auto-fix (1 round) | HALT always |
 
 If still REJECT after max rounds, HALT and inform user.
 
-> **Note**: CLI `cleanup` handles draft deletion after reviewer OKAY. Do not manually `rm` draft files.
+After reviewer OKAY:
+```bash
+node dev-cli/bin/dev-cli.js step-done {name} --step review
+```
+
+---
+
+## STEP 10: Cleanup & Summary
+
+```bash
+node dev-cli/bin/dev-cli.js cleanup {name}
+node dev-cli/bin/dev-cli.js step-done {name} --step cleanup
+```
 
 ### Plan Approval Summary
 
-After reviewer OKAY + cleanup, present a comprehensive summary before stopping.
-
 > **Mode Gate**: Interactive → print summary + AskUserQuestion (next step). Autopilot → print summary, then stop.
-
-**Agent's role**: Ensure `plan-content.json` was correctly populated so CLI-generated PLAN.md has all sections. Then extract and present:
 
 | Section | Source in PLAN.md | Condensing Rule |
 |---------|-------------------|-----------------|
-| TODO Overview | `## TODOs` | One line per TODO: title + [type] + key files (max 3). `⤷ depends on:` only for non-obvious deps. |
-| Verification | `## Verification Summary` | A/H/S counts. List items if ≤5 per category, else count + "see PLAN.md". If S: 0 with sandbox infra → flag `⚠️`. |
-| Pre-work | `External Dependencies > Pre-work` | Show all items. Mark blocking with `🔴`. |
+| TODO Overview | `## TODOs` | One line per TODO: title + [type] + key files (max 3). |
+| Verification | `## Verification Summary` | A/H/S counts. List items if <=5, else count + "see PLAN.md". |
+| Pre-work | `External Dependencies > Pre-work` | Show all items. Mark blocking with red indicator. |
 | Post-work | `External Dependencies > Post-work` | Show all items. |
 | Key Decisions | `Context > Interview Summary` | Max 5 most impactful decisions. |
-| Assumptions | `## Assumptions` | Quick/autopilot only. All items + rationale. Append `--interactive` re-run hint. |
+| Assumptions | `## Assumptions` | Quick/autopilot only. All items + rationale. |
 
-**Next step (interactive only)**:
+**Next step (interactive only):**
 ```
 AskUserQuestion: "Plan approved. Select the next step."
 Options:
@@ -395,18 +432,9 @@ Options:
 
 Autopilot: print summary and plan path, then stop (no AskUserQuestion).
 
-### Template References
+---
 
-| Template | Path | Purpose |
-|----------|------|---------|
-| DRAFT_TEMPLATE.md | `${baseDir}/templates/DRAFT_TEMPLATE.md` | Draft structure during interview mode |
-| PLAN_TEMPLATE.md | `${baseDir}/templates/PLAN_TEMPLATE.md` | Plan structure for Orchestrator-Worker pattern |
-
-> **`${baseDir}` note**: This variable is provided as header context to the main agent only. Subagents cannot resolve it. When subagents need template content, the main agent must read the file first and inline the content into the subagent prompt.
-
-### plan-content.json Schema Reference
-
-The `generate-plan` step must produce JSON matching this exact schema (validated by `plan-content.schema.js`):
+## plan-content.json Schema Reference
 
 ```
 Top-level required fields:
@@ -425,105 +453,109 @@ Top-level required fields:
 
 **TODO types**: `work` (implementation) or `verification` (testing/validation)
 **Risk values**: `LOW`, `MEDIUM`, `HIGH`
-**Acceptance Criteria categories**: functional (behavior), static (lint/type), runtime (test execution), cleanup (optional post-work)
+**todo.id format**: `todo-N` for work TODOs, `todo-final` for verification TODO.
 
-**Minimal Example** (1 work TODO + 1 verification TODO):
+### DRAFT → plan-content.json Mapping
 
-```json
-{
-  "context": {
-    "originalRequest": "Build a TODO app in .playground/",
-    "interviewSummary": "- Tech: Vanilla HTML/CSS/JS, single file\n- Features: CRUD, filter, localStorage",
-    "researchFindings": "- .playground/ is git-ignored, single-file pattern"
-  },
-  "objectives": {
-    "core": "Build a TODO app as a single HTML file",
-    "deliverables": [".playground/todo-app.html"],
-    "dod": ["Can add/toggle/delete items", "Data persists via localStorage"],
-    "mustNotDo": ["No frameworks", "No external dependencies"]
-  },
-  "todos": [
-    {
-      "id": "todo-1",
-      "title": "Build TODO app",
-      "type": "work",
-      "inputs": [],
-      "outputs": [{"name": "app_path", "type": "file", "value": ".playground/todo-app.html", "description": "TODO app"}],
-      "steps": ["Create HTML file", "Add CSS", "Add JS"],
-      "mustNotDo": ["No frameworks", "Do not run git commands"],
-      "references": [".playground/tetris.html — pattern reference"],
-      "acceptanceCriteria": {
-        "functional": ["File exists", "Add/toggle/delete work"],
-        "static": ["No console errors"],
-        "runtime": ["Manual browser test"]
-      },
-      "risk": "LOW"
-    },
-    {
-      "id": "todo-final",
-      "title": "Verification",
-      "type": "verification",
-      "inputs": [{"name": "app_path", "type": "file", "ref": "${todo-1.outputs.app_path}"}],
-      "outputs": [],
-      "steps": ["Verify file exists", "Check functions"],
-      "mustNotDo": ["Do not use Edit/Write", "Do not run git commands"],
-      "references": [],
-      "acceptanceCriteria": {
-        "functional": ["File exists", "Functions defined"],
-        "static": ["grep confirms functions"],
-        "runtime": []
-      },
-      "risk": "LOW"
-    }
-  ],
-  "taskFlow": "todo-1 → todo-final",
-  "dependencyGraph": [
-    {"todo": "todo-1", "requires": [], "produces": ["app_path"]},
-    {"todo": "todo-final", "requires": ["app_path"], "produces": []}
-  ],
-  "commitStrategy": [
-    {"afterTodo": "todo-1", "message": "feat: build TODO app", "files": [".playground/todo-app.html"], "condition": "always"}
-  ],
-  "verificationSummary": {
-    "aItems": ["A-1: File exists (test -f)"],
-    "hItems": ["H-1: Visual appearance (browser)"],
-    "sItems": [],
-    "gaps": ["No automated E2E"]
-  }
-}
-```
+| DRAFT Section | plan-content.json Field |
+|---------------|------------------------|
+| What & Why | `context.originalRequest` |
+| User Decisions | `context.interviewSummary` |
+| Agent Findings (all) | `context.researchFindings` |
+| Assumptions | `context.assumptions` |
+| Deliverables | `objectives.deliverables` |
+| Boundaries + gap-analyzer mustNotDo | `objectives.mustNotDo` |
+| Success Criteria | `objectives.dod` |
+| Direction > Work Breakdown | `todos[]` + `taskFlow` + `dependencyGraph` |
 
-> **Note**: `todo.id` format is `todo-N` (e.g., `todo-1`, `todo-2`) for work TODOs, and `todo-final` for the verification TODO. These IDs are used by execute's `build-prompt`, `triage`, `wrapup`, `checkpoint` commands.
+### Quality Rules (mandatory)
 
-### Checklist Before Stopping
+1. Each todo MUST have >=3 functional acceptance criteria — specific, testable, not vague.
+2. verificationSummary.aItems: each item MUST include verification method in parentheses.
+3. verificationSummary.hItems: each item MUST explain WHY human verification is needed.
+4. commitStrategy: NEVER leave empty.
+5. objectives.mustNotDo: minimum 3 items for standard, 2 for quick.
+6. Each todo.steps: must be concrete actions with specific file paths.
+7. taskFlow: describe execution order, parallelism, and dependency rationale.
+8. verificationSummary: standard requires >=3 aItems AND >=3 hItems.
+
+### A/H/S Verification Synthesis
+
+- **A-items** (agent-verifiable): automated tests, CLI checks, lint, type-check
+- **H-items** (human-required): UX review, visual inspection, subjective quality
+- **S-items** (sandbox): Tier 4 scenarios requiring docker-compose/browser
+
+**Quick Classification Table:**
+
+| Signal | Category | Example |
+|--------|----------|---------|
+| Can run as CLI command with exit code | A-item | `npm test`, `tsc --noEmit` |
+| Needs human judgment/eye | H-item | "Visual theme matches spec" |
+| Requires docker-compose/browser/multi-service | S-item | BDD feature file execution |
+
+### Risk Tag Application
+
+| Risk | Plan Requirements |
+|------|-------------------|
+| LOW | Standard verification only |
+| MEDIUM | Verify block + reviewer scrutiny |
+| HIGH | Verify block + rollback steps + human approval before execution |
+
+---
+
+## Using Analysis Agent Results
+
+**gap-analyzer**: Add missing requirements to relevant todos. Include AI Pitfalls in `objectives.mustNotDo`.
+
+**tradeoff-analyzer**:
+- Apply risk tags (LOW/MEDIUM/HIGH) to each todo
+- Replace over-engineered approaches with simpler alternatives (SWITCH verdicts)
+- For HIGH risk items: include rollback steps in todo steps
+- Present `decision_points` to user (interactive) or auto-select conservative option (autopilot, except HIGH → HALT)
+
+**simplicity-checker**: Validate approach isn't over-engineered. Simplify todos where flagged.
+
+**risk-assessor**: Cross-reference with tradeoff-analyzer risk tags. Elevate if additional concerns found.
+
+---
+
+## Template References
+
+| Template | Path | Purpose |
+|----------|------|---------|
+| DRAFT_TEMPLATE.md | `${baseDir}/templates/DRAFT_TEMPLATE.md` | Draft structure during interview mode |
+| PLAN_TEMPLATE.md | `${baseDir}/templates/PLAN_TEMPLATE.md` | Plan structure for Orchestrator-Worker pattern |
+
+> **`${baseDir}` note**: Subagents cannot resolve it. Main agent must read the file first and inline content into subagent prompts.
+
+---
+
+## Checklist Before Stopping
 
 **All modes**:
-- [ ] `dev-cli next` returned `{ "done": true }` (or `abort` was called)
-- [ ] No pending `onComplete` commands left unexecuted
-- [ ] All subagent `outputPath` files written
-- [ ] Plan file (deliverable) exists at `.dev/specs/{name}/PLAN.md`
-- [ ] `plan-content.json` correctly populated (all required fields present) — at `.dev/specs/{name}/plan-content.json`
+- [ ] All steps marked done via `dev-cli step-done`
+- [ ] All subagent output files written
+- [ ] Plan file exists at `.dev/specs/{name}/PLAN.md`
+- [ ] `plan-content.json` correctly populated at `.dev/specs/{name}/plan-content.json`
 - [ ] Reviewer returned OKAY
-- [ ] DRAFT.md (work artifact) is at `.dev/.sessions/{sessionId}/DRAFT.md` (post-refactor) or `.dev/specs/{name}/DRAFT.md` (legacy)
+- [ ] Cleanup completed
 
 **Standard mode** (additional):
-- [ ] All 4 analysis agents ran (gap-analyzer, tradeoff-analyzer, simplicity-checker, risk-assessor)
-- [ ] Codex synthesis attempted — result is one of: applied / SKIPPED / DEGRADED
+- [ ] All 4 analysis agents ran
+- [ ] Codex synthesis attempted
 - [ ] All HIGH risk `decision_points` resolved
 - [ ] A/H/S items synthesized in `verificationSummary` (TESTING.md pre-read attempted)
 
 **Interactive mode** (additional):
-- [ ] User explicitly requested plan generation (standard+interactive only; quick auto-transitions)
-- [ ] Decision Summary Checkpoint presented and confirmed by user
+- [ ] User explicitly requested plan generation (standard+interactive only)
+- [ ] Decision Summary Checkpoint presented and confirmed
 - [ ] Verification Summary Confirmation presented and confirmed (standard+interactive only)
 
 **Quick mode** (overrides):
-- [ ] Only 2 exploration agents used (Explore ×2)
-- [ ] Only tradeoff-lite analysis ran (1 agent)
-- [ ] Interview skipped (quick+autopilot) or minimal (quick+interactive); Assumptions populated
+- [ ] Only 2 exploration agents used
+- [ ] Only tradeoff-lite analysis ran
 - [ ] Maximum 1 plan-reviewer round completed
 
 **Autopilot mode** (overrides):
 - [ ] No `AskUserQuestion` calls made (except HIGH risk items)
 - [ ] All autonomous decisions logged in Assumptions section
-- [ ] Decision Summary logged to DRAFT (not presented to user)

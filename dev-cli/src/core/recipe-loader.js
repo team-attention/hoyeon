@@ -1,8 +1,13 @@
 /**
  * recipe-loader.js — Load and validate YAML recipe files for dev-cli sessions
  *
- * Recipes live at: dev-cli/recipes/{name}.yaml (or .yml)
+ * Recipes live at: .claude/skills/{skill}/recipes/{name}.yaml (or .yml)
  * Uses js-yaml for parsing.
+ *
+ * Two recipe formats coexist:
+ *   - Sequencer format (execute): has 'blocks' array — consumed by sequencer.js/engine.js
+ *   - Data format (specify): has 'steps' array — consumed by SKILL.md (LLM reads directly)
+ * Execute recipes use blocks+todo_substeps+finalize. Specify recipes use steps+mode.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -239,20 +244,32 @@ function validateRecipe(recipe) {
     throw new Error("Recipe is missing required field 'name'");
   }
 
-  if (!Object.prototype.hasOwnProperty.call(recipe, 'blocks') || !Array.isArray(recipe.blocks)) {
-    throw new Error("Recipe is missing required field 'blocks' (must be an array)");
+  // Two recipe formats:
+  //   - Sequencer format (execute): has 'blocks' array with type/id/instruction
+  //   - Data format (specify): has 'steps' array with id/agents/config only
+  const hasBlocks = Object.prototype.hasOwnProperty.call(recipe, 'blocks') && Array.isArray(recipe.blocks);
+  const hasSteps = Object.prototype.hasOwnProperty.call(recipe, 'steps') && Array.isArray(recipe.steps);
+
+  if (!hasBlocks && !hasSteps) {
+    throw new Error("Recipe is missing required field 'blocks' or 'steps' (must be an array)");
   }
 
-  if (recipe.blocks.length === 0) {
-    throw new Error("Recipe 'blocks' array must not be empty");
+  if (hasBlocks) {
+    if (recipe.blocks.length === 0) {
+      throw new Error("Recipe 'blocks' array must not be empty");
+    }
+
+    for (let i = 0; i < recipe.blocks.length; i++) {
+      validateBlock(recipe.blocks[i], i);
+    }
+
+    // Validate execute recipe extensions if present
+    validateExecuteExtensions(recipe);
   }
 
-  for (let i = 0; i < recipe.blocks.length; i++) {
-    validateBlock(recipe.blocks[i], i);
+  if (hasSteps && recipe.steps.length === 0) {
+    throw new Error("Recipe 'steps' array must not be empty");
   }
-
-  // Validate execute recipe extensions if present
-  validateExecuteExtensions(recipe);
 }
 
 // ---------------------------------------------------------------------------
@@ -315,10 +332,13 @@ export function parseRecipeYaml(yamlString, vars = {}) {
   validateRecipe(parsed);
 
   // Deep-clone to avoid mutating parsed object, then resolve templates
-  const recipe = {
-    ...parsed,
-    blocks: resolveTemplates(parsed.blocks, vars),
-  };
+  const recipe = { ...parsed };
+  if (parsed.blocks) {
+    recipe.blocks = resolveTemplates(parsed.blocks, vars);
+  }
+  if (parsed.steps) {
+    recipe.steps = resolveTemplates(parsed.steps, vars);
+  }
 
   // Preserve and resolve execute extensions if present
   if (parsed.todo_substeps) {

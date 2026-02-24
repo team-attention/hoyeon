@@ -24,8 +24,7 @@ import yaml from 'js-yaml';
 // Blocks under test
 import { planGenerate } from '../../../src/blocks/plan-generate.js';
 import { planSummary } from '../../../src/blocks/plan-summary.js';
-import { stepComplete } from '../../../src/blocks/step-complete.js';
-import { stepInvalidate } from '../../../src/blocks/step-invalidate.js';
+import { stepComplete, stepInvalidate } from '../../../src/core/sequencer.js';
 import { cleanup } from '../../../src/blocks/cleanup.js';
 
 // ---------------------------------------------------------------------------

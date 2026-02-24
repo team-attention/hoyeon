@@ -19,6 +19,7 @@ const SUBCOMMANDS = {
   triage: 'Triage a verify result into a disposition',
   finalize: 'Mark engine finalize as done (signals stop hook)',
   'persist-result': 'Persist worker result for compact recovery',
+  'step-done': 'Record step completion in state.json (idempotent)',
 };
 
 function printHelp() {

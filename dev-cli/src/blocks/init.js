@@ -8,10 +8,10 @@
  *   - active-spec: .dev/active-spec (pointer file)
  */
 
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createState } from '../core/state.js';
-import { createSession, linkToSpec } from '../core/session.js';
+import { createState, loadState } from '../core/state.js';
+import { createSession, linkToSpec, resolveSessionId } from '../core/session.js';
 import {
   specDir as _specDir,
   draftPath as _draftPath,
@@ -124,6 +124,17 @@ export function initSpec(name, options = {}) {
 
   const specDirPath = _specDir(name);
   const devDir = join(process.cwd(), '.dev');
+
+  // Idempotent: if session.ref already exists, return existing session
+  const existingSessionId = resolveSessionId(name);
+  if (existingSessionId) {
+    try {
+      const existingState = loadState(name);
+      return { specDir: specDirPath, state: existingState, resumed: true };
+    } catch {
+      // State file missing/corrupt despite session.ref — fall through to create new
+    }
+  }
 
   // Create spec directory (for deliverables)
   mkdirSync(specDirPath, { recursive: true });

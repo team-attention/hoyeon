@@ -1,6 +1,9 @@
 /**
- * recipes.test.js — Unit tests for the 4 recipe YAML files
- * Verifies structure, block counts, block IDs, and YAML parseability.
+ * recipes.test.js — Unit tests for the 4 specify recipe YAML files (pure data format)
+ *
+ * Specify recipes use the `steps` array (SKILL.md-centric model).
+ * No instruction/prompts/block types — just step IDs, agent lists, and config.
+ *
  * Uses node:test and node:assert (no external test frameworks).
  */
 
@@ -11,164 +14,156 @@ import { loadRecipe, parseRecipeYaml, recipesDir } from '../../src/core/recipe-l
 import { readFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 
-// Valid block types from recipe-loader
-const VALID_BLOCK_TYPES = new Set([
-  'cli',
-  'llm',
-  'llm-loop',
-  'llm+cli',
-  'subagent',
-  'subagent-loop',
-]);
-
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
 
-function getSkillNameFromRecipeName(recipeName) {
-  if (recipeName.startsWith('execute-')) return 'execute';
-  if (recipeName.startsWith('specify-')) return 'specify';
-  throw new Error(`Cannot determine skill from recipe name: ${recipeName}`);
-}
-
 function readRawYaml(recipeName) {
-  const skillName = getSkillNameFromRecipeName(recipeName);
-  const filePath = `${recipesDir(skillName)}/${recipeName}.yaml`;
+  const filePath = `${recipesDir('specify')}/${recipeName}.yaml`;
   return readFileSync(filePath, 'utf8');
 }
+
+const ALL_RECIPES = [
+  'specify-standard-interactive',
+  'specify-standard-autopilot',
+  'specify-quick-interactive',
+  'specify-quick-autopilot',
+];
 
 // ---------------------------------------------------------------------------
 // Tests: All 4 recipes load without error
 // ---------------------------------------------------------------------------
 
 describe('loadRecipe() — all 4 recipes load without error', () => {
-  test('specify-standard-interactive loads successfully', () => {
-    assert.doesNotThrow(() => {
-      loadRecipe('specify-standard-interactive', { name: 'test-session' }, 'specify');
-    });
-  });
-
-  test('specify-standard-autopilot loads successfully', () => {
-    assert.doesNotThrow(() => {
-      loadRecipe('specify-standard-autopilot', { name: 'test-session' }, 'specify');
-    });
-  });
-
-  test('specify-quick-interactive loads successfully', () => {
-    assert.doesNotThrow(() => {
-      loadRecipe('specify-quick-interactive', { name: 'test-session' }, 'specify');
-    });
-  });
-
-  test('specify-quick-autopilot loads successfully', () => {
-    assert.doesNotThrow(() => {
-      loadRecipe('specify-quick-autopilot', { name: 'test-session' }, 'specify');
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests: Block counts
-// ---------------------------------------------------------------------------
-
-describe('Block counts', () => {
-  test('specify-standard-interactive has 11 blocks', () => {
-    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
-    assert.equal(recipe.blocks.length, 11, `Expected 11 blocks, got ${recipe.blocks.length}`);
-  });
-
-  test('specify-standard-autopilot has 10 blocks', () => {
-    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
-    assert.equal(recipe.blocks.length, 10, `Expected 10 blocks, got ${recipe.blocks.length}`);
-  });
-
-  test('specify-quick-interactive has 8 blocks', () => {
-    const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
-    assert.equal(recipe.blocks.length, 8, `Expected 8 blocks, got ${recipe.blocks.length}`);
-  });
-
-  test('specify-quick-autopilot has 9 blocks', () => {
-    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
-    assert.equal(recipe.blocks.length, 9, `Expected 9 blocks, got ${recipe.blocks.length}`);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests: First block is 'init', last block is 'cleanup'
-// ---------------------------------------------------------------------------
-
-describe('First block is init, last block is cleanup', () => {
-  const recipeNames = [
-    'specify-standard-interactive',
-    'specify-standard-autopilot',
-    'specify-quick-interactive',
-    'specify-quick-autopilot',
-  ];
-
-  for (const recipeName of recipeNames) {
-    test(`${recipeName}: first block is 'init'`, () => {
-      const recipe = loadRecipe(recipeName, {}, 'specify');
-      const first = recipe.blocks[0];
-      assert.equal(first.id, 'init', `First block should be 'init', got '${first.id}'`);
-    });
-
-    test(`${recipeName}: last block is 'cleanup'`, () => {
-      const recipe = loadRecipe(recipeName, {}, 'specify');
-      const last = recipe.blocks[recipe.blocks.length - 1];
-      assert.equal(last.id, 'cleanup', `Last block should be 'cleanup', got '${last.id}'`);
+  for (const name of ALL_RECIPES) {
+    test(`${name} loads successfully`, () => {
+      assert.doesNotThrow(() => {
+        loadRecipe(name, { name: 'test-session' }, 'specify');
+      });
     });
   }
 });
 
 // ---------------------------------------------------------------------------
-// Tests: Block IDs are unique within each recipe
+// Tests: Recipes have steps (not blocks)
 // ---------------------------------------------------------------------------
 
-describe('Block IDs are unique within each recipe', () => {
-  const recipeNames = [
-    'specify-standard-interactive',
-    'specify-standard-autopilot',
-    'specify-quick-interactive',
-    'specify-quick-autopilot',
-  ];
+describe('Specify recipes use steps format (not blocks)', () => {
+  for (const name of ALL_RECIPES) {
+    test(`${name} has steps array, no blocks`, () => {
+      const recipe = loadRecipe(name, {}, 'specify');
+      assert.ok(Array.isArray(recipe.steps), `${name} should have steps array`);
+      assert.equal(recipe.blocks, undefined, `${name} should NOT have blocks`);
+    });
+  }
+});
 
-  for (const recipeName of recipeNames) {
-    test(`${recipeName}: all block IDs are unique`, () => {
-      const recipe = loadRecipe(recipeName, {}, 'specify');
-      const ids = recipe.blocks.map((b) => b.id);
+// ---------------------------------------------------------------------------
+// Tests: Step counts
+// ---------------------------------------------------------------------------
+
+describe('Step counts', () => {
+  test('specify-standard-interactive has 9 steps', () => {
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
+    assert.equal(recipe.steps.length, 9);
+  });
+
+  test('specify-standard-autopilot has 8 steps', () => {
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
+    assert.equal(recipe.steps.length, 8);
+  });
+
+  test('specify-quick-interactive has 6 steps', () => {
+    const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
+    assert.equal(recipe.steps.length, 6);
+  });
+
+  test('specify-quick-autopilot has 7 steps', () => {
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
+    assert.equal(recipe.steps.length, 7);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: First step is 'classify', last step is 'cleanup'
+// ---------------------------------------------------------------------------
+
+describe('First step is classify, last step is cleanup', () => {
+  for (const name of ALL_RECIPES) {
+    test(`${name}: first step is 'classify'`, () => {
+      const recipe = loadRecipe(name, {}, 'specify');
+      assert.equal(recipe.steps[0].id, 'classify');
+    });
+
+    test(`${name}: last step is 'cleanup'`, () => {
+      const recipe = loadRecipe(name, {}, 'specify');
+      assert.equal(recipe.steps[recipe.steps.length - 1].id, 'cleanup');
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Step IDs are unique within each recipe
+// ---------------------------------------------------------------------------
+
+describe('Step IDs are unique within each recipe', () => {
+  for (const name of ALL_RECIPES) {
+    test(`${name}: all step IDs are unique`, () => {
+      const recipe = loadRecipe(name, {}, 'specify');
+      const ids = recipe.steps.map((s) => s.id);
       const uniqueIds = new Set(ids);
       assert.equal(
         uniqueIds.size,
         ids.length,
-        `Recipe '${recipeName}' has duplicate block IDs: ${ids.filter((id, i) => ids.indexOf(id) !== i).join(', ')}`,
+        `Recipe '${name}' has duplicate step IDs: ${ids.filter((id, i) => ids.indexOf(id) !== i).join(', ')}`,
       );
     });
   }
 });
 
 // ---------------------------------------------------------------------------
-// Tests: All block types are valid
+// Tests: No instruction/command fields (pure data format)
 // ---------------------------------------------------------------------------
 
-describe('All block types are valid', () => {
-  const recipeNames = [
-    'specify-standard-interactive',
-    'specify-standard-autopilot',
-    'specify-quick-interactive',
-    'specify-quick-autopilot',
-  ];
-
-  for (const recipeName of recipeNames) {
-    test(`${recipeName}: all block types are valid`, () => {
-      const recipe = loadRecipe(recipeName, {}, 'specify');
-      for (const block of recipe.blocks) {
-        assert.ok(
-          VALID_BLOCK_TYPES.has(block.type),
-          `Block '${block.id}' has invalid type '${block.type}' in '${recipeName}'`,
-        );
-      }
+describe('Specify recipes contain no instruction fields (pure data)', () => {
+  for (const name of ALL_RECIPES) {
+    test(`${name} has no instruction or command fields`, () => {
+      const recipe = loadRecipe(name, {}, 'specify');
+      const json = JSON.stringify(recipe);
+      assert.ok(!json.includes('"instruction"'), `${name} should not contain instruction fields`);
+      assert.ok(!json.includes('"command"'), `${name} should not contain command fields`);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Mode configuration
+// ---------------------------------------------------------------------------
+
+describe('Mode configuration', () => {
+  test('standard-interactive: depth=standard, interaction=interactive', () => {
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
+    assert.equal(recipe.mode.depth, 'standard');
+    assert.equal(recipe.mode.interaction, 'interactive');
+  });
+
+  test('standard-autopilot: depth=standard, interaction=autopilot', () => {
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
+    assert.equal(recipe.mode.depth, 'standard');
+    assert.equal(recipe.mode.interaction, 'autopilot');
+  });
+
+  test('quick-interactive: depth=quick, interaction=interactive', () => {
+    const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
+    assert.equal(recipe.mode.depth, 'quick');
+    assert.equal(recipe.mode.interaction, 'interactive');
+  });
+
+  test('quick-autopilot: depth=quick, interaction=autopilot', () => {
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
+    assert.equal(recipe.mode.depth, 'quick');
+    assert.equal(recipe.mode.interaction, 'autopilot');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -176,16 +171,9 @@ describe('All block types are valid', () => {
 // ---------------------------------------------------------------------------
 
 describe('YAML files parseable by js-yaml directly', () => {
-  const recipeNames = [
-    'specify-standard-interactive',
-    'specify-standard-autopilot',
-    'specify-quick-interactive',
-    'specify-quick-autopilot',
-  ];
-
-  for (const recipeName of recipeNames) {
-    test(`${recipeName}.yaml parses as valid YAML`, () => {
-      const raw = readRawYaml(recipeName);
+  for (const name of ALL_RECIPES) {
+    test(`${name}.yaml parses as valid YAML`, () => {
+      const raw = readRawYaml(name);
       assert.doesNotThrow(() => {
         const parsed = yaml.load(raw);
         assert.ok(parsed !== null && typeof parsed === 'object', 'Parsed YAML must be an object');
@@ -199,241 +187,241 @@ describe('YAML files parseable by js-yaml directly', () => {
 // ---------------------------------------------------------------------------
 
 describe('parseRecipeYaml() round-trip from file content', () => {
-  test('standard-interactive: parses and validates all 11 blocks', () => {
+  test('standard-interactive: parses and validates all 9 steps', () => {
     const raw = readRawYaml('specify-standard-interactive');
     const recipe = parseRecipeYaml(raw);
-    assert.equal(recipe.blocks.length, 11);
+    assert.equal(recipe.steps.length, 9);
   });
 
-  test('quick-autopilot: parses and validates all 9 blocks', () => {
+  test('quick-autopilot: parses and validates all 7 steps', () => {
     const raw = readRawYaml('specify-quick-autopilot');
     const recipe = parseRecipeYaml(raw);
-    assert.equal(recipe.blocks.length, 9);
+    assert.equal(recipe.steps.length, 7);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Tests: standard-interactive specific block IDs
+// Tests: specify-standard-interactive step sequence and agents
 // ---------------------------------------------------------------------------
 
-describe('specify-standard-interactive block sequence', () => {
-  test('contains all 11 expected block IDs in order', () => {
+describe('specify-standard-interactive step details', () => {
+  test('contains all 9 expected step IDs in order', () => {
     const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
-    const ids = recipe.blocks.map((b) => b.id);
+    const ids = recipe.steps.map((s) => s.id);
     const expected = [
-      'init',
-      'classify-intent',
-      'explore-full',
+      'classify',
+      'explore',
       'interview',
       'decision-confirm',
-      'analyze-full',
+      'analyze',
       'codex-synth',
       'generate-plan',
-      'review-full',
-      'summary',
+      'review',
       'cleanup',
     ];
     assert.deepEqual(ids, expected);
   });
 
-  test('interview block is llm-loop type', () => {
+  test('explore step has 4 agents with parallel=true', () => {
     const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
-    const interview = recipe.blocks.find((b) => b.id === 'interview');
-    assert.ok(interview, 'interview block must exist');
-    assert.equal(interview.type, 'llm-loop');
+    const explore = recipe.steps.find((s) => s.id === 'explore');
+    assert.ok(explore, 'explore step must exist');
+    assert.equal(explore.agents.length, 4);
+    assert.equal(explore.parallel, true);
   });
 
-  test('interview instruction is rich (>100 words)', () => {
+  test('explore agents include Explore, docs-researcher, ux-reviewer', () => {
     const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
-    const interview = recipe.blocks.find((b) => b.id === 'interview');
-    assert.ok(interview, 'interview block must exist');
-    assert.ok(typeof interview.instruction === 'string', 'instruction must be a string');
-    const wordCount = interview.instruction.trim().split(/\s+/).length;
-    assert.ok(
-      wordCount > 100,
-      `Interview instruction should be >100 words, got ${wordCount} words`,
-    );
+    const explore = recipe.steps.find((s) => s.id === 'explore');
+    const types = explore.agents.map((a) => a.type);
+    assert.ok(types.filter((t) => t === 'Explore').length === 2, 'should have 2 Explore agents');
+    assert.ok(types.includes('docs-researcher'), 'should have docs-researcher');
+    assert.ok(types.includes('ux-reviewer'), 'should have ux-reviewer');
   });
 
-  test('interview instruction contains question principles (ASK, INVESTIGATE, PROPOSE)', () => {
+  test('analyze step has 4 agents', () => {
     const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
-    const interview = recipe.blocks.find((b) => b.id === 'interview');
-    const instr = interview.instruction;
-    assert.ok(instr.includes('ASK'), 'instruction should mention what to ASK');
-    assert.ok(instr.includes('INVESTIGATE'), 'instruction should mention what to INVESTIGATE');
-    assert.ok(instr.includes('PROPOSE'), 'instruction should mention what to PROPOSE');
+    const analyze = recipe.steps.find((s) => s.id === 'analyze');
+    assert.ok(analyze, 'analyze step must exist');
+    assert.equal(analyze.agents.length, 4);
+    assert.equal(analyze.parallel, true);
+    const types = analyze.agents.map((a) => a.type);
+    assert.ok(types.includes('tradeoff-analyzer'));
+    assert.ok(types.includes('gap-analyzer'));
   });
 
-  test('explore-full has 4 agents', () => {
+  test('review step has maxRounds=3', () => {
     const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
-    const explore = recipe.blocks.find((b) => b.id === 'explore-full');
-    assert.ok(explore, 'explore-full block must exist');
+    const review = recipe.steps.find((s) => s.id === 'review');
+    assert.ok(review, 'review step must exist');
+    assert.equal(review.maxRounds, 3);
+  });
+
+  test('codex-synth step has codex-strategist agent', () => {
+    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
+    const codex = recipe.steps.find((s) => s.id === 'codex-synth');
+    assert.ok(codex, 'codex-synth step must exist');
+    assert.equal(codex.agents.length, 1);
+    assert.equal(codex.agents[0].type, 'codex-strategist');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: specify-quick-autopilot step details
+// ---------------------------------------------------------------------------
+
+describe('specify-quick-autopilot step details', () => {
+  test('contains all 7 expected step IDs in order', () => {
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
+    const ids = recipe.steps.map((s) => s.id);
+    const expected = [
+      'classify',
+      'explore',
+      'auto-assume',
+      'analyze',
+      'generate-plan',
+      'review',
+      'cleanup',
+    ];
+    assert.deepEqual(ids, expected);
+  });
+
+  test('explore step has 2 agents', () => {
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
+    const explore = recipe.steps.find((s) => s.id === 'explore');
+    assert.ok(explore, 'explore step must exist');
+    assert.equal(explore.agents.length, 2);
+  });
+
+  test('analyze step has 1 agent (tradeoff-analyzer, lite variant)', () => {
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
+    const analyze = recipe.steps.find((s) => s.id === 'analyze');
+    assert.ok(analyze, 'analyze step must exist');
+    assert.equal(analyze.agents.length, 1);
+    assert.equal(analyze.agents[0].type, 'tradeoff-analyzer');
+    assert.equal(analyze.agents[0].variant, 'lite');
+  });
+
+  test('does not contain interview or decision-confirm steps', () => {
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
+    const ids = recipe.steps.map((s) => s.id);
+    assert.ok(!ids.includes('interview'), 'quick-autopilot should not have interview');
+    assert.ok(!ids.includes('decision-confirm'), 'quick-autopilot should not have decision-confirm');
+  });
+
+  test('review step has maxRounds=1', () => {
+    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
+    const review = recipe.steps.find((s) => s.id === 'review');
+    assert.ok(review, 'review step must exist');
+    assert.equal(review.maxRounds, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: specify-standard-autopilot step details
+// ---------------------------------------------------------------------------
+
+describe('specify-standard-autopilot step details', () => {
+  test('contains all 8 expected step IDs in order', () => {
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
+    const ids = recipe.steps.map((s) => s.id);
+    const expected = [
+      'classify',
+      'explore',
+      'auto-assume',
+      'analyze',
+      'codex-synth',
+      'generate-plan',
+      'review',
+      'cleanup',
+    ];
+    assert.deepEqual(ids, expected);
+  });
+
+  test('does not contain interview step', () => {
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
+    const ids = recipe.steps.map((s) => s.id);
+    assert.ok(!ids.includes('interview'), 'standard-autopilot should not have interview');
+  });
+
+  test('does not contain decision-confirm step', () => {
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
+    const ids = recipe.steps.map((s) => s.id);
+    assert.ok(!ids.includes('decision-confirm'), 'standard-autopilot should not have decision-confirm');
+  });
+
+  test('explore step has 4 agents (same as standard-interactive)', () => {
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
+    const explore = recipe.steps.find((s) => s.id === 'explore');
     assert.equal(explore.agents.length, 4);
   });
 
-  test('review-full is subagent-loop type', () => {
-    const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
-    const review = recipe.blocks.find((b) => b.id === 'review-full');
-    assert.ok(review, 'review-full block must exist');
-    assert.equal(review.type, 'subagent-loop');
+  test('review step has maxRounds=3', () => {
+    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
+    const review = recipe.steps.find((s) => s.id === 'review');
+    assert.equal(review.maxRounds, 3);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Tests: quick-autopilot specific block IDs
+// Tests: specify-quick-interactive step details
 // ---------------------------------------------------------------------------
 
-describe('specify-quick-autopilot block sequence', () => {
-  test('contains all 9 expected block IDs in order', () => {
-    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
-    const ids = recipe.blocks.map((b) => b.id);
-    const expected = [
-      'init',
-      'classify-intent',
-      'explore-lite',
-      'auto-assume',
-      'analyze-lite',
-      'generate-plan',
-      'review-once',
-      'summary',
-      'cleanup',
-    ];
-    assert.deepEqual(ids, expected);
-  });
-
-  test('explore-lite has 2 agents', () => {
-    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
-    const explore = recipe.blocks.find((b) => b.id === 'explore-lite');
-    assert.ok(explore, 'explore-lite block must exist');
-    assert.equal(explore.agents.length, 2);
-  });
-
-  test('analyze-lite has 1 agent (tradeoff-analyzer)', () => {
-    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
-    const analyze = recipe.blocks.find((b) => b.id === 'analyze-lite');
-    assert.ok(analyze, 'analyze-lite block must exist');
-    assert.equal(analyze.agents.length, 1);
-    assert.equal(analyze.agents[0].type, 'tradeoff-analyzer');
-  });
-
-  test('does not contain interview or decision-confirm blocks', () => {
-    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
-    const ids = recipe.blocks.map((b) => b.id);
-    assert.ok(!ids.includes('interview'), 'quick-autopilot should not have interview block');
-    assert.ok(
-      !ids.includes('decision-confirm'),
-      'quick-autopilot should not have decision-confirm block',
-    );
-  });
-
-  test('auto-assume block is cli type', () => {
-    const recipe = loadRecipe('specify-quick-autopilot', {}, 'specify');
-    const autoAssume = recipe.blocks.find((b) => b.id === 'auto-assume');
-    assert.ok(autoAssume, 'auto-assume block must exist');
-    assert.equal(autoAssume.type, 'cli');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests: standard-autopilot specific checks
-// ---------------------------------------------------------------------------
-
-describe('specify-standard-autopilot block sequence', () => {
-  test('contains 10 expected block IDs', () => {
-    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
-    const ids = recipe.blocks.map((b) => b.id);
-    const expected = [
-      'init',
-      'classify-intent',
-      'explore-full',
-      'auto-assume',
-      'analyze-full',
-      'codex-synth',
-      'generate-plan',
-      'review-full',
-      'summary',
-      'cleanup',
-    ];
-    assert.deepEqual(ids, expected);
-  });
-
-  test('does not contain interview block', () => {
-    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
-    const ids = recipe.blocks.map((b) => b.id);
-    assert.ok(!ids.includes('interview'), 'standard-autopilot should not have interview block');
-  });
-
-  test('does not contain decision-confirm block', () => {
-    const recipe = loadRecipe('specify-standard-autopilot', {}, 'specify');
-    const ids = recipe.blocks.map((b) => b.id);
-    assert.ok(
-      !ids.includes('decision-confirm'),
-      'standard-autopilot should not have decision-confirm block',
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests: quick-interactive specific checks
-// ---------------------------------------------------------------------------
-
-describe('specify-quick-interactive block sequence', () => {
-  test('contains 8 expected block IDs', () => {
+describe('specify-quick-interactive step details', () => {
+  test('contains all 6 expected step IDs in order', () => {
     const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
-    const ids = recipe.blocks.map((b) => b.id);
+    const ids = recipe.steps.map((s) => s.id);
     const expected = [
-      'init',
-      'classify-intent',
-      'explore-lite',
+      'classify',
+      'explore',
       'interview',
       'generate-plan',
-      'review-once',
-      'summary',
+      'review',
       'cleanup',
     ];
     assert.deepEqual(ids, expected);
   });
 
-  test('explore-lite has 2 agents', () => {
+  test('explore step has 2 agents', () => {
     const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
-    const explore = recipe.blocks.find((b) => b.id === 'explore-lite');
-    assert.ok(explore, 'explore-lite block must exist');
+    const explore = recipe.steps.find((s) => s.id === 'explore');
+    assert.ok(explore, 'explore step must exist');
     assert.equal(explore.agents.length, 2);
   });
 
-  test('does not contain analyze-full or codex-synth', () => {
+  test('does not contain analyze or codex-synth steps', () => {
     const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
-    const ids = recipe.blocks.map((b) => b.id);
-    assert.ok(!ids.includes('analyze-full'), 'quick-interactive should not have analyze-full');
+    const ids = recipe.steps.map((s) => s.id);
+    assert.ok(!ids.includes('analyze'), 'quick-interactive should not have analyze');
     assert.ok(!ids.includes('codex-synth'), 'quick-interactive should not have codex-synth');
   });
 
-  test('review-once is subagent type', () => {
+  test('review step has maxRounds=1', () => {
     const recipe = loadRecipe('specify-quick-interactive', {}, 'specify');
-    const review = recipe.blocks.find((b) => b.id === 'review-once');
-    assert.ok(review, 'review-once block must exist');
-    assert.equal(review.type, 'subagent');
+    const review = recipe.steps.find((s) => s.id === 'review');
+    assert.ok(review, 'review step must exist');
+    assert.equal(review.maxRounds, 1);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Tests: Template variable substitution in recipe files
+// Tests: Agent output paths use correct prefixes
 // ---------------------------------------------------------------------------
 
-describe('Template variable substitution in recipe files', () => {
-  test('standard-interactive: {name} resolved in init command', () => {
-    const recipe = loadRecipe('specify-standard-interactive', { name: 'my-feature' }, 'specify');
-    const init = recipe.blocks.find((b) => b.id === 'init');
-    assert.ok(init.command.includes('my-feature'), 'init command should contain resolved name');
-    assert.ok(!init.command.includes('{name}'), 'init command should not contain unresolved {name}');
-  });
-
-  test('quick-autopilot: {name} resolved in auto-assume command', () => {
-    const recipe = loadRecipe('specify-quick-autopilot', { name: 'add-login' }, 'specify');
-    const autoAssume = recipe.blocks.find((b) => b.id === 'auto-assume');
-    assert.ok(
-      autoAssume.command.includes('add-login'),
-      'auto-assume command should contain resolved name',
-    );
-  });
+describe('Agent output paths use findings/ or analysis/ prefix', () => {
+  for (const name of ALL_RECIPES) {
+    test(`${name}: all agent outputs have valid prefix`, () => {
+      const recipe = loadRecipe(name, {}, 'specify');
+      for (const step of recipe.steps) {
+        if (!step.agents) continue;
+        for (const agent of step.agents) {
+          if (!agent.output) continue;
+          assert.ok(
+            agent.output.startsWith('findings/') || agent.output.startsWith('analysis/'),
+            `Agent output '${agent.output}' in step '${step.id}' should start with findings/ or analysis/`,
+          );
+        }
+      }
+    });
+  }
 });

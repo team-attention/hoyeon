@@ -5,9 +5,9 @@
  * showing current step, mode, missing fields, decisions, agent status, and next action.
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { statePath } from '../core/state.js';
-import { draftPath as _draftPath, planPath as _planPath } from './paths.js';
+import { draftPath as _draftPath, planPath as _planPath, findingsDir as _findingsDir, analysisDir as _analysisDir } from './paths.js';
 
 // ---------------------------------------------------------------------------
 // DRAFT.md parsing
@@ -293,6 +293,73 @@ export function generateSummary(name) {
   lines.push('');
 
   return lines.join('\n');
+}
+
+/**
+ * Generate a structured JSON recovery manifest for the given session.
+ * Used by SKILL.md for compact recovery after context compaction.
+ *
+ * @param {string} name - Session name
+ * @returns {object} Structured manifest with mode, steps, artifacts
+ */
+export function manifestJSON(name) {
+  const p = statePath(name);
+  if (!existsSync(p)) {
+    return { error: `No state found for session '${name}'` };
+  }
+
+  const raw = readFileSync(p, 'utf8');
+  const state = JSON.parse(raw);
+
+  // Mode
+  const mode = `${state.mode?.depth ?? 'standard'}-${state.mode?.interaction ?? 'interactive'}`;
+
+  // Completed steps and current step
+  const steps = state.steps ?? {};
+  const completedSteps = Object.entries(steps)
+    .filter(([, v]) => v.status === 'done')
+    .map(([k]) => k);
+
+  // Determine current step: first non-done step, or last completed
+  const allStepKeys = Object.keys(steps);
+  const currentStep = allStepKeys.find((k) => steps[k].status !== 'done')
+    ?? state.currentBlock
+    ?? state.phase
+    ?? 'unknown';
+
+  // Artifacts: check existence of key files
+  const draftPath = _draftPath(name);
+  const planPath = _planPath(name);
+
+  const artifacts = {};
+  if (existsSync(draftPath)) artifacts.draft = draftPath;
+  if (existsSync(planPath)) artifacts.plan = planPath;
+
+  // Scan findings and analysis dirs
+  try {
+    const findingsPath = _findingsDir(name);
+    if (existsSync(findingsPath)) {
+      const files = readdirSync(findingsPath).filter((f) => f.endsWith('.md'));
+      if (files.length > 0) artifacts.findings = files.map((f) => `${findingsPath}/${f}`);
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const analysisPath = _analysisDir(name);
+    if (existsSync(analysisPath)) {
+      const files = readdirSync(analysisPath).filter((f) => f.endsWith('.md'));
+      if (files.length > 0) artifacts.analysis = files.map((f) => `${analysisPath}/${f}`);
+    }
+  } catch { /* ignore */ }
+
+  return {
+    name: state.specName ?? state.name ?? name,
+    sessionId: state.sessionId ?? null,
+    mode,
+    completedSteps,
+    currentStep,
+    artifacts,
+  };
 }
 
 /**

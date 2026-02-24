@@ -1,8 +1,8 @@
 /**
  * sequencer.js — Core ping-pong orchestration driver for dev-cli sessions
  *
- * @deprecated Runtime orchestration moved to TaskList-based model.
- * This module is retained for specify workflow compatibility (step-complete/step-invalidate blocks).
+ * @deprecated Specify workflow no longer uses the sequencer (SKILL.md-centric model).
+ * This module is retained ONLY for execute workflow's engine block processing.
  * New code should use plan-to-tasks.js + prompt-factory.js instead.
  *
  * Implements next() / stepComplete() / stepInvalidate() for session block sequencing.
