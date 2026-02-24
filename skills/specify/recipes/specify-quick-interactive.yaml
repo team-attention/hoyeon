@@ -9,6 +9,7 @@ mode:
   interaction: interactive
 
 steps:
+  # classify runs in Phase 0 (before dev-cli init) but is recorded post-init via step-done
   - id: classify
   - id: explore
     agents:
@@ -17,8 +18,10 @@ steps:
     parallel: true
   - id: interview
   - id: generate-plan
+    autoTransition: false
   - id: review
     agents:
       - { type: plan-reviewer, output: "analysis/review.md" }
     maxRounds: 1
   - id: cleanup
+    summary: "compact"

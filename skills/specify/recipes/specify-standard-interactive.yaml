@@ -10,6 +10,7 @@ mode:
   interaction: interactive
 
 steps:
+  # classify runs in Phase 0 (before dev-cli init) but is recorded post-init via step-done
   - id: classify
   - id: explore
     agents:
@@ -27,13 +28,16 @@ steps:
       - { type: simplicity-checker, output: "analysis/simplicity.md" }
       - { type: risk-assessor, output: "analysis/risks.md" }
     parallel: true
+  - id: decision-checkpoint
   - id: codex-synth
     agents:
       - { type: codex-strategist, output: "analysis/strategy.md" }
   - id: generate-plan
+    autoTransition: false
   - id: review
     agents:
       - { type: plan-reviewer, output: "analysis/review.md" }
       - { type: gap-analyzer, output: "analysis/review-gaps.md" }
     maxRounds: 3
   - id: cleanup
+    summary: "full"

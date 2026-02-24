@@ -316,16 +316,31 @@ export function manifestJSON(name) {
 
   // Completed steps and current step
   const steps = state.steps ?? {};
-  const completedSteps = Object.entries(steps)
+  let completedSteps = Object.entries(steps)
     .filter(([, v]) => v.status === 'done')
     .map(([k]) => k);
 
   // Determine current step: first non-done step, or last completed
   const allStepKeys = Object.keys(steps);
-  const currentStep = allStepKeys.find((k) => steps[k].status !== 'done')
+  let currentStep = allStepKeys.find((k) => steps[k].status !== 'done')
     ?? state.currentBlock
     ?? state.phase
     ?? 'unknown';
+
+  // recipeSteps 기반 currentStep 계산 (recipeSteps가 있으면 우선 사용)
+  if (Array.isArray(state.recipeSteps) && state.recipeSteps.length > 0) {
+    const firstIncomplete = state.recipeSteps.find((sid) => steps[sid]?.status !== 'done');
+    if (firstIncomplete) {
+      currentStep = firstIncomplete;
+    }
+    // completedSteps: recipe 순서 먼저, 그 다음 non-recipe done steps (e.g. 'init')
+    const recipeCompleted = state.recipeSteps.filter((sid) => steps[sid]?.status === 'done');
+    const recipeStepSet = new Set(state.recipeSteps);
+    const nonRecipeCompleted = Object.entries(steps)
+      .filter(([k, v]) => v.status === 'done' && !recipeStepSet.has(k))
+      .map(([k]) => k);
+    completedSteps = [...recipeCompleted, ...nonRecipeCompleted];
+  }
 
   // Artifacts: check existence of key files
   const draftPath = _draftPath(name);

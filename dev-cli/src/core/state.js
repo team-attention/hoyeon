@@ -61,7 +61,7 @@ function atomicWriteJSON(targetPath, data) {
 /**
  * Build a fresh state object for a new session.
  * @param {string} name - Session name (e.g. "add-auth")
- * @param {{ depth?: string, interaction?: string, recipe?: string, skill?: string, sessionId?: string }} opts
+ * @param {{ depth?: string, interaction?: string, recipe?: string, skill?: string, sessionId?: string, intent?: string, recipeSteps?: string[] }} opts
  */
 function buildInitialState(name, opts = {}) {
   const now = new Date().toISOString();
@@ -76,6 +76,7 @@ function buildInitialState(name, opts = {}) {
       interaction: opts.interaction ?? 'interactive',
     },
     skill: opts.skill ?? null,
+    intent: opts.intent ?? null,
     phase: 'init',
     currentBlock: null,
     blockIndex: 0,
@@ -83,6 +84,7 @@ function buildInitialState(name, opts = {}) {
     steps: {
       init: { status: 'done', at: now },
     },
+    recipeSteps: opts.recipeSteps ?? [],
     agents: {},
     reviewRounds: 0,
     events: [

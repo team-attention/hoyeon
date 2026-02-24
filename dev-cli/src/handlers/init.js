@@ -9,6 +9,7 @@
  */
 
 import { initSpec } from '../blocks/init.js';
+import { loadRecipe } from '../core/recipe-loader.js';
 
 /**
  * Extract a --flag value from args (e.g., --recipe foo → 'foo').
@@ -37,20 +38,37 @@ export default async function handler(args) {
 
   if (explicitRecipe && explicitSkill) {
     const interaction = flags.has('autopilot') ? 'autopilot' : 'interactive';
-    const result = await initSpec(name, { recipe: explicitRecipe, depth, interaction, skill: explicitSkill });
+    const explicitIntent = getFlagValue(args, 'intent');
+    let recipeSteps = [];
+    try {
+      const recipeObj = loadRecipe(explicitRecipe, {}, explicitSkill);
+      recipeSteps = (recipeObj.steps || []).map((s) => s.id);
+    } catch (err) {
+      console.warn(`Warning: could not load recipe '${explicitRecipe}' for step validation: ${err.message}`);
+    }
+    const result = await initSpec(name, { recipe: explicitRecipe, depth, interaction, skill: explicitSkill, intent: explicitIntent, recipeSteps });
     console.log(JSON.stringify(result, null, 2));
     return;
   }
 
   if (flags.has('execute')) {
     const recipe = `execute-${depth}`;
-    const result = await initSpec(name, { recipe, depth, interaction: 'autopilot', skill: 'execute' });
+    // Execute recipes use blocks, not steps — recipeSteps stays empty
+    const recipeSteps = [];
+    const result = await initSpec(name, { recipe, depth, interaction: 'autopilot', skill: 'execute', recipeSteps });
     console.log(JSON.stringify(result, null, 2));
     return;
   }
 
   const interaction = flags.has('autopilot') ? 'autopilot' : 'interactive';
   const recipe = `specify-${depth}-${interaction}`;
-  const result = await initSpec(name, { recipe, depth, interaction, skill: 'specify' });
+  let recipeSteps = [];
+  try {
+    const recipeObj = loadRecipe(recipe, {}, 'specify');
+    recipeSteps = (recipeObj.steps || []).map((s) => s.id);
+  } catch (err) {
+    console.warn(`Warning: could not load recipe '${recipe}' for step validation: ${err.message}`);
+  }
+  const result = await initSpec(name, { recipe, depth, interaction, skill: 'specify', recipeSteps });
   console.log(JSON.stringify(result, null, 2));
 }

@@ -475,3 +475,278 @@ describe('recipesDir() — path resolution', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests: specify recipe format (steps) — behavior fields
+// ---------------------------------------------------------------------------
+
+const VALID_STEPS_RECIPE_YAML = `
+name: specify-quick-interactive
+mode:
+  depth: quick
+  interaction: interactive
+steps:
+  - id: classify
+  - id: explore
+    agents:
+      - { type: Explore, output: "findings/explore-1.md" }
+    parallel: true
+  - id: generate-plan
+    autoTransition: false
+  - id: review
+    agents:
+      - { type: plan-reviewer, output: "analysis/review.md" }
+    maxRounds: 1
+  - id: cleanup
+    summary: "compact"
+`;
+
+const VALID_STEPS_WITH_ALL_BEHAVIOR_YAML = `
+name: full-behavior-test
+steps:
+  - id: step1
+    agents:
+      - { type: MyAgent, output: "out/result.md" }
+    parallel: true
+    autoTransition: true
+    confirmation: "user"
+    summary: "full"
+    maxRounds: 5
+`;
+
+describe('parseRecipeYaml() — specify steps format (valid)', () => {
+  test('parses a valid steps-based recipe', () => {
+    const recipe = parseRecipeYaml(VALID_STEPS_RECIPE_YAML);
+    assert.equal(recipe.name, 'specify-quick-interactive');
+    assert.ok(Array.isArray(recipe.steps));
+    assert.equal(recipe.steps.length, 5);
+  });
+
+  test('preserves step id and agents fields', () => {
+    const recipe = parseRecipeYaml(VALID_STEPS_RECIPE_YAML);
+    const explore = recipe.steps[1];
+    assert.equal(explore.id, 'explore');
+    assert.ok(Array.isArray(explore.agents));
+    assert.equal(explore.agents[0].type, 'Explore');
+    assert.equal(explore.agents[0].output, 'findings/explore-1.md');
+  });
+
+  test('preserves autoTransition: false on generate-plan', () => {
+    const recipe = parseRecipeYaml(VALID_STEPS_RECIPE_YAML);
+    const genPlan = recipe.steps[2];
+    assert.equal(genPlan.id, 'generate-plan');
+    assert.equal(genPlan.autoTransition, false);
+  });
+
+  test('preserves maxRounds on review step', () => {
+    const recipe = parseRecipeYaml(VALID_STEPS_RECIPE_YAML);
+    const review = recipe.steps[3];
+    assert.equal(review.id, 'review');
+    assert.equal(review.maxRounds, 1);
+  });
+
+  test('preserves summary: compact on cleanup step', () => {
+    const recipe = parseRecipeYaml(VALID_STEPS_RECIPE_YAML);
+    const cleanup = recipe.steps[4];
+    assert.equal(cleanup.id, 'cleanup');
+    assert.equal(cleanup.summary, 'compact');
+  });
+
+  test('accepts all valid behavior fields together', () => {
+    const recipe = parseRecipeYaml(VALID_STEPS_WITH_ALL_BEHAVIOR_YAML);
+    const step = recipe.steps[0];
+    assert.equal(step.autoTransition, true);
+    assert.equal(step.confirmation, 'user');
+    assert.equal(step.summary, 'full');
+    assert.equal(step.maxRounds, 5);
+  });
+
+  test('accepts autoTransition: true', () => {
+    const yaml = `
+name: autopilot
+steps:
+  - id: generate-plan
+    autoTransition: true
+`;
+    const recipe = parseRecipeYaml(yaml);
+    assert.equal(recipe.steps[0].autoTransition, true);
+  });
+
+  test('accepts confirmation values: log-only and none', () => {
+    const yamlLogOnly = `
+name: test
+steps:
+  - id: step1
+    confirmation: "log-only"
+`;
+    const yamlNone = `
+name: test
+steps:
+  - id: step1
+    confirmation: "none"
+`;
+    assert.doesNotThrow(() => parseRecipeYaml(yamlLogOnly));
+    assert.doesNotThrow(() => parseRecipeYaml(yamlNone));
+  });
+
+  test('accepts summary values: full and none', () => {
+    const yamlFull = `
+name: test
+steps:
+  - id: step1
+    summary: "full"
+`;
+    const yamlNone = `
+name: test
+steps:
+  - id: step1
+    summary: "none"
+`;
+    assert.doesNotThrow(() => parseRecipeYaml(yamlFull));
+    assert.doesNotThrow(() => parseRecipeYaml(yamlNone));
+  });
+});
+
+describe('parseRecipeYaml() — specify steps validation errors', () => {
+  test('throws if step is missing id', () => {
+    const yaml = `
+name: bad
+steps:
+  - agents:
+      - { type: Explore, output: "out.md" }
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /missing required field 'id'/,
+    );
+  });
+
+  test('throws if agents array item is missing type', () => {
+    const yaml = `
+name: bad
+steps:
+  - id: explore
+    agents:
+      - { output: "findings/explore-1.md" }
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /missing required field 'type'/,
+    );
+  });
+
+  test('throws if agents array item is missing output', () => {
+    const yaml = `
+name: bad
+steps:
+  - id: explore
+    agents:
+      - { type: Explore }
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /missing required field 'output'/,
+    );
+  });
+
+  test('throws if maxRounds is a negative number', () => {
+    const yaml = `
+name: bad
+steps:
+  - id: review
+    maxRounds: -1
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /maxRounds.*must be a positive integer/,
+    );
+  });
+
+  test('throws if maxRounds is zero', () => {
+    const yaml = `
+name: bad
+steps:
+  - id: review
+    maxRounds: 0
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /maxRounds.*must be a positive integer/,
+    );
+  });
+
+  test('throws if maxRounds is a float', () => {
+    const yaml = `
+name: bad
+steps:
+  - id: review
+    maxRounds: 1.5
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /maxRounds.*must be a positive integer/,
+    );
+  });
+
+  test('throws if confirmation has invalid value', () => {
+    const yaml = `
+name: bad
+steps:
+  - id: step1
+    confirmation: "always"
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /confirmation.*must be one of/,
+    );
+  });
+
+  test('throws if summary has invalid value', () => {
+    const yaml = `
+name: bad
+steps:
+  - id: step1
+    summary: "verbose"
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /summary.*must be one of/,
+    );
+  });
+
+  test('throws if autoTransition is not boolean', () => {
+    const yaml = `
+name: bad
+steps:
+  - id: step1
+    autoTransition: "yes"
+`;
+    assert.throws(
+      () => parseRecipeYaml(yaml),
+      /autoTransition.*must be a boolean/,
+    );
+  });
+
+  test('warns (console.warn) on unknown step field but does not throw', () => {
+    const yaml = `
+name: test
+steps:
+  - id: step1
+    foo: bar
+`;
+    const warnCalls = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnCalls.push(args.join(' '));
+    try {
+      const recipe = parseRecipeYaml(yaml);
+      assert.ok(recipe, 'should not throw');
+      assert.ok(warnCalls.length > 0, 'expected at least one console.warn call');
+      assert.ok(
+        warnCalls.some((msg) => msg.includes('foo')),
+        `expected warn about 'foo', got: ${warnCalls.join(', ')}`,
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+});

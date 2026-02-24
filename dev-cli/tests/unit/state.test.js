@@ -102,6 +102,24 @@ describe('createState()', () => {
     assert.equal(state.mode.depth, 'quick');
     assert.equal(state.mode.interaction, 'autopilot');
   });
+
+  test('includes recipeSteps when opts.recipeSteps is provided', () => {
+    const steps = ['classify', 'explore', 'interview', 'plan'];
+    const state = createState('with-recipe-steps', {
+      recipe: 'specify-standard-interactive',
+      recipeSteps: steps,
+    });
+    assert.ok(Array.isArray(state.recipeSteps), 'recipeSteps should be an array');
+    assert.deepEqual(state.recipeSteps, steps);
+  });
+
+  test('defaults recipeSteps to empty array when not provided', () => {
+    const state = createState('no-recipe-steps', {
+      recipe: 'specify-standard-interactive',
+    });
+    assert.ok(Array.isArray(state.recipeSteps), 'recipeSteps should be an array');
+    assert.equal(state.recipeSteps.length, 0, 'recipeSteps should default to empty array');
+  });
 });
 
 describe('loadState()', () => {

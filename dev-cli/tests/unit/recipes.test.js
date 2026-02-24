@@ -63,9 +63,9 @@ describe('Specify recipes use steps format (not blocks)', () => {
 // ---------------------------------------------------------------------------
 
 describe('Step counts', () => {
-  test('specify-standard-interactive has 9 steps', () => {
+  test('specify-standard-interactive has 10 steps', () => {
     const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
-    assert.equal(recipe.steps.length, 9);
+    assert.equal(recipe.steps.length, 10);
   });
 
   test('specify-standard-autopilot has 8 steps', () => {
@@ -187,10 +187,10 @@ describe('YAML files parseable by js-yaml directly', () => {
 // ---------------------------------------------------------------------------
 
 describe('parseRecipeYaml() round-trip from file content', () => {
-  test('standard-interactive: parses and validates all 9 steps', () => {
+  test('standard-interactive: parses and validates all 10 steps', () => {
     const raw = readRawYaml('specify-standard-interactive');
     const recipe = parseRecipeYaml(raw);
-    assert.equal(recipe.steps.length, 9);
+    assert.equal(recipe.steps.length, 10);
   });
 
   test('quick-autopilot: parses and validates all 7 steps', () => {
@@ -205,7 +205,7 @@ describe('parseRecipeYaml() round-trip from file content', () => {
 // ---------------------------------------------------------------------------
 
 describe('specify-standard-interactive step details', () => {
-  test('contains all 9 expected step IDs in order', () => {
+  test('contains all 10 expected step IDs in order', () => {
     const recipe = loadRecipe('specify-standard-interactive', {}, 'specify');
     const ids = recipe.steps.map((s) => s.id);
     const expected = [
@@ -214,6 +214,7 @@ describe('specify-standard-interactive step details', () => {
       'interview',
       'decision-confirm',
       'analyze',
+      'decision-checkpoint',
       'codex-synth',
       'generate-plan',
       'review',

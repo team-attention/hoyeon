@@ -188,6 +188,112 @@ function validateExecuteExtensions(recipe) {
 }
 
 // ---------------------------------------------------------------------------
+// Specify recipe step validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Valid fields for specify recipe steps.
+ */
+const VALID_STEP_FIELDS = new Set([
+  'id',              // required, string
+  'agents',          // optional, array of { type, output, variant? }
+  'parallel',        // optional, boolean
+  'maxRounds',       // optional, positive integer (review step용)
+  'autoTransition',  // optional, boolean (사용자 확인 없이 다음 step)
+  'confirmation',    // optional, "user" | "log-only" | "none"
+  'summary',         // optional, "full" | "compact" | "none"
+]);
+
+const VALID_CONFIRMATION_VALUES = new Set(['user', 'log-only', 'none']);
+const VALID_SUMMARY_VALUES = new Set(['full', 'compact', 'none']);
+
+/**
+ * Validate a single step object in a specify recipe.
+ *
+ * @param {unknown} step - The step to validate
+ * @param {number} index - Step index for error messages
+ * @throws {Error} If validation fails
+ */
+function validateStep(step, index) {
+  if (step === null || typeof step !== 'object' || Array.isArray(step)) {
+    throw new Error(`Step at index ${index} must be an object`);
+  }
+
+  // Required: id (string, non-empty)
+  if (!Object.prototype.hasOwnProperty.call(step, 'id') || typeof step.id !== 'string' || step.id.trim() === '') {
+    throw new Error(`Step at index ${index} is missing required field 'id' (must be a non-empty string)`);
+  }
+
+  const stepId = step.id;
+
+  // Optional: agents (array, each item must have type and output)
+  if (Object.prototype.hasOwnProperty.call(step, 'agents')) {
+    if (!Array.isArray(step.agents)) {
+      throw new Error(`Step '${stepId}' (index ${index}): 'agents' must be an array`);
+    }
+    for (let i = 0; i < step.agents.length; i++) {
+      const agent = step.agents[i];
+      if (agent === null || typeof agent !== 'object' || Array.isArray(agent)) {
+        throw new Error(`Step '${stepId}' agents[${i}] must be an object`);
+      }
+      if (!agent.type || typeof agent.type !== 'string') {
+        throw new Error(`Step '${stepId}' agents[${i}] is missing required field 'type' (must be a non-empty string)`);
+      }
+      if (!agent.output || typeof agent.output !== 'string') {
+        throw new Error(`Step '${stepId}' agents[${i}] is missing required field 'output' (must be a non-empty string)`);
+      }
+    }
+  }
+
+  // Optional: maxRounds (positive integer)
+  if (Object.prototype.hasOwnProperty.call(step, 'maxRounds')) {
+    const mr = step.maxRounds;
+    if (!Number.isInteger(mr) || mr <= 0) {
+      throw new Error(`Step '${stepId}' (index ${index}): 'maxRounds' must be a positive integer`);
+    }
+  }
+
+  // Optional: confirmation ("user" | "log-only" | "none")
+  if (Object.prototype.hasOwnProperty.call(step, 'confirmation')) {
+    if (!VALID_CONFIRMATION_VALUES.has(step.confirmation)) {
+      throw new Error(
+        `Step '${stepId}' (index ${index}): 'confirmation' must be one of: ${[...VALID_CONFIRMATION_VALUES].join(', ')}`
+      );
+    }
+  }
+
+  // Optional: summary ("full" | "compact" | "none")
+  if (Object.prototype.hasOwnProperty.call(step, 'summary')) {
+    if (!VALID_SUMMARY_VALUES.has(step.summary)) {
+      throw new Error(
+        `Step '${stepId}' (index ${index}): 'summary' must be one of: ${[...VALID_SUMMARY_VALUES].join(', ')}`
+      );
+    }
+  }
+
+  // Optional: autoTransition (boolean)
+  if (Object.prototype.hasOwnProperty.call(step, 'autoTransition')) {
+    if (typeof step.autoTransition !== 'boolean') {
+      throw new Error(`Step '${stepId}' (index ${index}): 'autoTransition' must be a boolean`);
+    }
+  }
+
+  // Optional: parallel (boolean)
+  if (Object.prototype.hasOwnProperty.call(step, 'parallel')) {
+    if (typeof step.parallel !== 'boolean') {
+      throw new Error(`Step '${stepId}' (index ${index}): 'parallel' must be a boolean`);
+    }
+  }
+
+  // Warn on unknown fields (backwards-compatible: warning only, not error)
+  for (const field of Object.keys(step)) {
+    if (!VALID_STEP_FIELDS.has(field)) {
+      console.warn(`Step '${stepId}' (index ${index}): unknown field '${field}' (ignored)`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 
@@ -267,8 +373,14 @@ function validateRecipe(recipe) {
     validateExecuteExtensions(recipe);
   }
 
-  if (hasSteps && recipe.steps.length === 0) {
-    throw new Error("Recipe 'steps' array must not be empty");
+  if (hasSteps) {
+    if (recipe.steps.length === 0) {
+      throw new Error("Recipe 'steps' array must not be empty");
+    }
+
+    for (let i = 0; i < recipe.steps.length; i++) {
+      validateStep(recipe.steps[i], i);
+    }
   }
 }
 

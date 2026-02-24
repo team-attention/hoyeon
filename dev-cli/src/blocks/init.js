@@ -115,7 +115,7 @@ _No assumptions recorded._
  *   .dev/active-spec                 (pointer file)
  *
  * @param {string} name - Session name
- * @param {{ depth?: string, interaction?: string, recipe?: string, skill?: string }} options
+ * @param {{ depth?: string, interaction?: string, recipe?: string, skill?: string, intent?: string, recipeSteps?: string[] }} options
  * @returns {{ specDir: string, state: object }} Created spec directory and state
  */
 export function initSpec(name, options = {}) {
@@ -155,6 +155,8 @@ export function initSpec(name, options = {}) {
     recipe: options.recipe,
     skill: options.skill,
     sessionId,
+    intent: options.intent,
+    recipeSteps: options.recipeSteps,
   });
 
   // Create DRAFT.md in session dir (via dual-path resolution)

@@ -30,10 +30,19 @@ export default async function handler(args) {
   const state = loadState(name);
   const steps = { ...(state.steps ?? {}) };
 
-  // Idempotent: already done -> no-op
+  // Idempotent: already done -> no-op (must run BEFORE recipeSteps check
+  // to avoid spurious warnings for pre-recorded steps like 'init')
   if (steps[stepId]?.status === 'done') {
     console.log(JSON.stringify({ ok: true, noop: true, step: stepId, message: `Step '${stepId}' already done` }));
     return;
+  }
+
+  // recipeSteps가 있으면 유효성 검증 (하위 호환: 없으면 skip)
+  // Meta steps like 'init' are pre-recorded at state construction and bypass this via idempotent check above.
+  if (Array.isArray(state.recipeSteps) && state.recipeSteps.length > 0) {
+    if (!state.recipeSteps.includes(stepId)) {
+      console.warn(`Warning: step '${stepId}' is not in recipeSteps [${state.recipeSteps.join(', ')}]`);
+    }
   }
 
   const now = new Date().toISOString();

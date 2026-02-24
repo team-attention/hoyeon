@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createState, updateState, statePath } from '../../src/core/state.js';
-import { manifest } from '../../src/core/manifest.js';
+import { manifest, manifestJSON } from '../../src/core/manifest.js';
 
 // ---------------------------------------------------------------------------
 // Temp dir management
@@ -341,5 +341,80 @@ Node.js + Express.
     assert.ok(result.includes('Agents:'), `Expected Agents: in:\n${result}`);
     assert.ok(result.includes('Next:'), `Expected Next: in:\n${result}`);
     assert.ok(result.includes('Decisions'), `Expected Decisions in:\n${result}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// manifestJSON() — structured recovery with recipeSteps
+// ---------------------------------------------------------------------------
+
+describe('manifestJSON() — recipeSteps-based currentStep', () => {
+  beforeEach(useTmpDir);
+  afterEach(restoreCwd);
+
+  test('currentStep is first non-done step in recipeSteps order', () => {
+    const recipeSteps = ['classify', 'explore', 'interview', 'plan'];
+    createState('recipe-steps-current', { recipeSteps });
+
+    const now = new Date().toISOString();
+    updateState('recipe-steps-current', {
+      steps: {
+        init: { status: 'done', at: now },
+        classify: { status: 'done', at: now },
+        explore: { status: 'done', at: now },
+        // interview and plan not done
+      },
+    });
+
+    const result = manifestJSON('recipe-steps-current');
+    assert.equal(result.currentStep, 'interview',
+      `Expected currentStep to be 'interview' (first non-done in recipeSteps), got: ${result.currentStep}`);
+  });
+
+  test('completedSteps are sorted by recipeSteps order', () => {
+    const recipeSteps = ['classify', 'explore', 'interview', 'plan'];
+    createState('recipe-steps-order', { recipeSteps });
+
+    const now = new Date().toISOString();
+    // Add completed steps out-of-order in state.steps object
+    updateState('recipe-steps-order', {
+      steps: {
+        init: { status: 'done', at: now },
+        plan: { status: 'done', at: now },
+        classify: { status: 'done', at: now },
+        explore: { status: 'done', at: now },
+        // interview not done
+      },
+    });
+
+    const result = manifestJSON('recipe-steps-order');
+    // completedSteps should follow recipeSteps order: classify, explore, plan
+    // (not plan before classify as would happen with object key order)
+    const completedFromRecipe = result.completedSteps.filter((s) => recipeSteps.includes(s));
+    assert.deepEqual(completedFromRecipe, ['classify', 'explore', 'plan'],
+      `Expected recipe steps in recipe order, got: ${JSON.stringify(completedFromRecipe)}`);
+  });
+
+  test('legacy state without recipeSteps still works correctly', () => {
+    createState('legacy-no-recipe-steps', {});
+
+    const now = new Date().toISOString();
+    updateState('legacy-no-recipe-steps', {
+      steps: {
+        init: { status: 'done', at: now },
+        classify: { status: 'done', at: now },
+      },
+      currentBlock: 'explore',
+      phase: 'interview',
+    });
+
+    const result = manifestJSON('legacy-no-recipe-steps');
+    assert.ok(result.completedSteps.includes('init'),
+      `Expected 'init' in completedSteps: ${JSON.stringify(result.completedSteps)}`);
+    assert.ok(result.completedSteps.includes('classify'),
+      `Expected 'classify' in completedSteps: ${JSON.stringify(result.completedSteps)}`);
+    // currentStep falls back to state.steps non-done or currentBlock
+    assert.ok(typeof result.currentStep === 'string' && result.currentStep.length > 0,
+      `Expected a non-empty currentStep string, got: ${result.currentStep}`);
   });
 });
