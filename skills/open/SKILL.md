@@ -13,7 +13,7 @@ allowed-tools:
 
 ## Purpose
 
-Create Draft PR based on Spec document. Following **PR = Single Source of Truth** principle, PR becomes the center of all work state.
+Create Draft PR from a `/specify` plan. The PR body references PLAN.md and summarizes objectives from `plan-content.json`.
 
 ---
 
@@ -26,40 +26,61 @@ Create Draft PR based on Spec document. Following **PR = Single Source of Truth*
 ## Input
 
 | Input | Action |
-|-------|------|
-| `/open user-auth` | Create PR based on `specs/user-auth.md` |
+|-------|--------|
+| `/open user-auth` | Create PR from `.dev/specs/user-auth/` |
 | `/open` | Use most recent spec or ask user |
 
 ---
 
 ## Prerequisites
 
-1. Spec file exists: `specs/<name>.md`
-2. gh CLI authenticated: `gh auth status`
+1. Spec directory exists: `.dev/specs/{name}/`
+2. Plan file exists: `.dev/specs/{name}/PLAN.md`
+3. Plan content exists: `.dev/specs/{name}/plan-content.json`
+4. `gh` CLI authenticated: `gh auth status`
 
 ---
 
 ## Workflow
 
-### Step 1: Verify Spec Exists
+### Step 1: Resolve Spec
+
 ```
-Check if specs/<name>.md exists
-If not → Error: "Spec not found. Run '/specify <name>' first."
+1. If {name} given → specDir = .dev/specs/{name}/
+2. If no {name} → scan .dev/specs/*/PLAN.md, pick most recently modified
+3. Verify PLAN.md exists in specDir
+4. Verify plan-content.json exists in specDir
+5. If missing → Error: "Spec not found. Run '/specify {name}' first."
 ```
 
 ### Step 2: Check Existing PR
+
 ```
-Check if PR exists for feat/<name> branch
-If exists → Error: "PR already exists for feat/<name>"
+gh pr list --head "feat/{name}" --json number -q '.[0].number'
+If PR exists → Error: "PR #N already exists for feat/{name}"
 ```
 
-### Step 3: Create and Push Branch
+### Step 3: Read Plan for PR Body
+
 ```
-Create feat/<name> branch from main → Push to remote
+1. Read plan-content.json → extract objectives.core for summary
+2. Read PLAN.md path for spec reference link
+3. Read ${baseDir}/references/pr-body-template.md for template structure
+4. Compose PR body from template
 ```
 
-### Step 4: Create Draft PR
-Reference `pr-body-template.md` to create Draft PR.
+### Step 4: Create Branch and Draft PR
+
+```
+1. git checkout -b feat/{name}
+2. git push -u origin feat/{name}
+3. gh pr create --draft \
+     --title "{title from objectives.core}" \
+     --body "{composed PR body}" \
+     --base develop
+```
+
+> **Base branch**: Use `develop` (per project git branching convention). If `develop` doesn't exist, fall back to `main`.
 
 ---
 
@@ -67,13 +88,15 @@ Reference `pr-body-template.md` to create Draft PR.
 
 **Success**:
 ```
-✅ PR #123 created successfully
+✅ PR #123 created (Draft)
+   Branch: feat/{name}
    View: gh pr view 123 --web
 ```
 
 **Failure**:
 ```
-Error: Spec not found at specs/user-auth.md
+Error: Spec not found at .dev/specs/{name}/PLAN.md
+       Run '/specify {name}' first.
 ```
 
 ---
@@ -81,7 +104,7 @@ Error: Spec not found at specs/user-auth.md
 ## Related Commands
 
 | Command | Description |
-|---------|------|
-| `/specify <name>` | Write Spec document (run before open) |
-| `/state queue <PR#>` | Add to auto-execution queue |
-| `/execute <PR#>` | Start implementation |
+|---------|-------------|
+| `/specify {name}` | Generate plan (run before open) |
+| `/execute {name}` or `/execute #{PR}` | Start implementation |
+| `/state queue #{PR}` | Add to auto-execution queue |

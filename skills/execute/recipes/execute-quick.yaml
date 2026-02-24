@@ -1,0 +1,18 @@
+name: execute-quick
+type: sequential
+description: Execute plan with quick verification (skip verify, code-review, final-verify)
+
+blocks:
+  - id: execute-engine
+    type: engine
+    mode: quick
+
+todo_substeps:
+  - { suffix: Worker, type: dispatch_llm, agent: worker, prompt_type: worker }
+  - { suffix: Wrap-up, type: deterministic, cmd: wrapup+checkpoint }
+  - { suffix: Commit, type: dispatch_llm, agent: git-master, prompt_type: commit, conditional: commit_strategy }
+
+finalize:
+  - { suffix: Residual Commit, type: dispatch_llm, agent: git-master }
+  - { suffix: State Complete, type: deterministic, pr_only: true }
+  - { suffix: Report, type: deterministic }

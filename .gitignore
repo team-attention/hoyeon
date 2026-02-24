@@ -1,5 +1,7 @@
 .playground
 .dev/state.local.json
 .dev/local.json
+.dev/active-spec
 .dev/specs/*
 !.dev/specs/.gitkeep
+.dev/.sessions/

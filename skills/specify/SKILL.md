@@ -10,1137 +10,520 @@ allowed-tools:
   - Task
   - Write
   - AskUserQuestion
+  - Bash
+---
+# /specify - CLI-Orchestrated Planning
+
+## Layer 1: Execution Flow (CLI-driven)
+
+### Session Model
+
+**Session vs. Spec** — these are separate concepts:
+
+| Concept | Directory | Contents |
+|---------|-----------|----------|
+| **Spec** | `.dev/specs/{name}/` | Deliverables: `PLAN.md`, `plan-content.json`, `context/`, `session.ref` |
+| **Session** | `.dev/.sessions/{sessionId}/` | Work artifacts: `state.json`, `DRAFT.md`, `findings/`, `analysis/` |
+
+**session.ref** is a pointer file at `.dev/specs/{name}/session.ref` containing just the `{sessionId}` UUID.
+It links a spec to its active session, enabling dual-path resolution: when `session.ref` exists, the CLI reads work artifacts from the session dir; otherwise it falls back to the spec dir (backward compatibility).
+
+**Path resolution** (handled by `paths.js` in dev-cli):
+- `DRAFT.md` → `.dev/.sessions/{sessionId}/DRAFT.md` (via session.ref) or `.dev/specs/{name}/DRAFT.md` (legacy)
+- `state.json` → `.dev/.sessions/{sessionId}/state.json` (via session.ref) or `.dev/specs/{name}/state.json` (legacy)
+- `findings/` → `.dev/.sessions/{sessionId}/findings/` (via session.ref) or `.dev/specs/{name}/findings/` (legacy)
+- `analysis/` → `.dev/.sessions/{sessionId}/analysis/` (via session.ref) or `.dev/specs/{name}/analysis/` (legacy)
+- `PLAN.md` → always `.dev/specs/{name}/PLAN.md` (deliverable, never in session dir)
+
+You do not need to compute these paths manually. The CLI resolves them automatically based on `session.ref`.
+
+### Rules
+- Subagents: Write full results to the `outputPath` provided by CLI using the Write tool. Return only 1-2 line summary.
+- Subagent output format: Markdown with YAML frontmatter (agent, timestamp, summary).
+- When CLI returns `onComplete` field, execute that command AFTER all subagents finish, BEFORE calling `step complete`.
+- When CLI returns `fileInstruction`, follow it exactly.
+- Early exit: if the task is clearly unnecessary, call `node dev-cli/bin/dev-cli.js abort {name} --reason "..."` instead of silently stopping.
+
+### Flow
+1. `node dev-cli/bin/dev-cli.js init {name} --recipe specify-{depth}-{interaction} --skill specify [--quick] [--autopilot]`
+   - `{depth}` = `standard` or `quick`, `{interaction}` = `interactive` or `autopilot` (from mode selection)
+   - Creates session dir at `.dev/.sessions/{sessionId}/`
+   - Writes `session.ref` into `.dev/specs/{name}/session.ref`
+2. Loop: call `node dev-cli/bin/dev-cli.js next {name}` → follow the returned instruction
+3. Until CLI returns `{ "done": true }`
+
+### CLI Output Examples
+
+**`init` response:**
+```json
+{
+  "status": "ok",
+  "sessionId": "abc-123-def",
+  "specDir": ".dev/specs/{name}",
+  "sessionDir": ".dev/.sessions/abc-123-def"
+}
+```
+
+**`next` response (step instruction):**
+```json
+{
+  "step": "explore-full",
+  "instruction": "Launch 4 parallel exploration agents...",
+  "outputPath": ".dev/.sessions/abc-123-def/findings/explore-1.md",
+  "onComplete": "node dev-cli/bin/dev-cli.js step-complete {name} --step explore-full"
+}
+```
+
+**`next` response (done):**
+```json
+{ "done": true }
+```
+
+> **Rule**: Do not construct paths manually. Use `outputPath` from CLI responses for subagent output files. Use `onComplete` commands exactly as returned.
+
+### Draft Update
+Use flags: `node dev-cli/bin/dev-cli.js draft {name} update --section <id> --data '<json>'`
+Or stdin: `echo '{"section":"<id>","data":<value>}' | node dev-cli/bin/dev-cli.js draft {name} update`
+
+> The CLI resolves DRAFT.md path automatically via `session.ref`. Do not hardcode paths.
+
+### On Context Compaction
+Call `node dev-cli/bin/dev-cli.js manifest {name}` to recover full state.
+
+The manifest command outputs all active paths (spec dir, session dir, session ID, and locations of key files) so you can resume without re-running init.
+
 ---
 
-# /specify Skill - Interview-Driven Planning
+## Layer 2: Judgment Rules & Knowledge
 
-You are a planning assistant. Your job is to help users create clear, actionable work plans through conversation.
-
-## Core Principles
-
-1. **Interview First** - Never generate a plan until explicitly asked
-2. **Minimize Questions** - Ask only what you can't discover; propose after research
-3. **Parallel Exploration** - Use parallel foreground agents to gather context efficiently
-4. **Draft Persistence** - Maintain a draft file that evolves with the conversation
-5. **Reviewer Approval** - Plans must pass plan-reviewer before completion
-6. **Mode-Aware** - Adapt depth and interaction based on task complexity and user preference
-
----
-
-## Mode Selection
-
-### Flag Parsing
+### Mode Selection
 
 | Flag | Effect | Default |
 |------|--------|---------|
-| `--quick` | Sets `{depth}` = quick | `{depth}` = standard |
-| `--autopilot` | Sets `{interaction}` = autopilot | (depends on depth) |
-| `--interactive` | Sets `{interaction}` = interactive | (depends on depth) |
+| `--quick` | depth = quick | depth = standard |
+| `--autopilot` | interaction = autopilot | depends on depth |
+| `--interactive` | interaction = interactive | depends on depth |
 
-### Auto-Detect Depth
+**Auto-Detect Depth** (no flag given):
 
-If no `--quick` or `--standard` flag is given, auto-detect based on task keywords:
-
-| Keywords | Auto-Depth |
-|----------|------------|
+| Keywords in request | Auto-Depth |
+|---------------------|------------|
 | "fix", "typo", "rename", "bump", "update version" | quick |
-| Everything else | standard |
+| **Everything else** | **standard** |
 
-### Interaction Defaults
+**STRICT RULE**: Only the EXACT keywords above trigger `quick`. Do NOT infer quick from words like "simple", "간단", "초간단", "easy", "small", or "빠르게". A request to create, add, or implement anything — regardless of perceived simplicity — MUST use `standard`.
 
-| Depth | Default Interaction |
-|-------|---------------------|
-| quick | autopilot |
-| standard | interactive |
+**Intent → Depth override** (applied after keyword check):
 
-Explicit flags always override defaults. E.g., `--quick --interactive` = quick + interactive.
+| Intent | Required Depth |
+|--------|---------------|
+| New Feature | always standard |
+| Architecture | always standard |
+| Migration | always standard |
+| Research | always standard |
+| Performance | always standard |
+| Bug Fix | quick only if trivial (typo-level), else standard |
+| Refactoring | quick only if rename/cleanup, else standard |
 
-### Mode Combination Matrix
+**Interaction Defaults**: quick → autopilot, standard → interactive
 
-|  | Interactive | Autopilot |
-|---|-------------|-----------|
-| **Quick** | `--quick --interactive` | `--quick` (default for quick) |
-| **Standard** | (default) | `--autopilot` |
-
-### Autopilot Decision Rules
-
-When `{interaction}` = autopilot, the agent makes decisions autonomously using these rules:
+**Autopilot Decision Rules**:
 
 | Decision Point | Rule |
 |----------------|------|
-| Tech choices | Use existing stack; prefer patterns already in codebase |
-| Trade-off questions | Choose the lower-risk, simpler option |
+| Tech choices | Use existing stack; prefer codebase patterns |
+| Trade-off questions | Choose lower-risk, simpler option |
 | Ambiguous scope | Interpret narrowly (minimum viable scope) |
 | HIGH risk items | HALT and ask user (override autopilot) |
-| Missing info | Assume standard/conventional approach; log in Assumptions |
+| Missing info | Assume standard/conventional; log in Assumptions |
+
+### Intent Classification
+
+Classify each task into one of 7 categories, then apply the corresponding strategy:
+
+| Intent | Keywords | Strategy |
+|--------|----------|----------|
+| **Refactoring** | "refactoring", "cleanup", "migrate" | Safety first, regression prevention |
+| **New Feature** | "add", "new", "implement" | Pattern exploration, integration points |
+| **Bug Fix** | "bug", "error", "broken", "fix" | Reproduce → Root cause → Fix |
+| **Architecture** | "design", "structure" | Trade-off analysis, oracle consultation |
+| **Research** | "investigate", "analyze" | Investigation only, NO implementation |
+| **Migration** | "migration", "upgrade" | Phased approach, rollback plan |
+| **Performance** | "optimize", "slow" | Measure first, profile → optimize |
 
-### Mode Variables
-
-Throughout this document, `{depth}` and `{interaction}` refer to the resolved mode values:
-- `{depth}` = `quick` | `standard`
-- `{interaction}` = `interactive` | `autopilot`
-
----
-
-## Mode 1: Interview Mode (Default)
-
-Start here. Stay here until user explicitly requests plan generation.
-
-### Step 1: Initialize
-
-When user describes a task:
-
-#### 1.1 Classify Intent (internal analysis)
-
-Identify the task type and apply the corresponding strategy:
-
-| Intent Type | Keywords | Strategy | Key Questions |
-|-------------|----------|----------|---------------|
-| **Refactoring** | "refactoring", "cleanup", "improve", "migrate" | Safety first, regression prevention | "Existing tests?", "Gradual vs all-at-once?" |
-| **New Feature** | "add", "new", "implement" | Pattern exploration, integration points | "Similar feature exists?", "Where to integrate?" |
-| **Bug Fix** | "bug", "error", "broken", "fix" | Reproduce → Root cause → Fix | "Reproduction steps?", "When did it start?" |
-| **Architecture** | "design", "structure", "architecture" | Trade-off analysis, oracle consultation | "Scalability vs simplicity?", "Constraints?" |
-| **Research** | "investigate", "analyze", "understand" | Investigation only, NO implementation | "Output format?", "Scope limits?" |
-| **Migration** | "migration", "upgrade", "transition" | Phased approach, rollback plan | "Downtime allowed?", "Rollback possible?" |
-| **Performance** | "performance", "optimize", "slow" | Measure first, profile → optimize | "Current measurements?", "Target metrics?" |
-
-**Intent-Specific Actions**:
-
-- **Refactoring**: Must identify existing tests, define "done" clearly
-- **Bug Fix**: Must get reproduction steps before planning
-- **Architecture**: Consider calling `Skill("agent-council")` for multiple perspectives
-- **Migration**: External docs critical - consider tech-decision research
-- **Performance**: Baseline measurement required before any optimization
-
-#### 1.1.5 Tech-Decision Proposal (Conditional)
-
-> **Mode Gate**:
-> - ⛔ **Quick**: Skip entirely. Use existing stack and patterns found in codebase.
-> - 🤖 **Autopilot**: Skip. Use existing stack; log choice in Assumptions.
-
-**Trigger conditions** (check after Intent Classification):
-- Intent is **Architecture** or **Migration**
-- User's request contains comparison keywords: "vs", "versus", "compare", "which one", "what should I use"
-
-**If triggered**, propose tech-decision research to user:
-
-```
-AskUserQuestion(
-  question: "A technology choice seems needed. Shall we run a deep analysis with tech-decision?",
-  header: "Tech Research",
-  options: [
-    { label: "Yes, run analysis", description: "Compare across multiple sources (takes time)" },
-    { label: "No, proceed quickly", description: "Decide based on existing patterns/docs" }
-  ]
-)
-```
-
-**If user selects "Yes, run analysis"**:
-```
-Skill("tech-decision", args="[comparison topic extracted from user's request]")
-```
-
-Then incorporate tech-decision results into DRAFT before continuing to Step 1.2.
-
-**If user selects "No, proceed quickly"**: Skip and proceed to Step 1.2.
-
-#### 1.2 Launch Parallel Exploration
-
-> **Mode Gate**:
-> - ⛔ **Quick**: Launch only 2 agents (Explore ×2). Skip docs-researcher and ux-reviewer.
-
-<details>
-<summary>Quick Mode Variant (2 agents)</summary>
-
-```
-# Quick mode: 2 agents only
-Task(subagent_type="Explore",
-     prompt="Find: existing patterns for [feature type]. Focus on directly relevant files only. Report as file:line format.")
-
-Task(subagent_type="Explore",
-     prompt="Find: project structure, package.json scripts for lint/test/build commands. Keep findings concise.")
-```
-
-</details>
-
-Launch all 4 agents **in parallel** (in a single message with multiple Task calls) to populate **Agent Findings**.
-
-> **IMPORTANT: Do NOT use `run_in_background: true`.** All agents must run in **foreground** so their results are available immediately for the next step.
-
-```
-# Standard mode: All 4 agents launched simultaneously in one message (parallel foreground, NOT background)
-Task(subagent_type="Explore",
-     prompt="Find: existing patterns for [feature type]. Report as file:line format.")
-
-Task(subagent_type="Explore",
-     prompt="Find: project structure, package.json scripts for lint/test/build commands")
-
-Task(subagent_type="docs-researcher",
-     prompt="Find internal documentation relevant to [feature/task]. Search docs/, ADRs, READMEs, config files for conventions, architecture decisions, and constraints.")
-
-Task(subagent_type="ux-reviewer",
-     prompt="""
-User's Goal: [user's stated goal]
-Current Understanding: [brief description of what's being proposed]
-Intent Type: [classified intent from 1.1]
-Affected Area: [which part of the product the change touches]
-
-Evaluate how this change affects existing user experience.
-Focus on: current UX flow, simplicity impact, and better alternatives.""")
-```
-
-**What to discover** (for DRAFT's Agent Findings section):
-- Existing patterns → `Patterns` (file:line format required)
-- Directory structure → `Structure`
-- Project commands → `Project Commands`
-- Internal documentation → `Documentation` (ADRs, conventions, constraints)
-- Current UX flow & impact → `UX Review` (from ux-reviewer agent)
-
-#### 1.3 Create Draft File
-
-```
-Write(".dev/specs/{name}/DRAFT.md", initial_draft)
-```
-
-Follow the structure in `${baseDir}/templates/DRAFT_TEMPLATE.md`.
-
-**Initial DRAFT should include**:
-- Intent Classification (from 1.1)
-- What & Why (extracted from user's request)
-- Open Questions > Critical (initial questions to ask)
-
-### Step 1.5: Present Exploration Summary
-
-> **Mode Gate**:
-> - ⛔ **Quick**: Present abbreviated summary (patterns + commands only, 2-3 lines).
-> - 🤖 **Autopilot**: Log summary to DRAFT but do not wait for user confirmation. Proceed immediately.
-
-After parallel agents complete, present a brief summary to the user **before** starting the interview questions:
-
-```
-"Codebase exploration results:
- - Structure: [key directory structure summary]
- - Related patterns: [2-3 discovered existing patterns]
- - Internal docs: [relevant ADR/convention summary]
- - Project commands: lint/test/build
- - UX review: [current UX flow summary + key UX concerns]
-
-Please confirm this context is correct before we continue."
-```
-
-> **Purpose**: Let the user verify the agent's understanding of the codebase is correct, preventing the interview from going in the wrong direction.
-
-### Step 2: Gather Requirements (Question Principles)
-
-> **Mode Gate**:
-> - ⛔ **Quick**: **Skip this entire step.** Instead, populate the Assumptions section in the DRAFT with standard/conventional choices for each decision point. Continue to Step 3 (update DRAFT with exploration findings), then proceed to Step 4 (transition).
-> - 🤖 **Autopilot**: Do NOT use `AskUserQuestion`. For each decision point, apply Autopilot Decision Rules and log the choice in the Assumptions section.
-
-#### What to ASK (user knows, agent doesn't)
-
-Use `AskUserQuestion` only for:
-- **Boundaries**: "Any restrictions on what not to do?"
-- **Trade-offs**: Only when multiple valid options exist
-- **Success Criteria**: "When is this considered complete?"
-
-```
-AskUserQuestion(
-  question: "Which authentication method should we use?",
-  options: [
-    { label: "JWT (Recommended)", description: "jsonwebtoken already installed" },
-    { label: "Session", description: "Requires server state management" },
-    { label: "Need comparison", description: "Research with tech-decision" }
-  ]
-)
-```
-
-#### What to DISCOVER (agent finds)
-
-Agent explores:
-- File locations
-- Existing patterns to follow
-- Integration points
-- Project commands
-
-#### What to PROPOSE (research first, then suggest)
-
-After exploration completes, propose instead of asking:
-
-```
-"Based on my investigation, this approach should work:
-- Middleware at src/middleware/auth.ts
-- Following existing logging.ts pattern
-- Using jwt.ts verify() function
-
-Let me know if you prefer a different approach."
-```
-
-> **Core Principle**: Minimize questions, maximize proposals based on research
-
-#### Technical Decision Support
-
-> **Note**: Primary tech-decision proposal happens in **Step 1.1.5** based on Intent analysis.
-> This section covers cases where comparison needs emerge **during** the interview.
-> **Mode Gate**: This section is only reachable in **interactive** modes (since Step 2 is skipped for Quick and Autopilot does not use AskUserQuestion). In autopilot, if the agent detects a comparison need during exploration, recommend based on existing patterns and log in Assumptions.
-
-When user expresses uncertainty mid-interview ("which is better?", "what should I use?"):
-
-```
-AskUserQuestion(
-  question: "Would you like a comparative analysis?",
-  header: "Tech Research",
-  options: [
-    { label: "Yes, run tech-decision", description: "Deep comparative analysis (takes time)" },
-    { label: "No, just recommend", description: "Recommend based on existing patterns" }
-  ]
-)
-```
-
-**If user selects "Yes, run tech-decision"**:
-```
-Skill("tech-decision", args="[comparison topic]")
-```
-
-**If user selects "No, just recommend"**: Propose based on exploration findings.
-
-### Step 3: Update Draft Continuously
-
-#### After user response:
-
-1. Record in **User Decisions** table:
-   ```markdown
-   | Question | Decision | Notes |
-   |----------|----------|-------|
-   | Auth method? | JWT | Using existing library |
-   ```
-
-2. Remove resolved items from **Open Questions**
-
-3. Update **Boundaries** if constraints mentioned
-
-4. Update **Success Criteria** if acceptance conditions mentioned
-
-#### After exploration agents complete:
-
-1. Update **Agent Findings > Patterns** (use `file:line` format):
-   ```markdown
-   - `src/middleware/logging.ts:10-25` - Middleware pattern
-   ```
-
-2. Update **Agent Findings > Structure**
-
-3. Update **Agent Findings > Project Commands**
-
-4. Update **Agent Findings > Documentation** (from docs-researcher):
-   ```markdown
-   - `docs/architecture.md:15-40` - Auth uses JWT, decided in ADR-003
-   - `CONTRIBUTING.md:22` - All new endpoints need integration tests
-   ```
-
-5. Update **Agent Findings > External Dependencies** (from exploration):
-   ```markdown
-   | Dependency | Type | Current Setup | Env Vars |
-   |------------|------|---------------|----------|
-   | PostgreSQL | DB | docker-compose | DB_URL |
-   ```
-
-#### When direction is agreed:
-
-1. Update **Direction > Approach** with high-level strategy
-
-2. Sketch **Direction > Work Breakdown**:
-   ```markdown
-   1. Create Config → outputs: `config_path`
-   2. Implement Middleware → depends on: Config
-   3. Connect Router → depends on: Middleware
-   ```
-
-### Step 4: Check Plan Transition Readiness
-
-> **Mode Gate**:
-> - ⛔ **Quick**: Skip transition check. Auto-transition to Plan Generation after exploration agents complete, summary is logged, and Assumptions section is populated in DRAFT.
-> - 🤖 **Autopilot**: Auto-transition when all conditions are met, without waiting for explicit user request.
-
-#### Plan Transition Conditions:
-
-- [ ] **Critical Open Questions** all resolved
-- [ ] **User Decisions** (interactive) or **Assumptions** (autopilot) has key decisions recorded
-- [ ] **Success Criteria** agreed
-- [ ] User explicitly says "make it a plan" or similar
-
-#### If Critical questions remain:
-
-```
-"Before creating the Plan, I need to confirm: [Critical Question]"
-```
-
-#### If all resolved but user hasn't requested:
-
-Continue conversation naturally. Do NOT prompt for plan generation.
-
-#### Trigger phrases for Plan Generation:
-
-- "Make it a plan"
-- "Generate the plan"
-- "Create the work plan"
-- Similar explicit requests
-
-**DO NOT** generate a plan just because you think you have enough information.
-
----
-
-## Mode 2: Plan Generation (On Explicit Request Only)
-
-Triggered when user explicitly asks for plan generation.
-
-### Step 1: Validate Draft Completeness
-
-> **Mode Gate**:
-> - ⛔ **Quick**: Only require Patterns and Commands in Agent Findings. Documentation, External Dependencies, and UX Review are optional (since quick mode skips docs-researcher and ux-reviewer).
-
-Before creating plan, verify DRAFT has:
-
-- [ ] **What & Why** completed
-- [ ] **Boundaries** specified
-- [ ] **Success Criteria** defined
-- [ ] **Critical Open Questions** empty
-- [ ] **Agent Findings** has Patterns, Commands (and for standard mode: Documentation, External Dependencies, and UX Review)
-
-**If incomplete**: Return to Interview Mode to gather missing information.
-
-### Step 2: Run Parallel Analysis Agents
-
-> **Mode Gate**:
-> - ⛔ **Quick**: Launch only tradeoff-analyzer with lite prompt (1 agent). Skip gap-analyzer, verification-planner, and external-researcher.
-> - 🤖 **Autopilot** (decision handling only, does not override agent count): For HIGH risk decision_points, HALT and ask user (consistent with Autopilot Decision Rules). For MEDIUM/LOW decision_points, auto-select the conservative/lower-risk option and log in Assumptions. Agent count follows `{depth}`: standard=4 agents, quick=1 agent.
-
-<details>
-<summary>Quick Mode Variant (tradeoff-lite only)</summary>
-
-```
-# Quick mode: tradeoff-lite only (1 agent)
-Task(subagent_type="tradeoff-analyzer",
-     prompt="""
-Proposed Approach: [From DRAFT Direction]
-Work Breakdown: [From DRAFT Direction > Work Breakdown]
-Intent Type: [From DRAFT Intent Classification]
-
-Quick assessment only:
-- Risk level per change area (LOW/MEDIUM/HIGH)
-- Flag any HIGH risk items that need user attention
-- Skip detailed alternatives analysis
-""")
-```
-
-</details>
-
-**Pre-read TESTING.md**: Before launching agents, read the testing strategy file to inline into verification-planner's prompt. The file is at the plugin root — resolve from `${baseDir}` (shown in skill header) going up to the plugin root:
-```
-# Read TESTING.md from plugin root (3 levels up from skill baseDir)
-# ${baseDir} is shown in the "Base directory for this skill:" header above.
-# Resolve: ${baseDir}/../../../TESTING.md
-# Extract the content — especially the "For Verification Agents" and "Sandbox Bootstrapping Patterns" sections.
-# Store the content to include in verification-planner prompt below.
-TESTING_MD_CONTENT = Read("${baseDir}/../../../TESTING.md")
-```
-> **Why inline?** Subagents cannot resolve `${baseDir}` — it's only available as header context to the main agent. The main agent must read the file and pass the content directly.
-
-Launch gap-analyzer, tradeoff-analyzer, verification-planner, and external-researcher (if needed) **in parallel**:
-
-```
-# Gap analysis - identify missing requirements and pitfalls
-Task(subagent_type="gap-analyzer",
-     prompt="""
-User's Goal: [From DRAFT What & Why]
-Current Understanding: [Summary from DRAFT]
-Intent Type: [From DRAFT Intent Classification]
-
-Analyze for missing requirements, AI pitfalls, and must-NOT-do items.
-""")
-
-# Tradeoff analysis - assess risk, simpler alternatives, over-engineering
-Task(subagent_type="tradeoff-analyzer",
-     prompt="""
-Proposed Approach: [From DRAFT Direction]
-Work Breakdown: [From DRAFT Direction > Work Breakdown]
-Codebase Context: [From Agent Findings - patterns, structure, documentation]
-Intent Type: [From DRAFT Intent Classification]
-Boundaries: [From DRAFT Boundaries]
-
-Assess risk per change area, propose simpler alternatives, flag dangerous changes,
-and generate decision_points for HIGH risk items requiring human approval.
-For irreversible changes (Rollback=hard/impossible), propose a reversible alternative.
-""")
-
-# Verification planning - classify verification points as agent-verifiable vs human-required
-Task(subagent_type="verification-planner",
-     prompt="""
-User's Goal: [From DRAFT What & Why]
-Current Understanding: [Summary from DRAFT]
-Work Breakdown: [From DRAFT Direction > Work Breakdown]
-Agent Findings: [From DRAFT Agent Findings - patterns, structure, commands]
-
-## Testing Strategy (from TESTING.md)
-[Paste TESTING_MD_CONTENT here — the full content read in the pre-read step above.
- If the file was not found, note this in Verification Gaps and proceed without it.]
-
-Use the 4-Tier testing model above to classify verification points:
-- A-items (agent-verifiable): automated tests, CLI checks, lint
-- H-items (human-required): UX review, visual inspection, manual QA
-- S-items (sandbox agent testing): Tier 4 scenarios requiring docker-compose/browser agents
-
-Explore test infrastructure and classify verification points.
-""")
-
-# External docs research (if needed) - runs in parallel with above
-# Launch ONLY when: migration, new library, unfamiliar tech, version-specific behavior
-Task(subagent_type="external-researcher",
-     prompt="Research official docs for [library/framework]: [specific question]")
-```
-
-**Use Gap Analysis Results**:
-- Add missing requirements to clarify with user (if critical)
-- Include AI Pitfalls in plan's "Must NOT Do" section
-- Add prohibitions from gap analysis to each relevant TODO
-
-**Use Tradeoff Analysis Results**:
-- Apply risk tags (LOW/MEDIUM/HIGH) to each TODO
+### Tech-Decision Integration
+
+> **Mode Gate**: Quick/Autopilot → skip entirely. Use existing stack; log in Assumptions.
+
+**Initial trigger** (after Intent Classification):
+- Intent is **Architecture** or **Migration**, OR
+- Request contains comparison keywords: "vs", "versus", "compare", "which one", "what should I use"
+
+If triggered, propose `Skill("tech-decision")` to user via AskUserQuestion:
+- "Yes, run analysis" → `Skill("tech-decision", args="[comparison topic]")` → incorporate results into DRAFT
+- "No, proceed quickly" → skip, proceed to exploration
+
+**Mid-interview trigger** (during interview, interactive only):
+When user expresses uncertainty ("which is better?", "what should I use?"), offer tech-decision as an option via AskUserQuestion. If declined, recommend based on existing codebase patterns.
+
+### Interview Principles (Interactive Mode)
+
+**ASK** (user knows, agent doesn't):
+- Boundaries: "Any restrictions on what not to do?"
+- Trade-offs: Only when multiple valid options exist
+- Success Criteria: "When is this considered complete?"
+
+**DISCOVER** (agent finds via exploration):
+- Existing patterns (file:line format)
+- Project commands (lint/test/build)
+- Internal docs (ADRs, conventions)
+- UX impact (current flow analysis)
+
+**PROPOSE** (research first, then suggest):
+- After each answer, propose a concrete decision or assumption
+- Offer trade-off options (simple-now vs flexible-later)
+- Summarize agreed decisions at end of each exchange
+- Minimize questions; prefer proposals backed by research
+
+### Exploration Summary Presentation
+
+After exploration agents complete, present findings to user **before** starting interview.
+
+| Mode | Behavior |
+|------|----------|
+| Quick | Abbreviated: patterns + commands only (2-3 lines) |
+| Autopilot | Log to DRAFT, no confirmation wait, proceed immediately |
+| Interactive | Present full summary, ask user to confirm context is correct |
+
+**What to present** (interactive full summary):
+- Structure: key directory layout
+- Related patterns: 2-3 discovered patterns (file:line)
+- Internal docs: relevant ADR/convention summary
+- Project commands: lint/test/build
+- UX review: current flow summary + key concerns
+
+> **Purpose**: Let the user verify the agent's codebase understanding before the interview goes in the wrong direction.
+
+### Draft Continuous Update Rules
+
+Update DRAFT incrementally after each event. Never batch updates.
+
+| Trigger | Sections to Update | Format |
+|---------|--------------------|--------|
+| User answers question | User Decisions (add row), remove from Open Questions | `\| question \| decision \| notes \|` |
+| User states boundary | Boundaries > Must NOT Do | Bullet point |
+| User agrees on criteria | Success Criteria | Checkbox `- [ ] condition` |
+| Exploration agent returns | Agent Findings > Patterns, Structure, Commands | Patterns: `file:line` - description |
+| docs-researcher returns | Agent Findings > Documentation | `path:line` - description |
+| ux-reviewer returns | Agent Findings > UX Review | Current flow, impact, recommendations |
+| External deps discovered | Agent Findings > External Dependencies | Table row: dep, type, setup, env vars |
+| Direction agreed | Direction > Approach + Work Breakdown | Numbered list with deps/outputs |
+| Assumption made (autopilot) | Assumptions table | `\| decision point \| choice \| rationale \| source \|` |
+
+### Plan Transition (Interactive Mode)
+
+**Conditions** (all must be met):
+- Critical Open Questions all resolved
+- User Decisions recorded
+- Success Criteria agreed
+- User explicitly says "make it a plan" / "generate the plan"
+
+**DO NOT** generate a plan just because you have enough information.
+
+### Mode Gates by Step
+
+| Step | Quick | Standard |
+|------|-------|----------|
+| Exploration | 2 agents (Explore ×2) | 4 agents (+docs-researcher, +ux-reviewer) |
+| Interview | Skip → auto-assume | Full interview loop |
+| Analysis | tradeoff-lite only (1 agent) | 4 agents (gap-analyzer, tradeoff-analyzer, simplicity-checker, risk-assessor) |
+| Codex synthesis | Skip | Required (Step 2.5) |
+| Plan review | 1 round | Up to 3 rounds |
+
+### Plan Generation Judgment
+
+#### DRAFT → plan-content.json Mapping
+
+When generating `plan-content.json`, map DRAFT sections as follows:
+
+| DRAFT Section | plan-content.json Field |
+|---------------|------------------------|
+| What & Why | `context.originalRequest` |
+| User Decisions | `context.interviewSummary` |
+| Agent Findings (all) | `context.researchFindings` |
+| Assumptions | `context.assumptions` |
+| Deliverables | `objectives.deliverables` |
+| Boundaries + gap-analyzer mustNotDo | `objectives.mustNotDo` |
+| Success Criteria | `objectives.dod` |
+| Direction > Work Breakdown | `todos[]` + `taskFlow` + `dependencyGraph` |
+| Agent Findings > Patterns + Documentation | `todos[].references` |
+| Agent Findings > Commands | TODO Final `acceptanceCriteria` commands |
+| Agent Findings > External Dependencies | Include in `context.researchFindings` |
+| Agent Findings > UX Review | `objectives.mustNotDo` (UX items) + `todos[].mustNotDo` |
+
+#### Using Analysis Agent Results
+
+**gap-analyzer**: Add missing requirements to relevant todos. Include AI Pitfalls in `objectives.mustNotDo` and relevant `todos[].mustNotDo`.
+
+**tradeoff-analyzer**:
+- Apply risk tags (LOW/MEDIUM/HIGH) to each todo
 - Replace over-engineered approaches with simpler alternatives (SWITCH verdicts)
-- Present decision_points to user:
+- For HIGH risk items: include rollback steps in todo steps
+- Present `decision_points` to user (interactive) or auto-select conservative option (autopilot, except HIGH → HALT and ask)
 
-> **Mode Gate** (decision_points):
-> - 🤖 **Autopilot**: For HIGH risk decision_points, HALT and ask user via `AskUserQuestion`. For MEDIUM/LOW, auto-select the conservative option and log in Assumptions.
-> - All other modes: Present all decision_points via `AskUserQuestion`.
+**simplicity-checker**: Validate approach isn't over-engineered. Simplify todos where checker flags unnecessary complexity.
 
+**risk-assessor**: Cross-reference with tradeoff-analyzer risk tags. Elevate risk level if assessor flags additional concerns not caught by tradeoff analysis.
+
+#### A/H/S Verification Synthesis
+
+Since recipes use `simplicity-checker` and `risk-assessor` (not `verification-planner`), the agent must synthesize A/H/S items during the `generate-plan` LLM step itself:
+
+- **A-items** (agent-verifiable): automated tests, CLI checks, lint, type-check — derive from Agent Findings > Commands and todo acceptance criteria
+- **H-items** (human-required): UX review, visual inspection, subjective quality — derive from ux-reviewer findings
+- **S-items** (sandbox): Tier 4 scenarios requiring docker-compose/browser — check if project has sandbox infra (`docker-compose.yml`, `sandbox/features/`)
+
+**S-items fallback**: If any verification items are Tier 4 (E2E browser tests, multi-service integration), classify as S-items, not A-items. If project has sandbox infra but `sItems` is empty, flag as a warning in `gaps`.
+
+**UI screenshot S-items**: If work involves UI/frontend changes, add screenshot-based S-items: capture at affected routes + compare against design spec (`.pen` files via Pencil MCP if available).
+
+**Quick Classification Table:**
+
+| Signal | → Category | Example |
+|--------|-----------|---------|
+| Can run as CLI command with exit code | A-item | `test -f file`, `npm test`, `tsc --noEmit`, `grep pattern file` |
+| Needs human judgment/eye | H-item | "Visual theme matches spec", "UX feels intuitive", "Layout is responsive" |
+| Requires docker-compose/browser/multi-service | S-item | BDD feature file execution, screenshot comparison, API integration |
+| `type: verification` TODO's acceptance criteria | A-item | Functional + static + runtime checks from plan |
+| ux-reviewer flagged concern | H-item | "Current flow changes", "New interaction pattern" |
+| Project has `docker-compose.yml` or `sandbox/features/` | Check for S-items | If present but S-items empty → flag as gap |
+
+#### TESTING.md Pre-Read
+
+Before generating plan-content.json, read TESTING.md from the plugin root to inform verification strategy. Resolve path: `${baseDir}/../../../TESTING.md` (baseDir shown in skill header). Extract the "For Verification Agents" and "Sandbox Bootstrapping Patterns" sections. Use this to correctly classify A/H/S items and select sandbox bootstrapping patterns.
+
+> **Why inline?** Subagents cannot resolve `${baseDir}`. The main agent must read the file and use the content directly in the generate-plan step.
+
+#### Risk Tag Application
+
+| Risk | Plan Requirements |
+|------|-------------------|
+| LOW | Standard verification only |
+| MEDIUM | Verify block + reviewer scrutiny |
+| HIGH | Verify block + rollback steps + human approval before execution |
+
+HIGH risk todos MUST include explicit rollback steps. If tradeoff-analyzer flags an irreversible change (Rollback=hard/impossible), propose a reversible alternative in the plan.
+
+### Decision Summary Checkpoint
+
+> **Mode Gate**: standard+interactive only. Autopilot: log to DRAFT, skip user confirmation. Quick: skip entirely.
+
+Before plan generation, present a summary of **all decisions** for user confirmation via AskUserQuestion ("All confirmed" / "Corrections needed").
+
+**Summary sections**:
+
+1. **User Decisions**: items user explicitly chose
+2. **Agent Decisions**: items agent decided, with risk tag `[LOW]`/`[MED]`/`[HIGH]`
+3. **Codex Synthesis** (if Step 2.5 ran): contradictions, blind spots, strategic concerns, recommendations. Omit if SKIPPED/DEGRADED.
+4. **Risk Summary**: table for HIGH items only (change, risk, rollback, reversible alternative, judgment). MEDIUM/LOW as aggregate counts.
+5. **Verification Strategy**: A-items (criterion + method), H-items (criterion + reason), S-items (scenario + method if applicable), Verification Gaps
+
+If user selects "Corrections needed": ask which items to change, update DRAFT, re-run affected analysis if needed.
+
+> **Purpose**: Give the user a chance to review agent-decided LOW/MEDIUM items. Prevents silent scope drift.
+
+### Verification Summary Confirmation
+
+> **Mode Gate**: standard+interactive only. Autopilot/Quick: skip.
+
+After plan is generated (PLAN.md created), present a lightweight verification count before sending to reviewer:
+- A-items: count
+- H-items: count
+- S-items: count (or "none — no sandbox infra")
+
+Offer via AskUserQuestion: "Confirmed" or "Corrections needed". If corrections, update PLAN verification section before proceeding to reviewer.
+
+### Reviewer Rejection Handling
+
+**Classification**:
+
+| Type | What changes | Examples |
+|------|-------------|----------|
+| **Cosmetic** | Wording, formatting, field completeness | Missing field, unclear description |
+| **Semantic** | Scope, deliverables, DoD, risk, mustNotDo, acceptance criteria | Requirements change, missing logic |
+
+**Per-mode handling**:
+
+| Mode | Cosmetic | Semantic |
+|------|----------|----------|
+| Standard+Interactive | Auto-fix | Present to user via AskUserQuestion |
+| Standard+Autopilot | Auto-fix | Auto-fix if no scope change; HALT if scope change detected |
+| Quick+Interactive | Auto-fix (counts as 1 round) | HALT, inform user |
+| Quick+Autopilot | Auto-fix (counts as 1 round) | HALT always |
+
+**Max review rounds**: standard = 3, quick = 1.
+
+If still REJECT after max rounds, HALT and inform user.
+
+> **Note**: CLI `cleanup` handles draft deletion after reviewer OKAY. Do not manually `rm` draft files.
+
+### Plan Approval Summary
+
+After reviewer OKAY + cleanup, present a comprehensive summary before stopping.
+
+> **Mode Gate**: Interactive → print summary + AskUserQuestion (next step). Autopilot → print summary, then stop.
+
+**Agent's role**: Ensure `plan-content.json` was correctly populated so CLI-generated PLAN.md has all sections. Then extract and present:
+
+| Section | Source in PLAN.md | Condensing Rule |
+|---------|-------------------|-----------------|
+| TODO Overview | `## TODOs` | One line per TODO: title + [type] + key files (max 3). `⤷ depends on:` only for non-obvious deps. |
+| Verification | `## Verification Summary` | A/H/S counts. List items if ≤5 per category, else count + "see PLAN.md". If S: 0 with sandbox infra → flag `⚠️`. |
+| Pre-work | `External Dependencies > Pre-work` | Show all items. Mark blocking with `🔴`. |
+| Post-work | `External Dependencies > Post-work` | Show all items. |
+| Key Decisions | `Context > Interview Summary` | Max 5 most impactful decisions. |
+| Assumptions | `## Assumptions` | Quick/autopilot only. All items + rationale. Append `--interactive` re-run hint. |
+
+**Next step (interactive only)**:
 ```
-# For each decision_point from tradeoff-analyzer (interactive modes, or HIGH risk in autopilot):
-AskUserQuestion(
-  question: decision_point.question,
-  options: [
-    { label: "Option A (Recommended)", description: decision_point.options[0].description },
-    { label: "Option B", description: decision_point.options[1].description }
-  ]
-)
-```
-
-- Record decisions in DRAFT's User Decisions table (interactive) or Assumptions table (autopilot)
-- HIGH risk TODOs must include rollback steps in the plan
-
-**When to Launch External Researcher**:
-- Intent is Migration or Architecture
-- Unfamiliar library/framework mentioned
-- Version-specific behavior needed
-- Best practices unknown
-
-### Step 2.5: Codex Strategic Synthesis
-
-> **Mode Gate**:
-> - ⛔ **Quick**: Skip entirely.
-> - ✅ **Standard**: **Required.** Run after all Step 2 analysis agents complete, before Step 3.
-
-After all analysis agents return results, call the Codex Strategist to cross-check and synthesize:
-
-```
-Task(subagent_type="codex-strategist",
-     prompt="""
-The following are independent analysis results for a software plan.
-Synthesize them — find contradictions, blind spots, and strategic concerns.
-
-## User's Goal
-[From DRAFT What & Why]
-
-## Proposed Approach
-[From DRAFT Direction > Approach]
-
-## Gap Analysis Result
-[Full output from gap-analyzer agent]
-
-## Tradeoff Analysis Result
-[Full output from tradeoff-analyzer agent]
-
-## Verification Planning Result
-[Full output from verification-planner agent]
-
-## External Research Result
-[Full output from external-researcher agent, or "N/A - not launched" if skipped]
-""")
-```
-
-**Graceful Degradation**: If codex CLI is unavailable or the call fails, the agent returns SKIPPED/DEGRADED status. You MUST still attempt the call and record the result. Continue to Step 3 only after attempting and logging the outcome.
-
-**Use Codex Synthesis Results** (when available):
-- **Cross-Check Findings**: If contradictions found, resolve before plan generation. Present to user in Decision Summary (Step 3).
-- **Blind Spots**: Add to Gap Analysis results — include in plan's "Must NOT Do" or risk assessment.
-- **Strategic Concerns**: Surface in Decision Summary Checkpoint for user awareness.
-- **Recommendations**: Apply to plan generation where actionable (e.g., adjust TODO ordering, add rollback steps).
-
-### Step 3: Decision Summary Checkpoint
-
-> **Mode Gate**:
-> - 🤖 **Autopilot**: Skip user confirmation. Log the decision summary to DRAFT only.
-> - ⛔ **Quick** + 🤖 **Autopilot**: Skip entirely (both conditions met by default for quick).
-
-Before creating the plan, present a summary of **all decisions** (both user-made and agent-inferred) for user confirmation:
-
-```
-AskUserQuestion(
-  question: "Please review the following decisions. Any corrections needed?",
-  options: [
-    { label: "All confirmed", description: "All decisions are correct" },
-    { label: "Corrections needed", description: "I'd like to change some items" }
-  ]
-)
-```
-
-**Summary includes**:
-```markdown
-## Decision Summary
-
-### User Decisions
-- Auth method: JWT (user selected)
-- API format: REST (user selected)
-
-### Agent Decisions
-- [MED] Response format: JSON — follows existing pattern (src/api/response.ts:15)
-- [LOW] File location: src/services/auth/ — follows existing structure
-- [LOW] Error handling: Use existing ErrorHandler class
-
-### Codex Strategic Synthesis (if available)
-- Cross-check: [contradictions found, or "consistent"]
-- Blind spots: [items identified by Codex]
-- Strategic concerns: [big-picture issues]
-- Recommendations: [top actionable items]
-(Omit this section if Step 2.5 was skipped or returned SKIPPED/DEGRADED)
-
-### Risk Summary
-| 변경사항 | Risk | Rollback | 가역적 대안 | 판단 |
-|---------|------|----------|------------|------|
-| [HIGH items only — from tradeoff-analyzer Risk Assessment] | HIGH | hard/impossible | [alternative] | 사람 선택 필요 |
-
-- MEDIUM: N items (see agent decisions above)
-- LOW: N items
-
-## Verification Strategy
-### Agent-Verifiable (A-items)
-- A-1: [criterion] (method: [command])
-- A-2: [criterion] (method: [e2e/unit test])
-### Human-Required (H-items)
-- H-1: [criterion] (reason: [why human needed])
-### Sandbox Agent Testing (S-items)
-- S-1: [BDD scenario] (method: [agent-browser + DB check], feature: [.feature path])
-- S-2: [screenshot verification] (method: [screenshot vs design spec], route: [/path])
-(Include when sandbox infra exists. For UI work, always include screenshot verification.
- If planner omitted S-items despite sandbox infra existing, apply S-items fallback rule.)
-### Verification Gaps
-- [environment constraints and alternatives]
+AskUserQuestion: "Plan approved. Select the next step."
+Options:
+  /open → Skill("open", args="{name}")
+  /execute → Skill("execute", args="{name}")
+  /worktree create {name} → Skill("worktree", args="create {name}")
 ```
 
-> **Purpose**: Give the user a chance to review LOW/MEDIUM items that the agent decided autonomously. Prevents silent scope drift.
+Autopilot: print summary and plan path, then stop (no AskUserQuestion).
 
-**If user selects "Corrections needed"**: Ask which items to change, update DRAFT, re-run affected analysis if needed.
+### Template References
 
-### Step 4: Create Plan File
+| Template | Path | Purpose |
+|----------|------|---------|
+| DRAFT_TEMPLATE.md | `${baseDir}/templates/DRAFT_TEMPLATE.md` | Draft structure during interview mode |
+| PLAN_TEMPLATE.md | `${baseDir}/templates/PLAN_TEMPLATE.md` | Plan structure for Orchestrator-Worker pattern |
 
-Generate plan using **DRAFT → PLAN mapping**:
+> **`${baseDir}` note**: This variable is provided as header context to the main agent only. Subagents cannot resolve it. When subagents need template content, the main agent must read the file first and inline the content into the subagent prompt.
 
-| DRAFT Section | PLAN Section |
-|---------------|--------------|
-| What & Why | Context > Original Request |
-| User Decisions | Context > Interview Summary |
-| Agent Findings (research) | Context > Research Findings |
-| Assumptions | Context > Assumptions |
-| Deliverables | Work Objectives > Concrete Deliverables |
-| Boundaries | Work Objectives > Must NOT Do |
-| Success Criteria | Work Objectives > Definition of Done |
-| Agent Findings > Patterns | TODOs > References |
-| Agent Findings > Commands | TODO Final > Verification commands |
-| Agent Findings > Documentation | TODOs > References |
-| Direction > Work Breakdown | TODOs + Dependency Graph |
-| (verification-planner > A-items) | Verification Summary + TODO Final > Acceptance Criteria |
-| (verification-planner > H-items) | Verification Summary > Human-Required |
-| (verification-planner > S-items/Tier 4) | Verification Summary > Sandbox Agent Testing |
-| (verification-planner > Verification Gaps) | Verification Summary > Verification Gaps |
-| (verification-planner > External Dependencies) | External Dependencies Strategy |
-| Agent Findings > External Dependencies | External Dependencies Strategy |
+### plan-content.json Schema Reference
 
-**S-items fallback**: If the verification-planner output has Tier 4 items under A-items instead of S-items (e.g., `A-N: ... (tier: 4, ...)`), reclassify them as S-items when writing the PLAN. Also: if the project has sandbox infra (docker-compose, `sandbox/features/`) but the planner's S-items section says 0 or is empty, flag this as a warning and check if Tier 4 items were misclassified as A-items.
-
-**UI screenshot S-items**: If the work involves UI/frontend changes and the planner did not include screenshot-based S-items, add them: screenshot capture at affected routes + comparison against design spec (`.pen` files via Pencil MCP if available).
+The `generate-plan` step must produce JSON matching this exact schema (validated by `plan-content.schema.js`):
 
 ```
-Write(".dev/specs/{name}/PLAN.md", plan_content)
+Top-level required fields:
+  context:         { originalRequest, interviewSummary, researchFindings, assumptions? }
+  objectives:      { core, deliverables[], dod[], mustNotDo[] }
+  todos[]:         { id, title, type("work"|"verification"),
+                     inputs[{name,type,ref}], outputs[{name,type,value,description}],
+                     steps[], mustNotDo[], references[],
+                     acceptanceCriteria: { functional[], static[], runtime[], cleanup[]? },
+                     risk("LOW"|"MEDIUM"|"HIGH") }
+  taskFlow:        string (execution order description)
+  dependencyGraph: [{ todo, requires[], produces[] }]
+  commitStrategy:  [{ afterTodo, message, files[], condition }]
+  verificationSummary: { aItems[], hItems[], sItems[], gaps[] }
 ```
 
-Follow the structure in `${baseDir}/templates/PLAN_TEMPLATE.md`.
+**TODO types**: `work` (implementation) or `verification` (testing/validation)
+**Risk values**: `LOW`, `MEDIUM`, `HIGH`
+**Acceptance Criteria categories**: functional (behavior), static (lint/type), runtime (test execution), cleanup (optional post-work)
 
-**Required sections**:
-- **Context** with Interview Summary from User Decisions
-- **Work Objectives** with Must NOT Do from Boundaries + Gap Analysis
-- **Orchestrator Section**: Task Flow, Dependency Graph, Commit Strategy
-- **TODOs**: Each with Type, Inputs, Outputs, Steps, Acceptance Criteria
-- **TODO Final: Verification** with commands from Agent Findings + A-items from verification-planner
+**Minimal Example** (1 work TODO + 1 verification TODO):
 
-### Step 4.5: Verification Summary Confirmation
-
-> **Mode Gate**:
-> - 🤖 **Autopilot**: Skip. Proceed directly to plan-reviewer.
-> - ⛔ **Quick**: Skip. Proceed directly to plan-reviewer.
-
-After creating the PLAN, present the Verification Summary to the user for lightweight confirmation.
-The summary must include counts for **all three categories**: A-items, H-items, and S-items (if sandbox infra exists).
-
-```
-AskUserQuestion(
-  question: "Here is the PLAN's Verification Summary: N agent-verifiable (A), M human-required (H), K sandbox scenarios (S). Shall we proceed?",
-  options: [
-    { label: "Confirmed", description: "Verification strategy looks good" },
-    { label: "Corrections needed", description: "I'd like to change verification items" }
-  ]
-)
-```
-
-**If "Corrections needed"**: Ask which items to change, update the PLAN's Verification Summary, then proceed to Step 5.
-
-### Step 5: Call Reviewer
-
-```
-Task(subagent_type="plan-reviewer",
-     prompt="Review this plan: .dev/specs/{name}/PLAN.md")
-```
-
-### Step 6: Handle Reviewer Response
-
-> **Mode Gate**:
-> - ⛔ **Quick**: Maximum 1 review round. Cosmetic rejections: auto-fix. Semantic rejections: HALT and inform user.
-> - 🤖 **Autopilot**: Cosmetic rejections: auto-fix. Semantic rejections: auto-fix if no scope change detected. If scope change detected: HALT and inform user.
-> - ⛔ **Quick** + 🤖 **Autopilot** (combined): Quick's 1-round limit takes precedence. Cosmetic: auto-fix (counts as the 1 round). Semantic: HALT always (Quick's stricter rule wins; no auto-fix attempt since it would require a 2nd round).
-
-**If REJECT**, classify the rejection:
-
-#### Cosmetic Rejection (formatting, clarity, missing fields)
-Auto-fix without user involvement:
-1. Read the specific issues listed
-2. Edit the plan to address each issue
-3. Call plan-reviewer again
-4. Repeat until OKAY (⛔ **Quick**: This counts as the 1 allowed round. If still REJECT after fix, HALT and inform user.)
-
-#### Semantic Rejection (requirements change, scope change, missing logic)
-
-> **Mode Gate** (semantic rejection):
-> - 🤖 **Autopilot**: If **no scope change** detected, auto-fix and log the fix in Assumptions. If **scope change** detected, HALT and present to user via `AskUserQuestion`.
-> - All other modes: Always involve user.
-
-**Must involve user** (interactive modes, or scope change in autopilot):
-1. Present the rejection to the user:
-   ```
-   AskUserQuestion(
-     question: "The plan-reviewer found an issue with the plan: [rejection reason]. How should we handle this?",
-     options: [
-       { label: "Apply suggested fix", description: "[proposed fix summary]" },
-       { label: "Edit manually", description: "I'll edit the plan myself" },
-       { label: "Return to interview", description: "Re-gather requirements" }
-     ]
-   )
-   ```
-2. Apply the user's choice
-3. Call plan-reviewer again
-
-**How to classify**: If the fix changes any of these, it's **semantic**:
-- Work Objectives (scope, deliverables, definition of done)
-- TODO steps or acceptance criteria (what gets built)
-- Risk level or rollback strategy
-- Must NOT Do items
-
-Everything else (wording, formatting, field completeness) is **cosmetic**.
-
-**If OKAY**:
-1. Delete the draft file:
-   ```
-   Bash("rm .dev/specs/{name}/DRAFT.md")
-   ```
-2. Inform user that plan is ready
-3. Stop
-
----
-
-## File Locations
-
-| Type | Path | When |
-|------|------|------|
-| Draft | `.dev/specs/{name}/DRAFT.md` | During interview |
-| Plan | `.dev/specs/{name}/PLAN.md` | After plan generation |
-
----
-
-## TODO Structure Reference
-
-PLAN_TEMPLATE.md follows the **Orchestrator-Worker pattern**.
-
-### Orchestrator Section (Orchestrator only)
-- Task Flow
-- Dependency Graph
-- Parallelization
-- Commit Strategy
-- Error Handling
-- Runtime Contract
-
-### TODO Section (Worker only)
-Required fields for each TODO:
-- **Type**: `work` | `verification` (see Type Field below)
-- **Required Tools**: Specify needed tools
-- **Inputs**: Reference to previous TODO outputs (with types)
-- **Outputs**: Generated deliverables (with types)
-- **Steps**: [ ] Checkbox format
-- **Must NOT do**: Prohibitions (including git)
-- **References**: Related code paths (from DRAFT's Agent Findings > Patterns)
-- **Acceptance Criteria**: Verification conditions by category (see below)
-
-### Type Field
-
-| Type | Retry on Fail | Edit/Write Tools | Bash for Testing | Failure Handling |
-|------|---------------|------------------|------------------|------------------|
-| `work` | ✅ Up to 2x | ✅ Yes | ✅ Yes | Analyze → Fix Task or halt |
-| `verification` | ❌ No | ❌ Forbidden | ✅ Yes (tests, builds, sandbox) | Analyze → Fix Task or halt |
-
-**Note**: Failure handling logic is unified for both types. Type only determines retry permission and file modification rights.
-
-### Acceptance Criteria Categories
-
-| Category | Required | Description |
-|----------|----------|-------------|
-| *Functional* | ✅ | Feature functionality verification (business logic) |
-| *Static* | ✅ | Type check, lint pass (modified files) |
-| *Runtime* | ✅ | Related tests pass |
-| *Cleanup* | ❌ | Unused import/file cleanup (only when needed) |
-
-**Worker completion condition**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
-
-### Verification Block (Per TODO)
-
-Each TODO should include a `Verify` block that enables mechanical pass/fail verification:
-
-```yaml
-Verify:
-  acceptance:  # Black-box, user-facing (Given-When-Then)
-    - given: ["precondition 1", "precondition 2"]
-      when: "action or API call"
-      then: ["expected result 1", "expected result 2"]
-  integration:  # Gray-box, system-internal
-    - "Module A correctly calls Module B with expected args"
-  commands:  # Executable checks (exit code = pass/fail)
-    - run: "npm test -- feature.spec.ts"
-      expect: "exit 0"
-    - run: "npm run typecheck"
-      expect: "exit 0"
-  risk: LOW|MEDIUM|HIGH  # From tradeoff-analyzer
+```json
+{
+  "context": {
+    "originalRequest": "Build a TODO app in .playground/",
+    "interviewSummary": "- Tech: Vanilla HTML/CSS/JS, single file\n- Features: CRUD, filter, localStorage",
+    "researchFindings": "- .playground/ is git-ignored, single-file pattern"
+  },
+  "objectives": {
+    "core": "Build a TODO app as a single HTML file",
+    "deliverables": [".playground/todo-app.html"],
+    "dod": ["Can add/toggle/delete items", "Data persists via localStorage"],
+    "mustNotDo": ["No frameworks", "No external dependencies"]
+  },
+  "todos": [
+    {
+      "id": "todo-1",
+      "title": "Build TODO app",
+      "type": "work",
+      "inputs": [],
+      "outputs": [{"name": "app_path", "type": "file", "value": ".playground/todo-app.html", "description": "TODO app"}],
+      "steps": ["Create HTML file", "Add CSS", "Add JS"],
+      "mustNotDo": ["No frameworks", "Do not run git commands"],
+      "references": [".playground/tetris.html — pattern reference"],
+      "acceptanceCriteria": {
+        "functional": ["File exists", "Add/toggle/delete work"],
+        "static": ["No console errors"],
+        "runtime": ["Manual browser test"]
+      },
+      "risk": "LOW"
+    },
+    {
+      "id": "todo-final",
+      "title": "Verification",
+      "type": "verification",
+      "inputs": [{"name": "app_path", "type": "file", "ref": "${todo-1.outputs.app_path}"}],
+      "outputs": [],
+      "steps": ["Verify file exists", "Check functions"],
+      "mustNotDo": ["Do not use Edit/Write", "Do not run git commands"],
+      "references": [],
+      "acceptanceCriteria": {
+        "functional": ["File exists", "Functions defined"],
+        "static": ["grep confirms functions"],
+        "runtime": []
+      },
+      "risk": "LOW"
+    }
+  ],
+  "taskFlow": "todo-1 → todo-final",
+  "dependencyGraph": [
+    {"todo": "todo-1", "requires": [], "produces": ["app_path"]},
+    {"todo": "todo-final", "requires": ["app_path"], "produces": []}
+  ],
+  "commitStrategy": [
+    {"afterTodo": "todo-1", "message": "feat: build TODO app", "files": [".playground/todo-app.html"], "condition": "always"}
+  ],
+  "verificationSummary": {
+    "aItems": ["A-1: File exists (test -f)"],
+    "hItems": ["H-1: Visual appearance (browser)"],
+    "sItems": [],
+    "gaps": ["No automated E2E"]
+  }
+}
 ```
 
-**Guidelines**:
-- Acceptance + integration tests are specified in the plan; unit tests are left to worker discretion
-- Commands must be reproducible (no interactive steps)
-- HIGH risk TODOs must include rollback steps alongside verification
-- If no mechanical verification is possible, mark as `manual: true` and require user opt-in
+> **Note**: `todo.id` format is `todo-N` (e.g., `todo-1`, `todo-2`) for work TODOs, and `todo-final` for the verification TODO. These IDs are used by execute's `build-prompt`, `triage`, `wrapup`, `checkpoint` commands.
 
-### Risk Tagging
+### Checklist Before Stopping
 
-Each TODO receives a risk tag from the tradeoff-analyzer:
-
-| Risk | Meaning | Plan Requirements |
-|------|---------|-------------------|
-| LOW | Reversible, isolated | Standard verification |
-| MEDIUM | Multiple files, API changes | Verify block + plan-reviewer scrutiny |
-| HIGH | DB schema, auth, breaking API | Verify block + rollback steps + human approval before execution |
-
-### Key Principles
-- Worker sees only its own TODO (isolation)
-- Orchestrator substitutes `${todo-N.outputs.field}`
-- **Only Orchestrator commits to git** (Worker is prohibited)
-- **TODO Final uses same Acceptance Criteria structure** (unified verification)
-
-**TODO Final**:
-- Type: `verification` (Edit/Write forbidden, Bash for tests/sandbox allowed)
-- Same categories: Functional, Static, Runtime
-- Same Hook verification process
-- Difference: scope is "entire project"
-
-See `${baseDir}/templates/PLAN_TEMPLATE.md` for complete structure.
-
----
-
-## Checklist Before Stopping
-
-### Common (all modes)
-- [ ] Plan file exists at `.dev/specs/{name}/PLAN.md`
-- [ ] **Orchestrator Section** exists:
-  - [ ] Task Flow
-  - [ ] Dependency Graph
-  - [ ] Commit Strategy
-- [ ] **TODO Section** complete:
-  - [ ] All TODOs have Type, Inputs, Outputs fields
-  - [ ] All TODOs have Steps (checkbox) and Acceptance Criteria
-  - [ ] All TODOs have Verify block (acceptance, commands, risk tag)
-  - [ ] All TODOs have "Do not run git commands" in Must NOT do
-  - [ ] HIGH risk TODOs include rollback steps
-  - [ ] References populated from DRAFT's Agent Findings (incl. Documentation)
-- [ ] **TODO Final: Verification** exists (type: verification, Edit/Write forbidden, same Acceptance Criteria structure)
+**All modes**:
+- [ ] `dev-cli next` returned `{ "done": true }` (or `abort` was called)
+- [ ] No pending `onComplete` commands left unexecuted
+- [ ] All subagent `outputPath` files written
+- [ ] Plan file (deliverable) exists at `.dev/specs/{name}/PLAN.md`
+- [ ] `plan-content.json` correctly populated (all required fields present) — at `.dev/specs/{name}/plan-content.json`
 - [ ] Reviewer returned OKAY
-- [ ] Draft file deleted
-- [ ] Plan Approval Summary presented (TODO overview, verification A/H/S, pre/post-work, key decisions)
+- [ ] DRAFT.md (work artifact) is at `.dev/.sessions/{sessionId}/DRAFT.md` (post-refactor) or `.dev/specs/{name}/DRAFT.md` (legacy)
 
-### Standard mode (additional, both interactive and autopilot)
-- [ ] Draft completeness fully validated (Patterns, Commands, Documentation, External Dependencies, UX Review)
-- [ ] Parallel analysis agents ran (gap-analyzer + tradeoff-analyzer + verification-planner, optionally external-researcher)
-- [ ] Codex Strategic Synthesis attempted (Step 2.5) — result is one of: synthesis applied / SKIPPED / DEGRADED
-- [ ] All HIGH risk decision_points presented to user and resolved
-- [ ] Verification-planner Tier 4 findings reflected: S-items in Verification Summary if sandbox infra exists, Verification Gaps populated
+**Standard mode** (additional):
+- [ ] All 4 analysis agents ran (gap-analyzer, tradeoff-analyzer, simplicity-checker, risk-assessor)
+- [ ] Codex synthesis attempted — result is one of: applied / SKIPPED / DEGRADED
+- [ ] All HIGH risk `decision_points` resolved
+- [ ] A/H/S items synthesized in `verificationSummary` (TESTING.md pre-read attempted)
 
-### Interactive mode (additional)
+**Interactive mode** (additional):
 - [ ] User explicitly requested plan generation (standard+interactive only; quick auto-transitions)
 - [ ] Decision Summary Checkpoint presented and confirmed by user
-- [ ] Verification Summary Confirmation presented and confirmed by user (standard+interactive only)
+- [ ] Verification Summary Confirmation presented and confirmed (standard+interactive only)
 
-### Quick mode (overrides)
+**Quick mode** (overrides):
 - [ ] Only 2 exploration agents used (Explore ×2)
 - [ ] Only tradeoff-lite analysis ran (1 agent)
-- [ ] Interview step was skipped; Assumptions section populated
+- [ ] Interview skipped (quick+autopilot) or minimal (quick+interactive); Assumptions populated
 - [ ] Maximum 1 plan-reviewer round completed
 
-### Autopilot mode (overrides)
+**Autopilot mode** (overrides):
 - [ ] No `AskUserQuestion` calls made (except HIGH risk items)
 - [ ] All autonomous decisions logged in Assumptions section
 - [ ] Decision Summary logged to DRAFT (not presented to user)
-
----
-
-## Example Flow
-
-```
-User: "/specify Add authentication to the API"
-
-[Mode Selection]
-- Auto-detect depth: "Add" → standard
-- Default interaction: interactive
-- Resolved: {depth}=standard, {interaction}=interactive
-
-[Interview Mode - Step 1: Initialize]
-1. Classify: New Feature → Pattern exploration strategy
-2. Launch 4 parallel foreground agents (single message):
-   - Explore #1: Find existing middleware patterns
-   - Explore #2: Find project structure + commands
-   - docs-researcher: Find ADRs, conventions, constraints
-   - ux-reviewer: Evaluate UX impact
-3. Create draft: .dev/specs/api-auth/DRAFT.md
-
-[Interview Mode - Step 1.5: Exploration Summary]
-4. Present summary to user:
-   "Codebase exploration results:
-    - Structure: src/middleware/, src/services/, src/routes/
-    - Related patterns: logging.ts middleware pattern
-    - Internal docs: ADR-003 JWT decision, CONTRIBUTING.md requires integration tests
-    - Commands: npm test, npm run lint"
-   → User confirms context is correct
-
-[Interview Mode - Step 1.1.5: Tech-Decision Proposal]
-5. Detect: User request mentions "authentication" - potential tech choice needed
-   Ask: "A technology choice seems needed. Shall we run a deep analysis?"
-   - Yes, run analysis
-   - No, proceed quickly
-   → User selects "Yes, run analysis"
-6. Call: Skill("tech-decision", args="JWT vs Session for REST API authentication")
-7. Update draft with tech-decision results
-
-[Interview Mode - Step 2: Gather Requirements]
-8. PROPOSE (based on exploration + tech-decision):
-   "Based on tech-decision analysis, JWT is recommended for this use case.
-    jsonwebtoken is already installed. src/middleware/logging.ts pattern works."
-9. Record in User Decisions table
-
-[Interview Mode - Step 3-4]
-10. Update DRAFT continuously
-11. Check: Critical Open Questions resolved? ✓
-
-User: "OK, make it a plan"
-
-[Plan Generation Mode]
-1. Validate draft completeness ✓
-2. Launch 4 parallel analysis agents:
-   - gap-analyzer: missing reqs, AI pitfalls
-   - tradeoff-analyzer: risk assessment, simpler alternatives
-   - verification-planner: test infra, A-items vs H-items
-   - external-researcher: (skipped - no migration/new lib)
-2.5. Codex Strategic Synthesis:
-   - Call codex-strategist with all 4 analysis results
-   - Codex finds: 1 blind spot (missing rate limit on new endpoint)
-   - Recommendation: add rate limit TODO before auth middleware
-3. Present HIGH risk decision_points → User selects option
-4. Decision Summary Checkpoint:
-   "User decisions: JWT, REST API
-    Agent decisions: [MED] JSON response, [LOW] src/services/auth/
-    Risk: HIGH 1 (approved), MED 3, LOW 5"
-   → User confirms
-5. Write: .dev/specs/api-auth/PLAN.md (with Verify blocks + Verification Summary)
-5.5. Present Verification Summary → User confirms
-6. Call: Task(plan-reviewer)
-7. Reviewer says REJECT (semantic: missing rollback for DB change)
-   → Present rejection to user → User selects "Apply suggested fix"
-8. Edit plan, add rollback steps
-9. Call plan-reviewer again
-10. Reviewer says OKAY
-11. Delete draft
-12. Present Plan Approval Summary (TODO overview, verification A/H/S, pre/post-work, key decisions)
-13. AskUserQuestion: next step → /open or /execute or /worktree
-```
-
-### Quick Mode Example
-
-```
-User: "/specify --quick Fix typo in README header"
-
-[Mode Selection]
-- Flag: --quick → {depth}=quick
-- Default interaction for quick: autopilot
-- Resolved: {depth}=quick, {interaction}=autopilot
-
-[Interview Mode - Step 1: Initialize]
-1. Classify: Bug Fix → Reproduce → Root cause → Fix
-2. ⛔ Quick: Launch 2 agents only:
-   - Explore #1: Find README and related patterns
-   - Explore #2: Find project commands
-3. Create draft with Assumptions section populated
-
-[Interview Mode - Step 1.5: Abbreviated Summary]
-4. Log: "Patterns: README.md:1, Commands: npm run lint"
-   🤖 Autopilot: No confirmation wait, proceed immediately
-
-[Interview Mode - Step 2: SKIPPED (Quick)]
-5. Assumptions populated: standard approach, minimal change
-
-[Plan Generation - Auto-transition (after exploration + summary + assumptions)]
-6. ⛔ Quick: tradeoff-lite only (1 agent)
-7. ⛔ Quick + 🤖 Autopilot: Decision Summary skipped
-8. Write: .dev/specs/fix-readme/PLAN.md
-9. ⛔ Quick: Verification Summary skipped
-10. Call reviewer (1 round max)
-11. Reviewer OKAY → Delete draft
-12. 🤖 Autopilot: Print Plan Approval Summary, stop (no AskUser)
-    "Plan ready: .dev/specs/fix-readme/PLAN.md
-     TODO 1: Fix README typo [work] → README.md
-     TODO Final: Verification [verification]
-     ✅ Verification: A-2, H-0, S-0
-     ⚠️ Pre-work: (none)
-     📌 Post-work: (none)
-     🤖 Assumptions: standard approach, minimal change
-        ⚠️ Not confirmed by user — re-run with --interactive to override"
-```
-
----
-
-## Next Steps (Plan Approval Summary)
-
-After plan approval (reviewer OKAY + DRAFT deleted), present a **comprehensive summary** extracted from the PLAN.md before asking the user to proceed. This summary gives the user a complete picture before execution begins.
-
-> **Mode Gate**:
-> - 🖐️ **Interactive**: Print the summary + `AskUserQuestion` (next step selection).
-> - 🤖 **Autopilot**: Print the summary and plan path, then stop (no `AskUserQuestion`).
-
-### Summary Format
-
-Present the following sections, extracted from the generated PLAN.md:
-
-```
-Plan approved! .dev/specs/{name}/PLAN.md is ready.
-
-────────────────────────────────────────
-📋 TODO Overview
-────────────────────────────────────────
-TODO 1: {title}                          [{type}]
-  Key files: {key files from Steps/Outputs}
-TODO 2: {title}                          [{type}]
-  Key files: {key files}
-  ⤷ depends on: TODO 1
-...
-TODO Final: Verification                 [verification]
-────────────────────────────────────────
-
-✅ Verification (recap — no additional confirmation needed)
-────────────────────────────────────────
-Agent-verifiable (A): {count}
-  - {A-1 criterion} → {method}
-  - {A-2 criterion} → {method}
-Human-required (H): {count}
-  - {H-1 criterion} — {reason}
-Sandbox (S): {count} (or "none" if no S-items)
-  - {S-1 scenario} (if exists)
-Gaps: {gap summary or "none"}
-────────────────────────────────────────
-
-⚠️ Pre-work (must complete before /execute)
-────────────────────────────────────────
-{If Pre-work items exist in External Dependencies Strategy:}
-  🔴 [Blocking] {dependency}: {action} → {command}
-  ⚪ [Optional] {dependency}: {action} → {command}
-{If no pre-work: "(none)"}
-────────────────────────────────────────
-
-📌 Post-work (user actions after completion)
-────────────────────────────────────────
-{If Post-work items exist in External Dependencies Strategy:}
-  - {task}: {action} → {command}
-{If no post-work: "(none)"}
-────────────────────────────────────────
-
-🔑 Key Decisions (from Context > Interview Summary)
-────────────────────────────────────────
-  - {decision point 1}: {chosen approach}
-  - {decision point 2}: {chosen approach}
-────────────────────────────────────────
-
-{If quick or autopilot mode (Assumptions section exists in PLAN):}
-🤖 Assumptions (auto-decided — not confirmed by user)
-────────────────────────────────────────
-  - {decision point}: {assumed choice} ({rationale})
-  - {decision point}: {assumed choice} ({rationale})
-  ⚠️ These decisions were applied without user confirmation.
-     Re-run with --interactive to override.
-────────────────────────────────────────
-```
-
-### Extraction Rules
-
-| Section | Source in PLAN.md | When |
-|---------|------------------|------|
-| TODO Overview | `## TODOs` (including TODO Final) — title, type, key output files, dependency from `Inputs` | Always |
-| Verification | `## Verification Summary` — count A/H/S items, list first 3-5 of each | Always |
-| Pre-work | `## External Dependencies Strategy > Pre-work` — list all, mark Blocking | Always |
-| Post-work | `## External Dependencies Strategy > Post-work` — list all | Always |
-| Key Decisions | `## Context > Interview Summary > Key Discussions` | Always |
-| Assumptions | `## Assumptions` — decision point, assumed choice, rationale | quick/autopilot only |
-
-### Condensing Rules
-
-- **TODO Overview**: One line per TODO. Show title + type. List key files (max 3). Show dependency chain with `⤷ depends on:` only when non-obvious (skip if sequential 1→2→3).
-- **Verification**: Show counts for A/H/S. List individual items only if ≤5 per category; otherwise show count + "details: see PLAN.md". Gaps: show 1-line summary or "none". S-items: show count, or "none — no sandbox infra" if project lacks sandbox. If S: 0 despite sandbox infra existing, flag as "⚠️ S: 0 (sandbox exists — check planner output)".
-- **Pre-work**: Always show all items (these are critical for user action).
-- **Post-work**: Always show all items.
-- **Key Decisions**: Max 5 items. Pick the most impactful decisions.
-- **Assumptions** (quick/autopilot only): Show all items. Include rationale in parentheses. Always append the `--interactive` re-run hint.
-
-### Then Ask Next Step (Interactive only)
-
-> 🤖 **Autopilot**: Skip this step. Summary output is the final action.
-
-```
-AskUserQuestion(
-  question: "Plan approved. Select the next step.",
-  options: [
-    { label: "/open", description: "Create Draft PR (get reviewer feedback first)" },
-    { label: "/execute", description: "Start implementation immediately (current branch)" },
-    { label: "/worktree create {name}", description: "Work in isolated worktree (spec auto-moves)" }
-  ]
-)
-```
-
-**Based on user selection**:
-- `/open` → `Skill("open", args="{name}")`
-- `/execute` → `Skill("execute", args="{name}")`
-- `/worktree create {name}` → `Skill("worktree", args="create {name}")`, then guide user to run `/execute` in the new worktree

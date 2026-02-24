@@ -61,15 +61,90 @@ if [[ $MAX_ITERATIONS -gt 0 ]] && [[ $ITERATION -ge $MAX_ITERATIONS ]]; then
   exit 0
 fi
 
-# Find spec directory: scan .dev/specs/ for the most recently modified DRAFT.md or PLAN.md
+# ============================================================
+# RESOLVE FEATURE NAME AND SPEC DIRECTORY
+# ============================================================
+# Strategy: read stored name from state first, fall back to filesystem scan
+
 SPECS_ROOT="$CWD/.dev/specs"
+SESSIONS_ROOT="$CWD/.dev/.sessions"
 SPEC_DIR=""
+DRAFT_DIR=""
 FEATURE_NAME=""
-if [[ -d "$SPECS_ROOT" ]]; then
-  SPEC_DIR=$(find "$SPECS_ROOT" -maxdepth 2 \( -name "DRAFT.md" -o -name "PLAN.md" \) -exec stat -f '%m %N' {} \; 2>/dev/null \
-    | sort -rn | head -1 | cut -d' ' -f2- | xargs dirname 2>/dev/null || echo "")
-  if [[ -n "$SPEC_DIR" ]]; then
-    FEATURE_NAME=$(basename "$SPEC_DIR")
+
+# --- Method 1: Read name from state (reliable) ---
+STORED_NAME=$(jq -r --arg sid "$SESSION_ID" '.[$sid].ultrawork.name // empty' "$STATE_FILE")
+
+if [[ -n "$STORED_NAME" ]] && [[ "$STORED_NAME" != "null" ]]; then
+  FEATURE_NAME="$STORED_NAME"
+  SPEC_DIR="$SPECS_ROOT/$FEATURE_NAME"
+
+  # Resolve DRAFT_DIR via session.ref
+  if [[ -f "$SPEC_DIR/session.ref" ]]; then
+    REF_SID=$(cat "$SPEC_DIR/session.ref" 2>/dev/null | tr -d '[:space:]')
+    if [[ -n "$REF_SID" ]] && [[ -d "$SESSIONS_ROOT/$REF_SID" ]]; then
+      DRAFT_DIR="$SESSIONS_ROOT/$REF_SID"
+    else
+      DRAFT_DIR="$SPEC_DIR"
+    fi
+  else
+    DRAFT_DIR="$SPEC_DIR"  # Legacy: DRAFT.md colocated with spec
+  fi
+fi
+
+# --- Method 2: Filesystem scan (fallback for backward compat) ---
+if [[ -z "$FEATURE_NAME" ]]; then
+  CANDIDATE=""
+
+  # Scan specs dir for PLAN.md or DRAFT.md (legacy location for DRAFT.md)
+  if [[ -d "$SPECS_ROOT" ]]; then
+    SPEC_CANDIDATE=$(find "$SPECS_ROOT" -maxdepth 2 \( -name "DRAFT.md" -o -name "PLAN.md" \) -exec stat -f '%m %N' {} \; 2>/dev/null \
+      | sort -rn | head -1 | cut -d' ' -f2- || echo "")
+    CANDIDATE="$SPEC_CANDIDATE"
+  fi
+
+  # Scan sessions dir for DRAFT.md (new location post-refactor)
+  SESSION_CANDIDATE=""
+  if [[ -d "$SESSIONS_ROOT" ]]; then
+    SESSION_CANDIDATE=$(find "$SESSIONS_ROOT" -maxdepth 2 -name "DRAFT.md" -exec stat -f '%m %N' {} \; 2>/dev/null \
+      | sort -rn | head -1 | cut -d' ' -f2- || echo "")
+  fi
+
+  # Pick the more recently modified candidate
+  if [[ -n "$SESSION_CANDIDATE" ]] && [[ -n "$CANDIDATE" ]]; then
+    SESSION_TS=$(find "$SESSIONS_ROOT" -maxdepth 2 -name "DRAFT.md" -exec stat -f '%m' {} \; 2>/dev/null | sort -rn | head -1 || echo "0")
+    SPEC_TS=$(find "$SPECS_ROOT" -maxdepth 2 \( -name "DRAFT.md" -o -name "PLAN.md" \) -exec stat -f '%m' {} \; 2>/dev/null | sort -rn | head -1 || echo "0")
+    if [[ "$SESSION_TS" -gt "$SPEC_TS" ]]; then
+      CANDIDATE="$SESSION_CANDIDATE"
+    fi
+  elif [[ -n "$SESSION_CANDIDATE" ]]; then
+    CANDIDATE="$SESSION_CANDIDATE"
+  fi
+
+  # Resolve SPEC_DIR and DRAFT_DIR from the winning candidate
+  if [[ -n "$CANDIDATE" ]]; then
+    CANDIDATE_DIR=$(echo "$CANDIDATE" | xargs dirname 2>/dev/null || echo "")
+    if [[ -n "$CANDIDATE_DIR" ]]; then
+      if [[ "$CANDIDATE_DIR" == "$SESSIONS_ROOT"* ]]; then
+        RESOLVED_SESSION_ID=$(basename "$CANDIDATE_DIR")
+        DRAFT_DIR="$CANDIDATE_DIR"
+        if [[ -d "$SPECS_ROOT" ]]; then
+          for REF_FILE in "$SPECS_ROOT"/*/session.ref; do
+            [[ -f "$REF_FILE" ]] || continue
+            REF_CONTENT=$(cat "$REF_FILE" 2>/dev/null | tr -d '[:space:]')
+            if [[ "$REF_CONTENT" == "$RESOLVED_SESSION_ID" ]]; then
+              SPEC_DIR=$(dirname "$REF_FILE")
+              FEATURE_NAME=$(basename "$SPEC_DIR")
+              break
+            fi
+          done
+        fi
+      else
+        SPEC_DIR="$CANDIDATE_DIR"
+        DRAFT_DIR="$CANDIDATE_DIR"
+        FEATURE_NAME=$(basename "$SPEC_DIR")
+      fi
+    fi
   fi
 fi
 
@@ -85,194 +160,162 @@ fi
 update_phase() {
   local new_phase="$1"
   local next_iter=$((ITERATION + 1))
-  TEMP_FILE="${STATE_FILE}.tmp.$$"
+  local tmp="${STATE_FILE}.tmp.$$"
   jq --arg sid "$SESSION_ID" \
      --arg phase "$new_phase" \
      --argjson iter "$next_iter" \
      '.[$sid].ultrawork.phase = $phase | .[$sid].ultrawork.iteration = $iter' \
-     "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
+     "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
 }
 
 cleanup_session() {
-  TEMP_FILE="${STATE_FILE}.tmp.$$"
-  jq --arg sid "$SESSION_ID" 'del(.[$sid])' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
+  local tmp="${STATE_FILE}.tmp.$$"
+  jq --arg sid "$SESSION_ID" 'del(.[$sid])' "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+}
+
+# Check if plan is approved (reusable across phases)
+check_plan_approved() {
+  local plan_file="$1"
+  local plan_content="$2"
+  local draft_file="$3"
+  # Method 1: APPROVED marker in file
+  if grep -qi "APPROVED\|Status:.*Approved" "$plan_file" 2>/dev/null; then
+    return 0
+  fi
+  # Method 2: plan-content.json exists + DRAFT deleted
+  if [[ -f "$plan_content" ]] && [[ ! -f "$draft_file" ]]; then
+    return 0
+  fi
+  # Method 3: plan-content.json exists = generated through specify pipeline
+  if [[ -f "$plan_content" ]]; then
+    return 0
+  fi
+  return 1
 }
 
 # ============================================================
-# PHASE TRANSITION LOGIC
+# PHASE TRANSITION LOGIC (filesystem-based)
 # ============================================================
+# Instead of relying on stored phase, detect current state from
+# the filesystem each time. This eliminates phase persistence bugs.
 
-case "$PHASE" in
-  # --------------------------------------------------------
-  # Phase: specify_interview
-  # Check: DRAFT.md exists → trigger plan generation
-  # --------------------------------------------------------
-  "specify_interview")
-    DRAFT_FILE="$SPEC_DIR/DRAFT.md"
-    PLAN_FILE="$SPEC_DIR/PLAN.md"
+PLAN_FILE="$SPEC_DIR/PLAN.md"
+PLAN_CONTENT="$SPEC_DIR/plan-content.json"
+DRAFT_FILE="${DRAFT_DIR:-$SPEC_DIR}/DRAFT.md"
 
-    if [[ -f "$PLAN_FILE" ]]; then
-      # Plan already exists - move to checking approval
-      update_phase "specify_plan"
-      echo "📋 Ultrawork: Plan exists. Checking approval..." >&2
+# --- Detection: work backwards from most-advanced state ---
 
-      jq -n \
-        --arg reason "Plan file exists. Check if plan-reviewer approved it. If not, call Task(subagent_type=\"plan-reviewer\")." \
-        '{
-          "decision": "block",
-          "reason": $reason
-        }'
-      exit 0
+# 1. Check if ALL TODOs are done → pipeline complete
+if [[ -f "$PLAN_FILE" ]]; then
+  UNCHECKED=$(grep -c '### \[ \] TODO' "$PLAN_FILE" 2>/dev/null) || UNCHECKED=0
+  TOTAL_TODOS=$(grep -c '### \[.\] TODO' "$PLAN_FILE" 2>/dev/null) || TOTAL_TODOS=0
+
+  if [[ "$TOTAL_TODOS" -gt 0 ]] && [[ "$UNCHECKED" -eq 0 ]]; then
+    cleanup_session
+    echo "🎉 Ultrawork: Complete!" >&2
+    exit 0
+  fi
+fi
+
+# 2. Check if PR/branch exists → executing or opening phase
+PR_NUMBER=""
+PR_EXISTS=false
+
+if [[ -n "$FEATURE_NAME" ]]; then
+  if command -v gh &> /dev/null; then
+    PR_NUMBER=$(cd "$CWD" && gh pr list --head "feat/$FEATURE_NAME" --json number -q '.[0].number' 2>/dev/null || echo "")
+    if [[ -n "$PR_NUMBER" ]]; then
+      PR_EXISTS=true
     fi
+  fi
+  if [[ "$PR_EXISTS" != "true" ]] && command -v git &> /dev/null; then
+    if git -C "$CWD" rev-parse --verify "feat/$FEATURE_NAME" &>/dev/null; then
+      PR_EXISTS=true
+    fi
+  fi
+fi
 
-    if [[ -f "$DRAFT_FILE" ]]; then
-      # DRAFT exists - trigger plan generation
-      update_phase "specify_plan"
-      echo "📝 Ultrawork: Draft ready. Generate the plan." >&2
+if [[ "$PR_EXISTS" == "true" ]]; then
+  # PR/branch exists — are we executing?
+  # Check if execute has started (active-spec file exists and state.json has skill=execute)
+  ACTIVE_SPEC="$CWD/.dev/active-spec"
+  if [[ -f "$ACTIVE_SPEC" ]]; then
+    # Execute is running — let dev-execute-stop-hook handle it
+    update_phase "executing"
+    exit 0
+  fi
 
-      jq -n \
-        --arg reason "Draft is complete. Now generate the plan.
+  # PR exists but execute not started yet → start execute
+  if [[ "$PHASE" == "executing" ]]; then
+    # Already issued /execute instruction. Allow stop to prevent loop.
+    echo "⏳ Ultrawork: /execute already requested. Allowing stop." >&2
+    exit 0
+  fi
+  update_phase "executing"
+  echo "🔀 Ultrawork: PR exists → /execute" >&2
+  jq -n \
+    --arg name "$FEATURE_NAME" \
+    --arg reason "Draft PR exists. Start implementation.
+
+Execute: Skill(\"execute\", args=\"$FEATURE_NAME\")" \
+    '{"decision": "block", "reason": $reason}'
+  exit 0
+fi
+
+# 3. Check if plan is approved → trigger /open
+if [[ -f "$PLAN_FILE" ]] && [[ -f "$PLAN_CONTENT" ]]; then
+  if [[ "$PHASE" == "opening" ]]; then
+    # Already issued /open instruction. Allow stop to prevent loop.
+    echo "⏳ Ultrawork: /open already requested. Allowing stop." >&2
+    exit 0
+  fi
+  # plan-content.json exists = plan was generated through specify pipeline
+  update_phase "opening"
+  echo "✅ Ultrawork: Plan ready → /open" >&2
+  jq -n \
+    --arg name "$FEATURE_NAME" \
+    --arg reason "Plan is ready. Create the Draft PR.
+
+Execute: Skill(\"open\", args=\"$FEATURE_NAME\")" \
+    '{"decision": "block", "reason": $reason}'
+  exit 0
+fi
+
+# 4. Check if PLAN.md exists but no plan-content.json → needs approval
+if [[ -f "$PLAN_FILE" ]]; then
+  if [[ "$PHASE" == "specify_plan" ]]; then
+    echo "⏳ Ultrawork: Plan review already requested. Allowing stop." >&2
+    exit 0
+  fi
+  update_phase "specify_plan"
+  echo "📋 Ultrawork: Plan needs approval." >&2
+  jq -n \
+    --arg reason "Plan exists but plan-content.json missing. Run plan-reviewer: Task(subagent_type=\"plan-reviewer\")." \
+    '{"decision": "block", "reason": $reason}'
+  exit 0
+fi
+
+# 5. Check if DRAFT.md exists → trigger plan generation
+if [[ -f "$DRAFT_FILE" ]]; then
+  if [[ "$PHASE" == "specify_plan" ]]; then
+    echo "⏳ Ultrawork: Plan generation already requested. Allowing stop." >&2
+    exit 0
+  fi
+  update_phase "specify_plan"
+  echo "📝 Ultrawork: Draft ready. Generate the plan." >&2
+  jq -n \
+    --arg reason "Draft is complete. Now generate the plan.
 
 Say: \"Let me generate the plan now.\"
 
-Follow specify skill's Mode 2: Plan Generation:
+Follow specify skill's plan generation:
 1. Validate draft completeness
-2. Run gap analysis
-3. Create PLAN.md
+2. Run analysis agents
+3. Create PLAN.md + plan-content.json
 4. Call plan-reviewer for approval" \
-        '{
-          "decision": "block",
-          "reason": $reason
-        }'
-      exit 0
-    fi
+    '{"decision": "block", "reason": $reason}'
+  exit 0
+fi
 
-    # No DRAFT yet - interview still in progress, allow stop
-    exit 0
-    ;;
-
-  # --------------------------------------------------------
-  # Phase: specify_plan
-  # Check: PLAN.md approved → trigger /open
-  # --------------------------------------------------------
-  "specify_plan")
-    PLAN_FILE="$SPEC_DIR/PLAN.md"
-    DRAFT_FILE="$SPEC_DIR/DRAFT.md"
-
-    if [[ ! -f "$PLAN_FILE" ]]; then
-      echo "⏳ Ultrawork: Waiting for plan..." >&2
-      jq -n \
-        --arg reason "Continue generating the plan. PLAN.md not created yet." \
-        '{"decision": "block", "reason": $reason}'
-      exit 0
-    fi
-
-    # Check if plan is approved
-    PLAN_APPROVED=false
-
-    # Method 1: APPROVED marker in file
-    if grep -qi "APPROVED\|Status:.*Approved" "$PLAN_FILE" 2>/dev/null; then
-      PLAN_APPROVED=true
-    fi
-
-    # Method 2: DRAFT deleted = finalized
-    if [[ ! -f "$DRAFT_FILE" ]]; then
-      PLAN_APPROVED=true
-    fi
-
-    if [[ "$PLAN_APPROVED" == "true" ]]; then
-      update_phase "opening"
-      echo "✅ Ultrawork: Plan approved → /open" >&2
-
-      jq -n \
-        --arg name "$FEATURE_NAME" \
-        --arg reason "Plan approved! Create the Draft PR.
-
-Execute: Skill(\"open\", args=\"$FEATURE_NAME\")" \
-        '{"decision": "block", "reason": $reason}'
-      exit 0
-    fi
-
-    # Plan exists but not approved
-    jq -n \
-      --arg reason "Plan exists but not approved. Call Task(subagent_type=\"plan-reviewer\") and handle result." \
-      '{"decision": "block", "reason": $reason}'
-    exit 0
-    ;;
-
-  # --------------------------------------------------------
-  # Phase: opening
-  # Check: PR created → trigger /execute
-  # --------------------------------------------------------
-  "opening")
-    # Check if PR/branch exists
-    PR_EXISTS=false
-
-    if command -v git &> /dev/null && git -C "$CWD" rev-parse --is-inside-work-tree &>/dev/null; then
-      if git -C "$CWD" branch -a 2>/dev/null | grep -qE "feat/$FEATURE_NAME"; then
-        PR_EXISTS=true
-      fi
-    fi
-
-    if command -v gh &> /dev/null; then
-      PR_NUMBER=$(cd "$CWD" && gh pr list --head "feat/$FEATURE_NAME" --json number -q '.[0].number' 2>/dev/null || echo "")
-      if [[ -n "$PR_NUMBER" ]]; then
-        PR_EXISTS=true
-      fi
-    fi
-
-    if [[ "$PR_EXISTS" == "true" ]]; then
-      update_phase "executing"
-      echo "🔀 Ultrawork: PR #$PR_NUMBER created → /execute" >&2
-
-      jq -n \
-        --arg pr "$PR_NUMBER" \
-        --arg reason "Draft PR #$PR_NUMBER created! Start implementation.
-
-Execute: Skill(\"execute\", args=\"$PR_NUMBER\")" \
-        '{"decision": "block", "reason": $reason}'
-      exit 0
-    fi
-
-    # PR not created yet
-    jq -n \
-      --arg name "$FEATURE_NAME" \
-      --arg reason "Continue creating the PR. Run Skill(\"open\", args=\"$FEATURE_NAME\")." \
-      '{"decision": "block", "reason": $reason}'
-    exit 0
-    ;;
-
-  # --------------------------------------------------------
-  # Phase: executing
-  # Check: All TODOs done → cleanup
-  # --------------------------------------------------------
-  "executing")
-    PLAN_FILE="$SPEC_DIR/PLAN.md"
-
-    if [[ -f "$PLAN_FILE" ]]; then
-      UNCHECKED=$(grep -c '### \[ \] TODO' "$PLAN_FILE" 2>/dev/null) || UNCHECKED=0
-
-      if [[ "$UNCHECKED" -eq 0 ]]; then
-        cleanup_session
-        echo "🎉 Ultrawork: Complete!" >&2
-        exit 0
-      fi
-    fi
-
-    # TODOs remain - let execute-stop-hook handle
-    exit 0
-    ;;
-
-  "done")
-    cleanup_session
-    exit 0
-    ;;
-
-  *)
-    echo "⚠️ Ultrawork: Unknown phase '$PHASE'" >&2
-    cleanup_session
-    exit 0
-    ;;
-esac
-
+# 6. Nothing found — interview still in progress, allow stop
 exit 0

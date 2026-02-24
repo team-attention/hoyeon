@@ -1,0 +1,128 @@
+name: specify-quick-autopilot
+type: sequential
+description: Minimal quick planning without user interaction (quick depth, autopilot mode)
+
+blocks:
+  - id: init
+    type: cli
+    command: "dev-cli init {name} --quick --autopilot"
+
+  - id: classify-intent
+    type: llm
+    instruction: |
+      Classify the user intent for this session. Choose the single best category:
+        Feature / Bug / Refactor / Architecture / Migration / Performance / Research
+      Output a short intent statement (1-2 sentences) naming the category and the goal.
+    save: "dev-cli draft update {name} --section intent"
+
+  - id: explore-lite
+    type: subagent
+    agents:
+      - type: Explore
+        promptHint: "Find existing code patterns and entry points relevant to {name}"
+        output: "findings/explore-1.md"
+      - type: Explore
+        promptHint: "Find project structure and key conventions for {name}"
+        output: "findings/explore-2.md"
+    parallel: true
+    onComplete: "dev-cli draft import {name}"
+    onError: continue
+
+  - id: auto-assume
+    type: cli
+    command: "dev-cli draft auto-assume {name}"
+
+  - id: analyze-lite
+    type: subagent
+    agents:
+      - type: tradeoff-analyzer
+        promptHint: "Analyze the key trade-offs for {name} given the auto-assumed decisions"
+        output: "analysis/tradeoff.md"
+        promptVariant: lite
+
+  - id: generate-plan
+    type: llm+cli
+    instruction: |
+      Using the exploration findings, auto-assumed decisions, and the trade-off analysis, write
+      plan-content.json following this EXACT schema. Quick mode: keep todos minimal (2-4 items).
+
+      Required JSON structure:
+      {
+        "context": {
+          "originalRequest": "<user's original request>",
+          "interviewSummary": "<summary of decisions made>",
+          "researchFindings": "<key findings from exploration>",
+          "assumptions": "<optional: explicit assumptions>"
+        },
+        "objectives": {
+          "core": "<single sentence core objective>",
+          "deliverables": ["<concrete deliverable 1>", ...],
+          "dod": ["<definition of done item>", ...],
+          "mustNotDo": ["<explicit exclusion>", ...]
+        },
+        "todos": [
+          {
+            "id": "todo-1",
+            "title": "<action title>",
+            "type": "work|verification",
+            "inputs": [{"name": "<input>", "type": "file|api|config", "ref": "<path or reference>"}],
+            "outputs": [{"name": "<output>", "type": "file|api|config", "value": "<path>", "description": "<what it produces>"}],
+            "steps": ["<step 1>", "<step 2>", ...],
+            "mustNotDo": ["<what to avoid>"],
+            "references": ["<relevant file or doc>"],
+            "acceptanceCriteria": {
+              "functional": ["<functional check>"],
+              "static": ["<lint/type check>"],
+              "runtime": ["<runtime check>"],
+              "cleanup": ["<optional cleanup>"]
+            },
+            "risk": "LOW|MEDIUM|HIGH"
+          }
+        ],
+        "taskFlow": "<text description of task execution order>",
+        "dependencyGraph": [
+          {"todo": "todo-1", "requires": [], "produces": ["<artifact>"]}
+        ],
+        "commitStrategy": [
+          {"afterTodo": "todo-1", "message": "<commit message>", "files": ["<file>"], "condition": "<when to commit>"}
+        ],
+        "verificationSummary": {
+          "aItems": ["<agent-verifiable item>"],
+          "hItems": ["<human-required item>"],
+          "sItems": ["<sandbox testable item>"],
+          "gaps": ["<verification gap if any>"]
+        }
+      }
+
+      QUALITY RULES (mandatory):
+      1. Each todo MUST have ≥3 functional acceptance criteria — specific, testable, not vague.
+         BAD:  "Works correctly"
+         GOOD: "Click button increments score by 1 and updates display"
+      2. verificationSummary.aItems: each item MUST include verification method in parentheses.
+         Example: "HTML file loads without console errors (method: open in browser, check DevTools)"
+      3. verificationSummary.hItems: each item MUST explain WHY human verification is needed.
+         Example: "Game feels responsive and fun (reason: subjective UX quality, no automated proxy)"
+      4. commitStrategy: NEVER leave empty. If no commits needed (e.g., git-ignored dir), add:
+         [{"afterTodo":"todo-1","message":"N/A","files":[],"condition":"Directory is git-ignored, no commit needed"}]
+      5. objectives.mustNotDo: minimum 2 items — always include at least "Do not modify existing files" type guard.
+      6. Each todo.steps: must be concrete actions, not categories. Include specific file paths when known.
+      7. taskFlow: describe execution order AND parallelism potential, not just "sequential".
+
+      Write the JSON to plan-content.json file using the Write tool, then the CLI will validate and generate PLAN.md.
+    command: "dev-cli plan generate {name} --data plan-content.json"
+
+  - id: review-once
+    type: subagent
+    agents:
+      - type: plan-reviewer
+        promptHint: "Review the plan for {name}: is it clear, complete, and actionable"
+        output: "analysis/review.md"
+    maxRounds: 1
+
+  - id: summary
+    type: cli
+    command: "dev-cli plan summary {name}"
+
+  - id: cleanup
+    type: cli
+    command: "dev-cli cleanup {name}"

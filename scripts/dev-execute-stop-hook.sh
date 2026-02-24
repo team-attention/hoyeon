@@ -2,7 +2,8 @@
 # dev-execute-stop-hook.sh - Stop hook
 #
 # Purpose: Prevents session exit when orchestration is incomplete
-# Verifies: TODOs, Acceptance Criteria, Git commits, Final Report
+# Detection: Reads engine state from state.json (via session.ref resolution)
+# Verifies: Engine finalize status, uncommitted changes
 #
 # Hook Input Fields (Stop):
 #   - session_id: current session
@@ -19,62 +20,60 @@ TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path')
 CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd')
 SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id')
 
-# State file path
-STATE_FILE="$CWD/.dev/state.local.json"
+# ============================================================
+# DETECTION: Resolve state.json via active-spec + session.ref
+# ============================================================
 
-if [[ ! -f "$STATE_FILE" ]]; then
-  # No state file - allow exit
+ACTIVE_SPEC_FILE="$CWD/.dev/active-spec"
+if [[ ! -f "$ACTIVE_SPEC_FILE" ]]; then
+  exit 0
+fi
+SPEC_NAME=$(cat "$ACTIVE_SPEC_FILE")
+
+# Resolve state.json via session.ref
+SESSION_REF="$CWD/.dev/specs/$SPEC_NAME/session.ref"
+if [[ -f "$SESSION_REF" ]]; then
+  SID=$(cat "$SESSION_REF")
+  STATE_JSON="$CWD/.dev/.sessions/$SID/state.json"
+else
+  STATE_JSON="$CWD/.dev/specs/$SPEC_NAME/state.json"
+fi
+
+if [[ ! -f "$STATE_JSON" ]]; then
   exit 0
 fi
 
-# Clean up stale sessions (older than 24 hours)
-CUTOFF=$(date -u -v-24H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
-if [[ -n "$CUTOFF" ]]; then
-  TEMP_FILE="${STATE_FILE}.tmp.$$"
-  jq --arg cutoff "$CUTOFF" '
-    to_entries | map(select(.value.created_at > $cutoff or .value.created_at == null)) | from_entries
-  ' "$STATE_FILE" > "$TEMP_FILE" 2>/dev/null && mv "$TEMP_FILE" "$STATE_FILE" || true
-fi
-
-# Check if this session has execute state
-EXECUTE_STATE=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute // empty' "$STATE_FILE")
-
-if [[ -z "$EXECUTE_STATE" ]] || [[ "$EXECUTE_STATE" == "null" ]]; then
-  # No execute state for this session - allow exit
+SKILL=$(jq -r '.skill // empty' "$STATE_JSON")
+if [[ "$SKILL" != "execute" ]]; then
   exit 0
 fi
 
-# Extract execute fields
-ITERATION=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute.iteration // 0' "$STATE_FILE")
-MAX_ITERATIONS=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute.max_iterations // 30' "$STATE_FILE")
-PLAN_PATH=$(jq -r --arg sid "$SESSION_ID" '.[$sid].execute.plan_path // empty' "$STATE_FILE")
+# ============================================================
+# ITERATION SAFETY
+# ============================================================
 
-# Validate numeric fields
+ITERATION=$(jq -r '.engine.iteration // 0' "$STATE_JSON")
+MAX_ITERATIONS=30
+
+# Validate numeric
 if [[ ! "$ITERATION" =~ ^[0-9]+$ ]]; then
   ITERATION=0
 fi
 
-if [[ ! "$MAX_ITERATIONS" =~ ^[0-9]+$ ]]; then
-  MAX_ITERATIONS=30
-fi
-
-# Check max iterations
-if [[ $MAX_ITERATIONS -gt 0 ]] && [[ $ITERATION -ge $MAX_ITERATIONS ]]; then
+if [[ $ITERATION -ge $MAX_ITERATIONS ]]; then
   echo "🛑 Execute hook: Max iterations ($MAX_ITERATIONS) reached." >&2
   echo "   Forcing stop to prevent infinite loop." >&2
-  # Remove session from state file
-  TEMP_FILE="${STATE_FILE}.tmp.$$"
-  jq --arg sid "$SESSION_ID" 'del(.[$sid])' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
   exit 0
 fi
 
-# Validate plan path
-PLAN_PATH_ABS="$CWD/$PLAN_PATH"
-if [[ -z "$PLAN_PATH" ]] || [[ ! -f "$PLAN_PATH_ABS" ]]; then
-  echo "⚠️ Execute hook: Plan file not found (path: '$PLAN_PATH_ABS')" >&2
-  # Remove session from state file
-  TEMP_FILE="${STATE_FILE}.tmp.$$"
-  jq --arg sid "$SESSION_ID" 'del(.[$sid])' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
+# ============================================================
+# COMPLETION CHECK: Engine finalize status
+# ============================================================
+
+ENGINE_DONE=$(jq -r '.engine.finalize.status // empty' "$STATE_JSON")
+if [[ "$ENGINE_DONE" == "done" ]]; then
+  # Engine reports complete — allow exit
+  echo "✅ Execute hook: Engine finalize complete." >&2
   exit 0
 fi
 
@@ -84,34 +83,31 @@ fi
 
 ERRORS=()
 
-# 1. Check for unchecked TODOs in plan file
-UNCHECKED_TODOS=$(grep -c '### \[ \] TODO' "$PLAN_PATH_ABS" 2>/dev/null) || UNCHECKED_TODOS=0
-if [[ "$UNCHECKED_TODOS" -gt 0 ]]; then
-  TODO_TITLES=$(grep '### \[ \] TODO' "$PLAN_PATH_ABS" | sed 's/### \[ \] //' | head -3 | tr '\n' ', ' | sed 's/, $//')
-  ERRORS+=("Unchecked TODOs ($UNCHECKED_TODOS): $TODO_TITLES")
+# 1. Check engine finalize status
+FINALIZE_STEP=$(jq -r '.engine.finalize.step // empty' "$STATE_JSON")
+if [[ "$ENGINE_DONE" != "done" ]]; then
+  ERRORS+=("Engine not finalized (current step: ${FINALIZE_STEP:-none})")
 fi
 
-# 2. Check for unchecked Acceptance Criteria
-UNCHECKED_AC=$(grep -cE '^\s+- \[ \]' "$PLAN_PATH_ABS" 2>/dev/null) || UNCHECKED_AC=0
-if [[ "$UNCHECKED_AC" -gt 0 ]]; then
-  ERRORS+=("Unchecked Acceptance Criteria: $UNCHECKED_AC items")
+# 2. Check for failed TODOs
+FAILED_TODOS=$(jq -r '[.engine.todos // {} | to_entries[] | select(.value.status == "failed") | .key] | join(", ")' "$STATE_JSON")
+if [[ -n "$FAILED_TODOS" ]]; then
+  ERRORS+=("Failed TODOs: $FAILED_TODOS")
 fi
 
-# 3. Check for Final Report in transcript
+# 3. Check for uncommitted changes
+if command -v git &> /dev/null && [[ -d "$CWD/.git" ]]; then
+  UNCOMMITTED=$(cd "$CWD" && git status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+  if [[ "$UNCOMMITTED" -gt 0 ]]; then
+    ERRORS+=("Uncommitted changes: $UNCOMMITTED files")
+  fi
+fi
+
+# 4. Check for Final Report in transcript
 if [[ -f "$TRANSCRIPT_PATH" ]]; then
   FINAL_REPORT_FOUND=$(grep -l "ORCHESTRATION COMPLETE" "$TRANSCRIPT_PATH" 2>/dev/null || echo "")
   if [[ -z "$FINAL_REPORT_FOUND" ]]; then
     ERRORS+=("Final Report not output yet")
-  fi
-else
-  ERRORS+=("Transcript file not found")
-fi
-
-# 4. Check for uncommitted changes
-if command -v git &> /dev/null && [[ -d "$CWD/.git" ]]; then
-  UNCOMMITTED=$(cd "$CWD" && git status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo "0")
-  if [[ "$UNCOMMITTED" -gt 0 ]]; then
-    ERRORS+=("Uncommitted changes: $UNCOMMITTED files (delegate to git-master)")
   fi
 fi
 
@@ -120,21 +116,16 @@ fi
 # ============================================================
 
 if [[ ${#ERRORS[@]} -eq 0 ]]; then
-  # All checks passed - allow exit and cleanup
   echo "✅ Execute hook: All verifications passed." >&2
-  # Remove session from state file
-  TEMP_FILE="${STATE_FILE}.tmp.$$"
-  jq --arg sid "$SESSION_ID" 'del(.[$sid])' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
   exit 0
 fi
 
-# Not complete - continue execution
+# Not complete - increment iteration and persist to state.json
 NEXT_ITERATION=$((ITERATION + 1))
 
-# Update iteration in state file (atomic write)
-TEMP_FILE="${STATE_FILE}.tmp.$$"
-jq --arg sid "$SESSION_ID" --argjson iter "$NEXT_ITERATION" \
-  '.[$sid].execute.iteration = $iter' "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
+# Write iteration back to state.json (atomic write)
+TEMP_FILE="${STATE_JSON}.tmp.$$"
+jq --argjson iter "$NEXT_ITERATION" '.engine.iteration = $iter' "$STATE_JSON" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_JSON"
 
 # Build error summary
 ERROR_SUMMARY=$(printf '%s\n' "${ERRORS[@]}" | sed 's/^/- /')
@@ -148,13 +139,9 @@ $ERROR_SUMMARY
 
 **Current Progress:**
 - Iteration: $NEXT_ITERATION / $MAX_ITERATIONS
-- Plan: $PLAN_PATH
 
 **Next Actions:**
-1. If TODOs remain: Continue with next unchecked TODO
-2. If Acceptance Criteria unchecked: Verify and check them
-3. If uncommitted changes: Delegate to git-master
-4. If Final Report missing: Output the Final Report
+After all tasks are complete, call \`node dev-cli/bin/dev-cli.js finalize $SPEC_NAME\` to mark engine as done.
 
 Continue working until all items are complete."
 
