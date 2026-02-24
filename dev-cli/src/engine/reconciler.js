@@ -206,6 +206,74 @@ export function triage(verifyResult, todoType, todoState, depth = 0) {
 }
 
 // ---------------------------------------------------------------------------
+// Finalize triage (Code Review / Final Verify feedback loop)
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize a finalize step result into a uniform { passed, issues } shape.
+ *
+ * @param {object|null} stepResult - Raw result from code-review or final-verify
+ * @param {string} stepName - 'code-review' or 'final-verify'
+ * @returns {{ passed: boolean, issues: string[] }}
+ */
+export function normalizeFinalizeResult(stepResult, stepName) {
+  if (!stepResult) {
+    return { passed: false, issues: [`${stepName}: received null/undefined result`] };
+  }
+
+  if (stepName === 'code-review') {
+    const verdict = stepResult.verdict;
+    const passed = verdict === 'SHIP';
+    let issues = (stepResult.issues ?? []).map(
+      (i) => `[${i.severity ?? 'unknown'}] ${i.file ?? '?'}:${i.line ?? '?'} — ${i.description ?? 'no description'}`,
+    );
+    if (!passed && issues.length === 0) {
+      issues = ['NEEDS_FIXES verdict with no specific issues — inspect the full code review result'];
+    }
+    return { passed, issues: passed ? [] : issues };
+  }
+
+  if (stepName === 'final-verify') {
+    const status = stepResult.status;
+    const passed = status === 'PASS';
+    let issues = (stepResult.results ?? [])
+      .filter((r) => r.pass === false)
+      .map((r) => `${r.command ?? '?'} exited ${r.exitCode ?? '?'}`);
+    if (!passed && issues.length === 0) {
+      issues = ['FAIL status with no specific failures — inspect the full verification result'];
+    }
+    return { passed, issues: passed ? [] : issues };
+  }
+
+  return { passed: false, issues: [`${stepName}: unknown step type`] };
+}
+
+/**
+ * Triage a finalize step result into pass / fix / halt.
+ *
+ * Simpler than TODO triage: no adapt, no depth, no dynamicTodos.
+ *
+ * @param {object|null} stepResult - Raw result from finalize step
+ * @param {string} stepName - 'code-review' or 'final-verify'
+ * @param {number} iteration - Current iteration (0-based)
+ * @param {number} [maxIterations=2] - Max fix iterations allowed
+ * @returns {{ disposition: 'pass' | 'fix' | 'halt', issues: string[] }}
+ */
+export function triageFinalize(stepResult, stepName, iteration, maxIterations = 2) {
+  const { passed, issues } = normalizeFinalizeResult(stepResult, stepName);
+
+  if (passed) {
+    return { disposition: 'pass', issues: [] };
+  }
+
+  if (iteration < maxIterations) {
+    return { disposition: 'fix', issues };
+  }
+
+  return { disposition: 'halt', issues };
+}
+
+// ---------------------------------------------------------------------------
 // Audit entry builder
 // ---------------------------------------------------------------------------
 

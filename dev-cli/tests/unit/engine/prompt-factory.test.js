@@ -203,6 +203,38 @@ describe('buildPromptForTodo() — report', () => {
   });
 });
 
+describe('buildPromptForTodo() — finalize-fix', () => {
+  beforeEach(() => useTmpDir());
+  afterEach(() => restoreCwd());
+
+  test('returns finalize fix prompt with issues', () => {
+    setupSpec('test', validPlanContent());
+
+    const inputData = {
+      stepName: 'code-review',
+      stepResult: { verdict: 'NEEDS_FIXES', issues: [] },
+      issues: ['[error] a.js:10 — bug'],
+    };
+    const prompt = buildPromptForTodo('test', 'finalize', 'finalize-fix', inputData);
+
+    assert.ok(prompt.includes('Fix: Code Review Issues'));
+    assert.ok(prompt.includes('bug'));
+  });
+
+  test('returns finalize fix prompt for final-verify', () => {
+    setupSpec('test', validPlanContent());
+
+    const inputData = {
+      stepName: 'final-verify',
+      stepResult: { status: 'FAIL', results: [] },
+      issues: ['npm test exited 1'],
+    };
+    const prompt = buildPromptForTodo('test', 'finalize', 'finalize-fix', inputData);
+
+    assert.ok(prompt.includes('Fix: Final Verification Issues'));
+  });
+});
+
 describe('buildPromptForTodo() — error handling', () => {
   beforeEach(() => useTmpDir());
   afterEach(() => restoreCwd());

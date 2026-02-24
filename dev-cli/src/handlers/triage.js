@@ -7,15 +7,70 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { triage, buildAuditEntry } from '../engine/reconciler.js';
+import { triage, triageFinalize, buildAuditEntry } from '../engine/reconciler.js';
 import { parsePlan } from '../engine/plan-parser.js';
 
 export default async function handler(args) {
   const name = args.find((a) => !a.startsWith('--'));
   if (!name) {
     console.error('Usage: dev-cli triage <name> --todo <todoId> [--retries N] [--depth N] [--dynamic-count N]');
+    console.error('       echo JSON | dev-cli triage <name> --phase finalize --step <step> --iteration <N>');
     process.exit(1);
   }
+
+  // Read result from stdin (shared by both paths)
+  let inputResult = null;
+  if (!process.stdin.isTTY) {
+    try {
+      const input = readFileSync(0, 'utf8').trim();
+      if (input) inputResult = JSON.parse(input);
+    } catch {
+      console.error('Failed to parse result from stdin');
+      process.exit(1);
+    }
+  }
+
+  // --phase finalize: route to triageFinalize
+  const phaseIdx = args.indexOf('--phase');
+  const phase = phaseIdx >= 0 ? args[phaseIdx + 1] : undefined;
+
+  if (phase === 'finalize') {
+    const stepIdx = args.indexOf('--step');
+    const stepName = stepIdx >= 0 ? args[stepIdx + 1] : undefined;
+    const iterIdx = args.indexOf('--iteration');
+    const iteration = iterIdx >= 0 ? parseInt(args[iterIdx + 1], 10) : 0;
+
+    if (isNaN(iteration)) {
+      console.error('--iteration requires a numeric value');
+      process.exit(1);
+    }
+
+    if (!stepName) {
+      console.error('Usage: echo JSON | dev-cli triage <name> --phase finalize --step <step> --iteration <N>');
+      process.exit(1);
+    }
+
+    if (!inputResult) {
+      console.error('Finalize triage requires a JSON result on stdin');
+      process.exit(1);
+    }
+
+    const result = triageFinalize(inputResult, stepName, iteration);
+
+    const auditEntry = buildAuditEntry('triage', `finalize:${stepName}`, {
+      disposition: result.disposition,
+      iteration,
+    });
+
+    console.log(JSON.stringify({
+      disposition: result.disposition,
+      issues: result.issues,
+      auditEntry,
+    }, null, 2));
+    return;
+  }
+
+  // --- Existing TODO triage path ---
 
   const todoIdx = args.indexOf('--todo');
   const todoId = todoIdx >= 0 ? args[todoIdx + 1] : undefined;
@@ -34,19 +89,7 @@ export default async function handler(args) {
   const dynamicIdx = args.indexOf('--dynamic-count');
   const dynamicTodos = dynamicIdx >= 0 ? parseInt(args[dynamicIdx + 1], 10) : 0;
 
-  // Read verify result from stdin
-  let verifyResult = null;
-  if (!process.stdin.isTTY) {
-    try {
-      const input = readFileSync(0, 'utf8').trim();
-      if (input) verifyResult = JSON.parse(input);
-    } catch {
-      console.error('Failed to parse verify result from stdin');
-      process.exit(1);
-    }
-  }
-
-  if (!verifyResult) {
+  if (!inputResult) {
     console.error('No verify result provided on stdin');
     process.exit(1);
   }
@@ -62,7 +105,7 @@ export default async function handler(args) {
   }
 
   const todoState = { retries, dynamicTodos };
-  const result = triage(verifyResult, todoType, todoState, depth);
+  const result = triage(inputResult, todoType, todoState, depth);
 
   const auditEntry = buildAuditEntry('triage', todoId, {
     disposition: result.disposition,

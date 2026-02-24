@@ -15,6 +15,7 @@ export default async function handler(args) {
   const name = args.find((a) => !a.startsWith('--'));
   if (!name) {
     console.error('Usage: dev-cli build-prompt <name> --todo <todoId> --type <type>');
+    console.error('Types: worker | verify | fix | commit | code-review | final-verify | finalize-fix | report');
     process.exit(1);
   }
 
@@ -26,6 +27,7 @@ export default async function handler(args) {
 
   if (!todoId || !type) {
     console.error('Usage: dev-cli build-prompt <name> --todo <todoId> --type <type>');
+    console.error('Types: worker | verify | fix | commit | code-review | final-verify | finalize-fix | report');
     process.exit(1);
   }
 

@@ -18,6 +18,7 @@ import {
   buildCommitPrompt,
   buildCodeReviewPrompt,
   buildFinalVerifyPrompt,
+  buildFinalizeFixPrompt,
   buildReportPrompt,
 } from '../../../src/engine/prompt-builder.js';
 
@@ -646,6 +647,64 @@ describe('buildReportPrompt()', () => {
   test('is deterministic (same input produces same output)', () => {
     const prompt1 = buildReportPrompt('standard', 7);
     const prompt2 = buildReportPrompt('standard', 7);
+
+    assert.equal(prompt1, prompt2, 'Same input must produce identical output');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildFinalizeFixPrompt() tests
+// ---------------------------------------------------------------------------
+
+describe('buildFinalizeFixPrompt()', () => {
+  test('includes correct heading for code-review', () => {
+    const prompt = buildFinalizeFixPrompt('code-review', { verdict: 'NEEDS_FIXES' }, ['bug in a.js']);
+
+    assert.ok(prompt.includes('# Fix: Code Review Issues'), 'Should include code review heading');
+  });
+
+  test('includes correct heading for final-verify', () => {
+    const prompt = buildFinalizeFixPrompt('final-verify', { status: 'FAIL' }, ['npm test failed']);
+
+    assert.ok(prompt.includes('# Fix: Final Verification Issues'), 'Should include final verify heading');
+  });
+
+  test('lists all issues', () => {
+    const issues = ['[error] a.js:10 — missing check', '[warning] b.js:20 — unused var'];
+    const prompt = buildFinalizeFixPrompt('code-review', {}, issues);
+
+    assert.ok(prompt.includes('missing check'), 'Should include first issue');
+    assert.ok(prompt.includes('unused var'), 'Should include second issue');
+  });
+
+  test('includes original result as JSON', () => {
+    const stepResult = { verdict: 'NEEDS_FIXES', issues: [{ file: 'x.js' }] };
+    const prompt = buildFinalizeFixPrompt('code-review', stepResult, ['issue']);
+
+    assert.ok(prompt.includes('## Original Result'), 'Should include Original Result section');
+    assert.ok(prompt.includes('"verdict": "NEEDS_FIXES"'), 'Should include serialized result');
+  });
+
+  test('includes fix-only instructions', () => {
+    const prompt = buildFinalizeFixPrompt('code-review', {}, ['issue']);
+
+    assert.ok(prompt.includes('## Instructions'), 'Should include Instructions section');
+    assert.ok(prompt.includes('Fix ONLY the issues listed above'), 'Should include fix-only instruction');
+    assert.ok(prompt.includes('Do not refactor or change other code'), 'Should include no-refactor instruction');
+  });
+
+  test('shows (none) when no issues', () => {
+    const prompt = buildFinalizeFixPrompt('code-review', {}, []);
+
+    assert.ok(prompt.includes('(none)'), 'Should show (none) for empty issues');
+  });
+
+  test('is deterministic (same input produces same output)', () => {
+    const result = { verdict: 'NEEDS_FIXES' };
+    const issues = ['issue 1'];
+
+    const prompt1 = buildFinalizeFixPrompt('code-review', result, issues);
+    const prompt2 = buildFinalizeFixPrompt('code-review', result, issues);
 
     assert.equal(prompt1, prompt2, 'Same input must produce identical output');
   });

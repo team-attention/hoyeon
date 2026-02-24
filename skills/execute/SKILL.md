@@ -264,30 +264,86 @@ TaskUpdate(taskId, { status: "completed" })
 
 #### :Code Review (metadata.substep = "code-review") [Standard only]
 
-```bash
-prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type code-review)
-```
+Feedback loop with max 2 fix iterations:
 
 ```
 TaskUpdate(taskId, { status: "in_progress" })
-result = Task(code-reviewer, prompt, model=sonnet)
-TaskUpdate(taskId, { status: "completed" })
-```
+iteration = 0
 
-If verdict = NEEDS_FIXES, log issues but continue.
+LOOP:
+  # 1. Run code review
+  prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type code-review)
+  reviewResult = Task(code-reviewer, prompt, model=sonnet)
+
+  # 2. Triage
+  triageResult=$(echo '{reviewResult}' | node dev-cli/bin/dev-cli.js triage {name} --phase finalize --step code-review --iteration {iteration})
+
+  # 3. Route by disposition
+  IF disposition = "pass":
+    TaskUpdate(taskId, { status: "completed" })
+    BREAK
+
+  IF disposition = "fix":
+    # a. Build fix prompt — embed triageResult.issues from triage JSON output
+    fixPrompt=$(echo '{"stepName":"code-review","stepResult":{reviewResult},"issues":{triageResult.issues}}' | node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type finalize-fix)
+    # b. Track iteration
+    node dev-cli/bin/dev-cli.js finalize {name} --step code-review --set-iteration {iteration+1}
+    # c. Fix
+    Task(worker, fixPrompt, model=sonnet)
+    # d. Commit fixes
+    Task(git-master, "Commit code review fixes", model=sonnet)
+    # e. Increment and loop
+    iteration += 1
+    CONTINUE
+
+  IF disposition = "halt":
+    # Log halted issues to context/issues.md
+    echo '{"issues":"...","learnings":""}' | node dev-cli/bin/dev-cli.js wrapup {name} --todo finalize
+    TaskUpdate(taskId, { status: "completed" })
+    BREAK
+```
 
 ---
 
 #### :Final Verify (metadata.substep = "final-verify") [Standard only]
 
-```bash
-prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type final-verify)
-```
+Feedback loop with max 2 fix iterations (same pattern as Code Review):
 
 ```
 TaskUpdate(taskId, { status: "in_progress" })
-result = Task(worker, prompt, model=sonnet)
-TaskUpdate(taskId, { status: "completed" })
+iteration = 0
+
+LOOP:
+  # 1. Run final verification
+  prompt=$(node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type final-verify)
+  verifyResult = Task(worker, prompt, model=sonnet)
+
+  # 2. Triage
+  triageResult=$(echo '{verifyResult}' | node dev-cli/bin/dev-cli.js triage {name} --phase finalize --step final-verify --iteration {iteration})
+
+  # 3. Route by disposition
+  IF disposition = "pass":
+    TaskUpdate(taskId, { status: "completed" })
+    BREAK
+
+  IF disposition = "fix":
+    # a. Build fix prompt — embed triageResult.issues from triage JSON output
+    fixPrompt=$(echo '{"stepName":"final-verify","stepResult":{verifyResult},"issues":{triageResult.issues}}' | node dev-cli/bin/dev-cli.js build-prompt {name} --todo finalize --type finalize-fix)
+    # b. Track iteration
+    node dev-cli/bin/dev-cli.js finalize {name} --step final-verify --set-iteration {iteration+1}
+    # c. Fix
+    Task(worker, fixPrompt, model=sonnet)
+    # d. Commit fixes
+    Task(git-master, "Commit final verify fixes", model=sonnet)
+    # e. Increment and loop
+    iteration += 1
+    CONTINUE
+
+  IF disposition = "halt":
+    # Log halted issues to context/issues.md
+    echo '{"issues":"...","learnings":""}' | node dev-cli/bin/dev-cli.js wrapup {name} --todo finalize
+    TaskUpdate(taskId, { status: "completed" })
+    BREAK
 ```
 
 ---
@@ -357,6 +413,7 @@ TaskUpdate(taskId, { status: "completed" })
 |--------|----------|-------|
 | TODO substeps | Worker → Verify → Wrap-up → Commit | Worker → Wrap-up → Commit |
 | Finalize | Residual Commit → Code Review → Final Verify → State Complete → Report | Residual Commit → State Complete → Report |
+| Finalize fix loop | Up to 2 fix iterations per step | N/A (skipped) |
 | On failure | Retry (3x) / Adapt / Halt | Halt immediately |
 
 Quick mode skips: Verify substep, Code Review, Final Verify, retry/adapt reconciliation.

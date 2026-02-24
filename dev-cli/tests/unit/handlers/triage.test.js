@@ -124,3 +124,101 @@ describe('dev-cli triage handler', () => {
     assert.ok(parsed.auditEntry.includes('TRIAGE'));
   });
 });
+
+// ---------------------------------------------------------------------------
+// --phase finalize tests
+// ---------------------------------------------------------------------------
+
+describe('dev-cli triage --phase finalize', () => {
+  beforeEach(() => useTmpDir());
+  afterEach(() => cleanup());
+
+  test('SHIP → pass for code-review', () => {
+    setupSpec('test-spec');
+
+    const reviewResult = JSON.stringify({ verdict: 'SHIP', issues: [] });
+    const result = execFileSync('node', [
+      CLI_PATH, 'triage', 'test-spec',
+      '--phase', 'finalize', '--step', 'code-review', '--iteration', '0',
+    ], { cwd: tmpDir, input: reviewResult, encoding: 'utf8' });
+
+    const parsed = JSON.parse(result);
+    assert.equal(parsed.disposition, 'pass');
+  });
+
+  test('NEEDS_FIXES at iteration 0 → fix for code-review', () => {
+    setupSpec('test-spec');
+
+    const reviewResult = JSON.stringify({
+      verdict: 'NEEDS_FIXES',
+      issues: [{ file: 'a.js', line: 1, severity: 'error', description: 'bug' }],
+    });
+    const result = execFileSync('node', [
+      CLI_PATH, 'triage', 'test-spec',
+      '--phase', 'finalize', '--step', 'code-review', '--iteration', '0',
+    ], { cwd: tmpDir, input: reviewResult, encoding: 'utf8' });
+
+    const parsed = JSON.parse(result);
+    assert.equal(parsed.disposition, 'fix');
+    assert.ok(parsed.issues.length > 0);
+  });
+
+  test('NEEDS_FIXES at iteration 2 → halt for code-review', () => {
+    setupSpec('test-spec');
+
+    const reviewResult = JSON.stringify({
+      verdict: 'NEEDS_FIXES',
+      issues: [{ file: 'a.js', line: 1, severity: 'error', description: 'bug' }],
+    });
+    const result = execFileSync('node', [
+      CLI_PATH, 'triage', 'test-spec',
+      '--phase', 'finalize', '--step', 'code-review', '--iteration', '2',
+    ], { cwd: tmpDir, input: reviewResult, encoding: 'utf8' });
+
+    const parsed = JSON.parse(result);
+    assert.equal(parsed.disposition, 'halt');
+  });
+
+  test('PASS → pass for final-verify', () => {
+    setupSpec('test-spec');
+
+    const verifyResult = JSON.stringify({ status: 'PASS', results: [] });
+    const result = execFileSync('node', [
+      CLI_PATH, 'triage', 'test-spec',
+      '--phase', 'finalize', '--step', 'final-verify', '--iteration', '0',
+    ], { cwd: tmpDir, input: verifyResult, encoding: 'utf8' });
+
+    const parsed = JSON.parse(result);
+    assert.equal(parsed.disposition, 'pass');
+  });
+
+  test('FAIL at iteration 0 → fix for final-verify', () => {
+    setupSpec('test-spec');
+
+    const verifyResult = JSON.stringify({
+      status: 'FAIL',
+      results: [{ command: 'npm test', exitCode: 1, pass: false }],
+    });
+    const result = execFileSync('node', [
+      CLI_PATH, 'triage', 'test-spec',
+      '--phase', 'finalize', '--step', 'final-verify', '--iteration', '0',
+    ], { cwd: tmpDir, input: verifyResult, encoding: 'utf8' });
+
+    const parsed = JSON.parse(result);
+    assert.equal(parsed.disposition, 'fix');
+  });
+
+  test('includes auditEntry with finalize prefix', () => {
+    setupSpec('test-spec');
+
+    const reviewResult = JSON.stringify({ verdict: 'SHIP', issues: [] });
+    const result = execFileSync('node', [
+      CLI_PATH, 'triage', 'test-spec',
+      '--phase', 'finalize', '--step', 'code-review', '--iteration', '0',
+    ], { cwd: tmpDir, input: reviewResult, encoding: 'utf8' });
+
+    const parsed = JSON.parse(result);
+    assert.ok(parsed.auditEntry);
+    assert.ok(parsed.auditEntry.includes('finalize:code-review'));
+  });
+});

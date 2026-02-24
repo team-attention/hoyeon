@@ -5,7 +5,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { triage, scopeCheck, canRetry, canAdapt, buildAuditEntry } from '../../../src/engine/reconciler.js';
+import { triage, triageFinalize, normalizeFinalizeResult, scopeCheck, canRetry, canAdapt, buildAuditEntry } from '../../../src/engine/reconciler.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -254,5 +254,152 @@ describe('buildAuditEntry()', () => {
     const entry = buildAuditEntry('halt', 'todo-3', { reason: 'critical' });
     assert.match(entry, /```json/);
     assert.match(entry, /```$/m);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: normalizeFinalizeResult()
+// ---------------------------------------------------------------------------
+
+describe('normalizeFinalizeResult()', () => {
+  test('code-review SHIP → passed with no issues', () => {
+    const result = normalizeFinalizeResult({ verdict: 'SHIP', issues: [] }, 'code-review');
+    assert.equal(result.passed, true);
+    assert.deepEqual(result.issues, []);
+  });
+
+  test('code-review NEEDS_FIXES → not passed with formatted issues', () => {
+    const result = normalizeFinalizeResult({
+      verdict: 'NEEDS_FIXES',
+      issues: [{ file: 'a.js', line: 10, severity: 'error', description: 'missing null check' }],
+    }, 'code-review');
+    assert.equal(result.passed, false);
+    assert.equal(result.issues.length, 1);
+    assert.ok(result.issues[0].includes('a.js'));
+    assert.ok(result.issues[0].includes('missing null check'));
+  });
+
+  test('code-review NEEDS_FIXES with empty issues → fallback issue', () => {
+    const result = normalizeFinalizeResult({
+      verdict: 'NEEDS_FIXES',
+      issues: [],
+    }, 'code-review');
+    assert.equal(result.passed, false);
+    assert.equal(result.issues.length, 1);
+    assert.ok(result.issues[0].includes('NEEDS_FIXES'));
+  });
+
+  test('final-verify FAIL with empty results → fallback issue', () => {
+    const result = normalizeFinalizeResult({
+      status: 'FAIL',
+      results: [],
+    }, 'final-verify');
+    assert.equal(result.passed, false);
+    assert.equal(result.issues.length, 1);
+    assert.ok(result.issues[0].includes('FAIL'));
+  });
+
+  test('final-verify PASS → passed with no issues', () => {
+    const result = normalizeFinalizeResult({
+      status: 'PASS',
+      results: [{ command: 'npm test', exitCode: 0, pass: true }],
+    }, 'final-verify');
+    assert.equal(result.passed, true);
+    assert.deepEqual(result.issues, []);
+  });
+
+  test('final-verify FAIL → not passed with failed commands', () => {
+    const result = normalizeFinalizeResult({
+      status: 'FAIL',
+      results: [
+        { command: 'npm test', exitCode: 1, pass: false },
+        { command: 'npm run lint', exitCode: 0, pass: true },
+      ],
+    }, 'final-verify');
+    assert.equal(result.passed, false);
+    assert.equal(result.issues.length, 1);
+    assert.ok(result.issues[0].includes('npm test'));
+  });
+
+  test('null result → not passed with descriptive error', () => {
+    const result = normalizeFinalizeResult(null, 'code-review');
+    assert.equal(result.passed, false);
+    assert.equal(result.issues.length, 1);
+    assert.ok(result.issues[0].includes('null'));
+  });
+
+  test('unknown step → not passed', () => {
+    const result = normalizeFinalizeResult({ foo: 'bar' }, 'unknown-step');
+    assert.equal(result.passed, false);
+    assert.ok(result.issues[0].includes('unknown step type'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: triageFinalize()
+// ---------------------------------------------------------------------------
+
+describe('triageFinalize()', () => {
+  test('SHIP → pass', () => {
+    const result = triageFinalize({ verdict: 'SHIP', issues: [] }, 'code-review', 0);
+    assert.equal(result.disposition, 'pass');
+    assert.deepEqual(result.issues, []);
+  });
+
+  test('NEEDS_FIXES at iteration 0 → fix', () => {
+    const result = triageFinalize({
+      verdict: 'NEEDS_FIXES',
+      issues: [{ file: 'a.js', line: 1, severity: 'error', description: 'bug' }],
+    }, 'code-review', 0);
+    assert.equal(result.disposition, 'fix');
+    assert.ok(result.issues.length > 0);
+  });
+
+  test('NEEDS_FIXES at iteration 2 → halt (max reached)', () => {
+    const result = triageFinalize({
+      verdict: 'NEEDS_FIXES',
+      issues: [{ file: 'a.js', line: 1, severity: 'error', description: 'bug' }],
+    }, 'code-review', 2);
+    assert.equal(result.disposition, 'halt');
+  });
+
+  test('PASS → pass (final-verify)', () => {
+    const result = triageFinalize({ status: 'PASS', results: [] }, 'final-verify', 0);
+    assert.equal(result.disposition, 'pass');
+  });
+
+  test('FAIL at iteration 0 → fix (final-verify)', () => {
+    const result = triageFinalize({
+      status: 'FAIL',
+      results: [{ command: 'npm test', exitCode: 1, pass: false }],
+    }, 'final-verify', 0);
+    assert.equal(result.disposition, 'fix');
+  });
+
+  test('FAIL at iteration 2 → halt (final-verify)', () => {
+    const result = triageFinalize({
+      status: 'FAIL',
+      results: [{ command: 'npm test', exitCode: 1, pass: false }],
+    }, 'final-verify', 2);
+    assert.equal(result.disposition, 'halt');
+  });
+
+  test('null result → halt', () => {
+    const result = triageFinalize(null, 'code-review', 0);
+    // null at iteration 0 should try to fix (not passed, iteration < max)
+    assert.equal(result.disposition, 'fix');
+  });
+
+  test('null result at max iteration → halt', () => {
+    const result = triageFinalize(null, 'code-review', 2);
+    assert.equal(result.disposition, 'halt');
+  });
+
+  test('custom maxIterations = 1', () => {
+    const result = triageFinalize({
+      verdict: 'NEEDS_FIXES',
+      issues: [{ file: 'a.js', line: 1, severity: 'error', description: 'bug' }],
+    }, 'code-review', 1, 1);
+    assert.equal(result.disposition, 'halt');
   });
 });

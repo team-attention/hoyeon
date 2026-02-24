@@ -17,6 +17,7 @@ import {
   buildCommitPrompt,
   buildCodeReviewPrompt,
   buildFinalVerifyPrompt,
+  buildFinalizeFixPrompt,
   buildReportPrompt,
 } from './prompt-builder.js';
 import { readFileSync, existsSync } from 'node:fs';
@@ -116,6 +117,11 @@ export function buildPromptForTodo(name, todoId, type, inputData) {
 
     case 'code-review': {
       return buildCodeReviewPrompt();
+    }
+
+    case 'finalize-fix': {
+      const { stepName, stepResult, issues } = inputData ?? {};
+      return buildFinalizeFixPrompt(stepName, stepResult, issues ?? []);
     }
 
     case 'final-verify': {

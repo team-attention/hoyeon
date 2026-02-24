@@ -308,6 +308,35 @@ Report results as JSON:
 }
 
 /**
+ * Build a fix prompt for finalize step issues (Code Review or Final Verify).
+ *
+ * @param {string} stepName - 'code-review' or 'final-verify'
+ * @param {object} stepResult - Original raw result from the finalize step
+ * @param {string[]} normalizedIssues - Issues from normalizeFinalizeResult()
+ * @returns {string} The fix prompt string
+ */
+export function buildFinalizeFixPrompt(stepName, stepResult, normalizedIssues) {
+  const heading = stepName === 'code-review' ? 'Code Review Issues' : 'Final Verification Issues';
+  const issuesBlock =
+    normalizedIssues.length > 0
+      ? normalizedIssues.map((i) => `- ${i}`).join('\n')
+      : '- (none)';
+
+  return `# Fix: ${heading}
+
+## Issues to Fix
+${issuesBlock}
+
+## Original Result
+\`\`\`json
+${JSON.stringify(stepResult, null, 2)}
+\`\`\`
+
+## Instructions
+Fix ONLY the issues listed above. Do not refactor or change other code.`;
+}
+
+/**
  * Build an execution report prompt.
  *
  * @param {string} mode - Execution mode ('standard' | 'quick')
