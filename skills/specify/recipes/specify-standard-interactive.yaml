@@ -28,10 +28,10 @@ steps:
       - { type: simplicity-checker, output: "analysis/simplicity.md" }
       - { type: risk-assessor, output: "analysis/risks.md" }
     parallel: true
-  - id: decision-checkpoint
   - id: codex-synth
     agents:
       - { type: codex-strategist, output: "analysis/strategy.md" }
+  - id: decision-checkpoint
   - id: generate-plan
     autoTransition: false
   - id: review
