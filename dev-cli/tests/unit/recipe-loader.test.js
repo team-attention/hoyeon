@@ -6,7 +6,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseRecipeYaml, loadRecipe, recipesDir } from '../../src/core/recipe-loader.js';
+import { parseRecipeYaml, loadRecipe, recipesDir, validateAgentsExist, getStepAgents } from '../../src/core/recipe-loader.js';
 
 // ---------------------------------------------------------------------------
 // Inline YAML fixtures
@@ -748,5 +748,115 @@ steps:
     } finally {
       console.warn = originalWarn;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: validateAgentsExist() — agent file existence checking
+// ---------------------------------------------------------------------------
+
+describe('validateAgentsExist() — agent file validation', () => {
+  test('returns empty array for recipe with no steps', () => {
+    const recipe = { blocks: [{ id: 'b1', type: 'cli' }] };
+    const missing = validateAgentsExist(recipe);
+    assert.deepEqual(missing, []);
+  });
+
+  test('returns empty array for steps without agents', () => {
+    const recipe = { steps: [{ id: 'classify' }, { id: 'interview' }] };
+    const missing = validateAgentsExist(recipe);
+    assert.deepEqual(missing, []);
+  });
+
+  test('skips built-in agent types (Explore, Plan)', () => {
+    const recipe = {
+      steps: [{
+        id: 'explore',
+        agents: [
+          { type: 'Explore', output: 'findings/e1.md' },
+          { type: 'Plan', output: 'findings/p1.md' },
+        ],
+      }],
+    };
+    const missing = validateAgentsExist(recipe);
+    assert.deepEqual(missing, []);
+  });
+
+  test('detects existing agents as valid (e.g. gap-analyzer)', () => {
+    const recipe = {
+      steps: [{
+        id: 'analyze',
+        agents: [
+          { type: 'gap-analyzer', output: 'analysis/gaps.md' },
+          { type: 'tradeoff-analyzer', output: 'analysis/tradeoff.md' },
+        ],
+      }],
+    };
+    const missing = validateAgentsExist(recipe);
+    assert.deepEqual(missing, [], 'gap-analyzer and tradeoff-analyzer should exist');
+  });
+
+  test('detects missing agent files', () => {
+    const recipe = {
+      steps: [{
+        id: 'analyze',
+        agents: [
+          { type: 'gap-analyzer', output: 'analysis/gaps.md' },
+          { type: 'nonexistent-agent-xyz', output: 'analysis/xyz.md' },
+        ],
+      }],
+    };
+    const missing = validateAgentsExist(recipe);
+    assert.equal(missing.length, 1);
+    assert.equal(missing[0].step, 'analyze');
+    assert.equal(missing[0].agent, 'nonexistent-agent-xyz');
+    assert.ok(missing[0].path.includes('nonexistent-agent-xyz.md'));
+  });
+
+  test('reports missing agents from multiple steps', () => {
+    const recipe = {
+      steps: [
+        {
+          id: 'explore',
+          agents: [{ type: 'no-such-agent-a', output: 'a.md' }],
+        },
+        {
+          id: 'analyze',
+          agents: [{ type: 'no-such-agent-b', output: 'b.md' }],
+        },
+      ],
+    };
+    const missing = validateAgentsExist(recipe);
+    assert.equal(missing.length, 2);
+    assert.equal(missing[0].step, 'explore');
+    assert.equal(missing[1].step, 'analyze');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: getStepAgents() — step agent lookup
+// ---------------------------------------------------------------------------
+
+describe('getStepAgents() — step agent lookup', () => {
+  test('returns agents for a valid step in specify recipe', () => {
+    const agents = getStepAgents('specify-standard-interactive', 'explore', 'specify');
+    assert.ok(agents !== null, 'explore step should have agents');
+    assert.ok(agents.length > 0, 'should have at least one agent');
+    assert.ok(agents.some((a) => a.type === 'Explore'), 'should include Explore type');
+  });
+
+  test('returns null for step without agents', () => {
+    const agents = getStepAgents('specify-standard-interactive', 'classify', 'specify');
+    assert.equal(agents, null, 'classify step has no agents');
+  });
+
+  test('returns null for nonexistent step', () => {
+    const agents = getStepAgents('specify-standard-interactive', 'nonexistent-step', 'specify');
+    assert.equal(agents, null);
+  });
+
+  test('returns null for nonexistent recipe', () => {
+    const agents = getStepAgents('nonexistent-recipe-xyz', 'explore', 'specify');
+    assert.equal(agents, null);
   });
 });

@@ -9,7 +9,7 @@
  */
 
 import { initSpec } from '../blocks/init.js';
-import { loadRecipe } from '../core/recipe-loader.js';
+import { loadRecipe, validateAgentsExist } from '../core/recipe-loader.js';
 
 /**
  * Extract a --flag value from args (e.g., --recipe foo → 'foo').
@@ -40,13 +40,20 @@ export default async function handler(args) {
     const interaction = flags.has('autopilot') ? 'autopilot' : 'interactive';
     const explicitIntent = getFlagValue(args, 'intent');
     let recipeSteps = [];
+    let agentWarnings = [];
     try {
       const recipeObj = loadRecipe(explicitRecipe, {}, explicitSkill);
       recipeSteps = (recipeObj.steps || []).map((s) => s.id);
+      const missingAgents = validateAgentsExist(recipeObj);
+      if (missingAgents.length > 0) {
+        agentWarnings = missingAgents.map((m) => `Agent '${m.agent}' (step '${m.step}') not found at ${m.path}`);
+        for (const w of agentWarnings) console.warn(`Warning: ${w}`);
+      }
     } catch (err) {
       console.warn(`Warning: could not load recipe '${explicitRecipe}' for step validation: ${err.message}`);
     }
     const result = await initSpec(name, { recipe: explicitRecipe, depth, interaction, skill: explicitSkill, intent: explicitIntent, recipeSteps });
+    if (agentWarnings.length > 0) result.agentWarnings = agentWarnings;
     console.log(JSON.stringify(result, null, 2));
     return;
   }
@@ -63,12 +70,19 @@ export default async function handler(args) {
   const interaction = flags.has('autopilot') ? 'autopilot' : 'interactive';
   const recipe = `specify-${depth}-${interaction}`;
   let recipeSteps = [];
+  let agentWarnings = [];
   try {
     const recipeObj = loadRecipe(recipe, {}, 'specify');
     recipeSteps = (recipeObj.steps || []).map((s) => s.id);
+    const missingAgents = validateAgentsExist(recipeObj);
+    if (missingAgents.length > 0) {
+      agentWarnings = missingAgents.map((m) => `Agent '${m.agent}' (step '${m.step}') not found at ${m.path}`);
+      for (const w of agentWarnings) console.warn(`Warning: ${w}`);
+    }
   } catch (err) {
     console.warn(`Warning: could not load recipe '${recipe}' for step validation: ${err.message}`);
   }
   const result = await initSpec(name, { recipe, depth, interaction, skill: 'specify', recipeSteps });
+  if (agentWarnings.length > 0) result.agentWarnings = agentWarnings;
   console.log(JSON.stringify(result, null, 2));
 }

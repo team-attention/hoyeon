@@ -67,6 +67,7 @@ export function draftImport(name) {
 
   const agentSummaries = [];
   const agentsState = {};
+  const warnings = [];
 
   for (const file of files) {
     const filePath = join(findingsDir, file);
@@ -76,11 +77,13 @@ export function draftImport(name) {
     let summary = `_(no summary in ${file})_`;
     let agentType = basename(file, '.md');
     let agentId = agentType;
+    let hasSummary = false;
 
     if (rawFrontmatter) {
       const parsed = parseSimpleYaml(rawFrontmatter);
       if (parsed.summary) {
         summary = parsed.summary;
+        hasSummary = true;
       }
       if (parsed.type) {
         agentType = parsed.type;
@@ -88,6 +91,10 @@ export function draftImport(name) {
       if (parsed.id) {
         agentId = parsed.id;
       }
+    }
+
+    if (!hasSummary) {
+      warnings.push(`${file}: missing 'summary' field in YAML frontmatter`);
     }
 
     // Compute hash of file content
@@ -121,5 +128,7 @@ export function draftImport(name) {
     agents: { ...existingAgents, ...agentsState },
   });
 
-  return { imported: files.length, agents: agentsState };
+  // Warnings are returned in the result for callers to handle display.
+  // No stderr output here — the handler (draft.js) decides how to report.
+  return { imported: files.length, agents: agentsState, warnings };
 }

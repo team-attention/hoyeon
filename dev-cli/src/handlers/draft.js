@@ -86,6 +86,10 @@ export default async function handler(args) {
     result = await draftUpdate(name, section, data);
   } else if (action === 'import') {
     result = await draftImport(name);
+    // Display warnings to stderr; keep them in JSON result for programmatic access
+    if (result.warnings && result.warnings.length > 0) {
+      for (const w of result.warnings) console.warn(`Warning: ${w}`);
+    }
   } else if (action === 'validate') {
     result = await draftValidate(name);
   } else if (action === 'show') {

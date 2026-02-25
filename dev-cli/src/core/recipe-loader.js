@@ -21,6 +21,12 @@ import yaml from 'js-yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Project root: dev-cli/ parent directory */
+const PROJECT_ROOT = join(__dirname, '..', '..', '..');
+
+/** Built-in agent types that don't require .claude/agents/ files */
+const BUILTIN_AGENT_TYPES = new Set(['Explore', 'Plan']);
+
 /**
  * Resolve the absolute path to the recipes directory for a given skill.
  * Recipes are stored at .claude/skills/{skillName}/recipes/ relative to the plugin root.
@@ -381,6 +387,60 @@ function validateRecipe(recipe) {
     for (let i = 0; i < recipe.steps.length; i++) {
       validateStep(recipe.steps[i], i);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Agent validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Check that all agent types referenced in recipe steps have corresponding
+ * .claude/agents/{type}.md files. Built-in types (Explore, Plan) are skipped.
+ *
+ * @param {object} recipe - Parsed recipe object
+ * @returns {Array<{step: string, agent: string, path: string}>} Missing agents
+ */
+export function validateAgentsExist(recipe) {
+  const missing = [];
+  if (!recipe.steps) return missing;
+
+  for (const step of recipe.steps) {
+    if (!step.agents) continue;
+    for (const agent of step.agents) {
+      if (BUILTIN_AGENT_TYPES.has(agent.type)) continue;
+      // Guard against path traversal in agent type names
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(agent.type)) {
+        missing.push({ step: step.id, agent: agent.type, path: 'invalid-agent-type' });
+        continue;
+      }
+      const agentPath = join(PROJECT_ROOT, '.claude', 'agents', `${agent.type}.md`);
+      if (!existsSync(agentPath)) {
+        missing.push({ step: step.id, agent: agent.type, path: agentPath });
+      }
+    }
+  }
+  return missing;
+}
+
+/**
+ * Get the agents array for a specific step in a recipe.
+ *
+ * @param {string} recipeName - Recipe name
+ * @param {string} stepId - Step ID to look up
+ * @param {string} skillName - Skill name
+ * @returns {Array<{type: string, output: string}>|null} Agents array or null if step has no agents
+ */
+export function getStepAgents(recipeName, stepId, skillName) {
+  try {
+    const recipe = loadRecipe(recipeName, {}, skillName);
+    if (!recipe.steps) return null;
+    const step = recipe.steps.find((s) => s.id === stepId);
+    if (!step || !step.agents) return null;
+    return step.agents;
+  } catch (err) {
+    console.warn(`Warning: getStepAgents failed for recipe '${recipeName}': ${err.message}`);
+    return null;
   }
 }
 
