@@ -67,7 +67,9 @@ SKILL.md interprets the recipe's step configuration. Behavior fields:
 4. Reviewer exceeds `maxRounds` with REJECT → HALT and inform user
 5. Subagents write full results to output path (Markdown+YAML frontmatter), return 1-2 line summary only
 6. Call `dev-cli step-done` after each step
-7. After context compaction, recover via `dev-cli manifest`
+7. **Agent dispatch**: When a step has `agents[]`, MUST launch ALL agents listed — iterate the full array, never skip entries. `step-done` will **hard-error** if output files are missing.
+8. **AskUserQuestion context rule**: Before EVERY AskUserQuestion call (except interview questions), you MUST output a visible text block containing the relevant summary. The text block must appear in the **same assistant message** as the AskUserQuestion tool call, or in the **immediately preceding** assistant message. Minimum: a table or numbered list with all key data points. AskUserQuestion option descriptions are truncated in the UI — never rely on them to convey information.
+9. After context compaction, recover via `dev-cli manifest`
 
 ---
 
@@ -113,8 +115,9 @@ If `{ "resumed": true }`, read state and resume. Then record Phase 0:
 ```bash
 echo '{"section":"intent","data":"<intent>"}' | node dev-cli/bin/dev-cli.js draft {name} update
 node dev-cli/bin/dev-cli.js step-done {name} --step classify
-node dev-cli/bin/dev-cli.js step-done {name} --step init
 ```
+
+> `init` step is auto-recorded by `dev-cli init` — no explicit `step-done` needed.
 
 Phase 0 (1.1–1.3) runs without dev-cli. CLI calls begin at 1.4.
 
@@ -124,11 +127,10 @@ Phase 0 (1.1–1.3) runs without dev-cli. CLI calls begin at 1.4.
 
 ## STEP 2: Exploration
 
-Run all agents from `recipe.steps[id=explore].agents` (parallel if configured).
-Each agent writes to output path, returns 1-2 line summary.
+**Dispatch**: Read `recipe.steps[id=explore].agents` array. Launch **every** agent in the list via `Task(subagent_type=agent.type)`. If `parallel: true`, launch all simultaneously with `run_in_background: true`, then wait for all completions. Each agent writes to its `output` path under the session directory, returns 1-2 line summary.
 
 ```bash
-node dev-cli/bin/dev-cli.js draft import {name}
+node dev-cli/bin/dev-cli.js draft {name} import
 node dev-cli/bin/dev-cli.js step-done {name} --step explore
 ```
 
@@ -145,7 +147,17 @@ Recipe has `interview` → 3a. Recipe has `auto-assume` → 3b.
 - **DISCOVER**: patterns, commands, docs, UX impact
 - **PROPOSE**: concrete decisions after each answer; minimize questions, prefer research-backed proposals
 
-Update DRAFT after each exchange. Exit when all critical decisions recorded.
+Update DRAFT after each exchange.
+
+**Completeness Check** — before marking interview done, verify ALL:
+- [ ] No Critical open questions remain in DRAFT
+- [ ] Scope boundaries are explicit (what's in AND what's out)
+- [ ] Success criteria are measurable, not vague ("works correctly" ✗ → "returns 200 with JSON body" ✓)
+- [ ] Must NOT Do has at least one entry
+
+If any check fails → ask follow-up questions. Do NOT proceed.
+If uncertain about a boundary → ask. Prefer one extra question over an ambiguous plan.
+
 ```bash
 node dev-cli/bin/dev-cli.js step-done {name} --step interview
 ```
@@ -180,7 +192,22 @@ node dev-cli/bin/dev-cli.js step-done {name} --step auto-assume
 
 ## STEP 4: Decision Confirmation
 
-Present all decisions via AskUserQuestion. "All confirmed" → proceed. "Corrections" → update DRAFT.
+**Output the following as TEXT** before calling AskUserQuestion:
+
+```
+### Decision Summary
+| # | Question | Decision | Notes |
+|---|----------|----------|-------|
+| 1 | ... | ... | ... |
+(all rows from DRAFT User Decisions section)
+
+**Scope**: In: ... / Out: ...
+**Success Criteria**: (count) items
+**Must NOT Do**: (count) items
+```
+
+THEN call AskUserQuestion with "All confirmed" / "Corrections" options. The AskUserQuestion options should be simple labels only — all details must be in the text above.
+
 ```bash
 node dev-cli/bin/dev-cli.js step-done {name} --step decision-confirm
 ```
@@ -189,9 +216,10 @@ node dev-cli/bin/dev-cli.js step-done {name} --step decision-confirm
 
 ## STEP 5: Analysis
 
-Run agents from `recipe.steps[id=analyze].agents` (parallel if configured).
+**Dispatch**: Read `recipe.steps[id=analyze].agents` array. Launch **every** agent in the list via `Task(subagent_type=agent.type)`. If `parallel: true`, launch all simultaneously with `run_in_background: true`, then wait for all completions. Each agent writes to its `output` path under the session directory, returns 1-2 line summary.
+
 ```bash
-node dev-cli/bin/dev-cli.js draft import {name}
+node dev-cli/bin/dev-cli.js draft {name} import
 node dev-cli/bin/dev-cli.js step-done {name} --step analyze
 ```
 
@@ -201,9 +229,10 @@ node dev-cli/bin/dev-cli.js step-done {name} --step analyze
 
 ## STEP 5.5: Codex Synthesis
 
-Run agent from `recipe.steps[id=codex-synth].agents`.
+**Dispatch**: Read `recipe.steps[id=codex-synth].agents` array. Launch **every** agent listed. This step is typically a single agent (codex-strategist) run in foreground.
+
 ```bash
-node dev-cli/bin/dev-cli.js draft import {name}
+node dev-cli/bin/dev-cli.js draft {name} import
 node dev-cli/bin/dev-cli.js step-done {name} --step codex-synth
 ```
 
@@ -211,7 +240,34 @@ node dev-cli/bin/dev-cli.js step-done {name} --step codex-synth
 
 ## STEP 6: Decision Checkpoint
 
-Present via AskUserQuestion: (1) User Decisions, (2) Agent Decisions with `[LOW]/[MED]/[HIGH]` tags, (3) Codex Synthesis if ran, (4) Risk Summary (HIGH table, MED/LOW counts), (5) Verification A/H/S items.
+**Output the following as TEXT** before calling AskUserQuestion:
+
+```
+### Analysis & Decision Summary
+
+**User Decisions**
+| # | Question | Decision |
+|---|----------|----------|
+(from interview)
+
+**Agent Analysis**
+| Agent | Key Finding | Risk |
+|-------|-------------|------|
+| tradeoff-analyzer | ... | [LOW]/[MED]/[HIGH] |
+| gap-analyzer | ... | ... |
+| ... | ... | ... |
+
+**Codex Synthesis**: (1-2 sentence key insight, if codex-synth ran)
+
+**Risk Summary**: HIGH: (count/table), MED: (count), LOW: (count)
+
+**Verification Preview** (A/H/S — list each item if <=7, else counts + "see PLAN.md"):
+- A-items (N): 1. ... 2. ...
+- H-items (N): 1. ... 2. ...
+- S-items (N): (if any)
+```
+
+THEN call AskUserQuestion with "All confirmed" / "Corrections" options. The AskUserQuestion options should be simple labels only — all details must be in the text above.
 "All confirmed" → proceed. "Corrections" → update and re-run affected analysis.
 
 ---
@@ -228,17 +284,36 @@ Write to `.dev/specs/{name}/plan-content.json`. See [Schema Reference](#plan-con
 
 ### 7.3 Generate PLAN.md
 ```bash
-node dev-cli/bin/dev-cli.js plan generate {name} --data plan-content.json
+node dev-cli/bin/dev-cli.js plan {name} generate
 node dev-cli/bin/dev-cli.js step-done {name} --step generate-plan
 ```
 
-**Interactive**: show A/H/S counts, offer "Confirmed" / "Corrections" via AskUserQuestion.
+**Interactive**: **Output the following as TEXT** before calling AskUserQuestion:
+
+```
+### Plan Summary
+| TODO | Type | Risk | Key Files |
+|------|------|------|-----------|
+| todo-1: ... | work | LOW | file1, file2 |
+| ... | ... | ... | ... |
+| todo-final: ... | verification | - | ... |
+
+**Key Decisions**: 1. ... 2. ... (max 5)
+**Risk Summary**: HIGH: (count), MED: (count), LOW: (count)
+
+**Verification** (list each item if <=7, else counts + "see PLAN.md"):
+- A-items (N): 1. ... 2. ...
+- H-items (N): 1. ... 2. ...
+- S-items (N): (if any)
+```
+
+THEN call AskUserQuestion with "Confirmed" / "Corrections" options. The AskUserQuestion options should be simple labels only.
 
 ---
 
 ## STEP 8: Plan Review
 
-Run agents from `recipe.steps[id=review].agents` up to `maxRounds`.
+**Dispatch**: Read `recipe.steps[id=review].agents` array. Launch **every** agent listed. Run up to `maxRounds`.
 
 | Rejection Type | Handling |
 |----------------|----------|
