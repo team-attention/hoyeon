@@ -3,7 +3,9 @@
 #
 # Purpose: Prevents session exit when orchestration is incomplete
 # Detection: Reads engine state from state.json (via session.ref resolution)
-# Verifies: Engine finalize status, uncommitted changes
+# Verifies: Engine finalize status, failed TODOs, Final Report
+# Note: Git uncommitted changes check removed — commit timing is
+#       orchestrator's responsibility via commitStrategy, not the hook's.
 #
 # Hook Input Fields (Stop):
 #   - session_id: current session
@@ -95,15 +97,7 @@ if [[ -n "$FAILED_TODOS" ]]; then
   ERRORS+=("Failed TODOs: $FAILED_TODOS")
 fi
 
-# 3. Check for uncommitted changes
-if command -v git &> /dev/null && [[ -d "$CWD/.git" ]]; then
-  UNCOMMITTED=$(cd "$CWD" && git status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo "0")
-  if [[ "$UNCOMMITTED" -gt 0 ]]; then
-    ERRORS+=("Uncommitted changes: $UNCOMMITTED files")
-  fi
-fi
-
-# 4. Check for Final Report in transcript
+# 3. Check for Final Report in transcript
 if [[ -f "$TRANSCRIPT_PATH" ]]; then
   FINAL_REPORT_FOUND=$(grep -l "ORCHESTRATION COMPLETE" "$TRANSCRIPT_PATH" 2>/dev/null || echo "")
   if [[ -z "$FINAL_REPORT_FOUND" ]]; then
