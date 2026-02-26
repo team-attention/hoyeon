@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "agents": {
+    "cr": {
+      "agent_type": "code-reviewer",
+      "description": "Multi-model code review (Gemini+Codex+Claude)",
+      "default_prompt": "Review current git diff for quality issues"
+    },
+    "gap": {
+      "agent_type": "gap-analyzer",
+      "description": "Identify missing requirements and pitfalls"
+    },
+    "plan": {
+      "agent_type": "plan-reviewer",
+      "description": "Review work plan for clarity and completeness"
+    },
+    "risk": {
+      "agent_type": "codex-risk-analyst",
+      "description": "Find vulnerabilities and failure modes"
+    },
+    "value": {
+      "agent_type": "value-assessor",
+      "description": "Evaluate positive impact and goal alignment"
+    },
+    "feasibility": {
+      "agent_type": "feasibility-checker",
+      "description": "Check practical achievability"
+    },
+    "strategy": {
+      "agent_type": "codex-strategist",
+      "description": "Big-picture strategic review"
+    },
+    "ux": {
+      "agent_type": "ux-reviewer",
+      "description": "UX impact review"
+    },
+    "debug": {
+      "agent_type": "debugger",
+      "description": "Root cause analysis"
+    },
+    "research": {
+      "agent_type": "external-researcher",
+      "description": "Research external libraries and best practices"
+    },
+    "docs": {
+      "agent_type": "docs-researcher",
+      "description": "Search project internal docs"
+    },
+    "tradeoff": {
+      "agent_type": "tradeoff-analyzer",
+      "description": "Risk assessment and simpler alternatives"
+    },
+    "worker": {
+      "agent_type": "worker",
+      "description": "Implementation worker"
+    }
+  },
+  "builtins": {
+    "c": {
+      "cmd": "commit",
+      "description": "Git commit (auto message from diff)"
+    },
+    "p": {
+      "cmd": "push",
+      "description": "Git push to remote"
+    }
+  },
+  "skills": {
+    "council": {
+      "skill": "agent-council",
+      "description": "Multi-AI opinion synthesis"
+    },
+    "tribunal": {
+      "skill": "tribunal",
+      "description": "3-way adversarial review (risk/value/feasibility)"
+    }
+  }
+}

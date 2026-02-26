@@ -45,6 +45,10 @@
           },
           {
             "type": "command",
+            "command": ".claude/scripts/combo-detector.sh"
+          },
+          {
+            "type": "command",
             "command": ".claude/scripts/rv-detector.sh"
           },
           {
@@ -100,6 +104,10 @@
           {
             "type": "command",
             "command": ".claude/scripts/dev-execute-stop-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/chain-stop-hook.sh"
           },
           {
             "type": "command",

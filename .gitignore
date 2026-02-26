@@ -5,4 +5,5 @@
 .dev/specs/*
 !.dev/specs/.gitkeep
 .dev/.sessions/
+.dev/.chains/
 dev-cli/.dev/

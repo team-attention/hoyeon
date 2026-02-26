@@ -20,6 +20,11 @@ const SUBCOMMANDS = {
   finalize: 'Mark engine finalize as done (signals stop hook)',
   'persist-result': 'Persist worker result for compact recovery',
   'step-done': 'Record step completion in state.json (idempotent)',
+  'chain-init': 'Initialize a new action chain from !keyword',
+  'chain-persist': 'Persist chain step result (stdin JSON)',
+  'chain-complete': 'Mark chain as completed or abandoned',
+  'chain-status': 'Show active chain status for a session',
+  'chain-gc': 'Garbage collect old completed chains',
 };
 
 function printHelp() {
