@@ -25,6 +25,11 @@ const SUBCOMMANDS = {
   'chain-complete': 'Mark chain as completed or abandoned',
   'chain-status': 'Show active chain status for a session',
   'chain-gc': 'Garbage collect old completed chains',
+  'loop-init': 'Initialize an iterative loop (!rph or !rv)',
+  'loop-status': 'Show active loop status for a session',
+  'loop-tick': 'Increment iteration and evaluate termination',
+  'loop-complete': 'Mark loop as completed or abandoned',
+  'loop-gc': 'Garbage collect old completed loops',
 };
 
 function printHelp() {

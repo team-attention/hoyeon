@@ -1,20 +1,8 @@
 #!/bin/bash
-# rph-dod-guard.sh - PreToolUse[Edit|Write] hook for !rph Ralph Loop
-#
-# Purpose: Block DoD file modifications during work phase.
-#          Only allow edits during:
-#            1. Initial creation (DoD file doesn't exist yet)
-#            2. Verification phase (verify flag set by Stop hook)
-#
-# Hook Input Fields (PreToolUse):
-#   - tool_input: object (file_path, content, etc.)
-#   - session_id: current session
+# rph-dod-guard.sh - PreToolUse[Edit|Write] guard for !rph Ralph Loop
+# Thin wrapper: check loop phase via dev-cli loop-status
 
-STATE_DIR="$HOME/.claude/.hook-state"
-
-# Read JSON input from stdin
 INPUT=$(cat)
-
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
@@ -22,29 +10,33 @@ if [ -z "$SESSION_ID" ]; then
     SESSION_ID="unknown"
 fi
 
-# Only guard DoD files (rph-*-dod.md pattern)
+# Only guard dod.md files inside .dev/.loops/
 case "$FILE_PATH" in
-    *rph-*-dod.md) ;;
+    */.loops/*/dod.md) ;;
     *) exit 0 ;;
 esac
 
-STATE_FILE="$STATE_DIR/rph-$SESSION_ID.json"
-VERIFY_FLAG="$STATE_DIR/rph-$SESSION_ID-verify"
-
-# Not in rph mode -> allow
-if [ ! -f "$STATE_FILE" ]; then
-    exit 0
+# Check loop status
+status=$(node dev-cli/bin/dev-cli.js loop-status --session "$SESSION_ID" 2>/dev/null) || true
+if [ -z "$status" ]; then
+    exit 0  # No active loop, allow
 fi
 
-# DoD file doesn't exist yet -> allow initial creation
-DOD_FILE="$STATE_DIR/rph-$SESSION_ID-dod.md"
-if [ ! -f "$DOD_FILE" ]; then
-    exit 0
+loop_type=$(printf '%s' "$status" | jq -r '.type // empty')
+if [ "$loop_type" != "rph" ]; then
+    exit 0  # Not rph, allow
 fi
 
-# Verify flag exists -> allow (Stop hook authorized verification)
-if [ -f "$VERIFY_FLAG" ]; then
-    exit 0
+# Check if DoD file exists yet (allow initial creation)
+dod_path=$(printf '%s' "$status" | jq -r '.dodPath // empty')
+if [ -n "$dod_path" ] && [ ! -f "$dod_path" ]; then
+    exit 0  # Allow initial creation
+fi
+
+# Check phase: verify phase allows edits
+phase=$(printf '%s' "$status" | jq -r '.phase // "work"')
+if [ "$phase" = "verify" ]; then
+    exit 0  # Verification phase, allow edits
 fi
 
 # Work phase: block DoD edits

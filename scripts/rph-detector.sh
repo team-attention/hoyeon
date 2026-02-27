@@ -1,54 +1,43 @@
 #!/bin/bash
-# !rph keyword detection -> activate Ralph Loop (DoD-based iterative verification)
-# Also handles auto-cleanup when user submits a non-!rph prompt while rph is active
+# !rph keyword detection -> activate Ralph Loop via dev-cli loop-init
+# Thin wrapper: detect keyword, delegate state to dev-cli
 
-STATE_DIR="$HOME/.claude/.hook-state"
-mkdir -p "$STATE_DIR"
-
-# Read JSON from stdin
 input=$(cat)
 prompt=$(printf '%s' "$input" | jq -r '.prompt // empty')
 session_id=$(printf '%s' "$input" | jq -r '.session_id // empty')
 
-# Fallback if session_id missing
 if [ -z "$session_id" ]; then
     session_id="unknown"
 fi
 
-STATE_FILE="$STATE_DIR/rph-$session_id.json"
-DOD_FILE="$STATE_DIR/rph-$session_id-dod.md"
-VERIFY_FLAG="$STATE_DIR/rph-$session_id-verify"
-
 # Detect !rph keyword
 if [[ "$prompt" == *"!rph"* ]]; then
-    # Strip !rph from the prompt
-    stripped_prompt=$(printf '%s' "$prompt" | sed 's/!rph//g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # Create loop via dev-cli
+    result=$(node dev-cli/bin/dev-cli.js loop-init --type rph --session "$session_id" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        exit 0
+    fi
 
-    # Create state file using jq for proper JSON encoding
-    jq -n \
-      --arg prompt "$stripped_prompt" \
-      --arg dod_file "$DOD_FILE" \
-      --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      '{prompt: $prompt, iteration: 0, max_iterations: 10, dod_file: $dod_file, created_at: $created_at}' \
-      > "$STATE_FILE"
+    dod_path=$(printf '%s' "$result" | jq -r '.dodPath // empty')
 
-    # Return minimal additionalContext - just strip keyword and ask for DoD
-    # The Stop hook will handle all verification logic
     cat << EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "Note: Ignore the '!rph' keyword in the prompt - it's a meta-command for the system, not part of the actual request. Before starting the task, ask the user for their Definition of Done criteria using AskUserQuestion, then write them as a '- [ ]' markdown checklist to: $DOD_FILE. IMPORTANT: After creating the DoD file, do NOT read or modify it again during your work. The system will automatically verify the checklist when you finish and prompt you to confirm each item independently."
+    "additionalContext": "Note: Ignore the '!rph' keyword in the prompt - it's a meta-command for the system, not part of the actual request. Before starting the task, ask the user for their Definition of Done criteria using AskUserQuestion, then write them as a '- [ ]' markdown checklist to: $dod_path. IMPORTANT: After creating the DoD file, do NOT read or modify it again during your work. The system will automatically verify the checklist when you finish and prompt you to confirm each item independently."
   }
 }
 EOF
     exit 0
 fi
 
-# No !rph in prompt — check if rph state exists (zombie cleanup)
-if [ -f "$STATE_FILE" ]; then
-    rm -f "$STATE_FILE" "$DOD_FILE" "$VERIFY_FLAG"
-    cat << 'EOF'
+# No !rph in prompt — check if loop is active (zombie cleanup)
+status=$(node dev-cli/bin/dev-cli.js loop-status --session "$session_id" 2>/dev/null) || true
+if [ -n "$status" ]; then
+    loop_type=$(printf '%s' "$status" | jq -r '.type // empty')
+    if [ "$loop_type" = "rph" ]; then
+        node dev-cli/bin/dev-cli.js loop-complete --session "$session_id" --force >/dev/null 2>&1 || true
+        cat << 'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
@@ -56,7 +45,8 @@ if [ -f "$STATE_FILE" ]; then
   }
 }
 EOF
-    exit 0
+        exit 0
+    fi
 fi
 
 exit 0

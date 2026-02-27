@@ -1,43 +1,39 @@
 #!/bin/bash
-# If re-validate mode is active, block and force re-validation
-# Decrements remaining count each time; removes state when 0
+# rv-validator.sh - Stop hook for re-validate mode
+# Thin wrapper: delegates to dev-cli loop-tick
 
-STATE_DIR="$HOME/.claude/.hook-state"
-
-# Read JSON from stdin
 input=$(cat)
 session_id=$(printf '%s' "$input" | jq -r '.session_id // empty')
 
-# Fallback if session_id missing
 if [ -z "$session_id" ]; then
     session_id="unknown"
 fi
 
-STATE_FILE="$STATE_DIR/rv-mode-$session_id"
+# Check if there's an active rv loop
+status=$(node dev-cli/bin/dev-cli.js loop-status --session "$session_id" 2>/dev/null) || true
+if [ -z "$status" ]; then
+    exit 0  # No active loop
+fi
 
-if [ -f "$STATE_FILE" ]; then
-    remaining=$(cat "$STATE_FILE")
+loop_type=$(printf '%s' "$status" | jq -r '.type // empty')
+if [ "$loop_type" != "rv" ]; then
+    exit 0  # Not an rv loop
+fi
 
-    # Decrement
-    remaining=$((remaining - 1))
+# Tick the loop — dev-cli evaluates counter and returns decision
+result=$(node dev-cli/bin/dev-cli.js loop-tick --session "$session_id" 2>/dev/null)
+decision=$(printf '%s' "$result" | jq -r '.decision // "allow"')
 
-    if [ "$remaining" -le 0 ]; then
-        # Last round - delete state file after this block
-        rm -f "$STATE_FILE"
-    else
-        # More rounds remaining - update count
-        echo "$remaining" > "$STATE_FILE"
-    fi
-
-    # Block and demand re-verification
+if [ "$decision" = "block" ]; then
+    reason=$(printf '%s' "$result" | jq -r '.reason // "Re-validate required"')
     cat << EOF
 {
   "decision": "block",
-  "reason": "WAIT! You are lying or hallucinating! Go back and verify EVERYTHING you just said. Check the actual code, re-read the files, and make sure you're not making things up. I don't trust you yet! (Re-validation remaining: $remaining)"
+  "reason": $(printf '%s' "$reason" | jq -Rs .)
 }
 EOF
     exit 0
 fi
 
-# Normal exit if not in rv mode
+# allow — loop completed
 exit 0
