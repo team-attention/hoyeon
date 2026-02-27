@@ -30,6 +30,7 @@ const SUBCOMMANDS = {
   'loop-tick': 'Increment iteration and evaluate termination',
   'loop-complete': 'Mark loop as completed or abandoned',
   'loop-gc': 'Garbage collect old completed loops',
+  'stop-evaluate': 'Unified stop-hook evaluator (chain → rv → rph → specify-cleanup)',
 };
 
 function printHelp() {
