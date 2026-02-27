@@ -107,15 +107,7 @@
           },
           {
             "type": "command",
-            "command": ".claude/scripts/chain-stop-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/rv-validator.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/rph-loop.sh"
+            "command": ".claude/scripts/stop-router.sh"
           }
         ]
       }
