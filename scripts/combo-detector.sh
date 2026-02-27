@@ -1,11 +1,12 @@
 #!/bin/bash
 # combo-detector.sh — UserPromptSubmit hook
-# Detects !action patterns and injects execution plan via additionalContext.
+# Detects !action patterns, creates chain, and injects FIRST STEP ONLY.
+# Subsequent steps are driven by chain-stop-hook.sh (Stop hook).
+#
+# Pattern: same as !rph — UserPromptSubmit starts, Stop hook loops.
 #
 # Registration in settings.json:
 #   { "type": "command", "command": ".claude/scripts/combo-detector.sh" }
-#
-# Placement: before rv-detector.sh (rv/rph patterns are passed through)
 
 set -euo pipefail
 
@@ -25,23 +26,23 @@ if [[ ! "$prompt" =~ \! ]]; then
     remaining=$(echo "$active" | jq -r '.remainingSteps // 0')
     if [ "$remaining" -gt 0 ]; then
       chain_id=$(echo "$active" | jq -r '.chainId')
-      plan_json=$(echo "$active" | jq -c '.executionPlan')
-      # Build context using jq --argjson to safely embed JSON
+      # Get first pending step only
+      next_step=$(echo "$active" | jq -c '.executionPlan[0]')
+      step_id=$(echo "$next_step" | jq -r '.stepId')
       jq -n \
         --arg cid "$chain_id" \
+        --arg sid "$step_id" \
         --arg rem "$remaining" \
-        --argjson plan "$plan_json" \
+        --argjson step "$next_step" \
         '{
           hookSpecificOutput: {
             hookEventName: "UserPromptSubmit",
             additionalContext: (
               "ACTION CHAIN RESUME (chainId: " + $cid + "). " + $rem + " steps remaining.\n\n" +
-              "Continue executing the remaining steps from where you left off.\n\n" +
-              "Execution Plan:\n" + ($plan | tostring) + "\n\n" +
-              "After each step, persist result:\n" +
-              "  echo \u0027{\"result\": \"summary\"}\u0027 | node dev-cli/bin/dev-cli.js chain-persist " + $cid + " step-{N}\n\n" +
-              "When all steps complete:\n" +
-              "  node dev-cli/bin/dev-cli.js chain-complete " + $cid
+              "Execute ONLY this step:\n" + ($step | tostring) + "\n\n" +
+              "After completion, persist the result:\n" +
+              "  echo \u0027{\"result\": \"brief summary\"}\u0027 | node dev-cli/bin/dev-cli.js chain-persist " + $cid + " " + $sid + "\n\n" +
+              "Then STOP. The system will automatically give you the next step."
             )
           }
         }'
@@ -69,7 +70,8 @@ chain_result=$(node dev-cli/bin/dev-cli.js chain-init "$keyword" \
   --session "$session_id" 2>/dev/null) || chain_exit=$?
 
 if [ "$chain_exit" -ne 0 ]; then
-  error_msg=$(echo "$chain_result" | tail -1)
+  error_msg=$(node dev-cli/bin/dev-cli.js chain-init "$keyword" \
+    --session "$session_id" 2>&1 | tail -1) || true
   jq -n \
     --arg kw "$keyword" \
     --arg err "$error_msg" \
@@ -86,32 +88,33 @@ if [ "$chain_exit" -ne 0 ]; then
 fi
 
 chain_id=$(echo "$chain_result" | jq -r '.chainId')
-plan_json=$(echo "$chain_result" | jq -c '.executionPlan')
+total_steps=$(echo "$chain_result" | jq '.executionPlan | length')
 
-# ── Inject execution plan via additionalContext ──
+# Get FIRST step only
+first_step=$(echo "$chain_result" | jq -c '.executionPlan[0]')
+step_id=$(echo "$first_step" | jq -r '.stepId')
+
+# ── Inject FIRST STEP ONLY via additionalContext ──
 jq -n \
   --arg cid "$chain_id" \
   --arg kw "$keyword" \
-  --argjson plan "$plan_json" \
+  --arg sid "$step_id" \
+  --arg total "$total_steps" \
+  --argjson step "$first_step" \
   '{
     hookSpecificOutput: {
       hookEventName: "UserPromptSubmit",
       additionalContext: (
-        "ACTION CHAIN ACTIVATED (chainId: " + $cid + ").\n\n" +
+        "ACTION CHAIN ACTIVATED (chainId: " + $cid + ", " + $total + " steps total).\n\n" +
         "Ignore the \u0027!" + $kw + "\u0027 keyword in the prompt - it is a system command.\n\n" +
-        "Execute the following steps sequentially. The user\u0027s prompt provides context for the actions.\n\n" +
-        "Execution Plan:\n" + ($plan | tostring) + "\n\n" +
-        "IMPORTANT INSTRUCTIONS:\n" +
-        "1. For \u0027agent\u0027 steps: Call Task(subagent_type=agentType) with the user\u0027s prompt as context.\n" +
-        "2. For \u0027builtin\u0027 steps: Execute the command directly (commit = create git commit, push = git push).\n" +
-        "3. For \u0027skill\u0027 steps: Call Skill(skillName).\n" +
-        "4. After EACH step completes, persist the result:\n" +
-        "   echo \u0027{\"result\": \"summary of what happened\"}\u0027 | node dev-cli/bin/dev-cli.js chain-persist " + $cid + " step-{N}\n" +
-        "5. When ALL steps complete:\n" +
-        "   node dev-cli/bin/dev-cli.js chain-complete " + $cid + "\n" +
-        "6. If a step fails, report the error and stop the chain:\n" +
-        "   echo \u0027{\"error\": \"description\"}\u0027 | node dev-cli/bin/dev-cli.js chain-persist " + $cid + " step-{N}\n" +
-        "   (do NOT continue to the next step)"
+        "Execute ONLY this step (step 1 of " + $total + "):\n" + ($step | tostring) + "\n\n" +
+        "Step type instructions:\n" +
+        "- agent: Call Task(subagent_type=agentType) with the user\u0027s prompt as context\n" +
+        "- builtin: Execute the command directly (commit = git commit, push = git push)\n" +
+        "- skill: Call Skill(skillName)\n\n" +
+        "After completion, persist the result:\n" +
+        "  echo \u0027{\"result\": \"brief summary\"}\u0027 | node dev-cli/bin/dev-cli.js chain-persist " + $cid + " " + $sid + "\n\n" +
+        "Then STOP. The system will automatically give you the next step."
       )
     }
   }'
