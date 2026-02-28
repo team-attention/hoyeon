@@ -53,15 +53,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/dev-specify-stop-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/rv-validator.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/rph-loop.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/stop-router.sh"
           }
         ]
       }

@@ -10,7 +10,7 @@
  * Called by the unified stop-router.sh stop hook.
  */
 
-import { readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { findActiveChain, completeChain } from '../core/chain-state.js';
 import { findActiveLoop, tick } from '../core/loop-state.js';
@@ -54,13 +54,12 @@ function evaluateChain(sessionId) {
   const nextStep = remaining[0];
   const total = chain.steps.length;
   const completed = total - remaining.length;
-  const stepNum = completed + 1;
 
   // Rebuild execution plan entry for the next step (mirrors chain-status.js logic)
   const executionPlanEntry = {
     stepId: nextStep.id,
-    stepNumber: stepNum,
-    totalSteps: total,
+    stepNumber: 1,
+    totalSteps: remaining.length,
     action: nextStep.action,
     type: nextStep.type,
     chainId: chain.chainId,
@@ -186,7 +185,7 @@ function atomicWriteState(targetPath, data) {
     writeFileSync(tmpPath, JSON.stringify(data, null, 2) + '\n', 'utf8');
     renameSync(tmpPath, targetPath);
   } catch {
-    try { if (existsSync(tmpPath)) { /* best effort */ } } catch {}
+    try { if (existsSync(tmpPath)) unlinkSync(tmpPath); } catch {}
   }
 }
 
