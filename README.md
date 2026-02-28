@@ -21,12 +21,12 @@ Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs
 
 ### One-shot: `/ultrawork`
 
-Chains the entire pipeline automatically via Stop hooks:
+Chains the entire pipeline sequentially (agent-driven, no hooks):
 
 ```
 /ultrawork feature-name
-  → /specify (interview + plan)
-  → /open (create Draft PR)
+  → /specify --autopilot (plan generation)
+  → Draft PR creation (inline)
   → /execute (implement all TODOs)
 ```
 
@@ -40,7 +40,7 @@ Chains the entire pipeline automatically via Stop hooks:
 | `/open` | "create PR" | Draft PR creation from spec |
 | `/execute` | "/execute" | Orchestrate TODO implementation via worker agents |
 | `/publish` | "publish PR" | Draft → Ready for Review |
-| `/ultrawork` | "/ultrawork name" | Full automated pipeline |
+| `/ultrawork` | "/ultrawork name" | Full automated pipeline (sequential: specify → PR → execute) |
 
 ### State & Knowledge
 | Skill | Trigger | Purpose |
@@ -196,7 +196,6 @@ Hooks automate transitions and enforce quality:
 
 | Hook Type | Script | Purpose |
 |-----------|--------|---------|
-| UserPromptSubmit | `ultrawork-init-hook.sh` | Initialize ultrawork pipeline state |
 | Stop | `dev-specify-stop-hook.sh` | Transition specify → open |
 | PostToolUse | `validate-output.sh` | Validate agent/skill output against `validate_prompt` |
 

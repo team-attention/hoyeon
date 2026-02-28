@@ -1,0 +1,20 @@
+{
+  "name": "dev-cli",
+  "version": "0.1.0",
+  "description": "Development workflow CLI for skill-based session management",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "dev-cli": "./bin/dev-cli.js"
+  },
+  "scripts": {
+    "test": "node --test tests/unit/*.test.js",
+    "test:unit": "node --test tests/unit/*.test.js",
+    "test:integration": "node --test tests/integration/*.test.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

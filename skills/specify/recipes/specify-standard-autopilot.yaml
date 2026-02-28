@@ -1,0 +1,40 @@
+name: specify-standard-autopilot
+description: Full planning without user interaction (standard depth, autopilot mode)
+
+# Pure data recipe — no instruction/prompts.
+# SKILL.md is the boss; this file is machine-readable config.
+
+mode:
+  depth: standard
+  interaction: autopilot
+
+steps:
+  # classify runs in Phase 0 (before dev-cli init) but is recorded post-init via step-done
+  - id: classify
+  - id: explore
+    agents:
+      - { type: Explore, output: "findings/explore-1.md" }
+      - { type: Explore, output: "findings/explore-2.md" }
+      - { type: docs-researcher, output: "findings/docs.md" }
+      - { type: ux-reviewer, output: "findings/ux.md" }
+    parallel: true
+  - id: auto-assume
+  - id: analyze
+    agents:
+      - { type: tradeoff-analyzer, output: "analysis/tradeoff.md" }
+      - { type: gap-analyzer, output: "analysis/gaps.md" }
+      - { type: simplicity-checker, output: "analysis/simplicity.md" }
+      - { type: risk-assessor, output: "analysis/risks.md" }
+    parallel: true
+  - id: codex-synth
+    agents:
+      - { type: codex-strategist, output: "analysis/strategy.md" }
+  - id: generate-plan
+    autoTransition: true
+  - id: review
+    agents:
+      - { type: plan-reviewer, output: "analysis/review.md" }
+      - { type: gap-analyzer, output: "analysis/review-gaps.md" }
+    maxRounds: 3
+  - id: cleanup
+    summary: "full"

@@ -28,14 +28,19 @@ ARGS=$(echo "$HOOK_INPUT" | jq -r '.tool_input.args // empty')
 CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd')
 SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id')
 
-# Determine plan name from args or git branch
+# Determine plan name from args or git branch (strip --* flags)
 if [[ -n "$ARGS" ]]; then
-  PLAN_NAME="$ARGS"
-else
+  PLAN_NAME=""
+  for arg in $ARGS; do
+    if [[ ! "$arg" =~ ^-- ]]; then
+      PLAN_NAME="$arg"
+      break
+    fi
+  done
+fi
+if [[ -z "$PLAN_NAME" ]]; then
   PLAN_NAME=$(cd "$CWD" && git branch --show-current 2>/dev/null | sed 's|.*/||' || echo "default")
-  if [[ -z "$PLAN_NAME" ]]; then
-    PLAN_NAME="default"
-  fi
+  [[ -z "$PLAN_NAME" ]] && PLAN_NAME="default"
 fi
 
 # Build plan path

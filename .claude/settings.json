@@ -37,15 +37,15 @@
           },
           {
             "type": "command",
-            "command": ".claude/scripts/ultrawork-init-hook.sh"
-          },
-          {
-            "type": "command",
             "command": ".claude/scripts/dev-init-hook.sh"
           },
           {
             "type": "command",
             "command": "scripts/hy-session-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/combo-detector.sh"
           },
           {
             "type": "command",
@@ -65,10 +65,6 @@
           {
             "type": "command",
             "command": ".claude/scripts/dev-execute-init-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/dev-specify-init-hook.sh"
           }
         ]
       },
@@ -107,23 +103,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/scripts/ultrawork-stop-hook.sh"
-          },
-          {
-            "type": "command",
             "command": ".claude/scripts/dev-execute-stop-hook.sh"
           },
           {
             "type": "command",
-            "command": ".claude/scripts/dev-specify-stop-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/rv-validator.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/rph-loop.sh"
+            "command": ".claude/scripts/stop-router.sh"
           }
         ]
       }
