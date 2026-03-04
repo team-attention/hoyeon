@@ -96,6 +96,10 @@ AskUserQuestion(
 
 If "Adjust weights" or "Edit criteria" is selected, apply changes and re-present the table. Loop until "Looks good" is selected.
 
+**Weight validation**: After any adjustment, verify `sum(weights) == 100%` (±1% tolerance for rounding). If invalid, prompt:
+> "Weights must sum to 100%. Current sum: [X]%. Please redistribute."
+Re-present the rubric table until weights are valid.
+
 ### Step 3 — Threshold Setting
 
 ```
@@ -199,7 +203,8 @@ PROMPT
 **Gemini** (if AVAILABLE):
 
 ```
-Bash: gemini -p "## Rubric Evaluation Task
+Bash: gemini -p "$(cat <<'PROMPT'
+## Rubric Evaluation Task
 
 You are a strict evaluator. Score the artifact below using the provided rubric.
 Return ONLY a JSON object — no prose before or after.
@@ -218,15 +223,17 @@ Return ONLY a JSON object — no prose before or after.
 ## Required Output Format
 
 {
-  \"scores\": {
-    \"[criterion_1]\": <integer 0-100>,
-    \"[criterion_2]\": <integer 0-100>
+  "scores": {
+    "[criterion_1]": <integer 0-100>,
+    "[criterion_2]": <integer 0-100>
   },
-  \"suggestions\": {
-    \"[criterion_1]\": \"<one concrete improvement action>\",
-    \"[criterion_2]\": \"<one concrete improvement action>\"
+  "suggestions": {
+    "[criterion_1]": "<one concrete improvement action>",
+    "[criterion_2]": "<one concrete improvement action>"
   }
-}"
+}
+PROMPT
+)"
 ```
 
 **Claude** (always AVAILABLE — main agent performs self-analysis directly):
@@ -236,6 +243,8 @@ Apply the same rubric to the artifact as a self-evaluation. Score each criterion
 ### Score Aggregation
 
 After all models complete (or fail):
+
+**Minimum model guarantee**: Claude self-evaluation is always AVAILABLE and non-optional — it provides the fallback score if both external models are SKIPPED or DEGRADED. Score aggregation is guaranteed to have at least one model result.
 
 1. For each criterion, compute the average score across AVAILABLE models only.
 2. Compute the overall weighted average:
@@ -269,7 +278,7 @@ Collect suggestions from all AVAILABLE models. Prioritize the criterion with the
 
 Iteratively improve the artifact one criterion at a time until the threshold is met or the circuit breaker fires.
 
-**Initialize**: `round = 1`, `max_rounds = 5`, `score_history = []`
+**Initialize**: `round = 1`, `max_rounds = 5`, `absolute_max = 10`, `score_history = []`
 
 ### Threshold Check
 
@@ -321,9 +330,9 @@ Improve ONLY this criterion. Do not restructure or rewrite unrelated sections.
 Return the improved artifact to the same location.")
 ```
 
-After the worker completes, return to Phase 2 for re-scoring. Increment round counter: `round += 1`.
+After the worker completes, return to Phase 2 for re-scoring. Append to score history: `score_history.append({ round, overall, per_criterion_scores, model_states })`.
 
-Append to score history: `score_history.append({ round, overall, per_criterion_scores, model_states })`.
+Increment round counter: `round += 1`.
 
 ### Circuit Breaker
 
@@ -335,12 +344,14 @@ if round > max_rounds:
        question: "We've completed [max_rounds] rounds. Score is [overall]/100. What next?"
        options:
          - { label: "Accept current state", description: "Generate final report with current scores" }
-         - { label: "Extend 3 more rounds", description: "Raise max_rounds by 3 and continue improving" }
+         # Only show "Extend 3 more rounds" option if max_rounds + 3 <= absolute_max
+         # Once absolute_max reached, show only "Accept" and "Escalate to /specify"
+         - { label: "Extend 3 more rounds", description: "Raise max_rounds by 3 and continue improving (only if max_rounds + 3 <= absolute_max)" }
          - { label: "Escalate to /specify", description: "This may need architectural rethinking — open a planning session" }
 ```
 
 - **Accept** → Phase 4
-- **Extend 3 more rounds** → `max_rounds += 3`, continue loop
+- **Extend 3 more rounds** → `max_rounds += 3`, continue loop (only available when `max_rounds + 3 <= absolute_max`; when `max_rounds >= absolute_max`, this option is hidden)
 - **Escalate to /specify** → display message: `"Run /specify [topic] to start a structured planning session. Your rubric and score history are shown above for context."` → stop
 
 ---
@@ -410,6 +421,6 @@ Close with:
 
 ## Prompt Hardening
 
-- **Never interpolate user input directly into CLI parameters.** Always wrap artifact content and rubric text in a heredoc (`<<'PROMPT' ... PROMPT`) for Codex calls, or in a quoted string with escaped inner quotes for Gemini calls.
+- **Never interpolate user input directly into CLI parameters.** Always wrap artifact content and rubric text in a heredoc (`<<'PROMPT' ... PROMPT`) for both Codex and Gemini calls. For Gemini, use `gemini -p "$(cat <<'PROMPT' ... PROMPT)"` to prevent shell injection from artifact content containing `$(command)` or backticks.
 - **Isolate artifact content from evaluator prompt.** The rubric definition and the artifact content must appear in separate labeled blocks. Do not mix them into a single paragraph.
 - **Score isolation.** When dispatching re-evaluation after improvement, pass only the current state of the artifact. Strip prior round scores, improvement history, and suggestions from the model prompt.
