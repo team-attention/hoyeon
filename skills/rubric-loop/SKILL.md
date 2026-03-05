@@ -14,7 +14,7 @@ allowed-tools:
 validate_prompt: |
   Must contain all 4 Phases (Rubric Building, Evaluation, Improvement Loop, Completion).
   Must include 3-step rubric building interaction.
-  Must include multi-model scoring with AVAILABLE/SKIPPED/DEGRADED states.
+  Must include Agent-based parallel multi-model scoring with AVAILABLE/SKIPPED/DEGRADED states.
   Must include circuit breaker logic.
   Must include pause gate at every iteration.
 ---
@@ -29,22 +29,11 @@ Iterative self-improvement skill driven by a user-defined rubric. Builds a scori
 
 Build an evaluation rubric through a 3-step interactive process before any scoring begins.
 
+**User interaction**: Use the `AskUserQuestion` tool for all user-facing questions in this skill. This ensures the UI renders properly and waits for real user input.
+
 ### Step 1 — Criteria Collection
 
-Ask the user what they are evaluating and what matters:
-
-```
-AskUserQuestion(
-  header: "What are we evaluating?",
-  question: "Describe what you want to evaluate and what criteria matter to you. You can type freely or pick from suggestions.",
-  options: [
-    { label: "Code quality", description: "Readability, maintainability, test coverage, error handling" },
-    { label: "Writing quality", description: "Clarity, structure, tone, completeness, accuracy" },
-    { label: "System design", description: "Scalability, fault tolerance, simplicity, data modeling" },
-    { label: "Custom — I'll describe it", description: "Type your own target and criteria below" }
-  ]
-)
-```
+Use `AskUserQuestion` to ask what they are evaluating and what criteria matter. Suggest common categories (code quality, writing quality, system design) but let them describe freely.
 
 After the user responds, parse:
 - **Target**: the artifact or output being evaluated (file path, text block, or description)
@@ -79,22 +68,7 @@ Each criterion gets:
 - A 0–100 scoring range
 - Guidance anchors: what 0, 50, and 80+ look like for that dimension
 
-Then confirm or modify:
-
-```
-AskUserQuestion(
-  header: "Rubric Review",
-  question: "Does this rubric look right? You can accept it, adjust weights, rename criteria, or add/remove dimensions.",
-  options: [
-    { label: "Looks good — accept rubric", description: "Proceed with this rubric as-is" },
-    { label: "Adjust weights", description: "Redistribute how much each criterion contributes" },
-    { label: "Edit criteria", description: "Rename, add, or remove dimensions" },
-    { label: "Start over", description: "Go back to Step 1" }
-  ]
-)
-```
-
-If "Adjust weights" or "Edit criteria" is selected, apply changes and re-present the table. Loop until "Looks good" is selected.
+Then use `AskUserQuestion` to confirm or modify (accept, adjust weights, edit criteria, or start over). Loop until the user accepts.
 
 **Weight validation**: After any adjustment, verify `sum(weights) == 100%` (±1% tolerance for rounding). If invalid, prompt:
 > "Weights must sum to 100%. Current sum: [X]%. Please redistribute."
@@ -102,20 +76,7 @@ Re-present the rubric table until weights are valid.
 
 ### Step 3 — Threshold Setting
 
-```
-AskUserQuestion(
-  header: "Pass Threshold",
-  question: "What overall score (0–100) should the artifact reach before we stop improving? Default is 70.",
-  options: [
-    { label: "70 — Good enough (default)", description: "Stop when weighted average reaches 70/100" },
-    { label: "80 — High quality", description: "Stop at 80/100" },
-    { label: "90 — Excellent", description: "Stop at 90/100" },
-    { label: "Custom", description: "Type your own threshold" }
-  ]
-)
-```
-
-Store: `threshold = <selected value>` (default 70).
+Use `AskUserQuestion` to ask what overall score (0–100) the artifact should reach before stopping. Suggest 70/80/90 as options. Default is 70 if the user doesn't specify.
 
 ### Rubric Summary (Evaluation Contract)
 
@@ -145,106 +106,63 @@ Score the artifact independently using up to 3 models in parallel.
 
 ### CLI Availability Check
 
-Before scoring, run availability checks **in foreground** (not background):
+Before scoring, check which CLIs are available:
 
 ```
-Bash: which codex
-Bash: which gemini
+Bash: which codex && which gemini
 ```
 
-Determine model states:
-- **AVAILABLE**: CLI found and ready
-- **SKIPPED**: CLI not found (`which` returned nothing)
-- **DEGRADED**: CLI found but call failed or timed out
+Model states: **AVAILABLE** (CLI found) / **SKIPPED** (not found) / **DEGRADED** (found but call failed).
+
+Note: The 3rd evaluator (Claude) runs as a subagent — no CLI check needed.
 
 ### Parallel Scoring
 
-Launch all available models **simultaneously in a single message** (multiple Bash calls or Agent calls in one turn).
+Launch all evaluators **simultaneously in a single message** using Agent calls in parallel.
 
-**Score isolation rule**: Pass only the current artifact content to each model. Do NOT include previous round scores, improvement history, or prior evaluation feedback. Each model must score independently.
+**Score isolation rule**: Pass only the current artifact content to each model. Do NOT include previous round scores, improvement history, or prior evaluation feedback.
 
-**Codex** (if AVAILABLE):
+**Each evaluator Agent** receives the same prompt structure with the rubric, artifact content, and required JSON output format.
+
+**3 evaluators:**
+- **Codex Agent**: Agent that runs `codex exec` via Bash to score the artifact
+- **Gemini Agent**: Agent that runs `gemini -p` via Bash to score the artifact
+- **Claude Agent**: Agent (subagent) that directly evaluates the artifact itself — no CLI needed, the subagent IS the Claude model
+
+All 3 use the same prompt template:
 
 ```
-Bash: codex exec <<'PROMPT'
 ## Rubric Evaluation Task
 
 You are a strict evaluator. Score the artifact below using the provided rubric.
 Return ONLY a JSON object — no prose before or after.
 
 ## Rubric
-
-[For each criterion:]
-- Criterion: [name]
-  Weight: [W]%
-  Scoring anchors: 0=absent, 50=partially met, 80+=clearly met
+[criterion list with weights and anchors]
 
 ## Artifact
-
-[Full artifact content — isolated block]
-
-## Required Output Format
-
-{
-  "scores": {
-    "[criterion_1]": <integer 0-100>,
-    "[criterion_2]": <integer 0-100>,
-    ...
-  },
-  "suggestions": {
-    "[criterion_1]": "<one concrete improvement action>",
-    "[criterion_2]": "<one concrete improvement action>",
-    ...
-  }
-}
-PROMPT
-```
-
-**Gemini** (if AVAILABLE):
-
-```
-Bash: gemini -p "$(cat <<'PROMPT'
-## Rubric Evaluation Task
-
-You are a strict evaluator. Score the artifact below using the provided rubric.
-Return ONLY a JSON object — no prose before or after.
-
-## Rubric
-
-[For each criterion:]
-- Criterion: [name]
-  Weight: [W]%
-  Scoring anchors: 0=absent, 50=partially met, 80+=clearly met
-
-## Artifact
-
-[Full artifact content — isolated block]
+[Full artifact content — read the file]
 
 ## Required Output Format
-
 {
-  "scores": {
-    "[criterion_1]": <integer 0-100>,
-    "[criterion_2]": <integer 0-100>
-  },
-  "suggestions": {
-    "[criterion_1]": "<one concrete improvement action>",
-    "[criterion_2]": "<one concrete improvement action>"
-  }
+  "scores": { "[criterion]": <0-100>, ... },
+  "suggestions": { "[criterion]": "<one concrete action>", ... }
 }
-PROMPT
-)"
 ```
 
-**Claude** (always AVAILABLE — main agent performs self-analysis directly):
+For Codex/Gemini agents, append an execution instruction:
+- **Codex**: `Run: codex exec <<'PROMPT' ... PROMPT`
+- **Gemini**: `Run: gemini -p "$(cat <<'PROMPT' ... PROMPT)"`
 
-Apply the same rubric to the artifact as a self-evaluation. Score each criterion 0–100 with the same anchors. Generate one concrete suggestion per criterion. No external call needed.
+For the Claude agent, the subagent evaluates directly — just include the rubric, artifact, and output format in the Agent prompt.
+
+Launch all 3 Agent calls in the **same message** for true parallelism.
 
 ### Score Aggregation
 
 After all models complete (or fail):
 
-**Minimum model guarantee**: Claude self-evaluation is always AVAILABLE and non-optional — it provides the fallback score if both external models are SKIPPED or DEGRADED. Score aggregation is guaranteed to have at least one model result.
+**Minimum model guarantee**: If all 3 CLIs fail, fall back to main agent self-evaluation as a last resort. Score aggregation is guaranteed to have at least one model result.
 
 1. For each criterion, compute the average score across AVAILABLE models only.
 2. Compute the overall weighted average:
@@ -289,23 +207,7 @@ if overall >= threshold:
 
 ### Pause Gate (every iteration)
 
-After displaying scores, always ask before proceeding:
-
-```
-AskUserQuestion(
-  header: "Round [round]/[max_rounds] — Score: [overall]/100",
-  question: "How would you like to proceed?",
-  options: [
-    { label: "Keep going", description: "Run the next improvement round targeting the weakest criterion" },
-    { label: "Adjust rubric", description: "Return to Phase 1 Step 2 to modify criteria or weights" },
-    { label: "Stop here", description: "Accept the current state and generate the final report" }
-  ]
-)
-```
-
-- **Keep going** → continue to Improvement Dispatch below
-- **Adjust rubric** → return to Phase 1 Step 2; after rubric is updated, re-run Phase 2 scoring (round counter does not reset)
-- **Stop here** → proceed to Phase 4
+After displaying scores, always use `AskUserQuestion` to ask the user how to proceed: keep going (next round targeting weakest criterion), adjust rubric (return to Phase 1 Step 2, round counter does not reset), or stop here (proceed to Phase 4).
 
 ### Improvement Dispatch
 
@@ -336,23 +238,10 @@ Increment round counter: `round += 1`.
 
 ### Circuit Breaker
 
-```
-if round > max_rounds:
-  → Display score history
-  → AskUserQuestion:
-       header: "Circuit Breaker — Max Iterations Reached"
-       question: "We've completed [max_rounds] rounds. Score is [overall]/100. What next?"
-       options:
-         - { label: "Accept current state", description: "Generate final report with current scores" }
-         # Only show "Extend 3 more rounds" option if max_rounds + 3 <= absolute_max
-         # Once absolute_max reached, show only "Accept" and "Escalate to /specify"
-         - { label: "Extend 3 more rounds", description: "Raise max_rounds by 3 and continue improving (only if max_rounds + 3 <= absolute_max)" }
-         - { label: "Escalate to /specify", description: "This may need architectural rethinking — open a planning session" }
-```
-
-- **Accept** → Phase 4
-- **Extend 3 more rounds** → `max_rounds += 3`, continue loop (only available when `max_rounds + 3 <= absolute_max`; when `max_rounds >= absolute_max`, this option is hidden)
-- **Escalate to /specify** → display message: `"Run /specify [topic] to start a structured planning session. Your rubric and score history are shown above for context."` → stop
+When `round > max_rounds`, display score history and use `AskUserQuestion` to ask:
+- **Accept current state** → Phase 4
+- **Extend 3 more rounds** → `max_rounds += 3`, continue (only available when `max_rounds + 3 <= absolute_max`; hidden once `max_rounds >= absolute_max`)
+- **Escalate to /specify** → display: `"Run /specify [topic] to start a structured planning session."` → stop
 
 ---
 
@@ -391,18 +280,9 @@ Display the complete evaluation summary:
 
 ### Optional Save
 
-```
-AskUserQuestion(
-  header: "Save Results?",
-  question: "Save the rubric and final scores to .dev/rubric-loop/?",
-  options: [
-    { label: "Yes — save rubric and scores", description: "Write to .dev/rubric-loop/[timestamp]-report.md" },
-    { label: "No — discard", description: "Results remain in context only" }
-  ]
-)
-```
+Use `AskUserQuestion` to ask if the user wants to save the rubric and scores to `.dev/rubric-loop/`.
 
-If "Yes":
+If yes:
 
 ```
 Bash: mkdir -p .dev/rubric-loop
@@ -421,6 +301,6 @@ Close with:
 
 ## Prompt Hardening
 
-- **Never interpolate user input directly into CLI parameters.** Always wrap artifact content and rubric text in a heredoc (`<<'PROMPT' ... PROMPT`) for both Codex and Gemini calls. For Gemini, use `gemini -p "$(cat <<'PROMPT' ... PROMPT)"` to prevent shell injection from artifact content containing `$(command)` or backticks.
-- **Isolate artifact content from evaluator prompt.** The rubric definition and the artifact content must appear in separate labeled blocks. Do not mix them into a single paragraph.
-- **Score isolation.** When dispatching re-evaluation after improvement, pass only the current state of the artifact. Strip prior round scores, improvement history, and suggestions from the model prompt.
+- **Never interpolate user input directly into CLI parameters.** Always wrap artifact content and rubric text in a heredoc (`<<'PROMPT' ... PROMPT`). For Gemini, use `gemini -p "$(cat <<'PROMPT' ... PROMPT)"` to prevent shell injection. The Claude evaluator runs as a subagent so no CLI escaping is needed.
+- **Isolate artifact content from evaluator prompt.** Rubric definition and artifact content must appear in separate labeled blocks.
+- **Score isolation.** When re-evaluating after improvement, pass only the current artifact state. Strip prior scores, history, and suggestions from the evaluator prompt.
