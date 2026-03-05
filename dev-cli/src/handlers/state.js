@@ -13,11 +13,13 @@ Usage:
   dev-cli state init --spec <path> [--output <path>]
   dev-cli state update <task-id> --status <status> [--state <path>]
   dev-cli state check --spec <path> --state <path>
+  dev-cli state sync --spec <path> --state <path>
 
 Subcommands:
   init    Initialize state.json from a spec.json file
   update  Update a task's status in state.json
   check   Check consistency between spec.json and state.json
+  sync    Sync state.json after spec.json changes
 
 Options:
   --help, -h    Show this help message
@@ -29,6 +31,7 @@ Examples:
   dev-cli state update T1 --status in_progress --state ./state.json
   dev-cli state update T1 --status blocked_by --blocked-by T2 --state ./state.json
   dev-cli state check --spec ./spec.json --state ./state.json
+  dev-cli state sync --spec ./spec.json --state ./state.json
 `;
 
 function loadStateSchema() {
@@ -338,6 +341,118 @@ async function handleCheck(args) {
   process.exit(0);
 }
 
+async function handleSync(args) {
+  const parsed = parseArgs(args);
+
+  if (!parsed.spec) {
+    process.stderr.write('Error: --spec <path> is required\n');
+    process.stderr.write('Usage: dev-cli state sync --spec <path> --state <path>\n');
+    process.exit(1);
+  }
+
+  if (!parsed.state) {
+    process.stderr.write('Error: --state <path> is required\n');
+    process.stderr.write('Usage: dev-cli state sync --spec <path> --state <path>\n');
+    process.exit(1);
+  }
+
+  const specPath = resolve(parsed.spec);
+  const statePath = resolve(parsed.state);
+
+  let specData;
+  try {
+    const raw = readFileSync(specPath, 'utf8');
+    specData = JSON.parse(raw);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      process.stderr.write(`Error: spec file not found: ${specPath}\n`);
+    } else if (err instanceof SyntaxError) {
+      process.stderr.write(`Error: invalid JSON in spec file: ${err.message}\n`);
+    } else {
+      process.stderr.write(`Error: could not read spec file: ${err.message}\n`);
+    }
+    process.exit(1);
+  }
+
+  if (!specData.tasks || !Array.isArray(specData.tasks)) {
+    process.stderr.write('Error: spec.json must have a "tasks" array\n');
+    process.exit(1);
+  }
+
+  const stateData = readState(statePath);
+  if (!stateData) {
+    process.stderr.write(`Error: state file not found: ${statePath}\n`);
+    process.exit(1);
+  }
+
+  const specTaskIds = new Set(specData.tasks.map((t) => t.id));
+  const stateTaskIds = Object.keys(stateData.tasks || {});
+  const now = new Date().toISOString();
+
+  const added = [];
+  const archived = [];
+
+  // Add tasks present in spec but missing from state
+  for (const task of specData.tasks) {
+    if (!task.id) {
+      process.stderr.write('Error: all tasks must have an "id" field\n');
+      process.exit(1);
+    }
+    if (!Object.prototype.hasOwnProperty.call(stateData.tasks, task.id)) {
+      stateData.tasks[task.id] = { status: 'pending' };
+      added.push(task.id);
+    }
+  }
+
+  // Remove tasks in state that are no longer in spec
+  for (const taskId of stateTaskIds) {
+    if (!specTaskIds.has(taskId)) {
+      delete stateData.tasks[taskId];
+      archived.push(taskId);
+    }
+  }
+
+  // Update spec_hash to current spec
+  stateData.spec_hash = computeSpecHash(specPath);
+
+  if (!stateData.history) {
+    stateData.history = [];
+  }
+
+  stateData.history.push({
+    action: 'sync',
+    by: 'dev-cli',
+    at: now,
+    detail: `added: [${added.join(', ')}], removed: [${archived.join(', ')}]`,
+  });
+
+  try {
+    validateState(stateData);
+  } catch (err) {
+    process.stderr.write(`Error: ${err.message}\n`);
+    process.exit(1);
+  }
+
+  try {
+    writeState(statePath, stateData);
+  } catch (err) {
+    process.stderr.write(`Error: could not write state file: ${err.message}\n`);
+    process.exit(1);
+  }
+
+  process.stdout.write(`State synced: ${statePath}\n`);
+  if (added.length > 0) {
+    process.stdout.write(`Added tasks: ${added.join(', ')}\n`);
+  }
+  if (archived.length > 0) {
+    process.stdout.write(`Removed tasks: ${archived.join(', ')}\n`);
+  }
+  if (added.length === 0 && archived.length === 0) {
+    process.stdout.write('No changes: spec and state tasks are already in sync\n');
+  }
+  process.exit(0);
+}
+
 export default async function state(args) {
   const subcommand = args[0];
 
@@ -352,6 +467,8 @@ export default async function state(args) {
     await handleUpdate(args.slice(1));
   } else if (subcommand === 'check') {
     await handleCheck(args.slice(1));
+  } else if (subcommand === 'sync') {
+    await handleSync(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown state subcommand '${subcommand}'\n`);
     process.stderr.write(`Run 'dev-cli state --help' for usage.\n`);

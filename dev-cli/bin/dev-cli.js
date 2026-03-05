@@ -7,8 +7,9 @@ Usage:
   dev-cli <subcommand> [options]
 
 Subcommands:
-  spec    Manage spec/plan state
-  state   Read or update workflow state
+  spec      Manage spec/plan state
+  state     Read or update workflow state
+  feedback  Manage feedback files
 
 Options:
   --help, -h    Show this help message
@@ -17,11 +18,13 @@ Options:
 Examples:
   dev-cli spec --help
   dev-cli state --help
+  dev-cli feedback --help
 `;
 
 const SUBCOMMANDS = {
   spec: () => import('../src/handlers/spec.js'),
   state: () => import('../src/handlers/state.js'),
+  feedback: () => import('../src/handlers/feedback.js'),
 };
 
 async function main() {
