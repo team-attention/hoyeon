@@ -2,6 +2,8 @@
 # rubric-loop-stop.sh - Stop hook
 #
 # Purpose: Block Claude from stopping mid-loop in rubric-loop skill
+# State is session-scoped (rubric-loop-$SESSION_ID.json).
+#
 # Decision logic:
 #   Allow stop when:
 #     - No state file (not in rubric-loop)
@@ -14,10 +16,18 @@
 set -euo pipefail
 
 STATE_DIR="$HOME/.claude/.hook-state"
-STATE_FILE="$STATE_DIR/rubric-loop-active.json"
 
-# Read hook input from stdin (required by hook protocol)
-cat > /dev/null
+# Read hook input from stdin
+HOOK_INPUT=$(cat)
+
+SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty')
+
+# Fallback session id
+if [[ -z "$SESSION_ID" ]]; then
+  SESSION_ID="unknown"
+fi
+
+STATE_FILE="$STATE_DIR/rubric-loop-$SESSION_ID.json"
 
 # No state file = not in rubric-loop, allow exit
 if [[ ! -f "$STATE_FILE" ]]; then

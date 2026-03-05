@@ -102,15 +102,15 @@ Display the final rubric before Phase 2 begins:
 Rubric locked. Starting evaluation.
 ```
 
-**State init** — write the loop state so the Stop hook can track progress:
+**State init** — write the loop state so the Stop hook can track progress. The state file is session-scoped to prevent cross-session interference:
 
 ```
-Bash: mkdir -p "$HOME/.claude/.hook-state" && cat > "$HOME/.claude/.hook-state/rubric-loop-active.json" <<'STATEOF'
-{"round":0,"max_rounds":5,"score":0,"threshold":[threshold],"status":"active","iteration":0,"max_iterations":15}
+Bash: SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown") && mkdir -p "$HOME/.claude/.hook-state" && cat > "$HOME/.claude/.hook-state/rubric-loop-$SESSION_ID.json" <<STATEOF
+{"round":0,"max_rounds":5,"score":0,"threshold":[threshold],"status":"active","session_id":"$SESSION_ID","iteration":0,"max_iterations":15}
 STATEOF
 ```
 
-Replace `[threshold]` with the actual threshold value. This file is read by the Stop hook to decide whether the loop should continue. The `iteration`/`max_iterations` fields are the Stop hook's safety counter — always preserve them in subsequent state updates.
+Replace `[threshold]` with the actual threshold value. The state file uses `rubric-loop-$SESSION_ID.json` naming. This file is read by the Stop hook to decide whether the loop should continue. The `iteration`/`max_iterations` fields are the Stop hook's safety counter — always preserve them in subsequent state updates.
 
 ---
 
@@ -208,11 +208,11 @@ If any two models differ by more than 20 points on the same criterion:
 
 Collect suggestions from all AVAILABLE models. Prioritize the criterion with the lowest average score. Present the top suggestion per criterion, labeled by source model.
 
-**State update** — after every scoring round, update the state file (preserve `iteration`/`max_iterations` for the Stop hook's safety counter):
+**State update** — after every scoring round, update the session-scoped state file (preserve `iteration`/`max_iterations` for the Stop hook's safety counter):
 
 ```
-Bash: cat > "$HOME/.claude/.hook-state/rubric-loop-active.json" <<STATEOF
-{"round":[round],"max_rounds":[max_rounds],"score":[overall],"threshold":[threshold],"status":"active","iteration":0,"max_iterations":15}
+Bash: SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown") && cat > "$HOME/.claude/.hook-state/rubric-loop-$SESSION_ID.json" <<STATEOF
+{"round":[round],"max_rounds":[max_rounds],"score":[overall],"threshold":[threshold],"status":"active","session_id":"$SESSION_ID","iteration":0,"max_iterations":15}
 STATEOF
 ```
 
@@ -292,7 +292,7 @@ After the worker completes:
 **State update** — mark as completed so the Stop hook allows exit:
 
 ```
-Bash: cat > "$HOME/.claude/.hook-state/rubric-loop-active.json" <<'STATEOF'
+Bash: SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown") && cat > "$HOME/.claude/.hook-state/rubric-loop-$SESSION_ID.json" <<'STATEOF'
 {"status":"completed"}
 STATEOF
 ```
