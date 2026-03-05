@@ -34,7 +34,6 @@ Generate a schema-validated spec.json v4 + state.json with minimal friction.
 - `meta.deliverables[]` — concrete output files
 - `context` — background, assumptions, known_gaps
 - `requirements[]` — acceptance criteria with scenarios
-- `tasks[].verify` — verification commands/assertions
 - `tasks[].outputs[]` — expected output artifacts
 - `tasks[].depends_on[]` — task dependencies
 - `tasks[].risk` — low/medium/high
@@ -54,7 +53,7 @@ Quick codebase exploration (1 Explore agent max) — only if needed to understan
 
 Generate spec.json with:
 1. **Always fill**: `meta.name`, `meta.goal`, `tasks[]` (required)
-2. **Fill when obvious**: `meta.deliverables`, `tasks[].file_scope`, `tasks[].verify`, `tasks[].outputs`, `tasks[].depends_on`
+2. **Fill when obvious**: `meta.deliverables`, `tasks[].file_scope`, `tasks[].outputs`, `tasks[].depends_on`
 3. **Fill when user mentions**: `context`, `requirements`, `constraints`
 4. **Skip unless asked**: `meta.approved_by`, `tasks[].checkpoint`, `tasks[].inputs`
 

@@ -807,7 +807,6 @@ Members: Codex(GPT-5.3), Chairman(Claude Opus 4.6). Gemini 429 실패.
 - [ ] /specify skill에서 spec.json v4 + state.json 생성 흐름 구현
 - [ ] Observer agent가 spec.json + state.json을 읽고 feedback.json을 작성하는 프로토타입
 - [ ] Coordinator가 feedback → spec amend 흐름 구현
-- [ ] 기존 PLAN.md → spec.json 변환기 (마이그레이션용)
 - [ ] pre-commit hook: spec/state 직접 수정 차단 (dev-cli 경유만 허용)
 - [ ] lint 규칙: inputs[].artifact ↔ outputs[].id 교차 검증
 - [ ] lint 규칙: scope_boundary.allowed_paths ↔ tasks[].file_scope 교차 검증
