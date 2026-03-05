@@ -790,14 +790,20 @@ Members: Codex(GPT-5.3), Chairman(Claude Opus 4.6). Gemini 429 실패.
 
 ## Next Steps
 
-- [ ] JSON Schema validation 파일 작성 (dev-spec-v4.schema.json, dev-state-v1.schema.json)
-- [ ] dev-cli에 spec/state 조작 커맨드 구현
+### Phase 1: Schema + dev-cli (DONE)
+
+- [x] JSON Schema validation 파일 작성 (dev-spec-v4.schema.json, dev-state-v1.schema.json)
+- [x] dev-cli에 spec/state 조작 커맨드 구현
   - `dev-cli spec validate` — spec.json을 schema로 검증
+  - `dev-cli state init` — spec.json에서 state.json 초기 생성
   - `dev-cli state update T1 --done` — state.json 업데이트
-  - `dev-cli state check` — spec_hash 정합성 검증
+  - `dev-cli state check` — spec_hash 정합성 + orphan key 검증
   - `dev-cli state sync` — spec 변경 후 state 동기화
   - `dev-cli feedback create "message"` — feedback 파일 생성
-  - `dev-cli spec amend --reason fb-001` — spec 수정
+  - `dev-cli spec amend --reason fb-001` — spec 수정 (placeholder)
+
+### Phase 2: /specify 통합 + Observer/Coordinator
+
 - [ ] /specify skill에서 spec.json v4 + state.json 생성 흐름 구현
 - [ ] Observer agent가 spec.json + state.json을 읽고 feedback.json을 작성하는 프로토타입
 - [ ] Coordinator가 feedback → spec amend 흐름 구현
