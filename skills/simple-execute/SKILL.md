@@ -44,71 +44,82 @@ If state.json doesn't exist, init it:
 node dev-cli/bin/dev-cli.js state init --spec {spec_path} --output {state_path}
 ```
 
-### Step 2: Identify Pending Tasks
+### Step 2: Build Execution Plan
 
-From state.json, find tasks with `status != "done"`.
-From spec.json, read each task's `action`, `steps`, `file_scope`, `depends_on`.
+Use `dev-cli spec plan` to get the DAG-based execution order:
 
-Skip tasks whose `depends_on` are not all "done" in state.json.
+```bash
+plan_json = Bash("node dev-cli/bin/dev-cli.js spec plan {spec_path} --format json")
+```
+
+This returns rounds with parallel groups, critical path, etc.
+Display the text plan to the user so they can see what will happen:
+
+```bash
+Bash("node dev-cli/bin/dev-cli.js spec plan {spec_path}")
+```
+
+Then filter out already-done tasks using state.json:
 
 ```
-pending = []
-FOR EACH task in state.tasks:
-  IF task.status != "done":
+plan = JSON.parse(plan_json)
+FOR EACH round in plan.rounds:
+  round.tasks = round.tasks.filter(t => state.tasks[t.id].status != "done")
+# Remove empty rounds
+plan.rounds = plan.rounds.filter(r => r.tasks.length > 0)
+```
+
+### Step 3: Execute Rounds
+
+Walk through rounds in order. Within each round, dispatch tasks sequentially (simple mode — no background agents).
+
+```
+FOR EACH round in plan.rounds:
+  FOR EACH task in round.tasks:
     spec_task = find spec.tasks where id == task.id
-    IF spec_task.depends_on all "done" in state:
-      pending.append(spec_task)
-```
 
-### Step 3: Execute Tasks (Sequential)
+    # Mark in-progress
+    Bash("node dev-cli/bin/dev-cli.js state update {task.id} --status in_progress --state {state_path}")
 
-For each runnable task, dispatch a worker agent:
+    IF spec_task.type == "work":
+      result = Task(subagent_type="worker", prompt="""
+        ## TASK
+        {spec_task.action}
 
-```
-FOR EACH task in pending (ordered by id):
-  IF task.type == "work":
-    # Delegate to worker
-    result = Task(subagent_type="worker", prompt="""
-      ## TASK
-      {task.action}
+        ## STEPS
+        {spec_task.steps joined by newline, or "Implement as appropriate" if empty}
 
-      ## STEPS
-      {task.steps joined by newline, or "Implement as appropriate" if empty}
+        ## FILE SCOPE
+        {spec_task.file_scope joined by newline, or "Determine appropriate files"}
 
-      ## FILE SCOPE
-      {task.file_scope joined by newline, or "Determine appropriate files"}
+        ## MUST NOT DO
+        - Do not run git commands
+        - Do not modify files outside file_scope (if specified)
 
-      ## MUST NOT DO
-      - Do not run git commands
-      - Do not modify files outside file_scope (if specified)
+        ## OUTPUT FORMAT
+        When done, respond with a JSON block:
+        ```json
+        {
+          "status": "DONE" | "FAILED",
+          "summary": "what was done",
+          "files_modified": ["path1", "path2"]
+        }
+        ```
+      """)
 
-      ## OUTPUT FORMAT
-      When done, respond with a JSON block:
-      ```json
-      {
-        "status": "DONE" | "FAILED",
-        "summary": "what was done",
-        "files_modified": ["path1", "path2"]
-      }
-      ```
-    """)
+      IF result.status == "DONE":
+        Bash("node dev-cli/bin/dev-cli.js state update {task.id} --status done --state {state_path}")
+      ELSE:
+        print("Task {task.id} failed: {result.summary}")
+        HALT
 
-    IF result.status == "DONE":
-      Bash("node dev-cli/bin/dev-cli.js state update {task.id} --status done --state {state_path}")
-    ELSE:
-      # Log failure, halt execution
-      print("Task {task.id} failed: {result.summary}")
-      HALT
-
-  ELIF task.type == "verification":
-    # Run verification directly (no worker needed)
-    # Check that all work tasks are done
-    Bash("node dev-cli/bin/dev-cli.js state check --spec {spec_path} --state {state_path}")
-    IF exit_code == 0:
-      Bash("node dev-cli/bin/dev-cli.js state update {task.id} --status done --state {state_path}")
-    ELSE:
-      print("Verification failed: state/spec mismatch")
-      HALT
+    ELIF spec_task.type == "verification":
+      Bash("node dev-cli/bin/dev-cli.js state check --spec {spec_path} --state {state_path}")
+      IF exit_code == 0:
+        Bash("node dev-cli/bin/dev-cli.js state update {task.id} --status done --state {state_path}")
+      ELSE:
+        print("Verification failed: state/spec mismatch")
+        HALT
 ```
 
 ### Step 4: Commit
@@ -124,6 +135,8 @@ Task(subagent_type="git-master", prompt="""
 
 ### Step 5: Report
 
+Re-read state.json for final status, then report:
+
 ```
 ═══════════════════════════════════════════════════
               SIMPLE-EXECUTE COMPLETE
@@ -131,6 +144,9 @@ Task(subagent_type="git-master", prompt="""
 
 SPEC: {spec_path}
 GOAL: {spec.meta.goal}
+
+PLAN: {plan.total_rounds} rounds, max {plan.max_parallel} parallel
+CRITICAL PATH: {plan.critical_path joined by " → "}
 
 TASKS:
   {task.id}: {task.action} — {status}
