@@ -128,14 +128,23 @@ mkdir -p "$CONTEXT_DIR"
 
 ### 0.4 Run Pre-work
 
-If `external_dependencies.pre_work` exists with `blocking: true` items:
+Check `external_dependencies.pre_work` and log explicitly:
 
 ```
-FOR EACH pre_work item where blocking == true:
-  Bash(pre_work.command)
-  IF exit_code != 0:
-    print("Pre-work failed: {pre_work.action}")
-    HALT
+pre_work = spec.external_dependencies.pre_work ?? []
+IF len(pre_work) == 0:
+  print("Pre-work: none found, skipping")
+ELSE:
+  FOR EACH item in pre_work:
+    print("Pre-work: {item.action} (blocking={item.blocking})")
+    IF item.blocking:
+      result = Bash(item.command)
+      IF result.exit_code != 0:
+        print("Pre-work FAILED: {item.action}")
+        HALT
+      print("Pre-work PASS: {item.action}")
+    ELSE:
+      print("Pre-work: skipping non-blocking item {item.action}")
 ```
 
 ### 0.5 Create Tracking Tasks
@@ -676,17 +685,31 @@ TaskUpdate(taskId=rc, status="completed")
 ### 2b. :Code Review (Standard Only)
 
 > **Mode Gate**: Quick mode SKIPS this entirely.
+>
+> **MUST delegate** — Even if git diff is empty (e.g. git-ignored deliverables),
+> always dispatch `code-reviewer`. The orchestrator MUST NOT judge SHIP/NEEDS_FIXES itself.
+> Pass the deliverable file paths so the reviewer can read them directly.
 
 ```
+diff = Bash("git diff main...HEAD")
+
 Agent(
   subagent_type="code-reviewer",
   description="Review all changes",
   prompt="""
     Review the complete diff for this spec: {spec.meta.goal}
 
+    ## Git Diff
     ```
-    {Bash("git diff main...HEAD")}
+    {diff OR "(empty — all deliverables are in git-ignored directories)"}
     ```
+
+    {IF diff is empty:}
+    ## Deliverable Files (git-ignored)
+    The following files were created but are git-ignored.
+    Read them directly and review for quality:
+    {FOR EACH task in spec.tasks where status == "done":}
+    - {task.file_scope}
 
     Check for:
     - Integration issues between tasks
