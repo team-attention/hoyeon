@@ -1,24 +1,25 @@
 ---
 name: simple-specify
 description: |
-  Lightweight spec generator that outputs spec.json v4 + state.json.
+  Lightweight spec generator that outputs a unified spec.json v4 (spec + state + history in one file).
   Streamlined alternative to /specify — minimal interview, schema-validated output.
   Use when: "/simple-specify", "간단한 스펙", "simple spec", "스펙 만들어줘", "spec 만들어"
 validate_prompt: |
   Must produce a valid spec.json that passes dev-cli spec validate.
-  Must produce a matching state.json via dev-cli state init.
+  spec.json must include status: "pending" on all tasks and a history array.
   Output files must be in .dev/specs/{name}/ directory.
+  No state.json should be generated (unified into spec.json).
 ---
 
 # /simple-specify — Lightweight Spec Generator
 
-Generate a schema-validated spec.json v4 + state.json with minimal friction.
+Generate a schema-validated spec.json v4 with unified state tracking.
 
 ## When to Use
 
 - Quick tasks that don't need the full /specify interview pipeline
 - Any task where you want structured, machine-readable spec
-- When you want spec.json as the source of truth (not PLAN.md)
+- When you want spec.json as the single source of truth
 
 ## Schema Reference
 
@@ -26,7 +27,8 @@ Generate a schema-validated spec.json v4 + state.json with minimal friction.
 ```json
 {
   "meta": { "name": "...", "goal": "..." },
-  "tasks": [{ "id": "T1", "action": "...", "type": "work" }]
+  "tasks": [{ "id": "T1", "action": "...", "type": "work", "status": "pending" }],
+  "history": [{ "ts": "...", "type": "spec_created" }]
 }
 ```
 
@@ -52,7 +54,7 @@ Quick codebase exploration (1 Explore agent max) — only if needed to understan
 ### Step 2: Draft spec.json
 
 Generate spec.json with:
-1. **Always fill**: `meta.name`, `meta.goal`, `tasks[]` (required)
+1. **Always fill**: `meta.name`, `meta.goal`, `tasks[]` (required), `tasks[].status` (always "pending"), `history` (with spec_created event)
 2. **Fill when obvious**: `meta.deliverables`, `tasks[].file_scope`, `tasks[].outputs`, `tasks[].depends_on`
 3. **Fill when user mentions**: `context`, `requirements`, `constraints`
 4. **Skip unless asked**: `meta.approved_by`, `tasks[].checkpoint`, `tasks[].inputs`
@@ -64,17 +66,16 @@ Generate spec.json with:
 ### Step 3: Validate & Save
 
 ```bash
-# Write spec.json
+# Write spec.json (includes status + history)
 Write(".dev/specs/{name}/spec.json", spec_content)
 
 # Validate against schema
 Bash("node dev-cli/bin/dev-cli.js spec validate .dev/specs/{name}/spec.json")
 
 # If validation fails: fix and retry (max 2 attempts)
-
-# Generate state.json
-Bash("node dev-cli/bin/dev-cli.js state init --spec .dev/specs/{name}/spec.json --output .dev/specs/{name}/state.json")
 ```
+
+No state.json generation needed — state is unified into spec.json.
 
 ### Step 4: Present to User
 
@@ -82,12 +83,11 @@ Show a compact summary:
 
 ```
 spec.json created: .dev/specs/{name}/spec.json
-state.json created: .dev/specs/{name}/state.json
 
 Tasks:
-  T1: {action} [{type}]
-  T2: {action} [{type}] → depends on T1
-  TF: Verification [verification]
+  T1: {action} [{type}] — pending
+  T2: {action} [{type}] → depends on T1 — pending
+  TF: Verification [verification] — pending
 
 {If verify blocks exist:}
 Verify: {count} commands
@@ -96,13 +96,12 @@ Verify: {count} commands
 Constraints: {count} items
 ```
 
-Then ask: "추가하거나 수정할 내용 있어?" — if user says no, done. If user wants changes, edit spec.json, re-validate, re-init state.
+Then ask: "추가하거나 수정할 내용 있어?" — if user says no, done. If user wants changes, edit spec.json, re-validate.
 
 ### Step 5: Iterate (if user requests changes)
 
 - Edit spec.json based on feedback
 - Re-validate: `dev-cli spec validate`
-- Re-init state: `dev-cli state init` (overwrites previous)
 - Show updated summary
 
 Repeat until user is satisfied.
@@ -110,8 +109,10 @@ Repeat until user is satisfied.
 ## Rules
 
 - **No PLAN.md generation** — spec.json is the only output
+- **No state.json** — state is unified into spec.json (status field on tasks, history array)
 - **No plan-reviewer** — validation is via schema only
 - **No analysis agents** — keep it fast
 - **Always validate** — every spec.json must pass `dev-cli spec validate`
-- **Always init state** — every spec.json gets a state.json
+- **Always include status** — every task must have `status: "pending"` at creation
+- **Always include history** — spec.json must have `history: [{ ts, type: "spec_created" }]`
 - **Don't over-fill** — better to have a lean spec that's correct than a bloated one with guesses

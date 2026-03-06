@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "dev-spec/v4",
   "title": "dev-spec v4",
-  "description": "JSON Schema for dev spec v4 — immutable contract document (spec/state separated)",
+  "description": "JSON Schema for dev spec v4 — unified spec + state document",
   "type": "object",
   "required": ["meta", "tasks"],
   "additionalProperties": false,
@@ -22,6 +22,10 @@
     "constraints": {
       "type": "array",
       "items": { "$ref": "#/$defs/constraint" }
+    },
+    "history": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/historyEntry" }
     }
   },
   "$defs": {
@@ -355,7 +359,30 @@
             { "$ref": "#/$defs/checkpoint" },
             { "type": "null" }
           ]
-        }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "done"],
+          "default": "pending"
+        },
+        "started_at": { "type": "string" },
+        "completed_at": { "type": "string" },
+        "summary": { "type": "string" }
+      }
+    },
+    "historyEntry": {
+      "type": "object",
+      "required": ["ts", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "ts": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["spec_created", "task_start", "task_done", "tasks_changed", "spec_updated"]
+        },
+        "task": { "type": "string" },
+        "summary": { "type": "string" },
+        "detail": { "type": "string" }
       }
     },
     "constraint": {

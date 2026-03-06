@@ -6,10 +6,14 @@ import addFormats from 'ajv-formats';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+import { writeState } from '../lib/state-io.js';
+
 const SPEC_HELP = `
 Usage:
   dev-cli spec validate <path>             Validate a spec.json file against the schema
   dev-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
+  dev-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
+  dev-cli spec check <path>                Check internal consistency
   dev-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
 
 Options:
@@ -18,7 +22,8 @@ Options:
 Examples:
   dev-cli spec validate ./spec.json
   dev-cli spec plan ./spec.json
-  dev-cli spec plan ./spec.json --format mermaid
+  dev-cli spec task T1 --status done --summary "implemented" ./spec.json
+  dev-cli spec check ./spec.json
   dev-cli spec amend --reason fb-001 --spec ./spec.json
 `;
 
@@ -457,6 +462,163 @@ async function handleAmend(args) {
   process.exit(0);
 }
 
+async function handleTask(args) {
+  const taskId = args[0];
+
+  if (!taskId || taskId.startsWith('--')) {
+    process.stderr.write('Error: <task-id> is required\n');
+    process.stderr.write('Usage: dev-cli spec task <task-id> --status <status> [--summary "..."] <path>\n');
+    process.exit(1);
+  }
+
+  const parsed = parseArgs(args.slice(1));
+
+  let status = parsed.status;
+  if (parsed.done === true) status = 'done';
+  if (parsed['in-progress'] === true) status = 'in_progress';
+
+  if (!status) {
+    process.stderr.write('Error: --status <status> is required (or use --done / --in-progress)\n');
+    process.exit(1);
+  }
+
+  const validStatuses = ['pending', 'in_progress', 'done'];
+  if (!validStatuses.includes(status)) {
+    process.stderr.write(`Error: invalid status '${status}'. Valid values: ${validStatuses.join(', ')}\n`);
+    process.exit(1);
+  }
+
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write('Error: <path> to spec.json is required\n');
+    process.exit(1);
+  }
+
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+
+  const task = specData.tasks.find(t => t.id === taskId);
+  if (!task) {
+    process.stderr.write(`Error: task '${taskId}' not found in spec\n`);
+    process.exit(1);
+  }
+
+  const now = new Date().toISOString();
+
+  task.status = status;
+
+  if (status === 'in_progress' && !task.started_at) {
+    task.started_at = now;
+  }
+
+  if (status === 'done') {
+    task.completed_at = now;
+    if (parsed.summary) {
+      task.summary = parsed.summary;
+    }
+  }
+
+  // Append history
+  if (!specData.history) {
+    specData.history = [];
+  }
+
+  const historyType = status === 'in_progress' ? 'task_start' : status === 'done' ? 'task_done' : 'spec_updated';
+  const entry = { ts: now, type: historyType, task: taskId };
+  if (parsed.summary) {
+    entry.summary = parsed.summary;
+  }
+  specData.history.push(entry);
+
+  // Validate before writing
+  let schema;
+  try {
+    schema = loadSchema();
+  } catch (err) {
+    process.stderr.write(`Error: could not load schema: ${err.message}\n`);
+    process.exit(1);
+  }
+
+  const ajv = new Ajv2020({ allErrors: true });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+  const valid = validate(specData);
+
+  if (!valid) {
+    process.stderr.write('Validation failed after update:\n');
+    for (const e of validate.errors) {
+      const path = e.instancePath || '(root)';
+      process.stderr.write(`  ${path}: ${e.message}\n`);
+    }
+    process.exit(1);
+  }
+
+  // Atomic write (reuse state-io pattern)
+  writeState(specPath, specData);
+
+  process.stdout.write(`Updated task '${taskId}' status to '${status}'\n`);
+  process.exit(0);
+}
+
+async function handleCheck(args) {
+  const filePath = args[0];
+
+  if (!filePath) {
+    process.stderr.write('Error: missing <path> argument\n');
+    process.stderr.write('Usage: dev-cli spec check <path>\n');
+    process.exit(1);
+  }
+
+  const specData = loadSpec(resolve(filePath));
+  const issues = [];
+
+  const taskIds = new Set(specData.tasks.map(t => t.id));
+
+  // Check for duplicate IDs
+  if (taskIds.size !== specData.tasks.length) {
+    issues.push('duplicate task IDs detected');
+  }
+
+  // Check depends_on references
+  for (const task of specData.tasks) {
+    for (const dep of (task.depends_on || [])) {
+      if (!taskIds.has(dep)) {
+        issues.push(`task '${task.id}' depends on unknown task '${dep}'`);
+      }
+    }
+  }
+
+  // Check done tasks have completed_at
+  for (const task of specData.tasks) {
+    if (task.status === 'done' && !task.completed_at) {
+      issues.push(`task '${task.id}' is done but missing completed_at`);
+    }
+  }
+
+  // Check depends_on completion for in_progress/done tasks
+  for (const task of specData.tasks) {
+    if (task.status === 'in_progress' || task.status === 'done') {
+      for (const dep of (task.depends_on || [])) {
+        const depTask = specData.tasks.find(t => t.id === dep);
+        if (depTask && depTask.status !== 'done') {
+          issues.push(`task '${task.id}' is ${task.status} but dependency '${dep}' is not done`);
+        }
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    process.stderr.write('Spec check failed:\n');
+    for (const issue of issues) {
+      process.stderr.write(`  - ${issue}\n`);
+    }
+    process.exit(1);
+  }
+
+  process.stdout.write('Spec check passed: internal consistency OK\n');
+  process.exit(0);
+}
+
 export default async function spec(args) {
   const subcommand = args[0];
 
@@ -469,6 +631,10 @@ export default async function spec(args) {
     await handleValidate(args.slice(1));
   } else if (subcommand === 'plan') {
     await handlePlan(args.slice(1));
+  } else if (subcommand === 'task') {
+    await handleTask(args.slice(1));
+  } else if (subcommand === 'check') {
+    await handleCheck(args.slice(1));
   } else if (subcommand === 'amend') {
     await handleAmend(args.slice(1));
   } else {

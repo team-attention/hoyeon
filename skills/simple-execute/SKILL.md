@@ -1,23 +1,24 @@
 ---
 name: simple-execute
 description: |
-  Lightweight executor driven by spec.json + state.json.
-  Reads tasks from spec.json, delegates to workers, tracks progress via state.json.
+  Lightweight executor driven by unified spec.json (spec + state + history in one file).
+  Reads tasks from spec.json, delegates to workers, tracks progress inline.
   Use when: "/simple-execute", "간단한 실행", "simple execute", "spec 실행", "스펙 실행해줘"
 validate_prompt: |
-  All tasks in state.json must be status "done" at completion.
-  dev-cli state check must pass (spec/state consistent).
+  All tasks in spec.json must have status "done" at completion.
+  dev-cli spec check must pass (internal consistency).
+  No state.json should be referenced or created.
 ---
 
 # /simple-execute — Spec-Driven Lightweight Executor
 
-Execute tasks defined in spec.json, track progress in state.json.
+Execute tasks defined in spec.json, track progress inline via `spec task` command.
 
 ## When to Use
 
-- After `/simple-specify` generated spec.json + state.json
+- After `/simple-specify` generated a unified spec.json
 - Simple tasks that don't need the full `/execute` orchestrator
-- When you want spec.json as the source of truth (not PLAN.md)
+- When you want spec.json as the single source of truth
 
 ## Flow
 
@@ -31,17 +32,10 @@ ELSE:
   spec_path = most recent .dev/specs/*/spec.json
 ```
 
-Read spec.json and state.json from the same directory.
+Read spec.json (single file — no state.json needed):
 
 ```
 spec = Read(spec_path)
-state_path = dirname(spec_path) + "/state.json"
-state = Read(state_path)
-```
-
-If state.json doesn't exist, init it:
-```bash
-node dev-cli/bin/dev-cli.js state init --spec {spec_path} --output {state_path}
 ```
 
 ### Step 2: Build Execution Plan
@@ -52,26 +46,28 @@ Use `dev-cli spec plan` to get the DAG-based execution order:
 plan_json = Bash("node dev-cli/bin/dev-cli.js spec plan {spec_path} --format json")
 ```
 
-This returns rounds with parallel groups, critical path, etc.
-Display the text plan to the user so they can see what will happen:
+Display the text plan to the user:
 
 ```bash
 Bash("node dev-cli/bin/dev-cli.js spec plan {spec_path}")
 ```
 
-Then filter out already-done tasks using state.json:
+Then filter out already-done tasks:
 
 ```
 plan = JSON.parse(plan_json)
 FOR EACH round in plan.rounds:
-  round.tasks = round.tasks.filter(t => state.tasks[t.id].status != "done")
+  round.tasks = round.tasks.filter(t => {
+    task = spec.tasks.find(st => st.id == t.id)
+    return !task.status || task.status != "done"
+  })
 # Remove empty rounds
 plan.rounds = plan.rounds.filter(r => r.tasks.length > 0)
 ```
 
 ### Step 3: Execute Rounds
 
-Walk through rounds in order. Within each round, dispatch tasks sequentially (simple mode — no background agents).
+Walk through rounds in order. Within each round, dispatch tasks sequentially.
 
 ```
 FOR EACH round in plan.rounds:
@@ -79,7 +75,7 @@ FOR EACH round in plan.rounds:
     spec_task = find spec.tasks where id == task.id
 
     # Mark in-progress
-    Bash("node dev-cli/bin/dev-cli.js state update {task.id} --status in_progress --state {state_path}")
+    Bash("node dev-cli/bin/dev-cli.js spec task {task.id} --status in_progress {spec_path}")
 
     IF spec_task.type == "work":
       result = Task(subagent_type="worker", prompt="""
@@ -108,17 +104,17 @@ FOR EACH round in plan.rounds:
       """)
 
       IF result.status == "DONE":
-        Bash("node dev-cli/bin/dev-cli.js state update {task.id} --status done --state {state_path}")
+        Bash("node dev-cli/bin/dev-cli.js spec task {task.id} --status done --summary '{result.summary}' {spec_path}")
       ELSE:
         print("Task {task.id} failed: {result.summary}")
         HALT
 
     ELIF spec_task.type == "verification":
-      Bash("node dev-cli/bin/dev-cli.js state check --spec {spec_path} --state {state_path}")
+      Bash("node dev-cli/bin/dev-cli.js spec check {spec_path}")
       IF exit_code == 0:
-        Bash("node dev-cli/bin/dev-cli.js state update {task.id} --status done --state {state_path}")
+        Bash("node dev-cli/bin/dev-cli.js spec task {task.id} --status done {spec_path}")
       ELSE:
-        print("Verification failed: state/spec mismatch")
+        print("Verification failed: spec consistency check failed")
         HALT
 ```
 
@@ -135,7 +131,7 @@ Task(subagent_type="git-master", prompt="""
 
 ### Step 5: Report
 
-Re-read state.json for final status, then report:
+Re-read spec.json for final status, then report:
 
 ```
 ═══════════════════════════════════════════════════
@@ -158,10 +154,10 @@ STATE: ✅ all tasks done | ⚠️ N tasks pending
 
 ## Rules
 
-- **No PLAN.md** — spec.json is the only input, state.json is the only tracker
+- **Single file** — spec.json is both the spec and the state tracker (no state.json)
 - **No verify agent** — worker self-report trusted (like /execute --quick)
 - **No reconciliation** — on failure, halt immediately
 - **No parallel dispatch** — tasks run sequentially by ID order
-- **Always update state** — every completed task updates state.json via dev-cli
+- **Always update via dev-cli** — use `spec task` to update status (auto-logs history)
 - **Always commit** — use git-master at the end
 - **Constraints check** — if spec has constraints, verify them before completing
