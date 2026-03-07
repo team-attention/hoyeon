@@ -41,7 +41,25 @@ Generate a schema-validated spec.json v4 with unified state tracking.
 - `tasks[].risk` — low/medium/high
 - `tasks[].file_scope[]` — files this task touches
 - `tasks[].steps[]` — implementation steps
-- `constraints[]` — must_not_do, preserve, scope_boundary
+- `tasks[].required_tools[]` — tools the Worker agent must have access to
+- `tasks[].must_not_do[]` — explicit prohibitions for the Worker agent
+- `tasks[].acceptance_criteria` — {functional[], static[], runtime[], cleanup[]} each item: {description, command?, status?}
+- `meta.non_goals[]` — strategic scope exclusions (what this project is NOT trying to achieve)
+- `constraints[]` — must_not_do, preserve
+- `orchestrator` — execution policy:
+  - `commit_strategy[]` — {after_task, message, files?, condition?}
+  - `error_handling` — {failure_categories[], max_retries}
+  - `runtime_contract` — {working_dir, network_access, package_install, file_access, max_execution_time, git_operations}
+  - `parallelization[]` — {group, task_ids[], reason?}
+- `verification_summary` — structured verification plan:
+  - `agent_items[]` — A-items: {id, criterion, method, related_task?}
+  - `human_items[]` — H-items: {id, criterion, reason, review_material?}
+  - `sandbox_items[]` — S-items: {id, scenario, agent, method}
+  - `gaps[]` — string array of verification gaps
+- `external_dependencies` — external blockers and actions:
+  - `pre_work[]` — {dependency, action, command?, blocking?}
+  - `during[]` — {dependency, strategy, rationale?}
+  - `post_work[]` — {task, dependency, action, command?}
 
 ## Flow
 

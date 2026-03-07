@@ -16,7 +16,7 @@ allowed-tools:
 validate_prompt: |
   Must produce a valid spec.json that passes both dev-cli spec validate and dev-cli spec check.
   spec.json must include: meta.mode, context.research (structured), tasks with acceptance_criteria, requirements with scenarios.
-  Standard mode must include: verification_summary (derived from requirements), constraints.
+  Standard mode must include: verification_summary (derived from requirements), constraints, meta.non_goals.
   Output files must be in .dev/specs/{name}/ directory.
 ---
 
@@ -94,6 +94,19 @@ dev-cli spec init {name} --goal "{goal}" --depth {depth} --interaction {interact
 **Naming**: `{name}` = kebab-case, derived from goal (e.g., "fix-login-bug", "add-auth-middleware").
 
 Output: minimal spec.json with `meta` + placeholder `tasks` + `history`.
+
+After init, if non-goals are already apparent from the user's request, merge them early:
+
+```bash
+dev-cli spec merge .dev/specs/{name}/spec.json --json '{
+  "meta": {
+    "non_goals": ["...", "..."]
+  }
+}'
+```
+
+> Non-goals are strategic scope exclusions — "What this project is NOT trying to achieve."
+> They are NOT verifiable rules (those go in `constraints`). They are direction statements for humans and reviewers.
 
 ### Phase 0.1: Intent Classification (internal analysis)
 
@@ -246,6 +259,7 @@ Propose based on research; don't ask what you can discover.
 #### What to ASK (user knows, agent doesn't)
 
 Use `AskUserQuestion` only for:
+- **Non-goals**: "What is this project NOT trying to achieve?" (→ merge into `meta.non_goals`)
 - **Boundaries**: "Any restrictions on what not to do?"
 - **Trade-offs**: Only when multiple valid options exist and exploration doesn't resolve them
 - **Success Criteria**: "When is this considered complete?"
@@ -758,6 +772,13 @@ After plan review OKAY and validation passes, present a **comprehensive Plan App
 spec.json approved! .dev/specs/{name}/spec.json is ready.
 Mode: {depth}/{interaction}
 
+{If non_goals exist:}
+Non-goals (explicitly out of scope)
+────────────────────────────────────────
+  - {non_goal_1}
+  - {non_goal_2}
+────────────────────────────────────────
+
 ────────────────────────────────────────
 Task Overview
 ────────────────────────────────────────
@@ -814,6 +835,7 @@ Constraints: {n} items
 
 | Section | Source in spec.json | When |
 |---------|---------------------|------|
+| Non-goals | `meta.non_goals[]` — strategic scope exclusions | When non_goals exist |
 | Task Overview | `tasks[]` — id, action, type, risk, depends_on | Always |
 | Verification | Derived from `requirements[].scenarios` — A/H/S classification (see Phase 5d rules) | Always |
 | Pre-work | `external_dependencies.pre_work` — list all, mark blocking=true as Blocking | Always |
@@ -870,6 +892,7 @@ AskUserQuestion(
 - [ ] `history` includes `spec_created` entry
 - [ ] `meta.mode` is set
 - [ ] `context.intent_classification` merged (Phase 0.1)
+- [ ] `meta.non_goals` populated (collect during Phase 2 Interview)
 - [ ] Plan Approval Summary presented
 
 ### Standard mode (additional)

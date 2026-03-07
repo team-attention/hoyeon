@@ -15,6 +15,7 @@ Usage:
   dev-cli spec validate <path>                   Validate a spec.json file against the schema
   dev-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
   dev-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
+  dev-cli spec task <task-id> --get <path>                               Get task details as JSON
   dev-cli spec check <path>                      Check internal consistency
   dev-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
 
@@ -27,6 +28,7 @@ Examples:
   dev-cli spec validate ./spec.json
   dev-cli spec plan ./spec.json
   dev-cli spec task T1 --status done --summary "implemented" ./spec.json
+  dev-cli spec task T1 --get ./spec.json
   dev-cli spec check ./spec.json
   dev-cli spec amend --reason fb-001 --spec ./spec.json
 `;
@@ -657,17 +659,35 @@ async function handleTask(args) {
   if (!taskId || taskId.startsWith('--')) {
     process.stderr.write('Error: <task-id> is required\n');
     process.stderr.write('Usage: dev-cli spec task <task-id> --status <status> [--summary "..."] <path>\n');
+    process.stderr.write('       dev-cli spec task <task-id> --get <path>\n');
     process.exit(1);
   }
 
   const parsed = parseArgs(args.slice(1));
+
+  // --get mode: read-only task retrieval
+  if (parsed.get !== undefined) {
+    const filePath = typeof parsed.get === 'string' ? parsed.get : parsed._[0];
+    if (!filePath) {
+      process.stderr.write('Error: <path> to spec.json is required\n');
+      process.exit(1);
+    }
+    const specData = loadSpec(resolve(filePath));
+    const task = specData.tasks.find(t => t.id === taskId);
+    if (!task) {
+      process.stderr.write(`Error: task '${taskId}' not found in spec\n`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify(task, null, 2) + '\n');
+    process.exit(0);
+  }
 
   let status = parsed.status;
   if (parsed.done === true) status = 'done';
   if (parsed['in-progress'] === true) status = 'in_progress';
 
   if (!status) {
-    process.stderr.write('Error: --status <status> is required (or use --done / --in-progress)\n');
+    process.stderr.write('Error: --status <status> is required (or use --done / --in-progress / --get)\n');
     process.exit(1);
   }
 
@@ -796,12 +816,34 @@ async function handleCheck(args) {
     }
   }
 
+  // Check file_scope overlap across tasks (warning only)
+  const warnings = [];
+  const fileScopeMap = new Map();
+  for (const task of specData.tasks) {
+    for (const file of (task.file_scope || [])) {
+      if (!fileScopeMap.has(file)) fileScopeMap.set(file, []);
+      fileScopeMap.get(file).push(task.id);
+    }
+  }
+  for (const [file, taskList] of fileScopeMap) {
+    if (taskList.length > 1) {
+      warnings.push(`file '${file}' appears in file_scope of multiple tasks: ${taskList.join(', ')}`);
+    }
+  }
+
   if (issues.length > 0) {
     process.stderr.write('Spec check failed:\n');
     for (const issue of issues) {
       process.stderr.write(`  - ${issue}\n`);
     }
     process.exit(1);
+  }
+
+  if (warnings.length > 0) {
+    process.stderr.write('Warnings:\n');
+    for (const w of warnings) {
+      process.stderr.write(`  - ${w}\n`);
+    }
   }
 
   process.stdout.write('Spec check passed: internal consistency OK\n');
