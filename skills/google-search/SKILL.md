@@ -28,8 +28,13 @@ JavaScript-rendered content and no bot detection.
 
 ## Prerequisites
 
-Requires `chromux` CLI installed and a running Chrome instance.
-The skill auto-launches Chrome if needed (via chromux default profile).
+Requires `chromux` CLI installed. Launch headless Chrome before use:
+
+```bash
+chromux launch default --headless 2>/dev/null || true
+```
+
+This starts Chrome without a visible window. Skips if already running.
 
 ## Usage
 
