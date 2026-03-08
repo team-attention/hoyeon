@@ -126,25 +126,43 @@ mkdir -p "$CONTEXT_DIR"
 - Read all three files into memory
 - Determine progress from spec.json task statuses (not files)
 
-### 0.4 Run Pre-work
+### 0.4 Confirm Pre-work (Human Actions)
 
-Check `external_dependencies.pre_work` and log explicitly:
+Pre-work items are **human tasks** that must be completed before execution begins
+(e.g., infrastructure setup, API key provisioning, environment configuration).
+If an item were automatable by the agent, it would be a Task in the DAG instead.
 
 ```
 pre_work = spec.external_dependencies.pre_work ?? []
 IF len(pre_work) == 0:
   print("Pre-work: none found, skipping")
 ELSE:
+  # Display all pre-work items first
+  print("Pre-work items (human actions required before execution):")
   FOR EACH item in pre_work:
-    print("Pre-work: {item.action} (blocking={item.blocking})")
-    IF item.blocking:
-      result = Bash(item.command)
-      IF result.exit_code != 0:
-        print("Pre-work FAILED: {item.action}")
-        HALT
-      print("Pre-work PASS: {item.action}")
-    ELSE:
-      print("Pre-work: skipping non-blocking item {item.action}")
+    print("  - {item.action} (blocking={item.blocking})")
+
+  # Ask user to confirm completion
+  FOR EACH item in pre_work WHERE item.blocking == true:
+    AskUserQuestion(
+      question: "Have you completed this pre-work? → {item.action}",
+      options: [
+        { label: "Done", description: "I've completed this" },
+        { label: "Skip", description: "Proceed without this (may cause failures)" },
+        { label: "Abort", description: "Stop execution — I need to do this first" }
+      ]
+    )
+    IF answer == "Abort":
+      print("Pre-work NOT ready: {item.action}")
+      HALT
+    IF answer == "Skip":
+      print("Pre-work SKIPPED (user choice): {item.action}")
+    IF answer == "Done":
+      print("Pre-work CONFIRMED: {item.action}")
+
+  # Log non-blocking items (informational only)
+  FOR EACH item in pre_work WHERE item.blocking != true:
+    print("Pre-work (non-blocking, FYI): {item.action}")
 ```
 
 ### 0.5 Create Tracking Tasks
@@ -160,10 +178,10 @@ Create TaskCreate entries for all tasks. **Batch all in one turn.**
 
 FOR EACH task in plan (flattened from rounds, excluding done):
   w  = TaskCreate(subject="{task.id}.1:Worker — {task.action}",
-                  description="Implement {task.id}. Steps: {task.steps}. File scope: {task.file_scope}.",
+                  description=WORKER_DESCRIPTION(task.id),
                   activeForm="{task.id}.1: Running Worker")
   v  = TaskCreate(subject="{task.id}.2:Verify",
-                  description="Verify acceptance criteria for {task.id}.",
+                  description=VERIFY_DESCRIPTION(task.id),
                   activeForm="{task.id}.2: Verifying")
   cm = TaskCreate(subject="{task.id}.3:Commit",
                   description="Commit {task.id} changes.",
@@ -186,7 +204,7 @@ rp = TaskCreate(subject="Finalize:Report",
 ```
 FOR EACH task in plan (flattened, excluding done):
   w  = TaskCreate(subject="{task.id}.1:Worker — {task.action}",
-                  description="Implement {task.id}.",
+                  description=WORKER_DESCRIPTION(task.id),
                   activeForm="{task.id}.1: Running Worker")
   cm = TaskCreate(subject="{task.id}.2:Commit",
                   description="Commit {task.id} changes.",
@@ -199,6 +217,85 @@ fv = TaskCreate(subject="Finalize:Final Verify",
      activeForm="Running final verification")
 rp = TaskCreate(subject="Finalize:Report",
      activeForm="Generating report")
+```
+
+#### Description Templates
+
+> **Why descriptions, not orchestrator-built prompts?**
+> Workers self-read task details via `dev-cli`. This means:
+> 1. **Orchestrator saves tokens** — no need to Read spec.json or context files
+> 2. **Compaction-resilient** — even if orchestrator context is compressed, the description
+>    in TaskCreate survives and workers can always re-fetch from CLI/files
+> 3. **Self-contained** — each worker has all instructions to operate independently
+
+```
+WORKER_DESCRIPTION(task_id) = """
+You are a Worker agent. Implement task {task_id}.
+
+## Step 1: Read your task spec
+Run: `node dev-cli/bin/dev-cli.js spec task {task_id} --get {spec_path}`
+This returns JSON with: action, steps, file_scope, acceptance_criteria,
+must_not_do, inputs, outputs, references.
+
+## Step 2: Resolve dependency inputs (if any)
+If your task has `inputs[].from_task`, fetch each dependency:
+Run: `node dev-cli/bin/dev-cli.js spec task {from_task} --get {spec_path}`
+Use its `outputs` to understand what was produced.
+
+## Step 3: Read context files
+Read: {CONTEXT_DIR}/learnings.md — conventions & patterns from previous workers
+Read: {CONTEXT_DIR}/issues.md — failed approaches to avoid
+
+## Step 4: Implement
+Follow the steps and file_scope from your task spec.
+Meet ALL acceptance_criteria (run commands to verify before reporting DONE).
+Respect must_not_do constraints.
+Do NOT run git commands — Orchestrator handles commits.
+
+## Step 5: Update context files
+Append to {CONTEXT_DIR}/learnings.md:
+  ## {task_id}
+  - learning 1
+  - learning 2
+
+Append to {CONTEXT_DIR}/issues.md (if any):
+  ## {task_id}
+  - issue 1
+
+Only append with ## {task_id} header — do NOT overwrite existing content.
+
+## Output (print as last message)
+```json
+{"status": "DONE"|"FAILED", "summary": "...", "files_modified": [...],
+ "acceptance_criteria": [{"id":"...", "category":"...", "status":"PASS|FAIL", "reason":"..."}]}
+```
+"""
+
+VERIFY_DESCRIPTION(task_id) = """
+You are a Verification agent. Verify task {task_id} independently.
+
+## Step 1: Read task spec
+Run: `node dev-cli/bin/dev-cli.js spec task {task_id} --get {spec_path}`
+
+## Step 2: Run ALL acceptance criteria commands
+Re-execute every command from acceptance_criteria yourself.
+Do NOT trust the Worker's self-reported status.
+
+## Step 3: Check must_not_do violations
+Run `git diff` to check for violations.
+
+## Step 4: Scope blockage detection
+If failure stems from SCOPE limitations (not code errors), populate
+`suggested_adaptation` in your output.
+
+## Output (strict JSON)
+```json
+{"status": "VERIFIED"|"FAILED",
+ "acceptance_criteria": {"pass": N, "fail": N, "results": [...]},
+ "must_not_do_violations": [...],
+ "suggested_adaptation": null | {"type": "...", "reason": "...", "proposal": "..."}}
+```
+"""
 ```
 
 #### Set Dependencies (TURN 2)
@@ -246,9 +343,9 @@ TaskUpdate(taskId=fv, addBlocks=[rp])
 ## Phase 1: Execute Loop
 
 > **Compaction recovery**: A `SessionStart(compact)` hook automatically re-injects
-> spec_path, task progress, and context_dir after compaction. You do NOT need to
-> manually re-read spec.json on every dispatch. Use `dev-cli spec task <id> --get`
-> to fetch individual task details on demand.
+> spec_path, task progress, and context_dir after compaction. Workers self-read
+> task details via `dev-cli spec task <id> --get` and context files directly.
+> The orchestrator does NOT need to read spec.json or context files.
 
 ```
 WHILE TaskList() has pending tasks:
@@ -257,11 +354,8 @@ WHILE TaskList() has pending tasks:
   IF len(runnable) == 0:
     BREAK  # all done or deadlock
 
-  # Read context files before dispatch (workers may have appended new entries)
-  # Note: spec.json is NOT re-read here — use `spec task --get` per task instead
-  IF any task in runnable is :Worker or :Verify:
-    learnings = Read("{CONTEXT_DIR}/learnings.md")
-    issues = Read("{CONTEXT_DIR}/issues.md")
+  # Workers self-read context files — orchestrator does NOT read them here.
+  # This saves orchestrator tokens and survives compaction.
 
   # Dispatch by task subject suffix
   dispatch_all(runnable)
@@ -291,98 +385,20 @@ ELSE:
 
 ### 1a. :Worker — Delegate Implementation
 
-Fetch task details via dev-cli, then build worker prompt:
+> **Self-read pattern**: The orchestrator does NOT read spec.json or context files.
+> The worker's description (set at TaskCreate time) contains all instructions for
+> the worker to self-read via `dev-cli` and context files.
 
 ```
-task_spec = JSON.parse(Bash("node dev-cli/bin/dev-cli.js spec task {task_id} --get {spec_path}"))
-
-# Resolve inputs from dependency tasks
-FOR EACH input in (task_spec.inputs || []):
-  dep_task = JSON.parse(Bash("node dev-cli/bin/dev-cli.js spec task {input.from_task} --get {spec_path}"))
-  input.resolved_outputs = dep_task.outputs
-
-# Read context files for inherited wisdom
-learnings = Read("{CONTEXT_DIR}/learnings.md")
-issues = Read("{CONTEXT_DIR}/issues.md")
+# Description was already set in Phase 0.5 TaskCreate via WORKER_DESCRIPTION(task_id).
+# The orchestrator simply dispatches — no spec.json read, no context file read.
 
 Agent(
   subagent_type="worker",
-  description="Implement: {task_spec.action}",
-  prompt="""
-## TASK
-{task_spec.action}
-
-## STEPS
-{task_spec.steps joined by newline, or "Implement as described" if empty}
-
-## FILE SCOPE
-{task_spec.file_scope joined by newline, or "Determine appropriate files"}
-
-## EXPECTED OUTCOME
-**Acceptance Criteria** (all must pass before reporting DONE):
-
-Functional:
-{task_spec.acceptance_criteria.functional[].description + command}
-
-Static:
-{task_spec.acceptance_criteria.static[].description + command}
-
-Runtime:
-{task_spec.acceptance_criteria.runtime[].description + command}
-
-{IF task_spec.acceptance_criteria.cleanup:}
-Cleanup:
-{task_spec.acceptance_criteria.cleanup[].description}
-
-## REFERENCES
-{task_spec.references[] as file:line format}
-
-## MUST NOT DO
-{task_spec.must_not_do joined by newline}
-- Do not perform other Tasks
-- Do not add new dependencies
-- Do not run git commands (Orchestrator handles this)
-
-## CONTEXT
-
-### Dependencies (from previous tasks)
-{task_spec.inputs[] — resolve from spec.tasks where from_task matches, get outputs}
-
-### Inherited Wisdom
-SubAgent does not remember previous calls. Use this context.
-
-**Conventions & learnings (from previous workers):**
-{learnings content, or "None yet" if empty}
-
-**Failed approaches to AVOID:**
-{issues content, or "None yet" if empty}
-
-## CONTEXT FILE UPDATE
-After completing your work, update the shared context files:
-
-1. **Append** learnings to: {CONTEXT_DIR}/learnings.md
-   Format: `## {task_id}\n- learning 1\n- learning 2\n`
-   Write discovered patterns, conventions, tips for next workers.
-
-2. **Append** issues to: {CONTEXT_DIR}/issues.md
-   Format: `## {task_id}\n- issue 1\n- issue 2\n`
-   Write unresolved problems, things to avoid.
-
-Only append — do NOT overwrite existing content.
-
-## OUTPUT FORMAT
-```json
-{
-  "status": "DONE" | "FAILED",
-  "summary": "what was done",
-  "files_modified": ["path1", "path2"],
-  "acceptance_criteria": [
-    {"id": "...", "category": "functional|static|runtime|cleanup",
-     "description": "...", "command": "...", "status": "PASS|FAIL", "reason": "..."}
-  ]
-}
-```
-""")
+  description="Implement: {task_id}",
+  prompt=TaskGet(task.id).description,  # re-use the description from TaskCreate
+  run_in_background=true  # if parallel round
+)
 ```
 
 **On completion:**
@@ -408,104 +424,18 @@ ELIF result.status == "FAILED":
 
 > **Mode Gate**: Quick mode SKIPS this entirely. `:Verify` tasks are not created.
 
-Dispatch a verify worker that independently checks acceptance criteria and must-not-do violations.
+Dispatch a verify worker. The description was already set at TaskCreate time via `VERIFY_DESCRIPTION(task_id)`.
 
 ```
-task_spec = JSON.parse(Bash("node dev-cli/bin/dev-cli.js spec task {task_id} --get {spec_path}"))
+# Description was already set in Phase 0.5 TaskCreate via VERIFY_DESCRIPTION(task_id).
+# The verifier self-reads task spec via dev-cli and runs acceptance criteria commands.
 
 Agent(
   subagent_type="worker",
   description="Verify: {task_id} acceptance criteria",
-  prompt="""
-## TASK
-You are a VERIFICATION worker. Independently verify that {task_id}'s
-acceptance criteria are met AND must-not-do rules were not violated.
-
-DO NOT write or modify any code. Only READ and RUN verification commands.
-
-## ACCEPTANCE CRITERIA TO VERIFY
-
-Run each command and report PASS/FAIL independently:
-
-Functional:
-{FOR EACH item in task_spec.acceptance_criteria.functional:}
-- {item.description}
-  Command: `{item.command}`
-  Expected: exit code 0
-
-Static:
-{FOR EACH item in task_spec.acceptance_criteria.static:}
-- {item.description}
-  Command: `{item.command}`
-  Expected: exit code 0
-
-Runtime:
-{FOR EACH item in task_spec.acceptance_criteria.runtime:}
-- {item.description}
-  Command: `{item.command}`
-  Expected: exit code 0
-
-Do NOT trust the Worker's self-reported PASS status.
-Re-execute every command yourself and judge independently.
-
-## MUST-NOT-DO VIOLATIONS TO CHECK
-{task_spec.must_not_do joined by newline}
-- No other Tasks performed
-- No new dependencies added
-- No git commands run
-
-Check `git diff` (staged + unstaged) for violations.
-
-## SCOPE BLOCKAGE DETECTION
-If a failure stems from SCOPE limitations (not Worker error), populate
-`suggested_adaptation`:
-- scope_violation: Acceptance criteria requires out-of-scope work
-- dod_gap: DoD criterion cannot be met without expanding scope
-- dependency_missing: Needs outputs not produced by any prior task
-
-Only suggest adaptation for scope blockers, not code errors (those are retries).
-
-## OUTPUT FORMAT (strict JSON)
-```json
-{
-  "status": "VERIFIED" | "FAILED",
-  "acceptance_criteria": {
-    "pass": 0,
-    "fail": 0,
-    "results": [
-      {
-        "id": "criterion_id",
-        "category": "functional|static|runtime",
-        "description": "what was checked",
-        "command": "command run",
-        "status": "PASS|FAIL",
-        "reason": "failure reason, if FAIL"
-      }
-    ]
-  },
-  "must_not_do": {
-    "violations": [
-      {"rule": "violated rule", "evidence": "what was found", "severity": "critical|warning"}
-    ]
-  },
-  "suggested_adaptation": {
-    "blockage_type": "scope_violation|dod_gap|dependency_missing",
-    "suggested_todo": {
-      "title": "concise TODO title",
-      "reason": "why current scope cannot satisfy this criterion",
-      "steps": ["step 1", "step 2"],
-      "file_scope": ["affected/files"]
-    }
-  }
-}
-```
-
-## MUST NOT DO
-- Do not modify any files
-- Do not write code or fix issues
-- Do not run git commands (except read-only: git diff, git status)
-- Only verify — report results objectively
-""")
+  prompt=TaskGet(task.id).description,  # re-use the description from TaskCreate
+  run_in_background=true  # if parallel round
+)
 ```
 
 **Route by result:**
@@ -530,7 +460,10 @@ function reconcile(task_id, verify_result, attempt):
   # Log to audit
   append_to_audit(task_id, verify_result)
 
-  disposition = triage(verify_result, task_spec.type)
+  # task_type comes from the initial `spec plan` output (Phase 0), not from reading spec.json here.
+  # Under compaction, the SessionStart hook re-injects plan data.
+  task_type = plan_data[task_id].type  # "work" | "verification"
+  disposition = triage(verify_result, task_type)
 
   IF disposition == HALT:
     log_to_issues(task_id, verify_result)
@@ -635,10 +568,13 @@ function adapt(task_id, verify_result):
   # 2. Re-plan to get updated DAG
   new_plan = Bash("node dev-cli/bin/dev-cli.js spec plan {spec_path} --format json")
 
-  # 3. Create tracking tasks for the fix
-  fw = TaskCreate(subject="{fix_task_id}.1:Worker — {adaptation.suggested_todo.title}", ...)
-  fv = TaskCreate(subject="{fix_task_id}.2:Verify", ...)  # standard only
-  fc = TaskCreate(subject="{fix_task_id}.3:Commit", ...)
+  # 3. Create tracking tasks for the fix (use same self-read pattern)
+  fw = TaskCreate(subject="{fix_task_id}.1:Worker — {adaptation.suggested_todo.title}",
+                  description=WORKER_DESCRIPTION(fix_task_id))
+  fv = TaskCreate(subject="{fix_task_id}.2:Verify",
+                  description=VERIFY_DESCRIPTION(fix_task_id))  # standard only
+  fc = TaskCreate(subject="{fix_task_id}.3:Commit",
+                  description="Commit {fix_task_id} changes.")
 
   # Set dependencies: fix task depends on current task's commit
   # After fix completes, add a re-verify of original task
@@ -663,11 +599,14 @@ function adapt(task_id, verify_result):
 ### 1c. :Commit — Per-Task Commit
 
 ```
+# task_action comes from TaskGet(task.id).subject (e.g., "T1.3:Commit" → parent "T1.1:Worker — Project init")
+# Or parse from the Worker TaskCreate subject which includes the action text.
+
 Agent(
   subagent_type="git-master",
   description="Commit: {task_id}",
   prompt="""
-    Commit changes for task {task_id}: {task_spec.action}
+    Commit changes for task {task_id}: {task_action from TaskCreate subject}
     Files modified: {from worker result or git status}
     Spec: {spec_path}
   """
@@ -876,6 +815,16 @@ H-ITEMS (require human verification)
   Check: {scenario.verify.ask}
 
 {IF no H-items: "None"}
+
+───────────────────────────────────────────────────
+POST-WORK (human actions after completion)
+───────────────────────────────────────────────────
+{post_work = spec.external_dependencies.post_work ?? []}
+{FOR EACH item in post_work:}
+- {item.action}
+  {IF item.command:} Run: `{item.command}`
+
+{IF no post_work: "None"}
 ═══════════════════════════════════════════════════
 """)
 
@@ -897,26 +846,11 @@ TaskUpdate(taskId=rp, status="completed")
 
 ### Worker Context Instructions
 
-Every worker prompt includes instructions to update context files:
+Worker descriptions (WORKER_DESCRIPTION / VERIFY_DESCRIPTION) include context file
+read and update instructions. Workers self-read `{CONTEXT_DIR}/learnings.md` and
+`{CONTEXT_DIR}/issues.md` directly, and append their findings after completing work.
 
-```
-## CONTEXT FILE UPDATE
-After completing your work, update the shared context files by appending:
-
-1. {CONTEXT_DIR}/learnings.md
-   Format:
-   ## {task_id}
-   - learning 1
-   - learning 2
-
-2. {CONTEXT_DIR}/issues.md
-   Format:
-   ## {task_id}
-   - issue 1
-   - issue 2
-
-Only append with ## {task_id} header — do NOT overwrite existing content.
-```
+The orchestrator does NOT read these files — only workers do.
 
 ### Orchestrator Audit Log
 
@@ -941,8 +875,8 @@ Details: {verify result summary}
 2. **Always use dev-cli** — `spec plan`, `spec task`, `spec merge`, `spec check`
 3. **Two turns for task setup** — Turn 1: all TaskCreate, Turn 2: all TaskUpdate
 4. **Dual tracking** — both spec.json (via `spec task`) and TaskList (via TaskUpdate)
-5. **Workers write context** — orchestrator only writes audit.md
-6. **Use `--get` for task details** — `dev-cli spec task <id> --get` instead of reading full spec.json. `SessionStart(compact)` hook handles compaction recovery automatically.
+5. **Workers self-read everything** — Workers use `dev-cli spec task --get` and Read context files themselves. Orchestrator does NOT read spec.json or context files during dispatch. Orchestrator only writes audit.md.
+6. **Description = recipe** — TaskCreate description contains the full self-read recipe (CLI commands, context paths, output format). At dispatch time, orchestrator just passes `TaskGet(id).description` as the Agent prompt.
 7. **Per-task commit** — every task gets its own commit via git-master
 8. **Verify is standard-only** — quick mode skips per-task verification
 9. **Adaptation updates spec.json** — new tasks go through `spec merge`, then re-plan
@@ -957,7 +891,8 @@ Details: {verify result summary}
 - [ ] Context directory initialized (learnings.md, issues.md, audit.md)
 - [ ] Pre-work status logged explicitly (none/pass/fail)
 - [ ] All TaskCreate in single turn, all TaskUpdate in single turn
-- [ ] Task details fetched via `spec task --get` (not full spec.json read)
+- [ ] Worker descriptions use self-read pattern (WORKER_DESCRIPTION / VERIFY_DESCRIPTION)
+- [ ] Orchestrator does NOT Read spec.json or context files during dispatch
 - [ ] All spec tasks have `status: "done"` (via `dev-cli spec task`)
 - [ ] `dev-cli spec check` passes at end
 - [ ] Residual commit handled
