@@ -1,7 +1,7 @@
 ---
 name: dev-scan
 description: Collect diverse opinions on technical topics from developer communities. Use for "developer reactions", "community opinions" requests. Aggregates Reddit, HN, Dev.to, Lobsters, ProductHunt, etc.
-version: 1.5.0
+version: 2.0.0
 ---
 
 # Dev Opinions Scan
@@ -21,10 +21,10 @@ Quickly understand **diverse perspectives** on technical topics:
 | Platform | Method |
 |----------|--------|
 | Reddit | Vendored reddit-search.py (`python3`) — public JSON API, no key needed |
-| X (Twitter) | Vendored bird-search.mjs (`node`) — cookie auth |
+| X (Twitter) | Vendored x-search.mjs (`chromux`) — real Chrome with existing login, no API keys |
 | Hacker News | Vendored hn-search.py (`python3`) — Algolia API, no key needed |
-| Dev.to | Vendored ddgs-search.sh → enrich-browser.py (`agent-browser`) — DuckDuckGo search + headless browser enrichment |
-| Lobsters | Vendored ddgs-search.sh → enrich-browser.py (`agent-browser`) — DuckDuckGo search + headless browser enrichment |
+| Dev.to | Vendored web-search.mjs (`chromux`) — Google search + content enrichment via real Chrome |
+| Lobsters | Vendored web-search.mjs (`chromux`) — Google search + content enrichment via real Chrome |
 | ProductHunt | Vendored ph-search.py (`python3`) — GraphQL API, requires `PRODUCT_HUNT_TOKEN` env var |
 
 ## Execution
@@ -34,10 +34,9 @@ Quickly understand **diverse perspectives** on technical topics:
 Run in parallel:
 ```bash
 python3 skills/dev-scan/vendor/reddit-search/reddit-search.py --check
-node skills/dev-scan/vendor/bird-search/bird-search.mjs --check
+node skills/dev-scan/vendor/chromux-search/x-search.mjs --check
 python3 skills/dev-scan/vendor/hn-search/hn-search.py --check
-skills/dev-scan/vendor/ddgs-search/ddgs-search.sh --check
-python3 skills/dev-scan/vendor/browser-enrich/enrich-browser.py --check
+node skills/dev-scan/vendor/chromux-search/web-search.mjs --check
 python3 skills/dev-scan/vendor/ph-search/ph-search.py --check
 ```
 
@@ -45,15 +44,12 @@ python3 skills/dev-scan/vendor/ph-search/ph-search.py --check
 |--------|--------|
 | `reddit-search --check` → `available: true` | Reddit source available |
 | `reddit-search --check` → `available: false` | Skip Reddit, warn user |
-| `bird-search --check` → `authenticated: true` | X/Twitter source available |
-| `bird-search --check` → `authenticated: false` | Skip X/Twitter, warn: "브라우저에서 X 로그인 필요" |
-| `node` not found or script error | Skip X/Twitter |
+| `x-search --check` → `authenticated: true` | X/Twitter source available |
+| `x-search --check` → `authenticated: false` | Skip X/Twitter, warn: "chromux default 프로필에서 X.com 로그인 필요" |
+| `web-search --check` → `available: true` | Dev.to/Lobsters source available (Google search + enrichment via chromux) |
+| `web-search --check` → `available: false` | Fall back to WebSearch for Dev.to/Lobsters |
 | `hn-search --check` → `available: true` | Hacker News source available |
 | `hn-search --check` → `available: false` | Fall back to WebSearch for HN |
-| `ddgs-search --check` → `available: true` | Dev.to/Lobsters search available |
-| `ddgs-search --check` → `available: false` | Fall back to WebSearch for Dev.to/Lobsters |
-| `enrich-browser --check` → `available: true` | Browser enrichment available (full content + comments) |
-| `enrich-browser --check` → `available: false` | Skip enrichment, use ddgs snippets only |
 | `ph-search --check` → `available: true` | ProductHunt source available |
 | `ph-search --check` → `available: false` | Skip ProductHunt (token not set or invalid) |
 
@@ -123,14 +119,15 @@ python3 skills/dev-scan/vendor/reddit-search/reddit-search.py "{Q_REDDIT}" --cou
 - No API key needed. Rate limit ~30 req/min.
 - Options: `--time` (hour/day/week/month/year/all), `--subreddits` (comma-separated), `--json`.
 
-**X / Twitter** (Vendored bird-search.mjs):
+**X / Twitter** (Vendored x-search.mjs — chromux):
 ```bash
-node skills/dev-scan/vendor/bird-search/bird-search.mjs "{Q_TWITTER}" --count 20 --json
+node skills/dev-scan/vendor/chromux-search/x-search.mjs "{Q_TWITTER}" --count 20 --json
 ```
-- Read-only search. Returns recent tweets with engagement metrics.
-- Cookie-based auth (Safari/Chrome session) — no API key needed.
-- `--json` output includes: text, author, permanent_url, likeCount, retweetCount.
+- Uses real Chrome via chromux with existing X.com login — no API keys, no cookie extraction.
+- Auto-scrolls for more results if first page has fewer than requested count.
+- `--json` output includes: text, author, handle, url, likes, retweets, replies.
 - Focus on: developer hot takes, viral threads, debate threads.
+- Requires X.com login in chromux default profile (one-time setup).
 
 **Hacker News** (Vendored hn-search.py — Algolia API):
 ```bash
@@ -150,25 +147,18 @@ python3 skills/dev-scan/vendor/ph-search/ph-search.py "{Q_PH}" --count 10 --comm
 - Options: `--time` (day/week/month/year/all), `--comments N`, `--json`.
 - **Skip if**: `Q_PH` not set (topic not product-related) or `--check` returned `available: false`.
 
-**Dev.to / Lobsters** (ddgs-search → browser enrichment):
-
-When `enrich-browser` is available, pipe ddgs JSON through it for full content + comments:
+**Dev.to / Lobsters** (web-search.mjs — Google search + enrichment via chromux):
 ```bash
-skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{Q_DEVTO}" --site dev.to --time m --count 10 --json | python3 skills/dev-scan/vendor/browser-enrich/enrich-browser.py --stdin --comments 5 --body 500 --concurrency 5
-skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{Q_LOBSTERS}" --site lobste.rs --time m --count 10 --json | python3 skills/dev-scan/vendor/browser-enrich/enrich-browser.py --stdin --comments 5 --concurrency 5
+node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_DEVTO}" --site dev.to --time m --count 10 --comments 5 --body 500
+node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_LOBSTERS}" --site lobste.rs --time m --count 10 --comments 5
 ```
-- Uses `agent-browser --session` for parallel headless browser extraction.
-- Each URL opens in an isolated browser session → pages load in parallel.
-- Extracts: article body, author, tags, and **top comments with author**.
-- Adds ~5-8s total for 10 URLs at concurrency=5.
+- Uses Google search with `site:` filter via real Chrome (chromux).
+- Automatically enriches each result: visits page → extracts article body, author, tags, **top comments**.
+- Single script replaces ddgs-search + enrich-browser pipeline.
+- `--no-enrich` option for Google snippets only (faster, no page visits).
+- `--json` for raw JSON output.
 
-When `enrich-browser` is NOT available, fall back to ddgs snippets only:
-```bash
-skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{Q_DEVTO}" --site dev.to --time m --count 10
-skills/dev-scan/vendor/ddgs-search/ddgs-search.sh "{Q_LOBSTERS}" --site lobste.rs --time m --count 10
-```
-
-If ddgs-search also unavailable, fall back to WebSearch:
+If chromux unavailable, fall back to WebSearch:
   `WebSearch: "{Q_DEVTO} site:dev.to"` etc.
 
 **CRITICAL**: Run all **available** searches in **one message** in parallel.
@@ -263,11 +253,10 @@ Find unique or deep insights:
 |------|------|
 | No search results | Skip that platform, focus on others |
 | reddit-search failure / rate limit | Skip Reddit, proceed with other sources |
-| bird-search auth failure | Skip X/Twitter (user needs active browser session) |
-| bird-search script error | Skip X/Twitter, proceed with other sources |
+| x-search not logged in | Skip X/Twitter, warn: "chromux default 프로필에서 X.com 로그인 필요" |
+| x-search error | Skip X/Twitter, proceed with other sources |
 | hn-search failure | Skip HN, proceed with other sources |
 | ph-search failure / token missing | Skip ProductHunt, proceed with other sources |
-| ddgs-search failure | Fall back to WebSearch with `site:` filter |
-| enrich-browser failure / agent-browser missing | Use ddgs snippets only (no article body or comments) |
-| enrich-browser timeout on specific URL | Skip that URL, include remaining results |
+| web-search / chromux unavailable | Fall back to WebSearch with `site:` filter |
+| web-search enrichment timeout on URL | Skip that URL, include remaining results |
 | Topic too new | Note insufficient results, suggest related keywords |
