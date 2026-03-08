@@ -531,47 +531,38 @@
       }
     },
     "externalDependencies": {
+      "description": "Human-only tasks that the agent cannot perform (infra setup, API keys, deployment, etc.). If automatable, put it in the Task DAG instead.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "pre_work": {
+          "description": "Human actions that must be completed BEFORE execution starts.",
           "type": "array",
           "items": {
             "type": "object",
             "required": ["dependency", "action"],
             "additionalProperties": false,
             "properties": {
+              "id": { "type": "string", "description": "Optional identifier (e.g., PW-1)" },
               "dependency": { "type": "string" },
-              "action": { "type": "string" },
-              "command": { "type": "string" },
-              "blocking": { "type": "boolean" }
-            }
-          }
-        },
-        "during": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["dependency", "strategy"],
-            "additionalProperties": false,
-            "properties": {
-              "dependency": { "type": "string" },
-              "strategy": { "type": "string" },
-              "rationale": { "type": "string" }
+              "action": { "type": "string", "description": "What the human must do" },
+              "command": { "type": "string", "description": "Hint command for the human (not agent-executed)" },
+              "blocking": { "type": "boolean", "description": "If true, execution halts until human confirms completion" }
             }
           }
         },
         "post_work": {
+          "description": "Human actions to perform AFTER execution completes.",
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["task", "dependency", "action"],
+            "required": ["dependency", "action"],
             "additionalProperties": false,
             "properties": {
-              "task": { "type": "string" },
+              "id": { "type": "string", "description": "Optional identifier (e.g., POW-1)" },
               "dependency": { "type": "string" },
-              "action": { "type": "string" },
-              "command": { "type": "string" }
+              "action": { "type": "string", "description": "What the human must do" },
+              "command": { "type": "string", "description": "Hint command for the human (not agent-executed)" }
             }
           }
         }

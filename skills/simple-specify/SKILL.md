@@ -56,10 +56,9 @@ Generate a schema-validated spec.json v4 with unified state tracking.
   - `human_items[]` — H-items: {id, criterion, reason, review_material?}
   - `sandbox_items[]` — S-items: {id, scenario, agent, method}
   - `gaps[]` — string array of verification gaps
-- `external_dependencies` — external blockers and actions:
-  - `pre_work[]` — {dependency, action, command?, blocking?}
-  - `during[]` — {dependency, strategy, rationale?}
-  - `post_work[]` — {task, dependency, action, command?}
+- `external_dependencies` — human-only tasks (agent cannot do these; if automatable, put in Task DAG):
+  - `pre_work[]` — {id?, dependency, action, command?, blocking?} — human actions before execution
+  - `post_work[]` — {id?, dependency, action, command?} — human actions after execution
 
 ## Flow
 

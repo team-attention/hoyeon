@@ -32,6 +32,26 @@ ELSE:
   spec_path = most recent .dev/specs/*/spec.json
 ```
 
+### Step 1.5: Confirm Pre-work (if any)
+
+```
+spec = Read(spec_path) → parse JSON
+pre_work = spec.external_dependencies?.pre_work ?? []
+IF len(pre_work) > 0:
+  print("Pre-work (human actions required before execution):")
+  FOR EACH item in pre_work:
+    print("  - {item.action} (blocking={item.blocking ?? false})")
+  FOR EACH item in pre_work WHERE item.blocking == true:
+    AskUserQuestion(
+      question: "Have you completed this? → {item.action}",
+      options: [
+        { label: "Done" },
+        { label: "Abort", description: "I need to do this first" }
+      ]
+    )
+    IF answer == "Abort": HALT
+```
+
 ### Step 2: Get Plan from dev-cli
 
 Get the DAG-based execution plan with full task details:
@@ -167,6 +187,13 @@ TASKS:
   ...
 
 STATE: ✅ all tasks done | ⚠️ N tasks pending
+
+{post_work = spec.external_dependencies?.post_work ?? []}
+{IF len(post_work) > 0:}
+POST-WORK (human actions after completion):
+  {FOR EACH item in post_work:}
+  - {item.action}
+    {IF item.command:} Run: `{item.command}`
 ═══════════════════════════════════════════════════
 ```
 

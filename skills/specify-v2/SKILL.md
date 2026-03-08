@@ -491,20 +491,23 @@ dev-cli spec merge .dev/specs/{name}/spec.json --json '{
 #   H-items = scenarios where verified_by is "human"
 #   S-items = scenarios where execution_env is "sandbox"
 
-# external_dependencies — from exploration findings + verification-planner output
-# Populate services from Agent Findings > External Dependencies.
-# Populate pre_work (blocking=true) and post_work from verification-planner External Dependencies section.
+# external_dependencies — HUMAN-ONLY tasks from exploration + verification-planner output
 # If no external dependencies exist, omit this merge entirely.
+#
+# IMPORTANT: pre_work and post_work are HUMAN-ONLY tasks.
+# These are things the agent CANNOT do — infrastructure setup, API key provisioning,
+# environment configuration, deployment triggers, manual verification, etc.
+# If a task CAN be automated by the agent, put it in the Task DAG instead.
+#
+# pre_work: things the human must complete BEFORE /execute starts
+# post_work: things the human must do AFTER execution completes
 dev-cli spec merge .dev/specs/{name}/spec.json --json '{
   "external_dependencies": {
-    "services": [
-      {"name": "...", "type": "database|api|queue|...", "setup": "...", "env_vars": ["..."]}
-    ],
     "pre_work": [
-      {"id": "PW-1", "task": "...", "action": "...", "command": "...", "blocking": true}
+      {"id": "PW-1", "dependency": "PostgreSQL", "action": "Create DB instance and set DATABASE_URL", "blocking": true}
     ],
     "post_work": [
-      {"id": "POW-1", "task": "...", "action": "...", "command": "..."}
+      {"id": "POW-1", "dependency": "Staging env", "action": "Deploy to staging and verify"}
     ]
   }
 }'
@@ -801,13 +804,13 @@ Sandbox (S): {count} (or "none" if no S-items)
 Gaps: {gap summary or "none"}
 ────────────────────────────────────────
 
-Pre-work (must complete before /simple-execute)
+Pre-work (human actions — must complete before /execute)
 ────────────────────────────────────────
-{If blocking dependencies: list with action + command}
+{If pre_work items: list with action, mark [BLOCKING] if blocking=true}
 {If none: "(none)"}
 ────────────────────────────────────────
 
-Post-work (user actions after completion)
+Post-work (human actions after completion)
 ────────────────────────────────────────
 {If post-work items: list with action}
 {If none: "(none)"}
