@@ -1,7 +1,7 @@
 #!/bin/bash
 # execute-compact-hook.sh - SessionStart[compact] hook
 #
-# Purpose: After compaction, re-inject execute-v2 context so the orchestrator
+# Purpose: After compaction, re-inject execute context so the orchestrator
 #          knows where it left off without relying on memory.
 # Activation: SessionStart with matcher "compact"
 #
@@ -43,7 +43,7 @@ TASK_LIST=$(jq -r '.tasks[] | "  \(.id): \(.action) [\(.status)]"' "$SPEC_PATH")
 # Output context for Claude (stdout is injected into conversation)
 cat <<EOF
 
-[execute-v2 recovery] Compaction detected — restoring orchestrator context.
+[execute recovery] Compaction detected — restoring orchestrator context.
 
 spec_path: $SPEC_PATH
 goal: $SPEC_GOAL
@@ -54,7 +54,7 @@ Task status:
 $TASK_LIST
 
 Use \`dev-cli spec task <id> --get $SPEC_PATH\` to fetch individual task details.
-Continue the execute-v2 loop from where you left off.
+Continue the execute loop from where you left off.
 EOF
 
 exit 0

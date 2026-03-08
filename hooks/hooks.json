@@ -6,11 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/dev-execute-init-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/dev-specify-init-hook.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/skill-session-init.sh"
           }
         ]
       },
@@ -19,11 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/dev-plan-guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/dev-orchestrator-guard.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/skill-session-guard.sh"
           },
           {
             "type": "command",
@@ -53,11 +45,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/dev-execute-stop-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/dev-specify-stop-hook.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/skill-session-stop.sh"
           },
           {
             "type": "command",
@@ -77,6 +65,10 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/rph-cleanup.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/skill-session-cleanup.sh"
           }
         ]
       }
@@ -91,7 +83,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/dev-init-hook.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/skill-session-init.sh"
           },
           {
             "type": "command",

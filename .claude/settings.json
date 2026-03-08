@@ -38,6 +38,10 @@
           {
             "type": "command",
             "command": ".claude/scripts/rubric-loop-cleanup.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/skill-session-cleanup.sh"
           }
         ]
       }
@@ -56,7 +60,7 @@
           },
           {
             "type": "command",
-            "command": ".claude/scripts/dev-init-hook.sh"
+            "command": ".claude/scripts/skill-session-init.sh"
           },
           {
             "type": "command",
@@ -79,11 +83,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/scripts/dev-execute-init-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/dev-specify-init-hook.sh"
+            "command": ".claude/scripts/skill-session-init.sh"
           },
           {
             "type": "command",
@@ -96,11 +96,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/scripts/dev-plan-guard.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/dev-orchestrator-guard.sh"
+            "command": ".claude/scripts/skill-session-guard.sh"
           },
           {
             "type": "command",
@@ -130,11 +126,7 @@
           },
           {
             "type": "command",
-            "command": ".claude/scripts/dev-execute-stop-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/dev-specify-stop-hook.sh"
+            "command": ".claude/scripts/skill-session-stop.sh"
           },
           {
             "type": "command",

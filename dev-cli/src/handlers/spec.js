@@ -16,6 +16,7 @@ Usage:
   dev-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
   dev-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
   dev-cli spec task <task-id> --get <path>                               Get task details as JSON
+  dev-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
   dev-cli spec check <path>                      Check internal consistency
   dev-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
 
@@ -29,6 +30,7 @@ Examples:
   dev-cli spec plan ./spec.json
   dev-cli spec task T1 --status done --summary "implemented" ./spec.json
   dev-cli spec task T1 --get ./spec.json
+  dev-cli spec status ./spec.json
   dev-cli spec check ./spec.json
   dev-cli spec amend --reason fb-001 --spec ./spec.json
 `;
@@ -524,13 +526,38 @@ function formatJson(spec, rounds, criticalPath) {
   }, null, 2);
 }
 
+function formatSlim(spec, rounds, criticalPath) {
+  return JSON.stringify({
+    name: spec.meta.name,
+    goal: spec.meta.goal,
+    total_tasks: spec.tasks.length,
+    total_rounds: rounds.length,
+    max_parallel: Math.max(...rounds.map(r => r.length)),
+    critical_path: criticalPath,
+    rounds: rounds.map((round, i) => ({
+      round: i + 1,
+      parallel: round.length > 1,
+      tasks: round.map(id => {
+        const t = (spec.tasks || []).find(task => task.id === id) || {};
+        return {
+          id: t.id,
+          action: t.action,
+          type: t.type,
+          status: t.status || 'pending',
+          depends_on: t.depends_on || [],
+        };
+      }),
+    })),
+  }, null, 2);
+}
+
 async function handlePlan(args) {
   const parsed = parseArgs(args);
   const filePath = parsed._[0] || parsed.spec;
 
   if (!filePath) {
     process.stderr.write('Error: missing <path> argument\n');
-    process.stderr.write('Usage: dev-cli spec plan <path> [--format text|mermaid|json]\n');
+    process.stderr.write('Usage: dev-cli spec plan <path> [--format text|mermaid|json|slim]\n');
     process.exit(1);
   }
 
@@ -550,6 +577,8 @@ async function handlePlan(args) {
     output = formatMermaid(spec, rounds, criticalPath);
   } else if (format === 'json') {
     output = formatJson(spec, rounds, criticalPath);
+  } else if (format === 'slim') {
+    output = formatSlim(spec, rounds, criticalPath);
   } else {
     output = formatText(spec, rounds, criticalPath);
   }
@@ -771,6 +800,37 @@ async function handleTask(args) {
   process.exit(0);
 }
 
+async function handleStatus(args) {
+  const filePath = args[0];
+
+  if (!filePath) {
+    process.stderr.write('Error: missing <path> argument\n');
+    process.stderr.write('Usage: dev-cli spec status <path>\n');
+    process.exit(1);
+  }
+
+  const specData = loadSpec(resolve(filePath));
+
+  const tasks = specData.tasks || [];
+  const done = tasks.filter(t => t.status === 'done');
+  const inProgress = tasks.filter(t => t.status === 'in_progress');
+  const pending = tasks.filter(t => t.status === 'pending' || !t.status);
+  const remaining = tasks.filter(t => t.status !== 'done');
+
+  const result = {
+    name: specData.meta?.name || 'unknown',
+    done: done.length,
+    in_progress: inProgress.length,
+    pending: pending.length,
+    total: tasks.length,
+    complete: remaining.length === 0,
+    remaining: remaining.map(t => ({ id: t.id, action: t.action, status: t.status || 'pending' })),
+  };
+
+  process.stdout.write(JSON.stringify(result) + '\n');
+  process.exit(remaining.length === 0 ? 0 : 1);
+}
+
 async function handleCheck(args) {
   const filePath = args[0];
 
@@ -870,6 +930,8 @@ export default async function spec(args) {
     await handlePlan(args.slice(1));
   } else if (subcommand === 'task') {
     await handleTask(args.slice(1));
+  } else if (subcommand === 'status') {
+    await handleStatus(args.slice(1));
   } else if (subcommand === 'check') {
     await handleCheck(args.slice(1));
   } else if (subcommand === 'amend') {
