@@ -42,7 +42,7 @@ node ${baseDir}/vendor/web-search.mjs "<query>" [options]
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--site <domain>` | Add `site:` filter (e.g. `dev.to`, `stackoverflow.com`) | none |
-| `--time <d\|w\|m\|y>` | Time filter: day, week, month, year | `m` (month) |
+| `--time <d\|w\|m\|y>` | Time filter: day, week, month, year | none (all time) |
 | `--count <N>` | Max results | `10` |
 | `--no-enrich` | Skip page visits, return Google snippets only (faster) | enrichment on |
 | `--comments <N>` | Max comments to extract per page | `5` |

@@ -167,7 +167,7 @@ if (args.includes('--check')) {
   process.exit(0);
 }
 
-let query = '', site = '', count = 10, time = 'm', enrich = true;
+let query = '', site = '', count = 10, time = '', enrich = true;
 let maxComments = 5, bodyLen = 500, jsonMode = false;
 
 for (let i = 0; i < args.length; i++) {
