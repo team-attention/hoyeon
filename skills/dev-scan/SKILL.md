@@ -31,13 +31,24 @@ Quickly understand **diverse perspectives** on technical topics:
 
 ### Step 0: Dependency Check
 
-Run in parallel:
+Run all checks in a **single Bash call** using shell backgrounding (`&` + `wait`).
+Claude Code executes Bash calls sequentially — multiple Bash tool calls do NOT run in parallel.
+The only way to parallelize is within one shell invocation.
+
 ```bash
-python3 skills/dev-scan/vendor/reddit-search/reddit-search.py --check
-node skills/dev-scan/vendor/chromux-search/x-search.mjs --check
-python3 skills/dev-scan/vendor/hn-search/hn-search.py --check
-node skills/dev-scan/vendor/chromux-search/web-search.mjs --check
-python3 skills/dev-scan/vendor/ph-search/ph-search.py --check
+mkdir -p /tmp/dev-scan-$$
+python3 skills/dev-scan/vendor/reddit-search/reddit-search.py --check > /tmp/dev-scan-$$/reddit.txt 2>&1 &
+node skills/dev-scan/vendor/chromux-search/x-search.mjs --check > /tmp/dev-scan-$$/x.txt 2>&1 &
+python3 skills/dev-scan/vendor/hn-search/hn-search.py --check > /tmp/dev-scan-$$/hn.txt 2>&1 &
+node skills/dev-scan/vendor/chromux-search/web-search.mjs --check > /tmp/dev-scan-$$/web.txt 2>&1 &
+python3 skills/dev-scan/vendor/ph-search/ph-search.py --check > /tmp/dev-scan-$$/ph.txt 2>&1 &
+wait
+echo "=== Reddit ===" && cat /tmp/dev-scan-$$/reddit.txt
+echo "=== X/Twitter ===" && cat /tmp/dev-scan-$$/x.txt
+echo "=== HN ===" && cat /tmp/dev-scan-$$/hn.txt
+echo "=== Web (chromux) ===" && cat /tmp/dev-scan-$$/web.txt
+echo "=== ProductHunt ===" && cat /tmp/dev-scan-$$/ph.txt
+rm -rf /tmp/dev-scan-$$
 ```
 
 | Result | Action |
@@ -107,61 +118,56 @@ Each platform's search engine works differently. Generate one optimized query pe
 | `Q_LOBSTERS` | `claude code codex` |
 | `Q_PH` | `claude code codex` |
 
-### Step 2: Parallel Search (Single Message, 6 Sources)
+### Step 2: Search (Two Bash Calls)
 
-**Reddit** (Vendored reddit-search.py — public JSON API):
+chromux scripts share one Chrome instance — running them simultaneously causes tab conflicts.
+Split into two phases: API-based sources in parallel, then chromux sources sequentially.
+
+**Bash call 1 — API sources (parallel):**
 ```bash
-python3 skills/dev-scan/vendor/reddit-search/reddit-search.py "{Q_REDDIT}" --count 10 --comments 5 --time month
-```
-- Searches global Reddit + auto-discovered subreddits.
-- Returns threads with score, num_comments, upvote_ratio.
-- **Includes top comments** with author and score — use these as primary opinion sources.
-- No API key needed. Rate limit ~30 req/min.
-- Options: `--time` (hour/day/week/month/year/all), `--subreddits` (comma-separated), `--json`.
+D=/tmp/dev-scan-results-$$
+mkdir -p "$D"
 
-**X / Twitter** (Vendored x-search.mjs — chromux):
+python3 skills/dev-scan/vendor/reddit-search/reddit-search.py "{Q_REDDIT}" --count 10 --comments 5 --time month --json > "$D/reddit.json" 2>"$D/reddit.err" &
+python3 skills/dev-scan/vendor/hn-search/hn-search.py "{Q_HN}" --count 10 --comments 5 --time month --json > "$D/hn.json" 2>"$D/hn.err" &
+python3 skills/dev-scan/vendor/ph-search/ph-search.py "{Q_PH}" --count 10 --comments 3 --time month --json > "$D/ph.json" 2>"$D/ph.err" &
+wait
+
+echo "=== Reddit ===" && cat "$D/reddit.json"
+echo "=== HN ===" && cat "$D/hn.json"
+echo "=== ProductHunt ===" && cat "$D/ph.json"
+```
+
+**Bash call 2 — chromux sources (sequential, same Bash call):**
 ```bash
-node skills/dev-scan/vendor/chromux-search/x-search.mjs "{Q_TWITTER}" --count 20 --json
+D=/tmp/dev-scan-results-$$
+
+node skills/dev-scan/vendor/chromux-search/x-search.mjs "{Q_TWITTER}" --count 20 --json > "$D/x.json" 2>"$D/x.err"
+echo "=== X/Twitter ===" && cat "$D/x.json"
+
+node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_DEVTO}" --site dev.to --time m --count 10 --comments 5 --body 500 --json > "$D/devto.json" 2>"$D/devto.err"
+echo "=== Dev.to ===" && cat "$D/devto.json"
+
+node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_LOBSTERS}" --site lobste.rs --time m --count 10 --comments 5 --json > "$D/lobsters.json" 2>"$D/lobsters.err"
+echo "=== Lobsters ===" && cat "$D/lobsters.json"
+
+rm -rf "$D"
 ```
-- Uses real Chrome via chromux with existing X.com login — no API keys, no cookie extraction.
-- Auto-scrolls for more results if first page has fewer than requested count.
-- `--json` output includes: text, author, handle, url, likes, retweets, replies.
-- Focus on: developer hot takes, viral threads, debate threads.
-- Requires X.com login in chromux default profile (one-time setup).
 
-**Hacker News** (Vendored hn-search.py — Algolia API):
-```bash
-python3 skills/dev-scan/vendor/hn-search/hn-search.py "{Q_HN}" --count 10 --comments 5 --time month
-```
-- Searches HN stories via Algolia (fast, structured, free).
-- Returns stories with points, num_comments, and **top comments with full text**.
-- No API key needed. Options: `--time` (day/week/month/year/all), `--json`.
+- Omit any source that failed `--check` in Step 0 or is not relevant (e.g. skip PH line if `Q_PH` not set).
+- If chromux unavailable, replace Dev.to/Lobsters/X lines with `WebSearch` fallback.
+- Run Bash call 1 and 2 in the **same message** (Claude Code sends them sequentially, but this saves a round-trip vs separate messages).
 
-**ProductHunt** (Vendored ph-search.py — GraphQL API) — **only if `Q_PH` was generated in Step 1**:
-```bash
-python3 skills/dev-scan/vendor/ph-search/ph-search.py "{Q_PH}" --count 10 --comments 3 --time month
-```
-- Searches topics by keyword → collects posts per topic → deduplicates → sorts by votes.
-- Returns products with votesCount, commentsCount, tagline, and **top comments**.
-- Requires `PRODUCT_HUNT_TOKEN` env var (Bearer token for GraphQL API).
-- Options: `--time` (day/week/month/year/all), `--comments N`, `--json`.
-- **Skip if**: `Q_PH` not set (topic not product-related) or `--check` returned `available: false`.
+#### Source Notes
 
-**Dev.to / Lobsters** (web-search.mjs — Google search + enrichment via chromux):
-```bash
-node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_DEVTO}" --site dev.to --time m --count 10 --comments 5 --body 500
-node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_LOBSTERS}" --site lobste.rs --time m --count 10 --comments 5
-```
-- Uses Google search with `site:` filter via real Chrome (chromux).
-- Automatically enriches each result: visits page → extracts article body, author, tags, **top comments**.
-- Single script replaces ddgs-search + enrich-browser pipeline.
-- `--no-enrich` option for Google snippets only (faster, no page visits).
-- `--json` for raw JSON output.
-
-If chromux unavailable, fall back to WebSearch:
-  `WebSearch: "{Q_DEVTO} site:dev.to"` etc.
-
-**CRITICAL**: Run all **available** searches in **one message** in parallel.
+| Source | Tool | Notes |
+|--------|------|-------|
+| Reddit | reddit-search.py | Public JSON API, no key. Includes top comments with author/score. `--subreddits` for targeted search. |
+| X/Twitter | x-search.mjs | chromux + existing X.com login. Auto-scrolls. Output: text, author, likes, RTs. |
+| HN | hn-search.py | Algolia API, no key. Stories with points and top comments. |
+| Dev.to | web-search.mjs | Google `site:dev.to` via chromux. Enriches: body, author, tags, comments. |
+| Lobsters | web-search.mjs | Google `site:lobste.rs` via chromux. Enriches: body, author, tags, comments. |
+| ProductHunt | ph-search.py | GraphQL API, needs `PRODUCT_HUNT_TOKEN`. Only for product/tool queries. |
 
 ### Step 3: Synthesize & Present
 
