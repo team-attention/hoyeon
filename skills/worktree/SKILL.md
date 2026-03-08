@@ -140,13 +140,15 @@ The CLI handles:
    {
      "name": "feature-name",
      "branch": "feat/feature-name",
+     "spec": ".dev/specs/feature-name/spec.json",
      "plan": ".dev/specs/feature-name/PLAN.md",
      "created_at": "2026-02-03T...",
      "source": "main"
    }
    ```
    This file is the **source of truth** for worktree identity.
-   The `plan` field is used by `hy status` to find progress data.
+   - `spec` field: path to spec.json (preferred progress source — tasks with `status` field)
+   - `plan` field: path to PLAN.md (fallback progress source — checkbox counting)
 
 **Example**:
 ```
@@ -185,12 +187,31 @@ hy status
 The CLI handles:
 1. **Enumerate worktrees** via `git worktree list --porcelain`
 2. **For each worktree**, collect:
-   - **PLAN progress**: Read plan path from `.dev/local.json`, count TODOs
+   - **Progress** (priority order):
+     1. **spec.json** — if `.dev/specs/{name}/spec.json` exists, count `tasks[].status == "done"` / total tasks
+     2. **PLAN.md** — fallback: read plan path from `.dev/local.json`, count checked TODOs (`- [x]`) vs total (`- [ ]` + `- [x]`)
    - **Changes count**: `git status --porcelain`
    - **Active sessions**: From `.dev/state.local.json` (24h TTL filtered)
    - **Behind main**: `git rev-list --count HEAD..main`
    - **PR status**: via `gh pr list` (optional)
 3. **Output aligned table** with progress bars
+
+**Progress source detection** (pseudo-code):
+```
+spec_path = worktree_root + "/.dev/specs/" + name + "/spec.json"
+if spec_path exists:
+  tasks = JSON.parse(spec_path).tasks
+  done  = tasks.filter(t => t.status == "done").length
+  total = tasks.length
+  progress = done + "/" + total   # e.g. "3/5"
+elif plan_path exists (from .dev/local.json):
+  lines  = readlines(plan_path)
+  done   = lines matching /- \[x\]/i count
+  total  = lines matching /- \[[x ]\]/i count
+  progress = done + "/" + total
+else:
+  progress = "N/A"
+```
 
 See `${baseDir}/references/status-table.md` for table format details.
 
@@ -292,8 +313,10 @@ Output:
 
 2. **Worktree metadata**: `.dev/local.json` (JSON format, gitignored)
    ```json
-   {"name":"...", "branch":"feat/...", "plan":".dev/specs/.../PLAN.md", "created_at":"...", "source":"main"}
+   {"name":"...", "branch":"feat/...", "spec":".dev/specs/.../spec.json", "plan":".dev/specs/.../PLAN.md", "created_at":"...", "source":"main"}
    ```
+   - `spec` field (optional, preferred): path to spec.json for structured task-based progress
+   - `plan` field (optional, fallback): path to PLAN.md for checkbox-based progress
 
 3. **Session tracking**: `.dev/state.local.json` (sessions field)
    - Recorded via UserPromptSubmit hook

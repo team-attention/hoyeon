@@ -196,8 +196,11 @@ Hooks automate transitions and enforce quality:
 
 | Hook Type | Script | Purpose |
 |-----------|--------|---------|
+| UserPromptSubmit + PreToolUse(Skill) | `skill-session-init.sh` | Initialize session state for specify/execute |
+| PreToolUse(Edit/Write) | `skill-session-guard.sh` | Plan guard (specify) / orchestrator guard (execute) |
+| Stop | `skill-session-stop.sh` | Block exit if execute has incomplete tasks |
+| SessionEnd | `skill-session-cleanup.sh` | Clean up session state files |
 | UserPromptSubmit | `ultrawork-init-hook.sh` | Initialize ultrawork pipeline state |
-| Stop | `dev-specify-stop-hook.sh` | Transition specify → open |
 | PostToolUse | `validate-output.sh` | Validate agent/skill output against `validate_prompt` |
 
 ## Execute Architecture
@@ -205,12 +208,12 @@ Hooks automate transitions and enforce quality:
 The `/execute` skill follows an Orchestrator-Worker pattern:
 
 ```
-Orchestrator (reads PLAN.md)
-  ├── Parse TODOs → Create Tasks with dependencies
+Orchestrator (reads spec.json via dev-cli)
+  ├── Parse tasks → Create Tasks with dependencies
   ├── Parallelize non-blocked Tasks
-  ├── For each TODO:
+  ├── For each task:
   │   ├── Worker agent (implementation)
-  │   ├── Verify (3 checks: functional, static, runtime)
+  │   ├── Verify (acceptance criteria checks)
   │   ├── Context save (learnings, decisions, issues)
   │   └── git-master (atomic commit)
   └── Finalize:

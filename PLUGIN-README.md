@@ -46,11 +46,12 @@ Provides a full **specify → open → execute** pipeline with:
 
 | Event | Scripts | Purpose |
 |-------|---------|---------|
-| PreToolUse(Skill) | dev-execute-init-hook, dev-specify-init-hook | Initialize pipeline state |
-| PreToolUse(Edit/Write) | dev-plan-guard, dev-orchestrator-guard | Prevent unauthorized edits |
+| UserPromptSubmit + PreToolUse(Skill) | skill-session-init | Initialize session state for specify/execute |
+| PreToolUse(Edit/Write) | skill-session-guard | Plan guard (specify) / orchestrator guard (execute) |
 | PostToolUse(Task/Skill) | validate-output | Validate against frontmatter |
-| Stop | ultrawork-stop, dev-execute-stop, dev-specify-stop | Pipeline transitions |
-| UserPromptSubmit | ultrawork-init, dev-init | Initialize sessions |
+| Stop | ultrawork-stop, skill-session-stop | Pipeline transitions |
+| SessionEnd | skill-session-cleanup | Clean up session state files |
+| UserPromptSubmit | ultrawork-init | Initialize ultrawork pipeline |
 
 ## Installation
 

@@ -60,10 +60,12 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 
 | Script | Type | Purpose |
 |--------|------|---------|
+| `skill-session-init.sh` | UserPromptSubmit + PreToolUse[Skill] | Initialize session state for specify/execute skills |
+| `skill-session-guard.sh` | PreToolUse[Edit\|Write] | Plan guard (specify) / orchestrator guard (execute) |
+| `skill-session-stop.sh` | Stop | Block exit if execute has incomplete tasks (circuit breaker: 30 iter) |
+| `skill-session-cleanup.sh` | SessionEnd | Clean up session state files |
 | `ultrawork-init-hook.sh` | UserPromptSubmit | Initialize ultrawork pipeline state when `/ultrawork` is typed |
-| `dev-specify-stop-hook.sh` | Stop | Auto-transition specify → open when plan is approved |
 | `validate-output.sh` | PostToolUse | Validate agent/skill output against `validate_prompt` frontmatter |
-| `dev-execute-init-hook.sh` | PreToolUse | Initialize execution context at `/execute` start |
 
 ### Hook Development Notes
 

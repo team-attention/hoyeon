@@ -34,7 +34,7 @@ Create Draft PR based on Spec document. Following **PR = Single Source of Truth*
 
 ## Prerequisites
 
-1. Spec file exists: `specs/<name>.md`
+1. Spec source exists: `specs/<name>.md` **or** `.dev/specs/<name>/spec.json`
 2. gh CLI authenticated: `gh auth status`
 
 ---
@@ -43,8 +43,28 @@ Create Draft PR based on Spec document. Following **PR = Single Source of Truth*
 
 ### Step 1: Verify Spec Exists
 ```
-Check if specs/<name>.md exists
-If not → Error: "Spec not found. Run '/specify <name>' first."
+1a. Check if specs/<name>.md exists → use as primary source
+1b. If not found, check if .dev/specs/<name>/spec.json exists → use as alternative source
+If neither found → Error: "Spec not found. Run '/specify <name>' or '/simple-specify <name>' first."
+```
+
+**If spec.json found (no specs/<name>.md):**
+Extract PR metadata from spec.json fields:
+- **Title**: `meta.name`
+- **Summary**: `meta.goal`
+- **Tasks**: join `tasks[].action` as a bullet list
+- **Constraints**: join `constraints[].rule` as a bullet list
+
+Construct PR body using these fields in place of the spec markdown content:
+```
+## Summary
+{meta.goal}
+
+## Tasks
+{tasks[].action — one bullet per item}
+
+## Constraints
+{constraints[].rule — one bullet per item}
 ```
 
 ### Step 2: Check Existing PR
@@ -60,6 +80,7 @@ Create feat/<name> branch from main → Push to remote
 
 ### Step 4: Create Draft PR
 Reference `pr-body-template.md` to create Draft PR.
+If source is spec.json, use the constructed PR body from Step 1.
 
 ---
 
