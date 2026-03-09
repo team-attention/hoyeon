@@ -14,7 +14,7 @@
 #   ├── files/       # non-JSON artifacts (dod.md, flag files)
 #   └── tmp/         # skill temp files (dev-scan output, etc.)
 #
-# Idempotent: later calls overwrite state.json (no cleanup array to preserve)
+# Idempotent: later calls merge into state.json (preserves existing namespaces like .rph, .rv, .rulph)
 
 set -euo pipefail
 
@@ -88,17 +88,25 @@ mkdir -p "$SESSION_DIR/files" "$SESSION_DIR/tmp"
 STATE_FILE="$SESSION_DIR/state.json"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-jq -n \
-  --arg skill "$DETECTED_SKILL" \
-  --arg spec "$SPEC_PATH" \
-  --arg started_at "$TIMESTAMP" \
-  --arg cwd "$CWD" \
-  '{
-    skill: $skill,
-    spec: $spec,
-    started_at: $started_at,
-    cwd: $cwd
-  }' > "$STATE_FILE"
+# Merge into existing state.json (preserves .rph, .rv, .rulph namespaces)
+TEMP_FILE="${STATE_FILE}.tmp.$$"
+if [[ -f "$STATE_FILE" ]]; then
+  jq \
+    --arg skill "$DETECTED_SKILL" \
+    --arg spec "$SPEC_PATH" \
+    --arg started_at "$TIMESTAMP" \
+    --arg cwd "$CWD" \
+    '. + {skill: $skill, spec: $spec, started_at: $started_at, cwd: $cwd}' \
+    "$STATE_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$STATE_FILE"
+else
+  jq -n \
+    --arg skill "$DETECTED_SKILL" \
+    --arg spec "$SPEC_PATH" \
+    --arg started_at "$TIMESTAMP" \
+    --arg cwd "$CWD" \
+    '{skill: $skill, spec: $spec, started_at: $started_at, cwd: $cwd}' \
+    > "$STATE_FILE"
+fi
 
 echo "📋 Session registered: $DETECTED_SKILL (spec: ${SPEC_PATH:-none})" >&2
 
