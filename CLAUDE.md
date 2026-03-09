@@ -98,7 +98,13 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v0.8.0)
+## Recent Changes (v0.8.1)
+
+- fix(hooks): remove deleted rph-cleanup.sh from hooks.json SessionEnd
+- refactor: replace `node cli/dist/cli.js` with `hoyeon-cli` globally
+- chore: sync cli version to 0.8.0 and update release flow
+
+## Previous Changes (v0.8.0)
 
 - refactor(cli): rename `dev-cli/` to `cli/`, bundle with esbuild into single `dist/cli.js` (all deps inlined, no node_modules needed)
 - feat(cli): prepare npm publish as `@team-attention/hoyeon-cli` (package.json, bin entry, publishConfig)
