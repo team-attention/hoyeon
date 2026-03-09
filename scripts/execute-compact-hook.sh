@@ -37,7 +37,7 @@ SPEC_PATH="$CWD/$SPEC_REL"
 
 # ── Get status via cli ──
 
-STATUS_JSON=$(node "$CWD/cli/dist/cli.js" spec status "$SPEC_PATH" 2>/dev/null) || true
+STATUS_JSON=$(hoyeon-cli spec status "$SPEC_PATH" 2>/dev/null) || true
 
 if [[ -z "$STATUS_JSON" ]]; then
   exit 0
@@ -48,7 +48,7 @@ TOTAL_COUNT=$(echo "$STATUS_JSON" | jq -r '.total')
 CONTEXT_DIR="$(dirname "$SPEC_PATH")/context"
 
 # Get meta via cli
-META_JSON=$(node "$CWD/cli/dist/cli.js" spec meta "$SPEC_PATH" 2>/dev/null) || true
+META_JSON=$(hoyeon-cli spec meta "$SPEC_PATH" 2>/dev/null) || true
 SPEC_NAME=$(echo "${META_JSON:-{}}" | jq -r '.name // "unknown"')
 SPEC_GOAL=$(echo "${META_JSON:-{}}" | jq -r '.goal // "unknown"')
 NON_GOALS=$(echo "${META_JSON:-{}}" | jq -r '(.non_goals // []) | if length > 0 then map("  - " + .) | join("\n") else "  (none)" end')
@@ -72,7 +72,7 @@ context_dir: $CONTEXT_DIR
 Remaining tasks:
 $TASK_LIST
 
-Use \`node cli/dist/cli.js spec task <id> --get $SPEC_PATH\` to fetch individual task details.
+Use \`hoyeon-cli spec task <id> --get $SPEC_PATH\` to fetch individual task details.
 Continue the execute loop from where you left off.
 EOF
 

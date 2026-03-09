@@ -65,7 +65,7 @@ if [[ "$ITERATION" -ge "$MAX_ITER" ]]; then
 fi
 
 # Check task completion via cli
-STATUS_JSON=$(node "$CWD/cli/dist/cli.js" spec status "$SPEC_PATH" 2>/dev/null) || true
+STATUS_JSON=$(hoyeon-cli spec status "$SPEC_PATH" 2>/dev/null) || true
 
 if [[ -z "$STATUS_JSON" ]]; then
   # cli failed — allow exit to avoid blocking

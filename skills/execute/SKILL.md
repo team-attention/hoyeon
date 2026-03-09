@@ -21,7 +21,7 @@ allowed-tools:
   - AskUserQuestion
 validate_prompt: |
   All tasks in spec.json must have status "done" at completion.
-  node cli/dist/cli.js spec check must pass (internal consistency).
+  hoyeon-cli spec check must pass (internal consistency).
   Context files (learnings.md, issues.md, audit.md) must exist and be populated.
   Final report must be output.
 ---
@@ -30,14 +30,14 @@ validate_prompt: |
 
 **You are the conductor. You do not play instruments directly.**
 Delegate to worker agents, verify results via verify workers, manage parallelization.
-All task data comes from spec.json via `node cli/dist/cli.js spec plan`.
+All task data comes from spec.json via `hoyeon-cli spec plan`.
 
 ## Core Principles
 
 1. **DELEGATE** — All code writing goes to `Agent(subagent_type="worker")`. You only Read, Grep, Glob, Bash (for orchestration), and manage Tasks.
 2. **VERIFY** — After every Worker, dispatch a verify worker to independently check acceptance criteria. Workers can lie.
 3. **PARALLELIZE** — Run all unblocked tasks within a round simultaneously via `run_in_background: true`.
-4. **spec.json is truth** — Task status, adaptation, and progress all flow through `node cli/dist/cli.js spec` commands.
+4. **spec.json is truth** — Task status, adaptation, and progress all flow through `hoyeon-cli spec` commands.
 5. **Context flows forward** — Workers write learnings/issues to shared context files. Next workers read them.
 
 ---
@@ -91,7 +91,7 @@ SESSION_ID="[session ID from UserPromptSubmit hook]"
    spec_path = ".dev/specs/{arg}/spec.json"
 
 3) No arg: session state (quick-plan, specify 등이 등록한 경로)
-   node cli/dist/cli.js session get --sid $SESSION_ID
+   hoyeon-cli session get --sid $SESSION_ID
    → state.spec 필드가 있으면 spec_path = state.spec
 
 If none found → error: "spec.json을 찾을 수 없습니다. /specify 또는 /quick-plan으로 먼저 생성해주세요."
@@ -100,15 +100,15 @@ If none found → error: "spec.json을 찾을 수 없습니다. /specify 또는 
 Read spec.json and validate:
 
 ```bash
-node cli/dist/cli.js spec validate {spec_path}
-node cli/dist/cli.js spec check {spec_path}
+hoyeon-cli spec validate {spec_path}
+hoyeon-cli spec check {spec_path}
 ```
 
 ### 0.2 Get Execution Plan
 
 ```bash
-plan_text = Bash("node cli/dist/cli.js spec plan {spec_path}")
-plan_json = Bash("node cli/dist/cli.js spec plan {spec_path} --format slim")
+plan_text = Bash("hoyeon-cli spec plan {spec_path}")
+plan_json = Bash("hoyeon-cli spec plan {spec_path} --format slim")
 plan = JSON.parse(plan_json)
 ```
 
@@ -243,13 +243,13 @@ WORKER_DESCRIPTION(task_id) = """
 You are a Worker agent. Implement task {task_id}.
 
 ## Step 1: Read your task spec
-Run: `node cli/dist/cli.js spec task {task_id} --get {spec_path}`
+Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
 This returns JSON with: action, steps, file_scope, acceptance_criteria,
 must_not_do, inputs, outputs, references.
 
 ## Step 2: Resolve dependency inputs (if any)
 If your task has `inputs[].from_task`, fetch each dependency:
-Run: `node cli/dist/cli.js spec task {from_task} --get {spec_path}`
+Run: `hoyeon-cli spec task {from_task} --get {spec_path}`
 Use its `outputs` to understand what was produced.
 
 ## Step 3: Read context files
@@ -285,7 +285,7 @@ VERIFY_DESCRIPTION(task_id) = """
 You are a Verification agent. Verify task {task_id} independently.
 
 ## Step 1: Read task spec
-Run: `node cli/dist/cli.js spec task {task_id} --get {spec_path}`
+Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
 
 ## Step 2: Run ALL acceptance criteria commands
 Re-execute every command from acceptance_criteria yourself.
@@ -354,7 +354,7 @@ TaskUpdate(taskId=fv, addBlocks=[rp])
 
 > **Compaction recovery**: A `SessionStart(compact)` hook automatically re-injects
 > spec_path, task progress, and context_dir after compaction. Workers self-read
-> task details via `node cli/dist/cli.js spec task <id> --get` and context files directly.
+> task details via `hoyeon-cli spec task <id> --get` and context files directly.
 > The orchestrator does NOT need to read spec.json or context files.
 
 ```
@@ -415,7 +415,7 @@ Agent(
 
 ```
 IF result.status == "DONE":
-  Bash("node cli/dist/cli.js spec task {task_id} --status in_progress {spec_path}")
+  Bash("hoyeon-cli spec task {task_id} --status in_progress {spec_path}")
   TaskUpdate(taskId, status="completed")
   # Next: :Verify (standard) or :Commit (quick)
 
@@ -555,7 +555,7 @@ function adapt(task_id, verify_result):
 
   # 1. Add new fix task to spec.json
   fix_task_id = "T{next_id}"
-  Bash("""node cli/dist/cli.js spec merge {spec_path} --json '{
+  Bash("""hoyeon-cli spec merge {spec_path} --json '{
     "tasks": [{
       "id": "{fix_task_id}",
       "action": "{adaptation.suggested_todo.title}",
@@ -576,7 +576,7 @@ function adapt(task_id, verify_result):
   log_to_audit("ADAPT: created {fix_task_id} for {task_id} — {adaptation.blockage_type}")
 
   # 2. Re-plan to get updated DAG
-  new_plan = Bash("node cli/dist/cli.js spec plan {spec_path} --format slim")
+  new_plan = Bash("hoyeon-cli spec plan {spec_path} --format slim")
 
   # 3. Create tracking tasks for the fix (use same self-read pattern)
   fw = TaskCreate(subject="{fix_task_id}.1:Worker — {adaptation.suggested_todo.title}",
@@ -626,7 +626,7 @@ Agent(
 On completion:
 
 ```
-Bash("node cli/dist/cli.js spec task {task_id} --status done --summary '{summary}' {spec_path}")
+Bash("hoyeon-cli spec task {task_id} --status done --summary '{summary}' {spec_path}")
 TaskUpdate(taskId, status="completed")
 ```
 
@@ -885,7 +885,7 @@ Details: {verify result summary}
 2. **Always use cli** — `spec plan`, `spec task`, `spec merge`, `spec check`
 3. **Two turns for task setup** — Turn 1: all TaskCreate, Turn 2: all TaskUpdate
 4. **Dual tracking** — both spec.json (via `spec task`) and TaskList (via TaskUpdate)
-5. **Workers self-read everything** — Workers use `node cli/dist/cli.js spec task --get` and Read context files themselves. Orchestrator does NOT read spec.json or context files during dispatch. Orchestrator only writes audit.md.
+5. **Workers self-read everything** — Workers use `hoyeon-cli spec task --get` and Read context files themselves. Orchestrator does NOT read spec.json or context files during dispatch. Orchestrator only writes audit.md.
 6. **Description = recipe** — TaskCreate description contains the full self-read recipe (CLI commands, context paths, output format). At dispatch time, orchestrator just passes `TaskGet(id).description` as the Agent prompt.
 7. **Per-task commit** — every task gets its own commit via git-master
 8. **Verify is standard-only** — quick mode skips per-task verification
@@ -897,14 +897,14 @@ Details: {verify result summary}
 
 ### Common (all modes)
 - [ ] spec.json found and validated
-- [ ] `node cli/dist/cli.js spec plan` executed and shown to user
+- [ ] `hoyeon-cli spec plan` executed and shown to user
 - [ ] Context directory initialized (learnings.md, issues.md, audit.md)
 - [ ] Pre-work status logged explicitly (none/pass/fail)
 - [ ] All TaskCreate in single turn, all TaskUpdate in single turn
 - [ ] Worker descriptions use self-read pattern (WORKER_DESCRIPTION / VERIFY_DESCRIPTION)
 - [ ] Orchestrator does NOT Read spec.json or context files during dispatch
-- [ ] All spec tasks have `status: "done"` (via `node cli/dist/cli.js spec task`)
-- [ ] `node cli/dist/cli.js spec check` passes at end
+- [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
+- [ ] `hoyeon-cli spec check` passes at end
 - [ ] Residual commit handled
 - [ ] Final report output
 - [ ] H-items listed for human follow-up
