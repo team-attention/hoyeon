@@ -1,7 +1,7 @@
 #!/bin/bash
 # skill-session-guard.sh — Unified PreToolUse[Edit|Write] guard
 #
-# Reads: ~/.claude/.hook-state/{session_id}.json
+# Reads: ~/.hoyeon/{session_id}/state.json
 # Behavior per skill:
 #   - specify: DENY writes outside .dev/
 #   - execute: WARN on writes outside .dev/ (allow but message)
@@ -15,7 +15,7 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id')
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty')
 
 # Read session state
-STATE_FILE="$HOME/.claude/.hook-state/$SESSION_ID.json"
+STATE_FILE="$HOME/.hoyeon/$SESSION_ID/state.json"
 [[ ! -f "$STATE_FILE" ]] && exit 0
 
 SKILL=$(jq -r '.skill // empty' "$STATE_FILE")

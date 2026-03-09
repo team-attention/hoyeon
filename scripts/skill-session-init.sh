@@ -5,16 +5,16 @@
 #   - UserPromptSubmit (user types "/execute", "/specify", etc.)
 #   - PreToolUse[Skill] (code calls Skill("execute"), Skill("specify"), etc.)
 #
-# Writes: ~/.claude/.hook-state/{session_id}.json
+# Writes: ~/.hoyeon/{session_id}/state.json
 # Read by: skill-session-stop.sh, skill-session-guard.sh, skill-session-cleanup.sh
 #
-# Session state schema:
-#   { skill, spec?, started_at, cwd, cleanup: ["/tmp/..."] }
+# Session dir structure:
+#   ~/.hoyeon/{session_id}/
+#   ├── state.json   # unified state
+#   ├── files/       # non-JSON artifacts (dod.md, flag files)
+#   └── tmp/         # skill temp files (dev-scan output, etc.)
 #
-# Any skill can later append temp paths to cleanup[]:
-#   jq --arg p "$DIR" '.cleanup += [$p]' "$STATE_FILE" > tmp && mv tmp "$STATE_FILE"
-#
-# Idempotent: later calls merge (preserves existing cleanup entries)
+# Idempotent: later calls overwrite state.json (no cleanup array to preserve)
 
 set -euo pipefail
 
@@ -82,30 +82,22 @@ fi
 
 # ── Write session state ──
 
-STATE_DIR="$HOME/.claude/.hook-state"
-mkdir -p "$STATE_DIR"
+SESSION_DIR="$HOME/.hoyeon/$SESSION_ID"
+mkdir -p "$SESSION_DIR/files" "$SESSION_DIR/tmp"
 
-STATE_FILE="$STATE_DIR/$SESSION_ID.json"
+STATE_FILE="$SESSION_DIR/state.json"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-# Preserve existing cleanup entries if state file already exists
-EXISTING_CLEANUP="[]"
-if [[ -f "$STATE_FILE" ]]; then
-  EXISTING_CLEANUP=$(jq -r '.cleanup // []' "$STATE_FILE" 2>/dev/null || echo "[]")
-fi
 
 jq -n \
   --arg skill "$DETECTED_SKILL" \
   --arg spec "$SPEC_PATH" \
   --arg started_at "$TIMESTAMP" \
   --arg cwd "$CWD" \
-  --argjson cleanup "$EXISTING_CLEANUP" \
   '{
     skill: $skill,
     spec: $spec,
     started_at: $started_at,
-    cwd: $cwd,
-    cleanup: $cleanup
+    cwd: $cwd
   }' > "$STATE_FILE"
 
 echo "📋 Session registered: $DETECTED_SKILL (spec: ${SPEC_PATH:-none})" >&2

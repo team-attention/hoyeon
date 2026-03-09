@@ -1,7 +1,7 @@
 #!/bin/bash
 # skill-session-stop.sh — Unified stop hook
 #
-# Reads: ~/.claude/.hook-state/{session_id}.json
+# Reads: ~/.hoyeon/{session_id}/state.json
 # Behavior per skill:
 #   - execute: block if spec.json has incomplete tasks
 #   - specify: allow (cleanup only)
@@ -18,7 +18,7 @@ CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd')
 
 # ── Read session state ──
 
-STATE_FILE="$HOME/.claude/.hook-state/$SESSION_ID.json"
+STATE_FILE="$HOME/.hoyeon/$SESSION_ID/state.json"
 [[ ! -f "$STATE_FILE" ]] && exit 0
 
 SKILL=$(jq -r '.skill // empty' "$STATE_FILE")
