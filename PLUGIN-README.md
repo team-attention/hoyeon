@@ -4,31 +4,26 @@ Development workflow automation plugin for Claude Code.
 
 ## Overview
 
-Provides a full **specify → open → execute** pipeline with:
+Provides a full **specify → execute** pipeline with:
 - Parallel research agents (docs, external, gap analysis, tradeoffs)
 - Interview-driven planning with reviewer approval
-- Draft PR creation from specs
 - Orchestrator-delegated execution with worker verification
-- PR state management and atomic commits
+- Atomic commits
 - Hook-based pipeline automation (ultrawork)
 
 ## Components
 
-### Skills (11)
+### Skills (7)
 
 | Skill | Command | Purpose |
 |-------|---------|---------|
 | specify | `/specify` | Interview-driven planning workflow |
-| open | `/open` | Create Draft PR from spec |
 | execute | `/execute` | Orchestrator delegates to workers |
-| publish | `/publish` | Convert Draft PR to Ready |
-| ultrawork | `/ultrawork` | Automated specify → open → execute |
-| state | `/state` | PR state management (queue, pause, resume) |
+| ultrawork | `/ultrawork` | Automated specify → execute |
 | compound | `/compound` | Extract learnings from PRs |
 | tech-decision | `/tech-decision` | Deep technical decision analysis |
 | dev-scan | `/dev-scan` | Collect community developer opinions |
 | skill-session-analyzer | — | Post-hoc session analysis |
-| test-validate | — | Validate-output hook test |
 
 ### Agents (7)
 
@@ -68,6 +63,3 @@ Or add to your project's `.claude/settings.json`:
 }
 ```
 
-## State Management
-
-Pipeline state is stored in `.dev/state.local.json` in the project directory. This file is git-ignored.

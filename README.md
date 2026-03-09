@@ -1,11 +1,11 @@
 # hoyeon
 
-Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs, execute tasks, and extract learnings — all through an orchestrated skill pipeline.
+Claude Code plugin for automated Spec-Driven Development (SDD). Plan, execute tasks, and extract learnings — all through an orchestrated skill pipeline.
 
 ## Core Workflow
 
 ```
-/discuss → /specify → /open → /execute → /publish → /compound
+/discuss → /specify → /execute → /compound
                                   ↑
 /bugfix ──(circuit breaker)──→ /specify
 ```
@@ -14,10 +14,8 @@ Claude Code plugin for automated Spec-Driven Development (SDD). Plan, create PRs
 |------|-------|-------------|
 | 0 | `/discuss` | Socratic discussion partner. Challenges assumptions, explores alternatives, and surfaces blind spots before planning. Saves insights for `/specify` handoff. |
 | 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, tradeoff-analyzer, verification-planner, external-researcher), Codex strategic synthesis, generates `PLAN.md` with plan-reviewer approval. |
-| 2 | `/open` | Creates a Draft PR on `feat/{name}` branch from the approved spec. |
-| 3 | `/execute` | Orchestrator reads `PLAN.md`, creates Tasks per TODO, delegates to worker agents, verifies results, Codex code review gate, commits atomically. |
-| 4 | `/publish` | Converts Draft PR to Ready for Review. |
-| 5 | `/compound` | Extracts learnings from completed PR into `docs/learnings/`. |
+| 2 | `/execute` | Orchestrator reads `PLAN.md`, creates Tasks per TODO, delegates to worker agents, verifies results, Codex code review gate, commits atomically. |
+| 3 | `/compound` | Extracts learnings from completed PR into `docs/learnings/`. |
 
 ### One-shot: `/ultrawork`
 
@@ -26,7 +24,6 @@ Chains the entire pipeline automatically via Stop hooks:
 ```
 /ultrawork feature-name
   → /specify (interview + plan)
-  → /open (create Draft PR)
   → /execute (implement all TODOs)
 ```
 
@@ -37,15 +34,12 @@ Chains the entire pipeline automatically via Stop hooks:
 |-------|---------|---------|
 | `/discuss` | "같이 생각해보자" | Socratic pre-planning exploration (DIAGNOSE → PROBE → SYNTHESIZE) |
 | `/specify` | "plan this" | Interview → DRAFT.md → PLAN.md with plan-reviewer approval |
-| `/open` | "create PR" | Draft PR creation from spec |
 | `/execute` | "/execute" | Orchestrate TODO implementation via worker agents |
-| `/publish` | "publish PR" | Draft → Ready for Review |
 | `/ultrawork` | "/ultrawork name" | Full automated pipeline |
 
 ### State & Knowledge
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
-| `/state` | "PR status" | PR state management (queue, begin, pause, complete) |
 | `/compound` | "document learnings" | Extract knowledge from completed PRs |
 
 ### Bug Fixing
@@ -61,11 +55,6 @@ Chains the entire pipeline automatically via Stop hooks:
 | `/tribunal` | "review this" | 3-perspective adversarial review (Risk/Value/Feasibility → APPROVE/REVISE/REJECT) |
 | `/skill-session-analyzer` | "analyze session" | Post-hoc validation of skill execution |
 
-### Worktree Management
-| Skill | Trigger | Purpose |
-|-------|---------|---------|
-| `/init` | "initialize config" | Scan project, create `.dev/config.yml`, install hy CLI |
-| `/worktree` | "워크트리 만들어줘" | Create, navigate, monitor, and cleanup git worktrees |
 
 ## Agents
 
@@ -165,8 +154,6 @@ Chains the entire pipeline automatically via Stop hooks:
 └─────────────────────────────────────────────────────────────┘
                         ▼
               다음 단계 선택:
-              • /worktree create {name} — 격리 작업 (spec 자동 이동)
-              • /open — Draft PR 생성
               • /execute — 바로 구현 시작
 ```
 
@@ -253,56 +240,6 @@ Root cause 기반 원샷 버그픽스. Adaptive mode가 debugger의 Severity 판
 | **SIMPLE** | 4개 (debugger, v-planner, worker, git-master) | 단일 파일, 명확한 원인 |
 | **COMPLEX** | 6개 (+gap-analyzer, +code-reviewer) | 다중 파일, INTEGRATION, 보안 경로 |
 
-## Worktree Management
-
-Parallel feature development using git worktrees with isolated Claude sessions.
-
-### Setup
-
-```bash
-/init  # Scan project, create .dev/config.yml, install hy CLI
-```
-
-Creates `.dev/config.yml`:
-```yaml
-worktree:
-  copy_files: [.env.local]  # Files to copy to new worktrees
-  base_dir: ".worktrees/{name}"
-  post_command: "claude"  # Or set HY_POST_COMMAND env var
-```
-
-### Commands
-
-| Command | Purpose |
-|---------|---------|
-| `hy` | Interactive: show status + select worktree to open |
-| `hy create <name>` | Create worktree with spec move from main |
-| `hy go <name>` | Navigate to worktree + run post_command |
-| `hy status` | Show all worktrees with PLAN progress |
-| `hy path <name>` | Print worktree path (for scripting) |
-| `hy cleanup <name>` | Remove worktree and optionally delete branch |
-
-### Workflow
-
-```
-/specify feature-name → Plan approved
-    ↓
-/worktree create feature-name  # Spec moves to worktree
-    ↓
-hy go feature-name  # cd + claude (or custom post_command)
-    ↓
-/execute  # In worktree
-```
-
-### Status Table
-
-```
-#   NAME                 PROGRESS             CHANGES  BEHIND   SESSIONS   PR
--   ----                 --------             -------  ------   --------   --
-1   auth                 3/5 ███░░            2        0        2          #42
-2   payment              5/5 █████            0        3        0          -
-```
-
 ## Project Structure
 
 ```
@@ -312,18 +249,10 @@ hy go feature-name  # cd + claude (or custom post_command)
 └── scripts/         # Hook scripts (bash)
 
 .dev/
-├── config.yml       # Worktree configuration (committed)
 ├── specs/{name}/    # Per-feature specs
 │   ├── PLAN.md
 │   └── context/     # learnings.md, decisions.md, issues.md, outputs.json
-├── local.json       # Worktree identity metadata (git-ignored)
 └── state.local.json # Session tracking state (git-ignored)
-
-.worktrees/          # Feature worktrees (git-ignored)
-└── {name}/          # Each worktree has its own .dev/local.json
-
-scripts/
-└── hy             # Standalone CLI for worktree management
 
 docs/
 └── learnings/           # Knowledge extracted from development

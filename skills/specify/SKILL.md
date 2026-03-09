@@ -854,17 +854,13 @@ Constraints: {n} items
 AskUserQuestion(
   question: "Plan approved. Select the next step.",
   options: [
-    { label: "/simple-execute", description: "Start implementation immediately" },
-    { label: "/open", description: "Create Draft PR (get reviewer feedback first)" },
-    { label: "/worktree create {name}", description: "Work in isolated worktree" }
+    { label: "/execute", description: "Start implementation immediately" }
   ]
 )
 ```
 
 **Based on user selection**:
-- `/simple-execute` → `Skill("simple-execute", args="{name}")`
-- `/open` → `Skill("open", args="{name}")`
-- `/worktree create {name}` → `Skill("worktree", args="create {name}")`
+- `/execute` → `Skill("execute", args="{name}")`
 
 ---
 

@@ -2,8 +2,8 @@
 name: ultrawork
 description: |
   This skill should be used when the user says "/ultrawork", "ultrawork", or wants to run the full
-  specify → open → execute pipeline automatically with a single command.
-  Automated end-to-end workflow that chains specify, open, and execute skills.
+  specify → execute pipeline automatically with a single command.
+  Automated end-to-end workflow that chains specify and execute skills.
 allowed-tools:
   - Read
   - Grep
@@ -20,15 +20,13 @@ allowed-tools:
 
 You are initiating an **ultrawork** session - a fully automated pipeline that chains:
 1. `/specify` - Interview and plan generation
-2. `/open` - Draft PR creation
-3. `/execute` - Implementation
+2. `/execute` - Implementation
 
 ## How It Works
 
 The ultrawork pipeline runs automatically through **Stop hooks**:
 - When you complete Interview (DRAFT.md created) → Hook triggers Plan generation
-- When Plan is approved → Hook triggers `/open`
-- When PR is created → Hook triggers `/execute`
+- When Plan is approved → Hook triggers `/execute`
 - When all TODOs complete → Pipeline ends
 
 **You don't need to manually trigger the next step** - the hooks handle transitions.
@@ -58,7 +56,7 @@ Extract a short, kebab-case name for the feature:
 🚀 Ultrawork Mode Activated
 
 Feature: {name}
-Pipeline: specify → open → execute
+Pipeline: specify → execute
 
 Starting interview phase...
 ```
@@ -74,14 +72,13 @@ The specify skill will:
 2. Wait for DRAFT.md to be created
 3. **[Hook auto-triggers]** → Generate Plan when DRAFT is ready
 4. Run Reviewer approval
-5. **[Hook auto-triggers]** → Call /open when Plan is approved
+5. **[Hook auto-triggers]** → Call /execute when Plan is approved
 
 ### Step 4: Let Hooks Handle the Rest
 
 After specify completes with an approved plan:
 - `ultrawork-stop-hook.sh` detects PLAN.md with "APPROVED"
-- Hook automatically injects `/open {name}`
-- After PR creation, hook injects `/execute`
+- Hook automatically injects `/execute {name}`
 - Execute runs until all TODOs complete
 
 ## User Interruption
@@ -108,7 +105,7 @@ The hook tracks progress in `.dev/state.local.json`:
 }
 ```
 
-Phases: `specify_interview` → `specify_plan` → `opening` → `executing` → `done`
+Phases: `specify_interview` → `specify_plan` → `executing` → `done`
 
 ## Example Flow
 
@@ -123,7 +120,7 @@ User: "/ultrawork add dark mode support"
 2. Announce:
    🚀 Ultrawork Mode Activated
    Feature: dark-mode
-   Pipeline: specify → open → execute
+   Pipeline: specify → execute
    Starting interview phase...
 
 3. Invoke: Skill("specify", args="dark-mode")
@@ -132,9 +129,7 @@ User: "/ultrawork add dark mode support"
 [DRAFT.md created]
 [Hook detects → triggers "Generate the plan"]
 [Plan created, Reviewer approves]
-[Hook detects → triggers "/open dark-mode"]
-[PR created]
-[Hook detects → triggers "/execute"]
+[Hook detects → triggers "/execute dark-mode"]
 [TODOs completed]
 [Pipeline ends]
 ```
@@ -142,7 +137,7 @@ User: "/ultrawork add dark mode support"
 ## Important Notes
 
 - **State is auto-initialized** by `UserPromptSubmit` hook - no manual setup needed
-- **Do NOT manually call /open or /execute** - hooks handle this
+- **Do NOT manually call /execute** - hooks handle this
 - **Follow specify's interview process** - gather requirements properly
 - **The pipeline is autonomous** - just start it and let it run
 - **User can interrupt** at any time for manual control
