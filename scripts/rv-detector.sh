@@ -2,9 +2,6 @@
 # !rv keyword detection -> activate re-validate mode
 # Supports !rv (1회), !rv2 (2회), !rv3 (3회) etc.
 
-STATE_DIR="$HOME/.claude/.hook-state"
-mkdir -p "$STATE_DIR"
-
 # Read JSON from stdin
 input=$(cat)
 prompt=$(printf '%s' "$input" | jq -r '.prompt // empty')
@@ -15,7 +12,8 @@ if [ -z "$session_id" ]; then
     session_id="unknown"
 fi
 
-STATE_FILE="$STATE_DIR/rv-mode-$session_id"
+SESSION_DIR="$HOME/.hoyeon/$session_id"
+STATE_FILE="$SESSION_DIR/state.json"
 
 # Detect !rv, !rv2, !rv3, etc.
 if [[ "$prompt" =~ \!rv([0-9]*) ]]; then
@@ -25,7 +23,12 @@ if [[ "$prompt" =~ \!rv([0-9]*) ]]; then
         count=1
     fi
 
-    echo "$count" > "$STATE_FILE"
+    mkdir -p "$SESSION_DIR/files" "$SESSION_DIR/tmp"
+    if [[ -f "$STATE_FILE" ]]; then
+        jq --argjson count "$count" '. + {rv: {remaining: $count}}' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    else
+        jq -n --argjson count "$count" '{rv: {remaining: $count}}' > "$STATE_FILE"
+    fi
 
     cat << 'EOF'
 {
