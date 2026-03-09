@@ -40,11 +40,11 @@ validate_prompt: |
 ### Implementation Files
 
 - `.claude/scripts/validate-output.sh` - PostToolUse validation hook
-- `.claude/settings.local.json` - registers PostToolUse hook for Task|Skill
+- `.claude/settings.json` - registers PostToolUse hook for Task|Skill
 
 ## Hook System
 
-Hooks are registered in `.claude/settings.local.json` and automate pipeline transitions and quality enforcement.
+Hooks are registered in `.claude/settings.json` and automate pipeline transitions and quality enforcement.
 
 ### Hook Types
 
@@ -70,7 +70,7 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 ### Hook Development Notes
 
 - Hook scripts live in `.claude/scripts/` and must be executable (`chmod +x`)
-- Register hooks in `.claude/settings.local.json` under `hooks.<EventType>.matchers[]`
+- Register hooks in `.claude/settings.json` under `hooks.<EventType>.matchers[]`
 - A hook script that is not registered in settings will **not fire** — creating the file alone is not enough
 - See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for additional hook behavior gotchas
 

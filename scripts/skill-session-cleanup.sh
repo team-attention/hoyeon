@@ -9,6 +9,11 @@ set -euo pipefail
 HOOK_INPUT=$(cat)
 SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id')
 
+# Guard: prevent rm -rf ~/.hoyeon/ if SESSION_ID is empty or null
+if [[ -z "$SESSION_ID" || "$SESSION_ID" == "null" ]]; then
+  exit 0
+fi
+
 SESSION_DIR="$HOME/.hoyeon/$SESSION_ID"
 
 if [[ -d "$SESSION_DIR" ]]; then

@@ -64,14 +64,28 @@ if [[ "$ITERATION" -ge "$MAX_ITER" ]]; then
   exit 0
 fi
 
-# Check task completion via cli
-STATUS_JSON=$(hoyeon-cli spec status "$SPEC_PATH" 2>/dev/null) || true
-
-if [[ -z "$STATUS_JSON" ]]; then
-  # cli failed — allow exit to avoid blocking
+# Check task completion — direct jq parse (no CLI dependency on critical path)
+if [[ ! -f "$SPEC_PATH" ]]; then
   rm -f "$STATE_FILE"
   exit 0
 fi
+
+TOTAL=$(jq '[.tasks // [] | length] | .[0]' "$SPEC_PATH" 2>/dev/null || echo 0)
+DONE_COUNT=$(jq '[.tasks // [] | map(select(.status == "done")) | length] | .[0]' "$SPEC_PATH" 2>/dev/null || echo 0)
+
+if [[ "$TOTAL" -eq 0 ]]; then
+  rm -f "$STATE_FILE"
+  exit 0
+fi
+
+# Build status JSON locally
+STATUS_JSON=$(jq -n \
+  --argjson done "$DONE_COUNT" \
+  --argjson total "$TOTAL" \
+  --argjson complete "$([ "$DONE_COUNT" -eq "$TOTAL" ] && echo true || echo false)" \
+  --argjson remaining "$(jq '[.tasks // [] | map(select(.status != "done")) | .[] | {id, action, status}]' "$SPEC_PATH" 2>/dev/null || echo '[]')" \
+  '{done: $done, total: $total, complete: $complete, remaining: $remaining}'
+)
 
 COMPLETE=$(echo "$STATUS_JSON" | jq -r '.complete')
 
