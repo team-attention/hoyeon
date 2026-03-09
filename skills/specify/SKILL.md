@@ -95,6 +95,13 @@ dev-cli spec init {name} --goal "{goal}" --depth {depth} --interaction {interact
 
 Output: minimal spec.json with `meta` + placeholder `tasks` + `history`.
 
+Immediately update session state with the spec path:
+
+```bash
+SESSION_ID="[session ID from UserPromptSubmit hook]"
+node dev-cli/bin/dev-cli.js session set --sid $SESSION_ID --spec ".dev/specs/{name}/spec.json"
+```
+
 After init, if non-goals are already apparent from the user's request, merge them early:
 
 ```bash

@@ -79,12 +79,19 @@ Throughout this document, `{depth}` refers to the resolved mode value:
 
 ### 0.1 Find Spec
 
+Resolve spec path in priority order:
+
 ```
-IF arg given:
-  spec_path = ".dev/specs/{arg}/spec.json"
-ELSE:
-  # Find most recently modified spec.json
-  spec_path = most recent .dev/specs/*/spec.json
+SESSION_ID="[session ID from UserPromptSubmit hook]"
+
+1) Check session state (quick-plan, specify가 등록한 경로):
+   node dev-cli/bin/dev-cli.js session get --sid $SESSION_ID
+   → state.spec 필드가 있으면 spec_path = state.spec
+
+2) IF arg given:
+   spec_path = ".dev/specs/{arg}/spec.json"
+
+3) Fallback: most recently modified .dev/specs/*/spec.json
 ```
 
 Read spec.json and validate:

@@ -9,6 +9,7 @@ allowed_tools:
   - Grep
   - Glob
   - Bash
+  - Write
   - AskUserQuestion
   - TaskCreate
   - TaskUpdate
@@ -21,6 +22,8 @@ validate_prompt: |
   4. "## Coordination Mode" with mode (agent-spawn or team) and rationale
   5. "## Agent Mapping" table with columns: Task, Agent, Model, Rationale
   6. "## Execution Plan" with parallel rounds and context sharing notes
+  Must generate spec.json at ~/.hoyeon/{session_id}/spec.json.
+  Must end with AskUserQuestion offering next actions.
   Must NOT: execute any tasks, create teams, or spawn agents.
 ---
 
@@ -115,7 +118,7 @@ For each round specify:
 
 ### Phase 7: Present Plan
 
-Output the complete plan in this format, then ask user for approval:
+Output the complete plan in this format:
 
 ```
 ## Task Breakdown
@@ -166,11 +169,108 @@ rationale: {one-line reason}
 - Max parallel width: K agents
 ```
 
-After presenting, ask user: "이 계획대로 진행할까요? 수정할 부분이 있으면 말씀해주세요."
+After presenting the plan, proceed immediately to Phase 8 (do NOT wait for approval).
+
+### Phase 8: Generate spec.json
+
+Convert the plan into a machine-readable spec.json. This happens **automatically** — no user confirmation needed.
+
+#### 8.1 Session Directory
+
+```bash
+SESSION_ID="[session ID from UserPromptSubmit hook]"
+SESSION_DIR="$HOME/.hoyeon/$SESSION_ID"
+SPEC_PATH="$SESSION_DIR/spec.json"
+```
+
+#### 8.2 Initialize spec.json
+
+```bash
+node dev-cli/bin/dev-cli.js spec init {plan-name} --goal "{user's goal}" ${SPEC_PATH}
+```
+
+`{plan-name}`: derive from user's goal (kebab-case, max 30 chars).
+
+#### 8.3 Merge tasks
+
+Merge **all tasks in a single call** — this replaces the placeholder T1 from `spec init`.
+Do NOT call merge per task (without `--append`, each call overwrites the previous tasks array).
+
+```bash
+node dev-cli/bin/dev-cli.js spec merge ${SPEC_PATH} --json '{
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "{task 1 description}",
+      "type": "work",
+      "status": "pending",
+      "file_scope": ["{touch zone files}"],
+      "depends_on": [],
+      "acceptance_criteria": {
+        "functional": [{"description": "{done-when condition}"}],
+        "static": [],
+        "runtime": []
+      },
+      "risk": "low"
+    },
+    {
+      "id": "T2",
+      "action": "{task 2 description}",
+      "type": "work",
+      "status": "pending",
+      "file_scope": ["{touch zone files}"],
+      "depends_on": ["T1"],
+      "acceptance_criteria": {
+        "functional": [{"description": "{done-when condition}"}],
+        "static": [],
+        "runtime": []
+      },
+      "risk": "low"
+    }
+  ]
+}'
+```
+
+Map from plan:
+- Task Breakdown → `action`, `file_scope` (touch zone)
+- Done condition → `acceptance_criteria.functional`
+- Dependency DAG → `depends_on`
+
+#### 8.4 Update state.json
+
+Update the session state to point to the generated spec:
+
+```bash
+node dev-cli/bin/dev-cli.js session set --sid $SESSION_ID --spec "$SPEC_PATH"
+```
+
+#### 8.5 Validate
+
+```bash
+node dev-cli/bin/dev-cli.js spec validate ${SPEC_PATH}
+```
+
+If validation fails, fix and retry once.
+
+#### 8.6 Confirm to user
+
+Output: `spec.json 생성 완료: ${SPEC_PATH}`
+
+### Phase 9: Next Action
+
+Ask user via AskUserQuestion:
+
+```
+계획이 준비됐습니다. 어떻게 할까요?
+
+1. `/execute` — 바로 실행
+2. 계획 수정 — 변경할 부분을 말씀해주세요
+3. 더 논의 — 추가 검토가 필요한 부분이 있으면 알려주세요
+```
 
 ## Constraints
 
-- Do NOT execute tasks — only plan them
+- Do NOT execute tasks — only plan and generate spec.json
 - Do NOT create teams or spawn agents — only propose the structure
-- Do NOT modify any files (read-only planning)
+- Do NOT modify project files — only write to ~/.hoyeon/{session}/
 - If a task is ambiguous, flag it and suggest clarification

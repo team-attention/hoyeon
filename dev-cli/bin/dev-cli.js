@@ -9,6 +9,7 @@ Usage:
 Subcommands:
   spec      Manage spec/plan state
   state     Read or update workflow state
+  session   Manage session state (~/.hoyeon/{sid}/)
   feedback  Manage feedback files
 
 Options:
@@ -24,6 +25,7 @@ Examples:
 const SUBCOMMANDS = {
   spec: () => import('../src/handlers/spec.js'),
   state: () => import('../src/handlers/state.js'),
+  session: () => import('../src/handlers/session.js'),
   feedback: () => import('../src/handlers/feedback.js'),
 };
 
