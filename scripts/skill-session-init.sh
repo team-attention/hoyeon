@@ -66,7 +66,7 @@ fi
 
 # ── Spec path resolution is handled by each skill's Phase 0 ──
 # (execute reads arg → .dev/specs → state.json; specify creates at .dev/specs)
-# Hook does NOT write spec — skills register it via dev-cli session set
+# Hook does NOT write spec — skills register it via cli session set
 
 # ── Write session state ──
 

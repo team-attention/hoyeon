@@ -6,7 +6,7 @@
 # Activation: SessionStart with matcher "compact"
 #
 # Reads: ~/.hoyeon/{session_id}/state.json (written by skill-session-init.sh)
-# Uses: dev-cli spec status for task progress
+# Uses: cli spec status for task progress
 #
 # Output (stdout → injected into Claude's context):
 #   - Active spec path and goal
@@ -35,9 +35,9 @@ SPEC_REL=$(jq -r '.spec // empty' "$STATE_FILE")
 SPEC_PATH="$CWD/$SPEC_REL"
 [[ ! -f "$SPEC_PATH" ]] && exit 0
 
-# ── Get status via dev-cli ──
+# ── Get status via cli ──
 
-STATUS_JSON=$(node "$CWD/dev-cli/bin/dev-cli.js" spec status "$SPEC_PATH" 2>/dev/null) || true
+STATUS_JSON=$(node "$CWD/cli/dist/cli.js" spec status "$SPEC_PATH" 2>/dev/null) || true
 
 if [[ -z "$STATUS_JSON" ]]; then
   exit 0
@@ -47,8 +47,8 @@ DONE_COUNT=$(echo "$STATUS_JSON" | jq -r '.done')
 TOTAL_COUNT=$(echo "$STATUS_JSON" | jq -r '.total')
 CONTEXT_DIR="$(dirname "$SPEC_PATH")/context"
 
-# Get meta via dev-cli
-META_JSON=$(node "$CWD/dev-cli/bin/dev-cli.js" spec meta "$SPEC_PATH" 2>/dev/null) || true
+# Get meta via cli
+META_JSON=$(node "$CWD/cli/dist/cli.js" spec meta "$SPEC_PATH" 2>/dev/null) || true
 SPEC_NAME=$(echo "${META_JSON:-{}}" | jq -r '.name // "unknown"')
 SPEC_GOAL=$(echo "${META_JSON:-{}}" | jq -r '.goal // "unknown"')
 NON_GOALS=$(echo "${META_JSON:-{}}" | jq -r '(.non_goals // []) | if length > 0 then map("  - " + .) | join("\n") else "  (none)" end')
@@ -72,7 +72,7 @@ context_dir: $CONTEXT_DIR
 Remaining tasks:
 $TASK_LIST
 
-Use \`dev-cli spec task <id> --get $SPEC_PATH\` to fetch individual task details.
+Use \`node cli/dist/cli.js spec task <id> --get $SPEC_PATH\` to fetch individual task details.
 Continue the execute loop from where you left off.
 EOF
 

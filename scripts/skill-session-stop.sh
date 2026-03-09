@@ -6,7 +6,7 @@
 #   - execute: block if spec.json has incomplete tasks
 #   - specify: allow (cleanup only)
 #
-# Uses: dev-cli spec status (exit 0=done, 1=incomplete)
+# Uses: cli spec status (exit 0=done, 1=incomplete)
 # Circuit breaker: max 30 iterations to prevent infinite loops
 
 set -euo pipefail
@@ -41,7 +41,7 @@ case "$SKILL" in
     ;;
 esac
 
-# ── Execute: check spec.json via dev-cli ──
+# ── Execute: check spec.json via cli ──
 
 SPEC_PATH="$CWD/$SPEC_REL"
 
@@ -64,11 +64,11 @@ if [[ "$ITERATION" -ge "$MAX_ITER" ]]; then
   exit 0
 fi
 
-# Check task completion via dev-cli
-STATUS_JSON=$(node "$CWD/dev-cli/bin/dev-cli.js" spec status "$SPEC_PATH" 2>/dev/null) || true
+# Check task completion via cli
+STATUS_JSON=$(node "$CWD/cli/dist/cli.js" spec status "$SPEC_PATH" 2>/dev/null) || true
 
 if [[ -z "$STATUS_JSON" ]]; then
-  # dev-cli failed — allow exit to avoid blocking
+  # cli failed — allow exit to avoid blocking
   rm -f "$STATE_FILE"
   exit 0
 fi
