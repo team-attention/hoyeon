@@ -2,9 +2,6 @@
 # !rph keyword detection -> activate Ralph Loop (DoD-based iterative verification)
 # Also handles auto-cleanup when user submits a non-!rph prompt while rph is active
 
-STATE_DIR="$HOME/.claude/.hook-state"
-mkdir -p "$STATE_DIR"
-
 # Read JSON from stdin
 input=$(cat)
 prompt=$(printf '%s' "$input" | jq -r '.prompt // empty')
@@ -15,22 +12,29 @@ if [ -z "$session_id" ]; then
     session_id="unknown"
 fi
 
-STATE_FILE="$STATE_DIR/rph-$session_id.json"
-DOD_FILE="$STATE_DIR/rph-$session_id-dod.md"
-VERIFY_FLAG="$STATE_DIR/rph-$session_id-verify"
+SESSION_DIR="$HOME/.hoyeon/$session_id"
+STATE_FILE="$SESSION_DIR/state.json"
+DOD_FILE="$SESSION_DIR/files/rph-dod.md"
+VERIFY_FLAG="$SESSION_DIR/files/rph-verify"
 
 # Detect !rph keyword
 if [[ "$prompt" == *"!rph"* ]]; then
     # Strip !rph from the prompt
     stripped_prompt=$(printf '%s' "$prompt" | sed 's/!rph//g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-    # Create state file using jq for proper JSON encoding
-    jq -n \
-      --arg prompt "$stripped_prompt" \
-      --arg dod_file "$DOD_FILE" \
-      --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      '{prompt: $prompt, iteration: 0, max_iterations: 10, dod_file: $dod_file, created_at: $created_at}' \
-      > "$STATE_FILE"
+    # Ensure directories exist
+    mkdir -p "$SESSION_DIR/files" "$SESSION_DIR/tmp"
+
+    # Merge .rph namespace into state.json (atomic write)
+    if [[ -f "$STATE_FILE" ]]; then
+        jq --arg prompt "$stripped_prompt" --arg dod_file "$DOD_FILE" --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          '. + {rph: {prompt: $prompt, iteration: 0, max_iterations: 10, dod_file: $dod_file, created_at: $created_at}}' \
+          "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    else
+        jq -n --arg prompt "$stripped_prompt" --arg dod_file "$DOD_FILE" --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          '{rph: {prompt: $prompt, iteration: 0, max_iterations: 10, dod_file: $dod_file, created_at: $created_at}}' \
+          > "$STATE_FILE"
+    fi
 
     # Return minimal additionalContext - just strip keyword and ask for DoD
     # The Stop hook will handle all verification logic
@@ -46,8 +50,9 @@ EOF
 fi
 
 # No !rph in prompt — check if rph state exists (zombie cleanup)
-if [ -f "$STATE_FILE" ]; then
-    rm -f "$STATE_FILE" "$DOD_FILE" "$VERIFY_FLAG"
+if [[ -f "$STATE_FILE" ]] && jq -e '.rph' "$STATE_FILE" >/dev/null 2>&1; then
+    jq 'del(.rph)' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    rm -f "$DOD_FILE" "$VERIFY_FLAG"
     cat << 'EOF'
 {
   "hookSpecificOutput": {

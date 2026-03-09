@@ -10,8 +10,6 @@
 #   - tool_input: object (file_path, content, etc.)
 #   - session_id: current session
 
-STATE_DIR="$HOME/.claude/.hook-state"
-
 # Read JSON input from stdin
 INPUT=$(cat)
 
@@ -22,22 +20,23 @@ if [ -z "$SESSION_ID" ]; then
     SESSION_ID="unknown"
 fi
 
-# Only guard DoD files (rph-*-dod.md pattern)
+SESSION_DIR="$HOME/.hoyeon/$SESSION_ID"
+STATE_FILE="$SESSION_DIR/state.json"
+VERIFY_FLAG="$SESSION_DIR/files/rph-verify"
+DOD_FILE="$SESSION_DIR/files/rph-dod.md"
+
+# Only guard DoD files (*/files/rph-dod.md pattern)
 case "$FILE_PATH" in
-    *rph-*-dod.md) ;;
+    */files/rph-dod.md) ;;
     *) exit 0 ;;
 esac
 
-STATE_FILE="$STATE_DIR/rph-$SESSION_ID.json"
-VERIFY_FLAG="$STATE_DIR/rph-$SESSION_ID-verify"
-
 # Not in rph mode -> allow
-if [ ! -f "$STATE_FILE" ]; then
+if [[ ! -f "$STATE_FILE" ]] || ! jq -e '.rph' "$STATE_FILE" >/dev/null 2>&1; then
     exit 0
 fi
 
 # DoD file doesn't exist yet -> allow initial creation
-DOD_FILE="$STATE_DIR/rph-$SESSION_ID-dod.md"
 if [ ! -f "$DOD_FILE" ]; then
     exit 0
 fi

@@ -3,8 +3,6 @@
 # Blocks Claude from stopping if unchecked DoD items remain
 # Uses verify flag to coordinate with rph-dod-guard.sh
 
-STATE_DIR="$HOME/.claude/.hook-state"
-
 # Read JSON from stdin
 input=$(cat)
 session_id=$(printf '%s' "$input" | jq -r '.session_id // empty')
@@ -14,26 +12,28 @@ if [ -z "$session_id" ]; then
     session_id="unknown"
 fi
 
-STATE_FILE="$STATE_DIR/rph-$session_id.json"
-DOD_FILE="$STATE_DIR/rph-$session_id-dod.md"
-VERIFY_FLAG="$STATE_DIR/rph-$session_id-verify"
+SESSION_DIR="$HOME/.hoyeon/$session_id"
+STATE_FILE="$SESSION_DIR/state.json"
+DOD_FILE="$SESSION_DIR/files/rph-dod.md"
+VERIFY_FLAG="$SESSION_DIR/files/rph-verify"
 
-# No state file = not in Ralph Loop, exit normally
-if [ ! -f "$STATE_FILE" ]; then
+# No state file or no .rph namespace = not in Ralph Loop, exit normally
+if [[ ! -f "$STATE_FILE" ]] || ! jq -e '.rph' "$STATE_FILE" >/dev/null 2>&1; then
     exit 0
 fi
 
 # Read and increment iteration
-iteration=$(jq -r '.iteration // 0' "$STATE_FILE")
-max_iterations=$(jq -r '.max_iterations // 10' "$STATE_FILE")
+iteration=$(jq -r '.rph.iteration // 0' "$STATE_FILE")
+max_iterations=$(jq -r '.rph.max_iterations // 10' "$STATE_FILE")
 iteration=$((iteration + 1))
 
-# Update iteration count in state file
-jq --argjson iter "$iteration" '.iteration = $iter' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+# Update iteration count in state file (atomic write)
+jq --argjson iter "$iteration" '.rph.iteration = $iter' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
 
 # Safety: max iterations exceeded -> force cleanup and exit
 if [ "$iteration" -gt "$max_iterations" ]; then
-    rm -f "$STATE_FILE" "$DOD_FILE" "$VERIFY_FLAG"
+    jq 'del(.rph)' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    rm -f "$DOD_FILE" "$VERIFY_FLAG"
     jq -n --arg reason "RALPH LOOP: Max iterations ($max_iterations) exceeded. Force-stopping to prevent infinite loop. State cleaned up. Please review the task manually." \
       '{decision: "block", reason: $reason}'
     exit 0
@@ -75,5 +75,6 @@ if [ "$unchecked" -gt 0 ]; then
 fi
 
 # All items checked -> cleanup and allow stop
-rm -f "$STATE_FILE" "$DOD_FILE" "$VERIFY_FLAG"
+jq 'del(.rph)' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+rm -f "$DOD_FILE" "$VERIFY_FLAG"
 exit 0
