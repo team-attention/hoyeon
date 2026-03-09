@@ -43,7 +43,8 @@ Chains the entire pipeline automatically via Stop hooks:
 | `/execute` | "/execute" | Orchestrate TODO implementation via worker agents |
 | `/quick-plan` | "/quick-plan" | Lightweight spec generation with user confirmation before execution |
 | `/ultrawork` | "/ultrawork name" | Full automated pipeline |
-| `/rulph` | "/rulph" | Recursive loop: plan → implement → validate until DoD met |
+| `/ralph` | "/ralph" | DoD-based iterative loop with prompt re-injection and independent verification |
+| `/rulph` | "/rulph" | Rubric-based multi-model evaluation loop (Codex, Gemini, Claude) |
 
 ### State & Knowledge
 | Skill | Trigger | Purpose |
