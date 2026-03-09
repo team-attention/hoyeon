@@ -39,7 +39,11 @@ Set the command based on result:
 - `OK_NPX` → `CX="npx @team-attention/chromux"`
 - `MISSING` → Report error: "chromux not installed. Run: npm i -g @team-attention/chromux"
 
-No Chrome setup needed — chromux auto-launches Chrome on first command.
+Launch Chrome in headless mode (skip if already running):
+
+```bash
+$CX launch default --headless 2>/dev/null || true
+```
 
 ## Session Commands
 
