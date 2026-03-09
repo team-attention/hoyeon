@@ -4,4 +4,3 @@
 .dev/local.json
 .dev/specs/*
 !.dev/specs/.gitkeep
-.dev/rulph/

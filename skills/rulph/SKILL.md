@@ -375,9 +375,11 @@ Display the complete evaluation summary:
 Always save the rubric and scores automatically. Include the full report in the saved file.
 
 ```
-Bash: mkdir -p .dev/rulph
+SESSION_ID="[session ID from UserPromptSubmit hook]"
+REPORT_DIR="$HOME/.hoyeon/$SESSION_ID/tmp/rulph"
+Bash: mkdir -p "$REPORT_DIR"
 
-Write to .dev/rulph/$(date +%Y-%m-%d-%H%M%S)-report.md:
+Write to $REPORT_DIR/$(date +%Y-%m-%d-%H%M%S)-report.md:
   [Full rubric definition]
   [Score history table]
   [Final scores table]
@@ -385,7 +387,7 @@ Write to .dev/rulph/$(date +%Y-%m-%d-%H%M%S)-report.md:
 ```
 
 Close with:
-> "Finished! Final score: [final_score]/100 after [N] round(s). Report saved to .dev/rulph/."
+> "Finished! Final score: [final_score]/100 after [N] round(s). Report saved to session tmp."
 
 ---
 
