@@ -53,10 +53,6 @@
           {
             "type": "command",
             "command": ".claude/scripts/rv-detector.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/rph-detector.sh"
           }
         ]
       }
@@ -84,7 +80,7 @@
           },
           {
             "type": "command",
-            "command": ".claude/scripts/rph-dod-guard.sh"
+            "command": ".claude/scripts/ralph-dod-guard.sh"
           }
         ]
       }
@@ -118,11 +114,11 @@
           },
           {
             "type": "command",
-            "command": ".claude/scripts/rph-loop.sh"
+            "command": ".claude/scripts/rulph-stop.sh"
           },
           {
             "type": "command",
-            "command": ".claude/scripts/rulph-stop.sh"
+            "command": ".claude/scripts/ralph-stop.sh"
           }
         ]
       }

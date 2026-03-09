@@ -19,7 +19,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/rph-dod-guard.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/ralph-dod-guard.sh"
           }
         ]
       }
@@ -53,7 +53,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/rph-loop.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/ralph-stop.sh"
           }
         ]
       }
@@ -84,10 +84,6 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/rv-detector.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/rph-detector.sh"
           }
         ]
       }

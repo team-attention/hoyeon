@@ -14,7 +14,7 @@
 #   ├── files/       # non-JSON artifacts (dod.md, flag files)
 #   └── tmp/         # skill temp files (dev-scan output, etc.)
 #
-# Idempotent: later calls merge into state.json (preserves existing namespaces like .rph, .rv, .rulph)
+# Idempotent: later calls merge into state.json (preserves existing namespaces like .ralph, .rv, .rulph)
 
 set -euo pipefail
 
@@ -76,7 +76,7 @@ mkdir -p "$SESSION_DIR/files" "$SESSION_DIR/tmp"
 STATE_FILE="$SESSION_DIR/state.json"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# Merge into existing state.json (preserves .rph, .rv, .rulph, .spec)
+# Merge into existing state.json (preserves .ralph, .rv, .rulph, .spec)
 TEMP_FILE="${STATE_FILE}.tmp.$$"
 if [[ -f "$STATE_FILE" ]]; then
   jq \

@@ -50,22 +50,30 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 
 | Type | When it fires | Use case |
 |------|--------------|----------|
+| `SessionStart` | Session begins | Initialize session-level state |
 | `UserPromptSubmit` | User submits a prompt | Initialize state, intercept slash commands |
 | `PreToolUse` | Before a tool executes | Block or modify tool calls |
 | `PostToolUse` | After a tool completes | Validate output, trigger follow-up |
 | `Stop` | Session ends | Transition to next pipeline stage |
-| `SubagentStop` | Subagent finishes | Post-agent cleanup |
 
 ### Active Hooks
 
 | Script | Type | Purpose |
 |--------|------|---------|
-| `skill-session-init.sh` | UserPromptSubmit + PreToolUse[Skill] | Initialize session state for specify/execute skills |
-| `skill-session-guard.sh` | PreToolUse[Edit\|Write] | Plan guard (specify) / orchestrator guard (execute) |
-| `skill-session-stop.sh` | Stop | Block exit if execute has incomplete tasks (circuit breaker: 30 iter) |
-| `skill-session-cleanup.sh` | SessionEnd | Clean up session dir (`rm -rf ~/.hoyeon/{session_id}/`) |
+| `execute-compact-hook.sh` | SessionStart | Handle compact session resume for /execute |
 | `ultrawork-init-hook.sh` | UserPromptSubmit | Initialize ultrawork pipeline state when `/ultrawork` is typed |
-| `validate-output.sh` | PostToolUse | Validate agent/skill output against `validate_prompt` frontmatter |
+| `skill-session-init.sh` | UserPromptSubmit + PreToolUse[Skill] | Initialize session state for specify/execute skills |
+| `rv-detector.sh` | UserPromptSubmit | Detect `!rv` keyword to trigger re-validation loop |
+| `rulph-init.sh` | PreToolUse[Skill] | Initialize rulph loop state on skill invocation |
+| `skill-session-guard.sh` | PreToolUse[Edit\|Write] | Plan guard (specify) / orchestrator guard (execute) |
+| `ralph-dod-guard.sh` | PreToolUse[Edit\|Write] | Enforce DoD before allowing writes in /ralph loop |
+| `validate-output.sh` | PostToolUse[Task\|Skill] | Validate agent/skill output against `validate_prompt` frontmatter |
+| `ultrawork-stop-hook.sh` | Stop | Advance ultrawork pipeline on session stop |
+| `skill-session-stop.sh` | Stop | Block exit if execute has incomplete tasks (circuit breaker: 30 iter) |
+| `rv-validator.sh` | Stop | Run re-validation pass on stop |
+| `rulph-stop.sh` | Stop | Handle rulph loop termination |
+| `ralph-stop.sh` | Stop | Ralph loop DoD verification + prompt re-injection |
+| `skill-session-cleanup.sh` | SessionEnd | Clean up session dir (`rm -rf ~/.hoyeon/{session_id}/`) |
 
 ### Hook Development Notes
 
@@ -111,64 +119,6 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - refactor(cli): rename user-facing strings from `dev-cli` to `hoyeon-cli` in all help/error output
 - refactor(hooks,skills,docs): update all references from `dev-cli/bin/dev-cli.js` to `cli/dist/cli.js`
 - feat(hooks): add pre-commit hook to auto-rebuild `cli/dist/cli.js` on source changes (`scripts/pre-commit-cli-build.sh`)
-
-## Previous Changes (v0.7.1)
-
-- refactor(hooks): migrate session state from `~/.claude/.hook-state/` to `~/.hoyeon/{session_id}/` directory structure
-- refactor(hooks): unify rulph/rph/rv state into single `state.json` with namespaced fields (`.rulph`, `.rph`, `.rv`)
-- refactor(hooks): simplify SessionEnd cleanup to `rm -rf` session dir (replaces cleanup[] array pattern)
-- refactor(hooks): delete `rph-cleanup.sh` and `rulph-cleanup.sh` (redundant with unified cleanup)
-- chore(skills): remove 7 unused skills (simple-execute, simple-specify, state, worktree, publish, open, init)
-- chore(scripts): remove dead scripts (hy, capture-session)
-
-## Previous Changes (v0.7.0)
-
-- refactor(hooks): consolidate 7 hooks into 4 unified skill-session hooks (`skill-session-init`, `skill-session-guard`, `skill-session-stop`, `skill-session-cleanup`) with per-session state in `~/.hoyeon/{session_id}/state.json`
-- feat(skills): replace v1 specify/execute with v2 (spec.json-native, cli driven, no PLAN.md dependency)
-- feat(cli): add `spec status` subcommand for hook-based task completion checking
-- feat(agents): update browser-explorer to chromux-based architecture (raw CDP, isolated Chrome profile)
-
-## Previous Changes (v0.6.6)
-
-- feat(bugfix): add `/bugfix` skill and `debugger` agent for root cause-based one-shot bug fixing (DIAGNOSE → FIX → REVIEW & COMMIT, adaptive SIMPLE/COMPLEX mode, circuit breaker with `/specify` escalation)
-- feat(persist): add `!rph` (Ralph Loop) and `!rv` (Re-validate) magic keyword hooks with DoD guard, zombie cleanup, orphan GC
-
-## Previous Changes (v0.6.5)
-
-- feat(verify): add S-items 3-way classification to verification-planner (A/H/S separate sections, pattern detection for BDD features, UI screenshot verification)
-- feat(reference-seek): upgrade to v2.0.0 with GitHub API, context7, and code deep dive
-- feat(hooks): add session ID capture and Claude-Session trailer support
-- fix(agents): remove dead ${CLAUDE_PLUGIN_ROOT} refs and add sandbox verification checks
-
-## Previous Changes (v0.6.4)
-
-- feat(specify): add Plan Approval Summary to plan finalization (TODO overview, verification A/H/S, pre/post-work, key decisions, assumptions)
-- feat(dev-scan): add ProductHunt as 6th data source
-
-## Previous Changes (v0.6.3)
-
-- fix(verify): replace ambiguous read-only constraint with Edit/Write forbidden + Bash file mutation guard
-- fix(specify): make codex-strategist Step 2.5 required in Standard mode
-- feat(execute): add sandbox lifecycle to verification flow (capture output, teardown, report to `context/sandbox-report.md`)
-
-
-## Previous Changes (v0.6.2)
-
-- Discuss skill: Socratic discussion partner for pre-planning exploration (DIAGNOSE → PROBE → SYNTHESIZE)
-- Dev-scan v1.5: vendored bird-search.mjs for X/Twitter search with cookie auth
-- Dev-scan v1.5: browser enrichment pipeline (enrich-browser.py) for Dev.to/Lobsters full content extraction
-- Dev-scan v1.5: Twitter query optimization with `since:` date filter and `min_faves:5`
-
-## Previous Changes (v0.6.1)
-
-- TESTING.md: Sandbox Bootstrapping Patterns (Web App, API Server, CLI Tool, Monorepo) + Security Checklist
-- TESTING.md: Sandbox Drift Prevention section with detection checklist
-- Agents: fixed `validate_prompt` frontmatter key in 7 agents (PostToolUse validation now active)
-- Agents: fixed `codex exec -p` → `codex exec` (positional arg, not --profile flag)
-- code-reviewer: switched to foreground parallel execution (fixes background PATH issue)
-- verification-planner: added Sandbox Drift Detection step (1.6) and bootstrapping pattern recommendations
-- tradeoff-analyzer: added Reversible Alternative column to Risk Assessment
-- specify skill: Risk Summary table format updated with reversibility info
 
 ## Testing Strategy
 

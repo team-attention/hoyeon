@@ -2,6 +2,12 @@
 
 Claude Code plugin for automated Spec-Driven Development (SDD). Plan, execute tasks, and extract learnings — all through an orchestrated skill pipeline.
 
+## Installation
+
+```bash
+npm install -g @team-attention/hoyeon-cli
+```
+
 ## Core Workflow
 
 ```
@@ -13,8 +19,8 @@ Claude Code plugin for automated Spec-Driven Development (SDD). Plan, execute ta
 | Step | Skill | What it does |
 |------|-------|-------------|
 | 0 | `/discuss` | Socratic discussion partner. Challenges assumptions, explores alternatives, and surfaces blind spots before planning. Saves insights for `/specify` handoff. |
-| 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, tradeoff-analyzer, verification-planner, external-researcher), Codex strategic synthesis, generates `PLAN.md` with plan-reviewer approval. |
-| 2 | `/execute` | Orchestrator reads `PLAN.md`, creates Tasks per TODO, delegates to worker agents, verifies results, Codex code review gate, commits atomically. |
+| 1 | `/specify` | Interview-driven planning. Gathers requirements, runs parallel analysis (gap-analyzer, tradeoff-analyzer, verification-planner, external-researcher), Codex strategic synthesis, generates `spec.json` with plan-reviewer approval. |
+| 2 | `/execute` | Orchestrator reads `spec.json` via cli, creates Tasks per TODO, delegates to worker agents, verifies results, Codex code review gate, commits atomically. |
 | 3 | `/compound` | Extracts learnings from completed PR into `docs/learnings/`. |
 
 ### One-shot: `/ultrawork`
@@ -32,26 +38,35 @@ Chains the entire pipeline automatically via Stop hooks:
 ### Planning & Execution
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
-| `/discuss` | "같이 생각해보자" | Socratic pre-planning exploration (DIAGNOSE → PROBE → SYNTHESIZE) |
-| `/specify` | "plan this" | Interview → DRAFT.md → PLAN.md with plan-reviewer approval |
+| `/discuss` | "think with me" | Socratic pre-planning exploration (DIAGNOSE → PROBE → SYNTHESIZE) |
+| `/specify` | "plan this" | Interview → spec.json with plan-reviewer approval |
 | `/execute` | "/execute" | Orchestrate TODO implementation via worker agents |
+| `/quick-plan` | "/quick-plan" | Lightweight spec generation with user confirmation before execution |
 | `/ultrawork` | "/ultrawork name" | Full automated pipeline |
+| `/rulph` | "/rulph" | Recursive loop: plan → implement → validate until DoD met |
 
 ### State & Knowledge
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
 | `/compound` | "document learnings" | Extract knowledge from completed PRs |
+| `/scope` | "/scope" | Scope analysis and boundary definition for a feature |
+| `/check` | "/check" | Validate current state against spec or DoD |
+| `/mirror` | "/mirror" | Reflect and summarize session state |
 
 ### Bug Fixing
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
-| `/bugfix` | "/bugfix 에러 설명" | Root cause 기반 원샷 버그픽스. debugger 진단 → worker 수정 → verify → commit. 3회 실패 시 `/specify`로 에스컬레이션 |
+| `/bugfix` | "/bugfix error desc" | Root cause-based one-shot bug fix. debugger diagnose → worker fix → verify → commit. Escalates to `/specify` after 3 failures |
 
 ### Research & Analysis
 | Skill | Trigger | Purpose |
 |-------|---------|---------|
 | `/tech-decision` | "A vs B" | Systematic tech comparison with multi-source research |
 | `/dev-scan` | "community opinions" | Aggregate developer perspectives from Reddit, X/Twitter, HN, Dev.to, Lobsters |
+| `/deep-interview` | "/deep-interview" | Structured requirements elicitation through guided questioning |
+| `/deep-research` | "/deep-research" | Deep multi-source research synthesis |
+| `/reference-seek` | "/reference-seek" | Find reference implementations via GitHub API, context7, code deep dive |
+| `/google-search` | "/google-search" | Targeted web search with result synthesis |
 | `/tribunal` | "review this" | 3-perspective adversarial review (Risk/Value/Feasibility → APPROVE/REVISE/REJECT) |
 | `/skill-session-analyzer` | "analyze session" | Post-hoc validation of skill execution |
 
@@ -60,21 +75,24 @@ Chains the entire pipeline automatically via Stop hooks:
 
 | Agent | Model | Role |
 |-------|-------|------|
-| `debugger` | Sonnet | Root cause 분석 전문. Backward call stack tracing, Bug Type 분류, Severity 판정 (SIMPLE/COMPLEX). Read-only |
-| `worker` | Sonnet | Implements delegated TODOs (code, tests, fixes) |
-| `gap-analyzer` | Haiku | Identifies missing requirements and pitfalls before planning |
-| `tradeoff-analyzer` | Sonnet | Evaluates risk (LOW/MED/HIGH) with reversibility analysis, simpler alternatives, over-engineering warnings |
-| `verification-planner` | Sonnet | 4-Tier testing model 기반 검증 전략 수립, A/H-items 분류, 외부 의존성 전략, sandbox drift 감지 및 bootstrapping 패턴 추천 |
-| `docs-researcher` | Sonnet | Searches internal docs (ADRs, READMEs, configs) for conventions and constraints |
-| `external-researcher` | Sonnet | Researches external libraries, frameworks, and official docs |
-| `ux-reviewer` | Sonnet | UX 관점에서 변경사항 평가 — 단순성, 직관성, UX regression 방지. specify 초기에 실행 |
-| `plan-reviewer` | Opus | Evaluates plans for clarity, verifiability, completeness, structural integrity |
-| `git-master` | Sonnet | Enforces atomic commits following project style |
-| `codex-strategist` | Haiku | Calls Codex CLI to cross-check analysis reports and find blind spots in /specify |
+| `browser-explorer` | Haiku | Browser automation via Chromux CDP for UI inspection and screenshot capture |
+| `code-explorer` | Haiku | Codebase navigation, file structure analysis, and pattern discovery |
 | `code-reviewer` | Sonnet | Multi-model code reviewer (Gemini + Codex + Claude in foreground parallel), synthesizes converged verdict |
 | `codex-risk-analyst` | Haiku | /tribunal — adversarial risk analysis via Codex CLI (the challenger) |
-| `value-assessor` | Sonnet | /tribunal — constructive value and goal alignment assessment |
+| `codex-strategist` | Haiku | Calls Codex CLI to cross-check analysis reports and find blind spots in /specify |
+| `debugger` | Sonnet | Root cause analysis specialist. Backward call stack tracing, bug type classification, severity assessment (SIMPLE/COMPLEX). Read-only |
+| `docs-researcher` | Sonnet | Searches internal docs (ADRs, READMEs, configs) for conventions and constraints |
+| `external-researcher` | Sonnet | Researches external libraries, frameworks, and official docs |
 | `feasibility-checker` | Sonnet | /tribunal — pragmatic feasibility and effort evaluation |
+| `gap-analyzer` | Sonnet | Identifies missing requirements and pitfalls before planning |
+| `git-master` | Sonnet | Enforces atomic commits following project style |
+| `interviewer` | Sonnet | Conducts structured interviews to elicit requirements and surface assumptions |
+| `plan-reviewer` | Opus | Evaluates plans for clarity, verifiability, completeness, structural integrity |
+| `tradeoff-analyzer` | Sonnet | Evaluates risk (LOW/MED/HIGH) with reversibility analysis, simpler alternatives, over-engineering warnings |
+| `ux-reviewer` | Sonnet | Evaluates changes from UX perspective — simplicity, intuitiveness, UX regression prevention. Runs early in /specify |
+| `value-assessor` | Sonnet | /tribunal — constructive value and goal alignment assessment |
+| `verification-planner` | Sonnet | Builds verification strategy based on 4-Tier testing model, A/H/S-items classification, external dependency strategy, sandbox drift detection and bootstrapping patterns |
+| `worker` | Sonnet | Implements delegated TODOs (code, tests, fixes) |
 
 ## /specify Flow
 
@@ -83,99 +101,99 @@ Chains the entire pipeline automatically via Stop hooks:
 │                    INTERVIEW MODE                           │
 │                                                             │
 │  Step 1: Initialize                                         │
-│   • Intent 분류 (Refactoring/Feature/Bug/Arch/...)          │
-│   • 병렬 에이전트:                                          │
+│   • Intent classification (Refactoring/Feature/Bug/Arch/…)  │
+│   • Parallel agents:                                        │
 │     ┌──────────┐ ┌──────────┐ ┌────────────────┐            │
 │     │Explore #1│ │Explore #2│ │docs-researcher │            │
-│     │패턴 탐색 │ │구조+명령 │ │ADR/컨벤션 탐색 │            │
+│     │patterns  │ │structure │ │ADR/conventions │            │
 │     └────┬─────┘ └────┬─────┘ └───────┬────────┘            │
 │          │      ┌─────────────┐       │                     │
 │          │      │ux-reviewer  │       │                     │
-│          │      │UX 영향 평가 │       │                     │
+│          │      │UX impact    │       │                     │
 │          │      └──────┬──────┘       │                     │
 │          └─────────────┼──────────────┘                     │
 │                       ▼                                     │
-│  Step 1.5: 탐색 결과 요약                       🧑 HITL #1 │
-│   → 사용자가 코드베이스 이해 확인                           │
+│  Step 1.5: Exploration summary                  🧑 HITL #1 │
+│   → User confirms codebase understanding                    │
 │                       ▼                                     │
-│  Step 2: 인터뷰                                 🧑 HITL #2 │
-│   ASK: 경계조건, 트레이드오프, 성공기준                     │
-│   PROPOSE: 탐색 기반 제안                                   │
+│  Step 2: Interview                              🧑 HITL #2 │
+│   ASK: edge cases, tradeoffs, success criteria              │
+│   PROPOSE: exploration-based suggestions                    │
 │                       ▼                                     │
-│  Step 3-4: DRAFT 업데이트 + 전환 준비                       │
-│   (tech-decision 필요시)                        🧑 HITL #3 │
+│  Step 3-4: Consolidate interview + prepare transition       │
+│   (tech-decision if needed)                     🧑 HITL #3 │
 │                       │                                     │
-│            사용자: "플랜 만들어줘"               🧑 HITL #4 │
+│            User: "generate the plan"            🧑 HITL #4 │
 └───────────────────────┼─────────────────────────────────────┘
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  PLAN GENERATION MODE                        │
 │                                                             │
-│  Step 1: Draft 완성도 검증                                   │
+│  Step 1: Verify interview completeness                       │
 │                       ▼                                     │
-│  Step 2: 병렬 분석 에이전트                                  │
+│  Step 2: Parallel analysis agents                            │
 │   ┌─────────────┐ ┌──────────────────┐ ┌────────────────┐   │
 │   │gap-analyzer │ │tradeoff-analyzer │ │verification-   │   │
-│   │누락/위험    │ │위험도/대안/과설계│ │planner         │   │
+│   │gaps/risks   │ │risk/alt/overeng  │ │planner         │   │
 │   └──────┬──────┘ └────────┬─────────┘ │A/H-items,ExtDep│   │
 │          │                 │           └───────┬────────┘   │
 │          │         ┌───────────────┐           │            │
 │          │         │external-      │           │            │
 │          │         │researcher     │           │            │
-│          │         │(선택적)       │           │            │
+│          │         │(optional)     │           │            │
 │          │         └───────┬───────┘           │            │
 │          └─────────────────┼───────────────────┘            │
 │                            ▼                                │
 │  Step 2.5: Codex Strategic Synthesis (Standard mode only)   │
 │   ┌─────────────────┐                                      │
-│   │codex-strategist │ → 교차 검증, 블라인드 스팟 발견       │
+│   │codex-strategist │ → cross-check, find blind spots       │
 │   └────────┬────────┘                                      │
 │                            ▼                                │
-│   HIGH risk decision_points → 사용자 승인       🧑 HITL #5 │
+│   HIGH risk decision_points → user approval     🧑 HITL #5 │
 │                       ▼                                     │
-│  Step 3: 결정 요약 + 검증 전략 체크포인트       🧑 HITL #6 │
-│   사용자 결정 + 자동 결정 + A/H-items 확인                  │
+│  Step 3: Decision summary + verification checkpoint         │
+│   User decisions + auto decisions + A/H-items   🧑 HITL #6 │
 │                       ▼                                     │
-│  Step 4: PLAN.md 생성                                        │
+│  Step 4: Generate spec.json                                  │
 │   (Verification Summary + External Deps + TODOs + Risk)     │
 │                       ▼                                     │
-│  Step 4.5: Verification Summary 확인            🧑 HITL #6b│
+│  Step 4.5: Verification Summary review          🧑 HITL #6b│
 │                       ▼                                     │
-│  Step 5-6: Plan-Reviewer 검토 (+ Structural Integrity)       │
+│  Step 5-6: Plan-Reviewer review (+ Structural Integrity)     │
 │   ┌─────────────┐                                           │
-│   │plan-reviewer│──OKAY──→ DRAFT 삭제 → 완료                │
+│   │plan-reviewer│──OKAY──→ Done                             │
 │   └───┬────┘                                                │
 │       │REJECT                                               │
-│       ├─ cosmetic → 자동 수정 → 재검토                      │
-│       └─ semantic → 사용자 선택                 🧑 HITL #7  │
-│           ├ 제안대로 수정                                    │
-│           ├ 직접 수정                                        │
-│           └ 인터뷰로 돌아가기                   🧑 HITL #8  │
+│       ├─ cosmetic → auto-fix → re-review                    │
+│       └─ semantic → user choice                 🧑 HITL #7  │
+│           ├ apply suggestion                                │
+│           ├ manual fix                                       │
+│           └ return to interview                 🧑 HITL #8  │
 └─────────────────────────────────────────────────────────────┘
                         ▼
-              다음 단계 선택:
-              • /execute — 바로 구현 시작
+              Next step:
+              • /execute — start implementation
 ```
 
-**Human-in-the-Loop Checkpoints (9개):**
+**Human-in-the-Loop Checkpoints (9):**
 
-| # | 시점 | 목적 |
-|---|------|------|
-| 1 | 탐색 결과 요약 | 잘못된 전제 방지 |
-| 2 | 인터뷰 질문 | 비즈니스 판단 |
-| 3 | tech-decision | 기술 선택 |
-| 4 | Plan 전환 | 명시적 사용자 의도 |
-| 5 | HIGH risk 결정 | 되돌리기 어려운 변경 |
-| 6 | 결정 요약 + 검증 전략 확인 | silent drift 방지 + 검증 방식 합의 |
-| 6b | Verification Summary 확인 | A/H-items + External Deps 최종 확인 |
-| 7 | Semantic REJECT | 범위/요구사항 변경 |
-| 8 | 인터뷰 복귀 | 방향 전환 |
+| # | When | Purpose |
+|---|------|---------|
+| 1 | Exploration summary | Prevent wrong assumptions |
+| 2 | Interview questions | Business judgment |
+| 3 | tech-decision | Technology choice |
+| 4 | Plan transition | Explicit user intent |
+| 5 | HIGH risk decisions | Hard-to-reverse changes |
+| 6 | Decision summary + verification strategy | Prevent silent drift + agree on verification approach |
+| 6b | Verification Summary review | Final A/H-items + External Deps confirmation |
+| 7 | Semantic REJECT | Scope/requirements change |
+| 8 | Return to interview | Direction change |
 
-**Risk Tagging:** TODO별로 LOW/MEDIUM/HIGH 위험도 태그 + 되돌림 가능성(Reversible/Irreversible) 분석. HIGH(DB 스키마, 인증, breaking API)는 반드시 사용자 승인 + rollback 포함.
+**Risk Tagging:** Each TODO gets LOW/MEDIUM/HIGH risk tag + reversibility analysis (Reversible/Irreversible). HIGH risk items (DB schema, auth, breaking API) require user approval + rollback plan.
 
-**Verification Strategy:** PLAN 최상단에 Verification Summary (A-items: Agent 자동 검증, H-items: Human 확인 필요) + External Dependencies Strategy (Pre-work/During/Post-work). A-items는 TODO Final의 Acceptance Criteria로 흘러감.
+**Verification Strategy:** spec.json top-level Verification Summary (A-items: agent-automated verification, H-items: human confirmation required) + External Dependencies Strategy (Pre-work/During/Post-work). A-items flow into TODO-level Acceptance Criteria.
 
-**Verification Block:** TODO마다 Functional/Static/Runtime 수락 기준, 실행 가능한 커맨드(`npm test`, `npm run typecheck`) 포함.
+**Verification Block:** Each TODO includes Functional/Static/Runtime acceptance criteria with executable commands (`npm test`, `npm run typecheck`).
 
 ## Hook System
 
@@ -183,12 +201,20 @@ Hooks automate transitions and enforce quality:
 
 | Hook Type | Script | Purpose |
 |-----------|--------|---------|
-| UserPromptSubmit + PreToolUse(Skill) | `skill-session-init.sh` | Initialize session state for specify/execute |
-| PreToolUse(Edit/Write) | `skill-session-guard.sh` | Plan guard (specify) / orchestrator guard (execute) |
-| Stop | `skill-session-stop.sh` | Block exit if execute has incomplete tasks |
-| SessionEnd | `skill-session-cleanup.sh` | Clean up session state files |
+| SessionStart | `execute-compact-hook.sh` | Handle compact session resume for /execute |
 | UserPromptSubmit | `ultrawork-init-hook.sh` | Initialize ultrawork pipeline state |
-| PostToolUse | `validate-output.sh` | Validate agent/skill output against `validate_prompt` |
+| UserPromptSubmit | `skill-session-init.sh` | Initialize session state for specify/execute |
+| UserPromptSubmit | `rv-detector.sh` | Detect `!rv` re-validation keyword |
+| PreToolUse(Skill) | `rulph-init.sh` | Initialize rulph loop state |
+| PreToolUse(Edit/Write) | `skill-session-guard.sh` | Plan guard (specify) / orchestrator guard (execute) |
+| PreToolUse(Edit/Write) | `ralph-dod-guard.sh` | Enforce DoD before writes in /ralph loop |
+| PostToolUse(Task/Skill) | `validate-output.sh` | Validate agent/skill output against `validate_prompt` |
+| Stop | `ultrawork-stop-hook.sh` | Advance ultrawork pipeline on stop |
+| Stop | `skill-session-stop.sh` | Block exit if execute has incomplete tasks |
+| Stop | `rv-validator.sh` | Run re-validation pass |
+| Stop | `rulph-stop.sh` | Handle rulph loop termination |
+| Stop | `ralph-stop.sh` | Ralph loop DoD verification + prompt re-injection |
+| SessionEnd | `skill-session-cleanup.sh` | Clean up session state files |
 
 ## Execute Architecture
 
@@ -212,33 +238,33 @@ Orchestrator (reads spec.json via cli)
 
 **Key rules:**
 - Orchestrator never writes code — only delegates and verifies
-- Plan checkboxes (`### [x] TODO N:`) are the single source of truth
+- spec.json tasks are the single source of truth
 - Failed tasks retry up to 3 times (reconciliation)
 - Independent TODOs run in parallel
 
 ## /bugfix — One-shot Bug Fixing
 
-Root cause 기반 원샷 버그픽스. Adaptive mode가 debugger의 Severity 판정에 따라 파이프라인 depth를 자동 선택.
+Root cause-based one-shot bug fix. Adaptive mode auto-selects pipeline depth based on debugger's severity assessment.
 
 ```
-/bugfix "에러 설명"
+/bugfix "error description"
   ├── Phase 1: DIAGNOSE
-  │   ├── debugger + verification-planner (병렬)
-  │   ├── [COMPLEX] gap-analyzer 추가
-  │   └── User 확인 (Root Cause 맞는지)
+  │   ├── debugger + verification-planner (parallel)
+  │   ├── [COMPLEX] add gap-analyzer
+  │   └── User confirms root cause
   ├── Phase 2: FIX (max 3 attempts)
-  │   ├── worker (최소 수정 + 리그레션 테스트)
-  │   ├── Bash verify (A-items 독립 실행)
-  │   └── 3회 실패 → Circuit Breaker → /specify 에스컬레이션
+  │   ├── worker (minimal fix + regression tests)
+  │   ├── Bash verify (A-items independent run)
+  │   └── 3 failures → Circuit Breaker → escalate to /specify
   └── Phase 3: REVIEW & COMMIT
       ├── [COMPLEX] code-reviewer (multi-model)
       └── git-master (atomic commit)
 ```
 
-| Severity | Agents | 조건 |
-|----------|--------|------|
-| **SIMPLE** | 4개 (debugger, v-planner, worker, git-master) | 단일 파일, 명확한 원인 |
-| **COMPLEX** | 6개 (+gap-analyzer, +code-reviewer) | 다중 파일, INTEGRATION, 보안 경로 |
+| Severity | Agents | Condition |
+|----------|--------|-----------|
+| **SIMPLE** | 4 (debugger, v-planner, worker, git-master) | Single file, clear cause |
+| **COMPLEX** | 6 (+gap-analyzer, +code-reviewer) | Multi-file, integration, security path |
 
 ## Project Structure
 
@@ -250,7 +276,7 @@ Root cause 기반 원샷 버그픽스. Adaptive mode가 debugger의 Severity 판
 
 .dev/
 ├── specs/{name}/    # Per-feature specs
-│   ├── PLAN.md
+│   ├── spec.json
 │   └── context/     # learnings.md, decisions.md, issues.md, outputs.json
 └── state.local.json # Session tracking state (git-ignored)
 
@@ -287,7 +313,7 @@ Input ──────┼─ value-assessor (Claude)     ── "What value do
 
 **Verdict matrix**: Risk (BLOCK/CAUTION/CLEAR) × Value (STRONG/ADEQUATE/WEAK) × Feasibility (GO/CONDITIONAL/NO-GO) → final verdict with required actions.
 
-**Usage**: `/tribunal PLAN.md`, `/tribunal --pr 42`, `/tribunal --diff`
+**Usage**: `/tribunal spec.json`, `/tribunal --pr 42`, `/tribunal --diff`
 
 ## Lessons Learned
 
