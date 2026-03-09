@@ -432,10 +432,22 @@ def main():
     i = 0
     while i < len(args):
         if args[i] == "--count" and i + 1 < len(args):
-            count = int(args[i + 1])
+            try:
+                count = int(args[i + 1])
+                if count < 1:
+                    raise ValueError
+            except ValueError:
+                print("Error: --count must be a positive integer", file=sys.stderr)
+                sys.exit(1)
             i += 2
         elif args[i] == "--comments" and i + 1 < len(args):
-            max_comments = int(args[i + 1])
+            try:
+                max_comments = int(args[i + 1])
+                if max_comments < 0:
+                    raise ValueError
+            except ValueError:
+                print("Error: --comments must be a non-negative integer", file=sys.stderr)
+                sys.exit(1)
             i += 2
         elif args[i] == "--time" and i + 1 < len(args):
             time_filter = args[i + 1]

@@ -218,10 +218,10 @@ let maxComments = 5, bodyLen = 500, jsonMode = false;
 for (let i = 0; i < args.length; i++) {
   switch (args[i]) {
     case '--site': site = args[++i]; break;
-    case '--count': count = parseInt(args[++i]); break;
+    case '--count': { const v = parseInt(args[++i]); if (isNaN(v) || v < 1) { console.error('Error: --count must be a positive integer'); process.exit(1); } count = v; break; }
     case '--time': time = args[++i]; break;
-    case '--comments': maxComments = parseInt(args[++i]); break;
-    case '--body': bodyLen = parseInt(args[++i]); break;
+    case '--comments': { const v = parseInt(args[++i]); if (isNaN(v) || v < 0) { console.error('Error: --comments must be a non-negative integer'); process.exit(1); } maxComments = v; break; }
+    case '--body': { const v = parseInt(args[++i]); if (isNaN(v) || v < 1) { console.error('Error: --body must be a positive integer'); process.exit(1); } bodyLen = v; break; }
     case '--no-enrich': enrich = false; break;
     case '--json': jsonMode = true; break;
     default:
