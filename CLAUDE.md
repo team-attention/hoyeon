@@ -63,7 +63,7 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 | `skill-session-init.sh` | UserPromptSubmit + PreToolUse[Skill] | Initialize session state for specify/execute skills |
 | `skill-session-guard.sh` | PreToolUse[Edit\|Write] | Plan guard (specify) / orchestrator guard (execute) |
 | `skill-session-stop.sh` | Stop | Block exit if execute has incomplete tasks (circuit breaker: 30 iter) |
-| `skill-session-cleanup.sh` | SessionEnd | Clean up session state files |
+| `skill-session-cleanup.sh` | SessionEnd | Clean up session dir (`rm -rf ~/.hoyeon/{session_id}/`) |
 | `ultrawork-init-hook.sh` | UserPromptSubmit | Initialize ultrawork pipeline state when `/ultrawork` is typed |
 | `validate-output.sh` | PostToolUse | Validate agent/skill output against `validate_prompt` frontmatter |
 
@@ -96,9 +96,18 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 - Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 - **Bump both files** in a single commit on `develop` before merging to `main`
 
-## Recent Changes (v0.7.0)
+## Recent Changes (v0.7.1)
 
-- refactor(hooks): consolidate 7 hooks into 4 unified skill-session hooks (`skill-session-init`, `skill-session-guard`, `skill-session-stop`, `skill-session-cleanup`) with per-session state in `~/.claude/.hook-state/{session_id}.json`
+- refactor(hooks): migrate session state from `~/.claude/.hook-state/` to `~/.hoyeon/{session_id}/` directory structure
+- refactor(hooks): unify rulph/rph/rv state into single `state.json` with namespaced fields (`.rulph`, `.rph`, `.rv`)
+- refactor(hooks): simplify SessionEnd cleanup to `rm -rf` session dir (replaces cleanup[] array pattern)
+- refactor(hooks): delete `rph-cleanup.sh` and `rulph-cleanup.sh` (redundant with unified cleanup)
+- chore(skills): remove 7 unused skills (simple-execute, simple-specify, state, worktree, publish, open, init)
+- chore(scripts): remove dead scripts (hy, capture-session)
+
+## Previous Changes (v0.7.0)
+
+- refactor(hooks): consolidate 7 hooks into 4 unified skill-session hooks (`skill-session-init`, `skill-session-guard`, `skill-session-stop`, `skill-session-cleanup`) with per-session state in `~/.hoyeon/{session_id}/state.json`
 - feat(skills): replace v1 specify/execute with v2 (spec.json-native, dev-cli driven, no PLAN.md dependency)
 - feat(dev-cli): add `spec status` subcommand for hook-based task completion checking
 - feat(agents): update browser-explorer to chromux-based architecture (raw CDP, isolated Chrome profile)

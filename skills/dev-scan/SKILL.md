@@ -174,17 +174,11 @@ Split into two phases: API sources in parallel (shell backgrounding), then all G
 
 **Bash call 1 — API sources (parallel):**
 ```bash
+SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown")
 RUN_ID="dev-scan-$(date +%s)-$RANDOM"
-D="/tmp/$RUN_ID"
+D="$HOME/.hoyeon/$SESSION_ID/tmp/$RUN_ID"
 mkdir -p "$D"
 echo "$D" > /tmp/dev-scan-current-dir
-
-# Register temp paths for session cleanup
-SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown")
-STATE_FILE="$HOME/.claude/.hook-state/$SESSION_ID.json"
-if [[ -f "$STATE_FILE" ]]; then
-  jq --arg d "$D" --arg c "/tmp/dev-scan-current-dir" '.cleanup += [$d, $c]' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
-fi
 
 python3 skills/dev-scan/vendor/hn-search/hn-search.py "{Q_HN}" --count 10 --comments 5 --time {TIME_PERIOD} --json > "$D/hn.json" 2>"$D/hn.err" &
 python3 skills/dev-scan/vendor/ph-search/ph-search.py "{Q_PH}" --count 10 --comments 3 --time {TIME_PERIOD} --json > "$D/ph.json" 2>"$D/ph.err" &

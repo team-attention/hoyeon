@@ -135,12 +135,10 @@ Rubric locked. Starting evaluation.
 **State init** — write the loop state so the Stop hook can track progress. The state file is session-scoped to prevent cross-session interference:
 
 ```
-Bash: SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown") && mkdir -p "$HOME/.claude/.hook-state" && cat > "$HOME/.claude/.hook-state/rulph-$SESSION_ID.json" <<STATEOF
-{"round":0,"max_rounds":5,"score":0,"threshold":[threshold],"status":"active","session_id":"$SESSION_ID","iteration":0,"max_iterations":15}
-STATEOF
+Bash: SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown") && STATE_FILE="$HOME/.hoyeon/$SESSION_ID/state.json" && jq --argjson threshold [threshold] '. + {rulph: {round: 0, max_rounds: 5, score: 0, threshold: $threshold, status: "active", iteration: 0, max_iterations: 15}}' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
 ```
 
-Replace `[threshold]` with the actual threshold value. The state file uses `rulph-$SESSION_ID.json` naming. This file is read by the Stop hook to decide whether the loop should continue. The `iteration`/`max_iterations` fields are the Stop hook's safety counter — always preserve them in subsequent state updates.
+Replace `[threshold]` with the actual threshold value. The state is stored under the `.rulph` key in the session-scoped `state.json`. This file is read by the Stop hook to decide whether the loop should continue. The `iteration`/`max_iterations` fields are the Stop hook's safety counter — always preserve them in subsequent state updates.
 
 ---
 
@@ -244,9 +242,7 @@ Collect suggestions from all AVAILABLE models. Prioritize the criterion with the
 **State update** — after every scoring round, update the session-scoped state file (preserve `iteration`/`max_iterations` for the Stop hook's safety counter):
 
 ```
-Bash: SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown") && cat > "$HOME/.claude/.hook-state/rulph-$SESSION_ID.json" <<STATEOF
-{"round":[round],"max_rounds":[max_rounds],"score":[overall],"threshold":[threshold],"status":"active","session_id":"$SESSION_ID","iteration":0,"max_iterations":15}
-STATEOF
+Bash: SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown") && STATE_FILE="$HOME/.hoyeon/$SESSION_ID/state.json" && jq --argjson round [round] --argjson score [overall] --argjson threshold [threshold] '.rulph = (.rulph + {round: $round, score: $score, threshold: $threshold, status: "active", iteration: 0})' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
 ```
 
 Replace `[round]`, `[overall]`, etc. with actual values. Note: `iteration` resets to 0 here — the Stop hook increments it each time it fires within a round, providing a per-round safety net.
@@ -340,9 +336,7 @@ After the worker completes:
 **State update** — mark as completed so the Stop hook allows exit:
 
 ```
-Bash: SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown") && cat > "$HOME/.claude/.hook-state/rulph-$SESSION_ID.json" <<'STATEOF'
-{"status":"completed"}
-STATEOF
+Bash: SESSION_ID=$(jq -r '.session_id // "unknown"' "$HOME/.claude/.session-context" 2>/dev/null || echo "unknown") && STATE_FILE="$HOME/.hoyeon/$SESSION_ID/state.json" && jq '.rulph.status = "completed"' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
 ```
 
 ### Final Report
