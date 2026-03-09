@@ -6,9 +6,15 @@
 #   - PreToolUse[Skill] (code calls Skill("execute"), Skill("specify"), etc.)
 #
 # Writes: ~/.claude/.hook-state/{session_id}.json
-# Read by: skill-session-stop.sh, guard hooks
+# Read by: skill-session-stop.sh, skill-session-guard.sh, skill-session-cleanup.sh
 #
-# Idempotent: later calls overwrite (PreToolUse has more accurate args than prompt parsing)
+# Session state schema:
+#   { skill, spec?, started_at, cwd, cleanup: ["/tmp/..."] }
+#
+# Any skill can later append temp paths to cleanup[]:
+#   jq --arg p "$DIR" '.cleanup += [$p]' "$STATE_FILE" > tmp && mv tmp "$STATE_FILE"
+#
+# Idempotent: later calls merge (preserves existing cleanup entries)
 
 set -euo pipefail
 
@@ -30,9 +36,7 @@ if [[ -n "$SKILL_NAME" ]]; then
   case "$SKILL_NAME" in
     execute|dev.execute)  DETECTED_SKILL="execute" ;;
     specify|dev.specify)  DETECTED_SKILL="specify" ;;
-    simple-execute)                  DETECTED_SKILL="simple-execute" ;;
-    simple-specify)                  DETECTED_SKILL="simple-specify" ;;
-    *)                               exit 0 ;;
+    *)                    DETECTED_SKILL="$SKILL_NAME" ;;
   esac
   DETECTED_ARGS="$SKILL_ARGS"
 fi
@@ -45,11 +49,8 @@ if [[ -z "$DETECTED_SKILL" && -n "$PROMPT" ]]; then
   elif echo "$PROMPT" | grep -qiE "^/specify"; then
     DETECTED_SKILL="specify"
     DETECTED_ARGS=$(echo "$PROMPT" | sed -E 's|^/[^ ]+[[:space:]]*||' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | head -c 50)
-  elif echo "$PROMPT" | grep -qiE "^/simple-execute"; then
-    DETECTED_SKILL="simple-execute"
-    DETECTED_ARGS=$(echo "$PROMPT" | sed -E 's|^/[^ ]+[[:space:]]*||' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | head -c 50)
-  elif echo "$PROMPT" | grep -qiE "^/simple-specify"; then
-    DETECTED_SKILL="simple-specify"
+  elif echo "$PROMPT" | grep -qiE "^/[a-z]"; then
+    DETECTED_SKILL=$(echo "$PROMPT" | sed -E 's|^/([^ ]+).*|\1|' | tr '[:upper:]' '[:lower:]' | head -c 50)
     DETECTED_ARGS=$(echo "$PROMPT" | sed -E 's|^/[^ ]+[[:space:]]*||' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | head -c 50)
   fi
 fi
@@ -57,23 +58,25 @@ fi
 # Nothing detected → exit
 [[ -z "$DETECTED_SKILL" ]] && exit 0
 
-# ── Resolve spec path ──
+# ── Resolve spec path (execute/specify only) ──
 
 SPEC_PATH=""
-if [[ -n "$DETECTED_ARGS" ]]; then
-  CANDIDATE="$CWD/.dev/specs/$DETECTED_ARGS/spec.json"
-  if [[ -f "$CANDIDATE" ]]; then
-    SPEC_PATH=".dev/specs/$DETECTED_ARGS/spec.json"
+if [[ "$DETECTED_SKILL" == "execute" || "$DETECTED_SKILL" == "specify" ]]; then
+  if [[ -n "$DETECTED_ARGS" ]]; then
+    CANDIDATE="$CWD/.dev/specs/$DETECTED_ARGS/spec.json"
+    if [[ -f "$CANDIDATE" ]]; then
+      SPEC_PATH=".dev/specs/$DETECTED_ARGS/spec.json"
+    fi
   fi
-fi
 
-# Fallback: most recently modified spec.json
-if [[ -z "$SPEC_PATH" ]]; then
-  ABS_SPEC=$(find "$CWD/.dev/specs" -name "spec.json" -maxdepth 2 -print0 2>/dev/null \
-    | xargs -0 stat -f '%m %N' 2>/dev/null \
-    | sort -rn | head -1 | cut -d' ' -f2-)
-  if [[ -n "$ABS_SPEC" ]]; then
-    SPEC_PATH="${ABS_SPEC#$CWD/}"
+  # Fallback: most recently modified spec.json
+  if [[ -z "$SPEC_PATH" ]]; then
+    ABS_SPEC=$(find "$CWD/.dev/specs" -name "spec.json" -maxdepth 2 -print0 2>/dev/null \
+      | xargs -0 stat -f '%m %N' 2>/dev/null \
+      | sort -rn | head -1 | cut -d' ' -f2-)
+    if [[ -n "$ABS_SPEC" ]]; then
+      SPEC_PATH="${ABS_SPEC#$CWD/}"
+    fi
   fi
 fi
 
@@ -85,16 +88,24 @@ mkdir -p "$STATE_DIR"
 STATE_FILE="$STATE_DIR/$SESSION_ID.json"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# Preserve existing cleanup entries if state file already exists
+EXISTING_CLEANUP="[]"
+if [[ -f "$STATE_FILE" ]]; then
+  EXISTING_CLEANUP=$(jq -r '.cleanup // []' "$STATE_FILE" 2>/dev/null || echo "[]")
+fi
+
 jq -n \
   --arg skill "$DETECTED_SKILL" \
   --arg spec "$SPEC_PATH" \
   --arg started_at "$TIMESTAMP" \
   --arg cwd "$CWD" \
+  --argjson cleanup "$EXISTING_CLEANUP" \
   '{
     skill: $skill,
     spec: $spec,
     started_at: $started_at,
-    cwd: $cwd
+    cwd: $cwd,
+    cleanup: $cleanup
   }' > "$STATE_FILE"
 
 echo "📋 Session registered: $DETECTED_SKILL (spec: ${SPEC_PATH:-none})" >&2

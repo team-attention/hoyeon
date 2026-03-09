@@ -3,8 +3,8 @@
 #
 # Reads: ~/.claude/.hook-state/{session_id}.json
 # Behavior per skill:
-#   - specify / simple-specify: DENY writes outside .dev/
-#   - execute / simple-execute: WARN on writes outside .dev/ (allow but message)
+#   - specify: DENY writes outside .dev/
+#   - execute: WARN on writes outside .dev/ (allow but message)
 #   - No session file: allow all
 
 set -euo pipefail
@@ -26,7 +26,7 @@ SKILL=$(jq -r '.skill // empty' "$STATE_FILE")
 
 # Skill-specific behavior for files outside .dev/
 case "$SKILL" in
-  specify|simple-specify)
+  specify)
     cat << 'EOF'
 {
   "hookSpecificOutput": {
@@ -37,7 +37,7 @@ case "$SKILL" in
 }
 EOF
     ;;
-  execute|simple-execute)
+  execute)
     cat << 'EOF'
 {
   "hookSpecificOutput": {

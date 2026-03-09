@@ -3,8 +3,8 @@
 #
 # Reads: ~/.claude/.hook-state/{session_id}.json
 # Behavior per skill:
-#   - execute / simple-execute: block if spec.json has incomplete tasks
-#   - specify / simple-specify: allow (cleanup only)
+#   - execute: block if spec.json has incomplete tasks
+#   - specify: allow (cleanup only)
 #
 # Uses: dev-cli spec status (exit 0=done, 1=incomplete)
 # Circuit breaker: max 30 iterations to prevent infinite loops
@@ -29,13 +29,19 @@ SPEC_REL=$(jq -r '.spec // empty' "$STATE_FILE")
 # ── Specify skills: cleanup and allow exit ──
 
 case "$SKILL" in
-  specify|simple-specify)
+  specify)
     rm -f "$STATE_FILE"
+    exit 0
+    ;;
+  execute)
+    ;; # fall through to execute logic below
+  *)
+    # Other skills (dev-scan, bugfix, etc.): allow exit, preserve state for SessionEnd cleanup
     exit 0
     ;;
 esac
 
-# ── Execute skills: check spec.json via dev-cli ──
+# ── Execute: check spec.json via dev-cli ──
 
 SPEC_PATH="$CWD/$SPEC_REL"
 
