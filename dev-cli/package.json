@@ -6,8 +6,14 @@
   "bin": {
     "dev-cli": "./bin/dev-cli.js"
   },
+  "scripts": {
+    "build": "node build.mjs"
+  },
   "dependencies": {
     "ajv": "^8.0.0",
     "ajv-formats": "^3.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.3"
   }
 }
