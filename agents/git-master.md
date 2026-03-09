@@ -170,17 +170,11 @@ git commit -m "<message>"
 git log -1 --oneline
 ```
 
-### Add Trailers
+### Commit
 
 ```bash
-# Read session ID from hook-generated file
-CLAUDE_SESSION_ID=$(cat /tmp/claude-session-id 2>/dev/null)
-
-# Commit with trailers
-git commit -m "<message>" -m "Co-Authored-By: Claude <noreply@anthropic.com>" -m "Claude-Session: $CLAUDE_SESSION_ID"
+git commit -m "<message>" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
-
-**Note:** If `/tmp/claude-session-id` is missing, omit the `Claude-Session:` trailer.
 
 ---
 

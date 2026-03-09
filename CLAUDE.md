@@ -60,10 +60,12 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 
 | Script | Type | Purpose |
 |--------|------|---------|
+| `skill-session-init.sh` | UserPromptSubmit + PreToolUse[Skill] | Initialize session state for specify/execute skills |
+| `skill-session-guard.sh` | PreToolUse[Edit\|Write] | Plan guard (specify) / orchestrator guard (execute) |
+| `skill-session-stop.sh` | Stop | Block exit if execute has incomplete tasks (circuit breaker: 30 iter) |
+| `skill-session-cleanup.sh` | SessionEnd | Clean up session dir (`rm -rf ~/.hoyeon/{session_id}/`) |
 | `ultrawork-init-hook.sh` | UserPromptSubmit | Initialize ultrawork pipeline state when `/ultrawork` is typed |
-| `dev-specify-stop-hook.sh` | Stop | Auto-transition specify → open when plan is approved |
 | `validate-output.sh` | PostToolUse | Validate agent/skill output against `validate_prompt` frontmatter |
-| `dev-execute-init-hook.sh` | PreToolUse | Initialize execution context at `/execute` start |
 
 ### Hook Development Notes
 
@@ -82,19 +84,51 @@ Hooks are registered in `.claude/settings.local.json` and automate pipeline tran
 
 ```
 1. All features merged to develop
-2. Version bump commit on develop (plugin.json + marketplace.json)
+2. Version bump commit on develop (plugin.json + marketplace.json + cli/package.json)
 3. Update CLAUDE.md (Recent Changes) and README.md (if new skills/agents added)
-4. git checkout main && git merge develop --no-ff -m "Release X.Y.Z"
-5. git tag vX.Y.Z && git push origin main --tags && git push origin develop
-6. gh release create vX.Y.Z --title "vX.Y.Z" --notes "## What's New in X.Y.Z ..."
+4. cd cli && npm run build && npm publish --access public
+5. git checkout main && git merge develop --no-ff -m "Release X.Y.Z"
+6. git tag vX.Y.Z && git push origin main --tags && git push origin develop
+7. gh release create vX.Y.Z --title "vX.Y.Z" --notes "## What's New in X.Y.Z ..."
 ```
 
 ## Versioning
 
-- Plugin version is in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
-- **Bump both files** in a single commit on `develop` before merging to `main`
+- Plugin version is in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `cli/package.json`
+- **Bump all three files** in a single commit on `develop` before merging to `main`
+- CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v0.6.6)
+## Recent Changes (v0.8.1)
+
+- fix(hooks): remove deleted rph-cleanup.sh from hooks.json SessionEnd
+- refactor: replace `node cli/dist/cli.js` with `hoyeon-cli` globally
+- chore: sync cli version to 0.8.0 and update release flow
+
+## Previous Changes (v0.8.0)
+
+- refactor(cli): rename `dev-cli/` to `cli/`, bundle with esbuild into single `dist/cli.js` (all deps inlined, no node_modules needed)
+- feat(cli): prepare npm publish as `@team-attention/hoyeon-cli` (package.json, bin entry, publishConfig)
+- refactor(cli): rename user-facing strings from `dev-cli` to `hoyeon-cli` in all help/error output
+- refactor(hooks,skills,docs): update all references from `dev-cli/bin/dev-cli.js` to `cli/dist/cli.js`
+- feat(hooks): add pre-commit hook to auto-rebuild `cli/dist/cli.js` on source changes (`scripts/pre-commit-cli-build.sh`)
+
+## Previous Changes (v0.7.1)
+
+- refactor(hooks): migrate session state from `~/.claude/.hook-state/` to `~/.hoyeon/{session_id}/` directory structure
+- refactor(hooks): unify rulph/rph/rv state into single `state.json` with namespaced fields (`.rulph`, `.rph`, `.rv`)
+- refactor(hooks): simplify SessionEnd cleanup to `rm -rf` session dir (replaces cleanup[] array pattern)
+- refactor(hooks): delete `rph-cleanup.sh` and `rulph-cleanup.sh` (redundant with unified cleanup)
+- chore(skills): remove 7 unused skills (simple-execute, simple-specify, state, worktree, publish, open, init)
+- chore(scripts): remove dead scripts (hy, capture-session)
+
+## Previous Changes (v0.7.0)
+
+- refactor(hooks): consolidate 7 hooks into 4 unified skill-session hooks (`skill-session-init`, `skill-session-guard`, `skill-session-stop`, `skill-session-cleanup`) with per-session state in `~/.hoyeon/{session_id}/state.json`
+- feat(skills): replace v1 specify/execute with v2 (spec.json-native, cli driven, no PLAN.md dependency)
+- feat(cli): add `spec status` subcommand for hook-based task completion checking
+- feat(agents): update browser-explorer to chromux-based architecture (raw CDP, isolated Chrome profile)
+
+## Previous Changes (v0.6.6)
 
 - feat(bugfix): add `/bugfix` skill and `debugger` agent for root cause-based one-shot bug fixing (DIAGNOSE → FIX → REVIEW & COMMIT, adaptive SIMPLE/COMPLEX mode, circuit breaker with `/specify` escalation)
 - feat(persist): add `!rph` (Ralph Loop) and `!rv` (Re-validate) magic keyword hooks with DoD guard, zombie cleanup, orphan GC

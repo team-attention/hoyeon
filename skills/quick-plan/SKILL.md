@@ -1,0 +1,276 @@
+---
+name: quick-plan
+description: |
+  "/quick-plan", "quick plan", "태스크 플래닝", "작업 계획", "세션 플래닝",
+  "plan tasks", "what should we do", "작업 정리", "DAG 짜줘",
+  "병렬로 돌리자", "팀 모드로 하자", "에이전트 배치"
+allowed_tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - Write
+  - AskUserQuestion
+  - TaskCreate
+  - TaskUpdate
+  - TaskList
+validate_prompt: |
+  Must contain all of these sections:
+  1. "## Task Breakdown" with numbered tasks and touch zones
+  2. "## Dependency DAG" showing task relationships
+  3. "## Overlap Matrix" if any touch zone overlaps exist
+  4. "## Coordination Mode" with mode (agent-spawn or team) and rationale
+  5. "## Agent Mapping" table with columns: Task, Agent, Model, Rationale
+  6. "## Execution Plan" with parallel rounds and context sharing notes
+  Must generate spec.json at ~/.hoyeon/{session_id}/spec.json.
+  Must end with AskUserQuestion offering next actions.
+  Must NOT: execute any tasks, create teams, or spawn agents.
+---
+
+# /quick-plan — Session Task Planner
+
+Take user's session goals and produce an optimized execution plan that maximizes parallelism.
+
+## Workflow
+
+### Phase 1: Gather Context
+
+1. Read CLAUDE.md and recent git log to understand project state
+2. If user's goals are vague, ask up to 2 clarifying questions via AskUserQuestion
+3. If goals are clear, skip straight to Phase 2
+
+### Phase 2: Task Decomposition
+
+Break goals into atomic tasks. Each task must be:
+- **Single-responsibility**: one clear deliverable
+- **Verifiable**: has a clear done condition
+- **Assignable**: can be given to one agent
+
+Sweet spot: 3-8 tasks per session. Prefer fewer larger tasks over many tiny ones.
+
+### Phase 3: Dependency Analysis
+
+For each task determine:
+- **blockedBy**: what must complete first?
+- **blocks**: what does this unblock?
+- **parallel?**: can it run alongside other tasks?
+
+Build a DAG. Minimize sequential depth — maximize parallel width.
+
+### Phase 3.5: Overlap Analysis
+
+For each task, identify its **touch zone** — the files and modules it will modify.
+
+1. **List touch zones**: For each task, enumerate target files/directories
+2. **Detect overlaps**: If two tasks modify the same file or tightly-coupled module:
+   - **Merge**: Combine into one task if small enough
+   - **Serialize**: Make one block the other if merging is too large
+   - **Never**: Let overlapping tasks run in parallel (guaranteed merge conflicts)
+3. **No overlap** → mark as parallel-safe
+
+Output an overlap matrix in Phase 7 if any overlaps were found.
+
+### Phase 3.7: Context Sharing Strategy
+
+Even when tasks are orthogonal in code, agents benefit from shared context.
+
+For each task, determine:
+- **Needs to know**: What context from other tasks improves this agent's decisions?
+- **Produces**: What results/decisions should be shared with downstream agents?
+
+Patterns:
+- **Summary injection**: Give each agent a 1-line summary of what sibling agents are doing
+- **Result forwarding**: Pass prior round outputs as read-only context to next round agents
+- **Shared decisions doc**: If multiple agents need the same architectural decision, resolve it in Round 0
+
+Rule: **Code changes = orthogonal, Information = shared.**
+
+### Phase 4: Coordination Mode Decision
+
+Decide between two modes:
+
+| | **Agent spawn** (default) | **Team mode** |
+|---|---|---|
+| Pattern | Fan-out/fan-in | Persistent agents |
+| Communication | Orchestrator relays results | Agents message each other directly |
+| Task discovery | Static (all known upfront) | Dynamic (new tasks found during execution) |
+| Agent lifecycle | Spawn → result → done | Spawn → work → idle → pick up next task |
+
+**Rule**: Orchestrator relay sufficient → `agent-spawn`. Agents need direct communication → `team`.
+
+### Phase 5: Agent Matching
+
+For each task, check the currently available agents (from the Agent tool's subagent_type list) and pick the best fit.
+- **Existing agent fits** → use it as `subagent_type`
+- **No existing agent fits** → use `general-purpose`
+
+### Phase 6: Execution Plan
+
+Group tasks into parallel rounds:
+- Round 1: All tasks with no dependencies (launch simultaneously)
+- Round 2: Tasks unblocked by Round 1
+- Round N: Continue until all scheduled
+
+For each round specify:
+- Which agents launch in parallel
+- What context/results they need from prior rounds
+- Whether they need `isolation: "worktree"` (code changes that might conflict)
+
+### Phase 7: Present Plan
+
+Output the complete plan in this format:
+
+```
+## Task Breakdown
+
+1. **{task-name}**: {description} → Done when: {condition} | Touch: `{files/dirs}`
+2. ...
+
+## Dependency DAG
+
+{ASCII diagram}
+
+## Overlap Matrix (if any)
+
+| Task A | Task B | Shared files | Resolution |
+|--------|--------|-------------|------------|
+| 1 | 3 | types.ts | Serialize (1→3) |
+
+## Context Sharing
+
+| Round | Agent | Receives context from |
+|-------|-------|----------------------|
+| 2 | C | A's output summary |
+
+## Coordination Mode
+
+mode: agent-spawn | team
+rationale: {one-line reason}
+
+## Agent Mapping
+
+| # | Task | Agent (subagent_type) | Model | Rationale |
+|---|------|-----------------------|-------|-----------|
+| 1 | ... | worker | sonnet | ... |
+
+## Execution Plan
+
+### Round 1 (Parallel)
+- Agent A: {task} — no dependencies | context: sibling summary
+- Agent B: {task} — no dependencies | context: sibling summary
+
+### Round 2 (After Round 1)
+- Agent C: {task} — needs results from A | context: A's output + sibling summary
+
+## Estimated Parallelism
+
+- Total tasks: N
+- Sequential depth: M rounds
+- Max parallel width: K agents
+```
+
+After presenting the plan, proceed immediately to Phase 8 (do NOT wait for approval).
+
+### Phase 8: Generate spec.json
+
+Convert the plan into a machine-readable spec.json. This happens **automatically** — no user confirmation needed.
+
+#### 8.1 Session Directory
+
+```bash
+SESSION_ID="[session ID from UserPromptSubmit hook]"
+SESSION_DIR="$HOME/.hoyeon/$SESSION_ID"
+SPEC_PATH="$SESSION_DIR/spec.json"
+```
+
+#### 8.2 Initialize spec.json
+
+```bash
+hoyeon-cli spec init {plan-name} --goal "{user's goal}" ${SPEC_PATH}
+```
+
+`{plan-name}`: derive from user's goal (kebab-case, max 30 chars).
+
+#### 8.3 Merge tasks
+
+Merge **all tasks in a single call** — this replaces the placeholder T1 from `spec init`.
+Do NOT call merge per task (without `--append`, each call overwrites the previous tasks array).
+
+```bash
+hoyeon-cli spec merge ${SPEC_PATH} --json '{
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "{task 1 description}",
+      "type": "work",
+      "status": "pending",
+      "file_scope": ["{touch zone files}"],
+      "depends_on": [],
+      "acceptance_criteria": {
+        "functional": [{"description": "{done-when condition}"}],
+        "static": [],
+        "runtime": []
+      },
+      "risk": "low"
+    },
+    {
+      "id": "T2",
+      "action": "{task 2 description}",
+      "type": "work",
+      "status": "pending",
+      "file_scope": ["{touch zone files}"],
+      "depends_on": ["T1"],
+      "acceptance_criteria": {
+        "functional": [{"description": "{done-when condition}"}],
+        "static": [],
+        "runtime": []
+      },
+      "risk": "low"
+    }
+  ]
+}'
+```
+
+Map from plan:
+- Task Breakdown → `action`, `file_scope` (touch zone)
+- Done condition → `acceptance_criteria.functional`
+- Dependency DAG → `depends_on`
+
+#### 8.4 Update state.json
+
+Update the session state to point to the generated spec:
+
+```bash
+hoyeon-cli session set --sid $SESSION_ID --spec "$SPEC_PATH"
+```
+
+#### 8.5 Validate
+
+```bash
+hoyeon-cli spec validate ${SPEC_PATH}
+```
+
+If validation fails, fix and retry once.
+
+#### 8.6 Confirm to user
+
+Output: `spec.json 생성 완료: ${SPEC_PATH}`
+
+### Phase 9: Next Action
+
+Ask user via AskUserQuestion:
+
+```
+계획이 준비됐습니다. 어떻게 할까요?
+
+1. `/execute` — 바로 실행
+2. 계획 수정 — 변경할 부분을 말씀해주세요
+3. 더 논의 — 추가 검토가 필요한 부분이 있으면 알려주세요
+```
+
+## Constraints
+
+- Do NOT execute tasks — only plan and generate spec.json
+- Do NOT create teams or spawn agents — only propose the structure
+- Do NOT modify project files — only write to ~/.hoyeon/{session}/
+- If a task is ambiguous, flag it and suggest clarification

@@ -42,6 +42,9 @@
 
 ## Boundaries
 
+### Non-goals
+- [What this project is NOT trying to achieve]
+
 ### Must NOT Do
 - [Things not allowed]
 - [Out of scope items]
@@ -202,6 +205,7 @@ Identify task type and establish strategy.
 | Agent Findings (partial) | Context > Research Findings |
 | Assumptions | Context > Assumptions |
 | Deliverables | Work Objectives > Concrete Deliverables |
+| Non-goals | meta.non_goals (strategic scope exclusions) |
 | Boundaries | Work Objectives > Must NOT Do |
 | Success Criteria | Work Objectives > Definition of Done |
 | Agent Findings > Patterns | TODOs > References |

@@ -162,6 +162,9 @@ Each TODO is executed by an isolated Worker agent (not a human). Agent call over
 ### Core Objective
 [1-2 sentences: what we're achieving]
 
+### Non-goals (out of scope)
+- [What this project is NOT trying to achieve]
+
 ### Concrete Deliverables
 - [Exact file/endpoint/feature]
 

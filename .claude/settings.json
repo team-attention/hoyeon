@@ -10,19 +10,30 @@
       "Bash(git ls-tree:*)",
       "Bash(gh pr:*)",
       "Bash(gh pr list:*)",
-      "Bash(git worktree:*)",
       "Bash(tmux:*)",
-      "Bash(hy:*)"
+      "Bash(chromux:*)",
+      "Bash(npx @team-attention/chromux:*)"
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/execute-compact-hook.sh"
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/scripts/rph-cleanup.sh"
+            "command": ".claude/scripts/skill-session-cleanup.sh"
           }
         ]
       }
@@ -33,19 +44,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/scripts/capture-session.sh"
-          },
-          {
-            "type": "command",
             "command": ".claude/scripts/ultrawork-init-hook.sh"
           },
           {
             "type": "command",
-            "command": ".claude/scripts/dev-init-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": "scripts/hy-session-hook.sh"
+            "command": ".claude/scripts/skill-session-init.sh"
           },
           {
             "type": "command",
@@ -64,11 +67,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/scripts/dev-execute-init-hook.sh"
+            "command": ".claude/scripts/skill-session-init.sh"
           },
           {
             "type": "command",
-            "command": ".claude/scripts/dev-specify-init-hook.sh"
+            "command": ".claude/scripts/rulph-init.sh"
           }
         ]
       },
@@ -77,11 +80,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/scripts/dev-plan-guard.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/dev-orchestrator-guard.sh"
+            "command": ".claude/scripts/skill-session-guard.sh"
           },
           {
             "type": "command",
@@ -111,11 +110,7 @@
           },
           {
             "type": "command",
-            "command": ".claude/scripts/dev-execute-stop-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/scripts/dev-specify-stop-hook.sh"
+            "command": ".claude/scripts/skill-session-stop.sh"
           },
           {
             "type": "command",
@@ -124,6 +119,10 @@
           {
             "type": "command",
             "command": ".claude/scripts/rph-loop.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/scripts/rulph-stop.sh"
           }
         ]
       }

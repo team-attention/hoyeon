@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dev-state/v1",
+  "title": "dev-state v1",
+  "description": "JSON Schema for dev state v1 — mutable runtime state (spec/state separated)",
+  "type": "object",
+  "required": ["spec_ref", "spec_hash", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "spec_ref": {
+      "type": "string",
+      "description": "Relative path to the associated spec.json file"
+    },
+    "spec_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 hex digest of spec.json contents for drift detection (raw hex, no prefix)"
+    },
+    "tasks": {
+      "type": "object",
+      "description": "Task status map keyed by task ID (e.g. T1, T2)",
+      "additionalProperties": {
+        "$ref": "#/$defs/taskState"
+      }
+    },
+    "verifications": {
+      "type": "object",
+      "description": "Verification result map keyed by scenario ID (e.g. R1.S1)",
+      "additionalProperties": {
+        "$ref": "#/$defs/verificationState"
+      }
+    },
+    "assumptions": {
+      "type": "object",
+      "description": "Assumption status map keyed by assumption ID (e.g. A1)",
+      "additionalProperties": {
+        "$ref": "#/$defs/assumptionState"
+      }
+    },
+    "history": {
+      "type": "array",
+      "description": "Chronological log of state transitions",
+      "items": { "$ref": "#/$defs/historyEntry" }
+    }
+  },
+  "$defs": {
+    "taskStatus": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "done", "blocked_by"]
+    },
+    "taskState": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "$ref": "#/$defs/taskStatus" },
+        "owner": { "type": "string" },
+        "started_at": { "type": "string" },
+        "completed_at": { "type": "string" },
+        "blocked_by": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "List of task IDs that must complete before this task can proceed"
+        }
+      },
+      "if": {
+        "properties": { "status": { "const": "blocked_by" } },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["blocked_by"]
+      }
+    },
+    "verificationState": {
+      "type": "object",
+      "required": ["passed"],
+      "additionalProperties": false,
+      "properties": {
+        "passed": {
+          "type": ["boolean", "null"],
+          "description": "null = not yet verified, true = passed, false = failed"
+        },
+        "evidence": { "type": "string" },
+        "at": { "type": "string" }
+      }
+    },
+    "assumptionState": {
+      "type": "object",
+      "required": ["verified"],
+      "additionalProperties": false,
+      "properties": {
+        "verified": { "type": "boolean" },
+        "verified_at": { "type": "string" }
+      }
+    },
+    "historyEntry": {
+      "type": "object",
+      "required": ["action", "by", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "string" },
+        "by": { "type": "string" },
+        "at": { "type": "string" },
+        "detail": { "type": "string" },
+        "task": { "type": "string" }
+      }
+    }
+  }
+}

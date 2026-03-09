@@ -2,8 +2,6 @@
 # If re-validate mode is active, block and force re-validation
 # Decrements remaining count each time; removes state when 0
 
-STATE_DIR="$HOME/.claude/.hook-state"
-
 # Read JSON from stdin
 input=$(cat)
 session_id=$(printf '%s' "$input" | jq -r '.session_id // empty')
@@ -13,20 +11,21 @@ if [ -z "$session_id" ]; then
     session_id="unknown"
 fi
 
-STATE_FILE="$STATE_DIR/rv-mode-$session_id"
+SESSION_DIR="$HOME/.hoyeon/$session_id"
+STATE_FILE="$SESSION_DIR/state.json"
 
-if [ -f "$STATE_FILE" ]; then
-    remaining=$(cat "$STATE_FILE")
+if [[ -f "$STATE_FILE" ]] && jq -e '.rv' "$STATE_FILE" >/dev/null 2>&1; then
+    remaining=$(jq -r '.rv.remaining // 0' "$STATE_FILE")
 
     # Decrement
     remaining=$((remaining - 1))
 
     if [ "$remaining" -le 0 ]; then
-        # Last round - delete state file after this block
-        rm -f "$STATE_FILE"
+        # Last round - remove rv namespace from state
+        jq 'del(.rv)' "$STATE_FILE" > "${STATE_FILE}.tmp.$$" && mv "${STATE_FILE}.tmp.$$" "$STATE_FILE"
     else
         # More rounds remaining - update count
-        echo "$remaining" > "$STATE_FILE"
+        jq --argjson r "$remaining" '.rv.remaining = $r' "$STATE_FILE" > "${STATE_FILE}.tmp.$$" && mv "${STATE_FILE}.tmp.$$" "$STATE_FILE"
     fi
 
     # Block and demand re-verification
