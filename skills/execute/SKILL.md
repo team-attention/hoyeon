@@ -44,17 +44,27 @@ All task data comes from spec.json via `hoyeon-cli spec plan`.
 
 ## Mode Selection
 
-### Flag Parsing
+### Resolution Order
 
-| Flag | Effect | Default |
-|------|--------|---------|
-| `--quick` | `{depth}` = quick | `{depth}` = standard |
+`{depth}` is resolved in priority order:
+
+1. **CLI override**: `--quick` flag → `{depth}` = quick
+2. **spec.json** (default): `meta.mode.depth` from spec.json → `{depth}` = value
+3. **Fallback**: if neither exists → `{depth}` = standard
+
+```
+IF --quick flag present:
+  depth = "quick"
+ELSE IF spec.meta.mode.depth exists:
+  depth = spec.meta.mode.depth    # "quick" | "standard"
+ELSE:
+  depth = "standard"
+```
 
 Examples:
-- `/execute` → standard mode
-- `/execute --quick` → quick mode
-- `/execute my-feature` → standard, spec name = my-feature
-- `/execute --quick my-feature` → quick mode with spec name
+- `/execute` → reads `meta.mode.depth` from spec.json (set by specify)
+- `/execute --quick` → override to quick regardless of spec
+- `/execute my-feature` → reads mode from my-feature's spec.json
 
 ### Mode Variable
 
