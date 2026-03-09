@@ -22,8 +22,8 @@ function deepMerge(target, source) {
 
 const SESSION_HELP = `
 Usage:
-  dev-cli session set --sid <session-id> [options]    Update session state
-  dev-cli session get --sid <session-id>              Read session state
+  hoyeon-cli session set --sid <session-id> [options]    Update session state
+  hoyeon-cli session get --sid <session-id>              Read session state
 
 Options for 'set':
   --sid <id>          Session ID (required)
@@ -33,10 +33,10 @@ Options for 'set':
   --json '{...}'      Deep-merge JSON fragment into state
 
 Examples:
-  dev-cli session set --sid abc123 --spec .dev/specs/foo/spec.json
-  dev-cli session set --sid abc123 --key tmp_dir --value /tmp/run-1
-  dev-cli session set --sid abc123 --json '{"rulph": {"round": 0}}'
-  dev-cli session get --sid abc123
+  hoyeon-cli session set --sid abc123 --spec .dev/specs/foo/spec.json
+  hoyeon-cli session set --sid abc123 --key tmp_dir --value /tmp/run-1
+  hoyeon-cli session set --sid abc123 --json '{"rulph": {"round": 0}}'
+  hoyeon-cli session get --sid abc123
 `;
 
 function parseArgs(args) {
@@ -143,7 +143,7 @@ export default async function session(args) {
     await handleGet(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown session subcommand '${subcommand}'\n`);
-    process.stderr.write('Run "dev-cli session --help" for usage.\n');
+    process.stderr.write('Run "hoyeon-cli session --help" for usage.\n');
     process.exit(1);
   }
 }

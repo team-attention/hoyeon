@@ -1,15 +1,13 @@
-#!/usr/bin/env node
-
 import specHandler from '../src/handlers/spec.js';
 import stateHandler from '../src/handlers/state.js';
 import sessionHandler from '../src/handlers/session.js';
 import feedbackHandler from '../src/handlers/feedback.js';
 
 const USAGE = `
-dev-cli — Developer workflow CLI
+hoyeon-cli — Developer workflow CLI
 
 Usage:
-  dev-cli <subcommand> [options]
+  hoyeon-cli <subcommand> [options]
 
 Subcommands:
   spec      Manage spec/plan state
@@ -22,9 +20,9 @@ Options:
   --version     Show version
 
 Examples:
-  dev-cli spec --help
-  dev-cli state --help
-  dev-cli feedback --help
+  hoyeon-cli spec --help
+  hoyeon-cli state --help
+  hoyeon-cli feedback --help
 `;
 
 const SUBCOMMANDS = {
@@ -46,7 +44,7 @@ async function main() {
     // VERSION is injected by esbuild --define at build time
     // Falls back to 'dev' when running directly from source
     const version = typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : 'dev';
-    process.stdout.write(`dev-cli v${version}\n`);
+    process.stdout.write(`hoyeon-cli v${version}\n`);
     process.exit(0);
   }
 
@@ -54,7 +52,7 @@ async function main() {
 
   if (!Object.prototype.hasOwnProperty.call(SUBCOMMANDS, subcommand)) {
     process.stderr.write(`Error: unknown subcommand '${subcommand}'\n`);
-    process.stderr.write(`Run 'dev-cli --help' for usage.\n`);
+    process.stderr.write(`Run 'hoyeon-cli --help' for usage.\n`);
     process.exit(1);
   }
 

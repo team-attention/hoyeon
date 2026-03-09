@@ -8,10 +8,10 @@ import { readState, writeState } from '../lib/state-io.js';
 
 const STATE_HELP = `
 Usage:
-  dev-cli state init --spec <path> [--output <path>]
-  dev-cli state update <task-id> --status <status> [--state <path>]
-  dev-cli state check --spec <path> --state <path>
-  dev-cli state sync --spec <path> --state <path>
+  hoyeon-cli state init --spec <path> [--output <path>]
+  hoyeon-cli state update <task-id> --status <status> [--state <path>]
+  hoyeon-cli state check --spec <path> --state <path>
+  hoyeon-cli state sync --spec <path> --state <path>
 
 Subcommands:
   init    Initialize state.json from a spec.json file
@@ -23,13 +23,13 @@ Options:
   --help, -h    Show this help message
 
 Examples:
-  dev-cli state init --spec ./spec.json
-  dev-cli state init --spec ./spec.json --output ./state.json
-  dev-cli state update T1 --done --state ./state.json
-  dev-cli state update T1 --status in_progress --state ./state.json
-  dev-cli state update T1 --status blocked_by --blocked-by T2 --state ./state.json
-  dev-cli state check --spec ./spec.json --state ./state.json
-  dev-cli state sync --spec ./spec.json --state ./state.json
+  hoyeon-cli state init --spec ./spec.json
+  hoyeon-cli state init --spec ./spec.json --output ./state.json
+  hoyeon-cli state update T1 --done --state ./state.json
+  hoyeon-cli state update T1 --status in_progress --state ./state.json
+  hoyeon-cli state update T1 --status blocked_by --blocked-by T2 --state ./state.json
+  hoyeon-cli state check --spec ./spec.json --state ./state.json
+  hoyeon-cli state sync --spec ./spec.json --state ./state.json
 `;
 
 function getStateValidator() {
@@ -84,7 +84,7 @@ async function handleInit(args) {
 
   if (!parsed.spec) {
     process.stderr.write('Error: --spec <path> is required\n');
-    process.stderr.write('Usage: dev-cli state init --spec <path> [--output <path>]\n');
+    process.stderr.write('Usage: hoyeon-cli state init --spec <path> [--output <path>]\n');
     process.exit(1);
   }
 
@@ -167,7 +167,7 @@ async function handleUpdate(args) {
 
   if (!taskId || taskId.startsWith('--')) {
     process.stderr.write('Error: <task-id> is required\n');
-    process.stderr.write('Usage: dev-cli state update <task-id> --status <status> [--state <path>]\n');
+    process.stderr.write('Usage: hoyeon-cli state update <task-id> --status <status> [--state <path>]\n');
     process.exit(1);
   }
 
@@ -180,7 +180,7 @@ async function handleUpdate(args) {
 
   if (!status) {
     process.stderr.write('Error: --status <status> is required (or use --done / --in-progress)\n');
-    process.stderr.write('Usage: dev-cli state update <task-id> --status <status> [--state <path>]\n');
+    process.stderr.write('Usage: hoyeon-cli state update <task-id> --status <status> [--state <path>]\n');
     process.exit(1);
   }
 
@@ -235,7 +235,7 @@ async function handleUpdate(args) {
   const historyEntry = {
     action: `status:${status}`,
     task: taskId,
-    by: 'dev-cli',
+    by: 'hoyeon-cli',
     at: now,
   };
 
@@ -268,13 +268,13 @@ async function handleCheck(args) {
 
   if (!parsed.spec) {
     process.stderr.write('Error: --spec <path> is required\n');
-    process.stderr.write('Usage: dev-cli state check --spec <path> --state <path>\n');
+    process.stderr.write('Usage: hoyeon-cli state check --spec <path> --state <path>\n');
     process.exit(1);
   }
 
   if (!parsed.state) {
     process.stderr.write('Error: --state <path> is required\n');
-    process.stderr.write('Usage: dev-cli state check --spec <path> --state <path>\n');
+    process.stderr.write('Usage: hoyeon-cli state check --spec <path> --state <path>\n');
     process.exit(1);
   }
 
@@ -338,13 +338,13 @@ async function handleSync(args) {
 
   if (!parsed.spec) {
     process.stderr.write('Error: --spec <path> is required\n');
-    process.stderr.write('Usage: dev-cli state sync --spec <path> --state <path>\n');
+    process.stderr.write('Usage: hoyeon-cli state sync --spec <path> --state <path>\n');
     process.exit(1);
   }
 
   if (!parsed.state) {
     process.stderr.write('Error: --state <path> is required\n');
-    process.stderr.write('Usage: dev-cli state sync --spec <path> --state <path>\n');
+    process.stderr.write('Usage: hoyeon-cli state sync --spec <path> --state <path>\n');
     process.exit(1);
   }
 
@@ -413,7 +413,7 @@ async function handleSync(args) {
 
   stateData.history.push({
     action: 'sync',
-    by: 'dev-cli',
+    by: 'hoyeon-cli',
     at: now,
     detail: `added: [${added.join(', ')}], removed: [${archived.join(', ')}]`,
   });
@@ -463,7 +463,7 @@ export default async function state(args) {
     await handleSync(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown state subcommand '${subcommand}'\n`);
-    process.stderr.write(`Run 'dev-cli state --help' for usage.\n`);
+    process.stderr.write(`Run 'hoyeon-cli state --help' for usage.\n`);
     process.exit(1);
   }
 }

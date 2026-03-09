@@ -8362,31 +8362,31 @@ function writeState(statePath, data) {
 // src/handlers/spec.js
 var SPEC_HELP = `
 Usage:
-  dev-cli spec init <name> --goal "..." <path>   Create a minimal valid spec.json
-  dev-cli spec merge <path> --json '{...}'       Deep-merge a JSON fragment into spec.json
-  dev-cli spec validate <path>                   Validate a spec.json file against the schema
-  dev-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
-  dev-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
-  dev-cli spec task <task-id> --get <path>                               Get task details as JSON
-  dev-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
-  dev-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
-  dev-cli spec check <path>                      Check internal consistency
-  dev-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
+  hoyeon-cli spec init <name> --goal "..." <path>   Create a minimal valid spec.json
+  hoyeon-cli spec merge <path> --json '{...}'       Deep-merge a JSON fragment into spec.json
+  hoyeon-cli spec validate <path>                   Validate a spec.json file against the schema
+  hoyeon-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
+  hoyeon-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
+  hoyeon-cli spec task <task-id> --get <path>                               Get task details as JSON
+  hoyeon-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
+  hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
+  hoyeon-cli spec check <path>                      Check internal consistency
+  hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
 
 Options:
   --help, -h    Show this help message
 
 Examples:
-  dev-cli spec init api-auth --goal "Add JWT auth" .dev/specs/api-auth/spec.json
-  dev-cli spec merge .dev/specs/api-auth/spec.json --json '{"context":{"request":"Add auth"}}'
-  dev-cli spec validate ./spec.json
-  dev-cli spec plan ./spec.json
-  dev-cli spec task T1 --status done --summary "implemented" ./spec.json
-  dev-cli spec task T1 --get ./spec.json
-  dev-cli spec status ./spec.json
-  dev-cli spec meta ./spec.json
-  dev-cli spec check ./spec.json
-  dev-cli spec amend --reason fb-001 --spec ./spec.json
+  hoyeon-cli spec init api-auth --goal "Add JWT auth" .dev/specs/api-auth/spec.json
+  hoyeon-cli spec merge .dev/specs/api-auth/spec.json --json '{"context":{"request":"Add auth"}}'
+  hoyeon-cli spec validate ./spec.json
+  hoyeon-cli spec plan ./spec.json
+  hoyeon-cli spec task T1 --status done --summary "implemented" ./spec.json
+  hoyeon-cli spec task T1 --get ./spec.json
+  hoyeon-cli spec status ./spec.json
+  hoyeon-cli spec meta ./spec.json
+  hoyeon-cli spec check ./spec.json
+  hoyeon-cli spec amend --reason fb-001 --spec ./spec.json
 `;
 function loadSchema() {
   return dev_spec_v4_schema_default;
@@ -8441,18 +8441,18 @@ async function handleInit(args) {
   const name = parsed._[0];
   if (!name) {
     process.stderr.write("Error: <name> is required\n");
-    process.stderr.write('Usage: dev-cli spec init <name> --goal "..." <path>\n');
+    process.stderr.write('Usage: hoyeon-cli spec init <name> --goal "..." <path>\n');
     process.exit(1);
   }
   if (!parsed.goal) {
     process.stderr.write('Error: --goal "..." is required\n');
-    process.stderr.write('Usage: dev-cli spec init <name> --goal "..." <path>\n');
+    process.stderr.write('Usage: hoyeon-cli spec init <name> --goal "..." <path>\n');
     process.exit(1);
   }
   const filePath = parsed._[1];
   if (!filePath) {
     process.stderr.write("Error: <path> is required\n");
-    process.stderr.write('Usage: dev-cli spec init <name> --goal "..." <path>\n');
+    process.stderr.write('Usage: hoyeon-cli spec init <name> --goal "..." <path>\n');
     process.exit(1);
   }
   const specPath = resolve(filePath);
@@ -8460,7 +8460,7 @@ async function handleInit(args) {
     readFileSync(specPath, "utf8");
     process.stderr.write(`Error: file already exists: ${specPath}
 `);
-    process.stderr.write('Use "dev-cli spec merge" to update an existing spec.\n');
+    process.stderr.write('Use "hoyeon-cli spec merge" to update an existing spec.\n');
     process.exit(1);
   } catch (err) {
     if (err.code !== "ENOENT") {
@@ -8507,12 +8507,12 @@ async function handleMerge(args) {
   const filePath = parsed._[0];
   if (!filePath) {
     process.stderr.write("Error: <path> is required\n");
-    process.stderr.write("Usage: dev-cli spec merge <path> --json '{...}' [--append]\n");
+    process.stderr.write("Usage: hoyeon-cli spec merge <path> --json '{...}' [--append]\n");
     process.exit(1);
   }
   if (!parsed.json) {
     process.stderr.write("Error: --json '{...}' is required\n");
-    process.stderr.write("Usage: dev-cli spec merge <path> --json '{...}' [--append]\n");
+    process.stderr.write("Usage: hoyeon-cli spec merge <path> --json '{...}' [--append]\n");
     process.exit(1);
   }
   let fragment;
@@ -8555,7 +8555,7 @@ async function handleValidate(args) {
   const filePath = args[0];
   if (!filePath) {
     process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: dev-cli spec validate <path>\n");
+    process.stderr.write("Usage: hoyeon-cli spec validate <path>\n");
     process.exit(1);
   }
   let data;
@@ -8835,7 +8835,7 @@ async function handlePlan(args) {
   const filePath = parsed._[0] || parsed.spec;
   if (!filePath) {
     process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: dev-cli spec plan <path> [--format text|mermaid|json|slim]\n");
+    process.stderr.write("Usage: hoyeon-cli spec plan <path> [--format text|mermaid|json|slim]\n");
     process.exit(1);
   }
   const spec2 = loadSpec(filePath);
@@ -8884,12 +8884,12 @@ async function handleAmend(args) {
   const parsed = parseArgs(args);
   if (!parsed.reason) {
     process.stderr.write("Error: --reason <feedback-id> is required\n");
-    process.stderr.write("Usage: dev-cli spec amend --reason <feedback-id> --spec <path>\n");
+    process.stderr.write("Usage: hoyeon-cli spec amend --reason <feedback-id> --spec <path>\n");
     process.exit(1);
   }
   if (!parsed.spec) {
     process.stderr.write("Error: --spec <path> is required\n");
-    process.stderr.write("Usage: dev-cli spec amend --reason <feedback-id> --spec <path>\n");
+    process.stderr.write("Usage: hoyeon-cli spec amend --reason <feedback-id> --spec <path>\n");
     process.exit(1);
   }
   const specPath = resolve(parsed.spec);
@@ -8953,15 +8953,15 @@ async function handleTask(args) {
   const taskId = args[0];
   if (!taskId || taskId.startsWith("--")) {
     process.stderr.write("Error: <task-id> is required\n");
-    process.stderr.write('Usage: dev-cli spec task <task-id> --status <status> [--summary "..."] <path>\n');
-    process.stderr.write("       dev-cli spec task <task-id> --get <path>\n");
+    process.stderr.write('Usage: hoyeon-cli spec task <task-id> --status <status> [--summary "..."] <path>\n');
+    process.stderr.write("       hoyeon-cli spec task <task-id> --get <path>\n");
     process.exit(1);
   }
   const parsed = parseArgs(args.slice(1));
   if (parsed.get !== void 0) {
     if (typeof parsed.get !== "string") {
       process.stderr.write("Error: --get requires <path> argument\n");
-      process.stderr.write("Usage: dev-cli spec task <task-id> --get <path>\n");
+      process.stderr.write("Usage: hoyeon-cli spec task <task-id> --get <path>\n");
       process.exit(1);
     }
     const filePath2 = parsed.get;
@@ -9051,7 +9051,7 @@ async function handleStatus(args) {
   const filePath = args[0];
   if (!filePath) {
     process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: dev-cli spec status <path>\n");
+    process.stderr.write("Usage: hoyeon-cli spec status <path>\n");
     process.exit(1);
   }
   const specData = loadSpec(resolve(filePath));
@@ -9076,7 +9076,7 @@ async function handleMeta(args) {
   const filePath = args[0];
   if (!filePath) {
     process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: dev-cli spec meta <path>\n");
+    process.stderr.write("Usage: hoyeon-cli spec meta <path>\n");
     process.exit(1);
   }
   const specData = loadSpec(resolve(filePath));
@@ -9088,7 +9088,7 @@ async function handleCheck(args) {
   const filePath = args[0];
   if (!filePath) {
     process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: dev-cli spec check <path>\n");
+    process.stderr.write("Usage: hoyeon-cli spec check <path>\n");
     process.exit(1);
   }
   const specData = loadSpec(resolve(filePath));
@@ -9177,7 +9177,7 @@ async function spec(args) {
   } else {
     process.stderr.write(`Error: unknown spec subcommand '${subcommand}'
 `);
-    process.stderr.write(`Run 'dev-cli spec --help' for usage.
+    process.stderr.write(`Run 'hoyeon-cli spec --help' for usage.
 `);
     process.exit(1);
   }
@@ -9306,10 +9306,10 @@ var dev_state_v1_schema_default = {
 // src/handlers/state.js
 var STATE_HELP = `
 Usage:
-  dev-cli state init --spec <path> [--output <path>]
-  dev-cli state update <task-id> --status <status> [--state <path>]
-  dev-cli state check --spec <path> --state <path>
-  dev-cli state sync --spec <path> --state <path>
+  hoyeon-cli state init --spec <path> [--output <path>]
+  hoyeon-cli state update <task-id> --status <status> [--state <path>]
+  hoyeon-cli state check --spec <path> --state <path>
+  hoyeon-cli state sync --spec <path> --state <path>
 
 Subcommands:
   init    Initialize state.json from a spec.json file
@@ -9321,13 +9321,13 @@ Options:
   --help, -h    Show this help message
 
 Examples:
-  dev-cli state init --spec ./spec.json
-  dev-cli state init --spec ./spec.json --output ./state.json
-  dev-cli state update T1 --done --state ./state.json
-  dev-cli state update T1 --status in_progress --state ./state.json
-  dev-cli state update T1 --status blocked_by --blocked-by T2 --state ./state.json
-  dev-cli state check --spec ./spec.json --state ./state.json
-  dev-cli state sync --spec ./spec.json --state ./state.json
+  hoyeon-cli state init --spec ./spec.json
+  hoyeon-cli state init --spec ./spec.json --output ./state.json
+  hoyeon-cli state update T1 --done --state ./state.json
+  hoyeon-cli state update T1 --status in_progress --state ./state.json
+  hoyeon-cli state update T1 --status blocked_by --blocked-by T2 --state ./state.json
+  hoyeon-cli state check --spec ./spec.json --state ./state.json
+  hoyeon-cli state sync --spec ./spec.json --state ./state.json
 `;
 function getStateValidator() {
   const schema = dev_state_v1_schema_default;
@@ -9377,7 +9377,7 @@ async function handleInit2(args) {
   const parsed = parseArgs2(args);
   if (!parsed.spec) {
     process.stderr.write("Error: --spec <path> is required\n");
-    process.stderr.write("Usage: dev-cli state init --spec <path> [--output <path>]\n");
+    process.stderr.write("Usage: hoyeon-cli state init --spec <path> [--output <path>]\n");
     process.exit(1);
   }
   const specPath = resolve2(parsed.spec);
@@ -9453,7 +9453,7 @@ async function handleUpdate(args) {
   const taskId = args[0];
   if (!taskId || taskId.startsWith("--")) {
     process.stderr.write("Error: <task-id> is required\n");
-    process.stderr.write("Usage: dev-cli state update <task-id> --status <status> [--state <path>]\n");
+    process.stderr.write("Usage: hoyeon-cli state update <task-id> --status <status> [--state <path>]\n");
     process.exit(1);
   }
   const parsed = parseArgs2(args.slice(1));
@@ -9462,7 +9462,7 @@ async function handleUpdate(args) {
   if (parsed["in-progress"] === true) status = "in_progress";
   if (!status) {
     process.stderr.write("Error: --status <status> is required (or use --done / --in-progress)\n");
-    process.stderr.write("Usage: dev-cli state update <task-id> --status <status> [--state <path>]\n");
+    process.stderr.write("Usage: hoyeon-cli state update <task-id> --status <status> [--state <path>]\n");
     process.exit(1);
   }
   const validStatuses = ["pending", "in_progress", "done", "blocked_by"];
@@ -9507,7 +9507,7 @@ async function handleUpdate(args) {
   const historyEntry = {
     action: `status:${status}`,
     task: taskId,
-    by: "dev-cli",
+    by: "hoyeon-cli",
     at: now
   };
   if (status === "blocked_by" && parsed["blocked-by"]) {
@@ -9536,12 +9536,12 @@ async function handleCheck2(args) {
   const parsed = parseArgs2(args);
   if (!parsed.spec) {
     process.stderr.write("Error: --spec <path> is required\n");
-    process.stderr.write("Usage: dev-cli state check --spec <path> --state <path>\n");
+    process.stderr.write("Usage: hoyeon-cli state check --spec <path> --state <path>\n");
     process.exit(1);
   }
   if (!parsed.state) {
     process.stderr.write("Error: --state <path> is required\n");
-    process.stderr.write("Usage: dev-cli state check --spec <path> --state <path>\n");
+    process.stderr.write("Usage: hoyeon-cli state check --spec <path> --state <path>\n");
     process.exit(1);
   }
   const specPath = resolve2(parsed.spec);
@@ -9596,12 +9596,12 @@ async function handleSync(args) {
   const parsed = parseArgs2(args);
   if (!parsed.spec) {
     process.stderr.write("Error: --spec <path> is required\n");
-    process.stderr.write("Usage: dev-cli state sync --spec <path> --state <path>\n");
+    process.stderr.write("Usage: hoyeon-cli state sync --spec <path> --state <path>\n");
     process.exit(1);
   }
   if (!parsed.state) {
     process.stderr.write("Error: --state <path> is required\n");
-    process.stderr.write("Usage: dev-cli state sync --spec <path> --state <path>\n");
+    process.stderr.write("Usage: hoyeon-cli state sync --spec <path> --state <path>\n");
     process.exit(1);
   }
   const specPath = resolve2(parsed.spec);
@@ -9660,7 +9660,7 @@ async function handleSync(args) {
   }
   stateData.history.push({
     action: "sync",
-    by: "dev-cli",
+    by: "hoyeon-cli",
     at: now,
     detail: `added: [${added.join(", ")}], removed: [${archived.join(", ")}]`
   });
@@ -9710,7 +9710,7 @@ async function state(args) {
   } else {
     process.stderr.write(`Error: unknown state subcommand '${subcommand}'
 `);
-    process.stderr.write(`Run 'dev-cli state --help' for usage.
+    process.stderr.write(`Run 'hoyeon-cli state --help' for usage.
 `);
     process.exit(1);
   }
@@ -9731,8 +9731,8 @@ function deepMerge2(target, source) {
 }
 var SESSION_HELP = `
 Usage:
-  dev-cli session set --sid <session-id> [options]    Update session state
-  dev-cli session get --sid <session-id>              Read session state
+  hoyeon-cli session set --sid <session-id> [options]    Update session state
+  hoyeon-cli session get --sid <session-id>              Read session state
 
 Options for 'set':
   --sid <id>          Session ID (required)
@@ -9742,10 +9742,10 @@ Options for 'set':
   --json '{...}'      Deep-merge JSON fragment into state
 
 Examples:
-  dev-cli session set --sid abc123 --spec .dev/specs/foo/spec.json
-  dev-cli session set --sid abc123 --key tmp_dir --value /tmp/run-1
-  dev-cli session set --sid abc123 --json '{"rulph": {"round": 0}}'
-  dev-cli session get --sid abc123
+  hoyeon-cli session set --sid abc123 --spec .dev/specs/foo/spec.json
+  hoyeon-cli session set --sid abc123 --key tmp_dir --value /tmp/run-1
+  hoyeon-cli session set --sid abc123 --json '{"rulph": {"round": 0}}'
+  hoyeon-cli session get --sid abc123
 `;
 function parseArgs3(args) {
   const result = { _: [] };
@@ -9838,7 +9838,7 @@ async function session(args) {
   } else {
     process.stderr.write(`Error: unknown session subcommand '${subcommand}'
 `);
-    process.stderr.write('Run "dev-cli session --help" for usage.\n');
+    process.stderr.write('Run "hoyeon-cli session --help" for usage.\n');
     process.exit(1);
   }
 }
@@ -9848,7 +9848,7 @@ import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSy
 import { resolve as resolve3, dirname as dirname3 } from "path";
 var FEEDBACK_HELP = `
 Usage:
-  dev-cli feedback create "<message>" [--dir <path>]
+  hoyeon-cli feedback create "<message>" [--dir <path>]
 
 Subcommands:
   create  Create a new feedback file
@@ -9858,8 +9858,8 @@ Options:
   --dir         Directory to write feedback files (default: ./feedback)
 
 Examples:
-  dev-cli feedback create "Missing acceptance criteria for T3"
-  dev-cli feedback create "Scope is too broad" --dir ./project/feedback
+  hoyeon-cli feedback create "Missing acceptance criteria for T3"
+  hoyeon-cli feedback create "Scope is too broad" --dir ./project/feedback
 `;
 function parseArgs4(args) {
   const result = { _: [] };
@@ -9904,7 +9904,7 @@ async function handleCreate(args) {
   const message = parsed._[0];
   if (!message) {
     process.stderr.write("Error: <message> is required\n");
-    process.stderr.write('Usage: dev-cli feedback create "<message>" [--dir <path>]\n');
+    process.stderr.write('Usage: hoyeon-cli feedback create "<message>" [--dir <path>]\n');
     process.exit(1);
   }
   const feedbackDir = parsed.dir ? resolve3(parsed.dir) : resolve3("feedback");
@@ -9947,7 +9947,7 @@ async function feedback(args) {
   } else {
     process.stderr.write(`Error: unknown feedback subcommand '${subcommand}'
 `);
-    process.stderr.write(`Run 'dev-cli feedback --help' for usage.
+    process.stderr.write(`Run 'hoyeon-cli feedback --help' for usage.
 `);
     process.exit(1);
   }
@@ -9955,10 +9955,10 @@ async function feedback(args) {
 
 // bin/dev-cli.js
 var USAGE = `
-dev-cli \u2014 Developer workflow CLI
+hoyeon-cli \u2014 Developer workflow CLI
 
 Usage:
-  dev-cli <subcommand> [options]
+  hoyeon-cli <subcommand> [options]
 
 Subcommands:
   spec      Manage spec/plan state
@@ -9971,9 +9971,9 @@ Options:
   --version     Show version
 
 Examples:
-  dev-cli spec --help
-  dev-cli state --help
-  dev-cli feedback --help
+  hoyeon-cli spec --help
+  hoyeon-cli state --help
+  hoyeon-cli feedback --help
 `;
 var SUBCOMMANDS = {
   spec,
@@ -9989,7 +9989,7 @@ async function main() {
   }
   if (args[0] === "--version") {
     const version = true ? "0.1.0" : "dev";
-    process.stdout.write(`dev-cli v${version}
+    process.stdout.write(`hoyeon-cli v${version}
 `);
     process.exit(0);
   }
@@ -9997,7 +9997,7 @@ async function main() {
   if (!Object.prototype.hasOwnProperty.call(SUBCOMMANDS, subcommand)) {
     process.stderr.write(`Error: unknown subcommand '${subcommand}'
 `);
-    process.stderr.write(`Run 'dev-cli --help' for usage.
+    process.stderr.write(`Run 'hoyeon-cli --help' for usage.
 `);
     process.exit(1);
   }

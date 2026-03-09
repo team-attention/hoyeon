@@ -16,6 +16,9 @@ await build({
   define: {
     __CLI_VERSION__: JSON.stringify(pkg.version),
   },
+  banner: {
+    js: '#!/usr/bin/env node',
+  },
   // Allow JSON imports with { type: 'json' } assertion
   loader: {
     '.json': 'json',

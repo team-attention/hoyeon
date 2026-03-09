@@ -3,7 +3,7 @@ import { resolve, dirname } from 'path';
 
 const FEEDBACK_HELP = `
 Usage:
-  dev-cli feedback create "<message>" [--dir <path>]
+  hoyeon-cli feedback create "<message>" [--dir <path>]
 
 Subcommands:
   create  Create a new feedback file
@@ -13,8 +13,8 @@ Options:
   --dir         Directory to write feedback files (default: ./feedback)
 
 Examples:
-  dev-cli feedback create "Missing acceptance criteria for T3"
-  dev-cli feedback create "Scope is too broad" --dir ./project/feedback
+  hoyeon-cli feedback create "Missing acceptance criteria for T3"
+  hoyeon-cli feedback create "Scope is too broad" --dir ./project/feedback
 `;
 
 function parseArgs(args) {
@@ -69,7 +69,7 @@ async function handleCreate(args) {
   const message = parsed._[0];
   if (!message) {
     process.stderr.write('Error: <message> is required\n');
-    process.stderr.write('Usage: dev-cli feedback create "<message>" [--dir <path>]\n');
+    process.stderr.write('Usage: hoyeon-cli feedback create "<message>" [--dir <path>]\n');
     process.exit(1);
   }
 
@@ -116,7 +116,7 @@ export default async function feedback(args) {
     await handleCreate(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown feedback subcommand '${subcommand}'\n`);
-    process.stderr.write(`Run 'dev-cli feedback --help' for usage.\n`);
+    process.stderr.write(`Run 'hoyeon-cli feedback --help' for usage.\n`);
     process.exit(1);
   }
 }
