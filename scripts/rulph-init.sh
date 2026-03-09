@@ -1,7 +1,7 @@
 #!/bin/bash
 # rulph-init.sh - PreToolUse[Skill] hook
 #
-# Purpose: Create rulph state marker when skill is invoked
+# Purpose: Merge rulph namespace into unified ~/.hoyeon/{session_id}/state.json
 # Activation: tool_name="Skill" && tool_input.skill contains "rulph"
 #
 # The SKILL.md itself writes the full state (score, threshold, round).
@@ -9,8 +9,6 @@
 # State is session-scoped to prevent cross-session interference.
 
 set -euo pipefail
-
-STATE_DIR="$HOME/.claude/.hook-state"
 
 # Read hook input from stdin
 HOOK_INPUT=$(cat)
@@ -29,22 +27,20 @@ if [[ -z "$SESSION_ID" ]]; then
   SESSION_ID="unknown"
 fi
 
-STATE_FILE="$STATE_DIR/rulph-$SESSION_ID.json"
+SESSION_DIR="$HOME/.hoyeon/$SESSION_ID"
+STATE_FILE="$SESSION_DIR/state.json"
 
-mkdir -p "$STATE_DIR"
-
-# Don't overwrite if already active (resume case)
-if [[ -f "$STATE_FILE" ]]; then
+# Don't overwrite if rulph already active (resume case)
+if [[ -f "$STATE_FILE" ]] && jq -e '.rulph' "$STATE_FILE" >/dev/null 2>&1; then
   exit 0
 fi
 
-# Create initial state marker
-# SKILL.md will overwrite this with full state (score, threshold, round) after Phase 1
-jq -n --arg sid "$SESSION_ID" '{
-  status: "init",
-  session_id: $sid,
-  iteration: 0,
-  max_iterations: 15
-}' > "$STATE_FILE"
+# Merge rulph namespace into existing state.json (or create if missing)
+if [[ -f "$STATE_FILE" ]]; then
+  jq --arg sid "$SESSION_ID" '. + {rulph: {status: "init", session_id: $sid, iteration: 0, max_iterations: 15}}' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+else
+  mkdir -p "$SESSION_DIR/files" "$SESSION_DIR/tmp"
+  jq -n --arg sid "$SESSION_ID" '{rulph: {status: "init", session_id: $sid, iteration: 0, max_iterations: 15}}' > "$STATE_FILE"
+fi
 
 exit 0
