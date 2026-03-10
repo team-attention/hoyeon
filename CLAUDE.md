@@ -106,7 +106,11 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v0.9.0)
+## Recent Changes (v0.9.1)
+
+- feat(ralph): add separate ralph-verifier agent for context-isolated DoD verification
+
+## Previous Changes (v0.9.0)
 
 - feat(skills): add `/ralph` skill (iterative DoD-based task loop with Stop hook re-injection)
 - feat(skills): add `/scope` skill (fast parallel change-scope analyzer)
