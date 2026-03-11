@@ -1,0 +1,427 @@
+{
+  "browser-work": {
+    "keywords": [
+      "browser-work",
+      "브라우저 작업",
+      "사이트에서 해줘",
+      "웹에서 해줘",
+      "LinkedIn에서",
+      "크롬으로",
+      "browser task",
+      "automate this site",
+      "web automation",
+      "browser automation",
+      "explore website",
+      "웹 자동화",
+      "사이트 탐색",
+      "링크드인 작업"
+    ],
+    "hint": "크롬을 이용해 웹사이트를 탐색하고 작업을 자동화합니다.",
+    "isGeneral": false
+  },
+  "bugfix": {
+    "keywords": [
+      "bugfix",
+      "버그픽스",
+      "버그 수정",
+      "에러 수정",
+      "fix bug",
+      "fix error",
+      "디버그",
+      "원인 분석",
+      "문제 해결",
+      "debugger",
+      "오류 해결",
+      "코드 오류",
+      "에러",
+      "고쳐줘",
+      "진단"
+    ],
+    "hint": "에러 원인 분석 후 원샷으로 버그를 수정합니다.",
+    "isGeneral": false
+  },
+  "check": {
+    "keywords": [
+      "check",
+      "체크",
+      "verify changes",
+      "변경사항 확인",
+      "before push",
+      "푸시 전",
+      "validate rules",
+      "규칙 확인",
+      "code review",
+      "코드 리뷰",
+      "code quality",
+      "코드 품질",
+      "rule checklist",
+      "체크리스트"
+    ],
+    "hint": "푸시 전 변경사항을 검증하고, 프로젝트 규칙 체크리스트를 업데이트합니다",
+    "isGeneral": false
+  },
+  "compound": {
+    "keywords": [
+      "compound",
+      "/compound",
+      "compound this",
+      "document learnings",
+      "save what we learned",
+      "PR 완료 후",
+      "풀리퀘스트 완료 후",
+      "학습 내용 문서화",
+      "배운 점 기록",
+      "학습 내용 정리",
+      "합성",
+      "복합",
+      "종합",
+      "코드 학습",
+      "문서화"
+    ],
+    "hint": "PR 컨텍스트에서 지식을 추출하여 docs/learnings/에 저장합니다.",
+    "isGeneral": false
+  },
+  "deep-interview": {
+    "keywords": [
+      "deep-interview",
+      "deep interview",
+      "interview me",
+      "clarify requirements",
+      "요구사항 정리",
+      "인터뷰",
+      "딥 인터뷰",
+      "뭘 만들어야 할지 모르겠어",
+      "요구사항이 불명확",
+      "아이디어 구체화",
+      "requirement clarification",
+      "project planning",
+      "idea refinement",
+      "spec clarification",
+      "user story"
+    ],
+    "hint": "사용자 요구사항을 심층 인터뷰하여 명확히 정리하고 아이디어를 구체화합니다.",
+    "isGeneral": false
+  },
+  "deep-research": {
+    "keywords": [
+      "deep-research",
+      "딥 리서치",
+      "심층 조사",
+      "web research",
+      "웹 리서치",
+      "상세 검색",
+      "comprehensive research",
+      "종합 분석",
+      "cited report",
+      "출처 보고서",
+      "research topic",
+      "주제 조사",
+      "parallel research",
+      "병렬 검색",
+      "browser-explorer"
+    ],
+    "hint": "여러 에이전트로 주제를 심층 분석하고, 출처가 명시된 보고서를 생성합니다.",
+    "isGeneral": false
+  },
+  "dev-scan": {
+    "keywords": [
+      "dev-scan",
+      "개발자 의견",
+      "커뮤니티 반응",
+      "developer reactions",
+      "community opinions",
+      "Reddit 반응",
+      "HN 반응",
+      "tech opinions",
+      "기술 의견 수집",
+      "개발자 커뮤니티",
+      "opinion aggregator",
+      "what do devs think",
+      "개발자들 반응",
+      "개발 트렌드",
+      "기술 평가"
+    ],
+    "hint": "개발자 커뮤니티에서 기술 주제에 대한 다양한 의견을 수집합니다.",
+    "isGeneral": false
+  },
+  "discuss": {
+    "keywords": [
+      "discuss",
+      "브레인스토밍",
+      "의견 나눠줘",
+      "토론",
+      "discuss this",
+      "brainstorm",
+      "장단점 분석",
+      "pros and cons",
+      "아이디어 탐색",
+      "discuss idea",
+      "의견 교환",
+      "토의",
+      "같이 생각해봐",
+      "생각해봐",
+      "decision discussion"
+    ],
+    "hint": "아이디어나 주제를 체계적으로 토론하고 브레인스토밍합니다.",
+    "isGeneral": false
+  },
+  "execute": {
+    "keywords": [
+      "execute",
+      "/execute",
+      "실행해줘",
+      "스펙 실행",
+      "orchestrate",
+      "worker dispatch",
+      "spec.json",
+      "acceptance criteria",
+      "adaptation",
+      "실행",
+      "명령어 실행",
+      "작업 실행",
+      "워커 디스패치",
+      "spec 기반 실행"
+    ],
+    "hint": "스펙에 따라 작업을 실행하고 검증하며, 적응까지 처리합니다.",
+    "isGeneral": false
+  },
+  "google-search": {
+    "keywords": [
+      "google-search",
+      "search Google",
+      "구글 검색",
+      "구글에서 찾아줘",
+      "find articles about",
+      "search the web for",
+      "웹 검색",
+      "인터넷 검색",
+      "정보 검색",
+      "크롬 검색",
+      "chromux 검색",
+      "웹페이지 검색",
+      "기사 검색"
+    ],
+    "hint": "크롬 브라우저를 이용해 구글 웹 검색을 수행하고 웹 페이지 내용을 제공합니다.",
+    "isGeneral": false
+  },
+  "mirror": {
+    "keywords": [
+      "mirror",
+      "mirror back",
+      "echo back",
+      "다시 설명해줘",
+      "이해한 거 맞아?",
+      "내가 뭘 원하는지 말해봐",
+      "확인해줘",
+      "paraphrase this",
+      "너가 이해한 거 설명해봐",
+      "what did I ask?"
+    ],
+    "hint": "사용자의 질문을 다시 확인하고 이해한 내용을 설명합니다.",
+    "isGeneral": false
+  },
+  "quick-plan": {
+    "keywords": [
+      "/quick-plan",
+      "quick plan",
+      "태스크 플래닝",
+      "작업 계획",
+      "세션 플래닝",
+      "plan tasks",
+      "what should we do",
+      "작업 정리",
+      "DAG 짜줘",
+      "병렬로 돌리자",
+      "팀 모드로 하자",
+      "에이전트 배치",
+      "계획",
+      "task planning",
+      "session planning"
+    ],
+    "hint": "신속하게 작업을 계획하고 정리하여 효율적인 실행을 돕습니다.",
+    "isGeneral": false
+  },
+  "ralph": {
+    "keywords": [
+      "ralph",
+      "반복 작업",
+      "완료 정의 검증",
+      "DoD 검증",
+      "자율 작업",
+      "독립적 검증",
+      "랄프 위검 기법",
+      "task completion",
+      "verification loop",
+      "prompt re-injection",
+      "stop hook",
+      "작업 자동화",
+      "검증",
+      "autonomous task",
+      "DoD verification"
+    ],
+    "hint": "완료 정의 검증을 통해 반복 작업을 자율적으로 수행하고 검증합니다.",
+    "isGeneral": false
+  },
+  "reference-seek": {
+    "keywords": [
+      "reference-seek",
+      "find references",
+      "참고할 만한 거",
+      "similar implementation",
+      "오픈소스 있나",
+      "레퍼런스 찾아줘",
+      "how others do this",
+      "코드 예시",
+      "구현 예시",
+      "design patterns",
+      "best practices",
+      "기술 자료",
+      "source code",
+      "code examples"
+    ],
+    "hint": "레퍼런스를 찾아 코드 예시, 디자인 패턴, 오픈소스 구현 등을 제공합니다.",
+    "isGeneral": false
+  },
+  "rulph": {
+    "keywords": [
+      "rulph",
+      "/rulph",
+      "rubric evaluate",
+      "rubric score",
+      "multi-model evaluate",
+      "score and improve",
+      "evaluate and iterate",
+      "grade this",
+      "루브릭 평가",
+      "점수 매기기",
+      "다중 모델 평가",
+      "평가하고 개선하기",
+      "반복 개선",
+      "채점해줘"
+    ],
+    "hint": "루브릭 기반으로 결과물을 평가하고 반복적으로 개선합니다.",
+    "isGeneral": false
+  },
+  "scope": {
+    "keywords": [
+      "scope",
+      "change scope",
+      "blast radius",
+      "impact analysis",
+      "file changes",
+      "what to change",
+      "변경 범위",
+      "영향 분석",
+      "파일 변경",
+      "영향도 분석",
+      "빠른 분석",
+      "변경사항 분석",
+      "범위 분석",
+      "변경 사항 확인",
+      "영향 범위"
+    ],
+    "hint": "빠르게 변경 범위와 영향도를 분석하여 필요한 파일과 방법을 제시합니다.",
+    "isGeneral": false
+  },
+  "skill-session-analyzer": {
+    "keywords": [
+      "skill-session-analyzer",
+      "analyze session",
+      "세션 분석",
+      "evaluate skill execution",
+      "스킬 실행 평가",
+      "check session logs",
+      "세션 로그 확인",
+      "verify skill execution",
+      "스킬 검증",
+      "코드 세션 분석",
+      "세션 진단",
+      "로그 분석"
+    ],
+    "hint": "과거 클로드 코드 세션을 분석하여 스킬 동작을 검증합니다.",
+    "isGeneral": false
+  },
+  "specify": {
+    "keywords": [
+      "specify",
+      "/specify",
+      "plan this",
+      "spec generator",
+      "create spec",
+      "generate spec",
+      "project planning",
+      "unified spec",
+      "계획",
+      "기획",
+      "스펙",
+      "계획 짜줘",
+      "스펙 만들어줘",
+      "명세서 작성",
+      "프로젝트 계획"
+    ],
+    "hint": "인터뷰 기반으로 프로젝트 계획을 수립하고 명세서를 생성합니다.",
+    "isGeneral": false
+  },
+  "tech-decision": {
+    "keywords": [
+      "tech-decision",
+      "기술 결정",
+      "기술 선택",
+      "기술 아키텍처",
+      "아키텍처 결정",
+      "결정 내리기",
+      "기술 전략",
+      "기술 평가",
+      "기술 분석",
+      "아키텍처 검토",
+      "technical choice",
+      "architecture decision",
+      "technology strategy",
+      "evaluate technology",
+      "analyze tech options"
+    ],
+    "hint": "기술 선택 및 아키텍처 결정 과정을 체계적으로 안내합니다.",
+    "isGeneral": false
+  },
+  "tribunal": {
+    "keywords": [
+      "tribunal",
+      "/tribunal",
+      "review this",
+      "3-way review",
+      "risk-value-feasibility check",
+      "multi-perspective adversarial review",
+      "트리뷰널",
+      "리뷰 해줘",
+      "3관점 리뷰",
+      "위험성 검토",
+      "코드 리뷰",
+      "심사",
+      "다각도 검토",
+      "리스크 분석"
+    ],
+    "hint": "다각적인 관점에서 위험, 가치, 실행 가능성을 검토하여 종합적인 의견을 제공합니다.",
+    "isGeneral": false
+  },
+  "ultrawork": {
+    "keywords": [
+      "ultrawork",
+      "울트라워크",
+      "자동 파이프라인",
+      "specify execute",
+      "end-to-end workflow",
+      "전체 파이프라인",
+      "한번에 실행",
+      "auto workflow",
+      "전체 자동화",
+      "파이프라인 실행",
+      "specify then execute",
+      "전체 작업 자동화",
+      "원스탑 실행",
+      "full pipeline",
+      "ultrawork 실행"
+    ],
+    "hint": "specify → execute 파이프라인을 단일 명령으로 자동 실행합니다.",
+    "isGeneral": false
+  }
+}
