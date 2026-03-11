@@ -119,8 +119,9 @@ call_gemini_api() {
     }')
 
   curl -s -X POST \
-    "${GEMINI_API_URL}?key=${GEMINI_API_KEY}" \
+    "${GEMINI_API_URL}" \
     -H "Content-Type: application/json" \
+    -H "x-goog-api-key: ${GEMINI_API_KEY}" \
     -d "$request_body" | jq -r '.candidates[0].content.parts[0].text // empty'
 }
 
@@ -211,8 +212,11 @@ for skill_dir in "${skill_dirs[@]}"; do
   slug="$(basename "$skill_dir")"
   echo "Processing skill: ${slug}..."
 
-  # Parse frontmatter
-  mapfile -t fm_lines < <(parse_frontmatter "$skill_file")
+  # Parse frontmatter (bash 3.2-compatible, no mapfile)
+  fm_lines=()
+  while IFS= read -r line; do
+    fm_lines+=("$line")
+  done < <(parse_frontmatter "$skill_file")
   skill_name="${fm_lines[0]:-$slug}"
   skill_desc=""
   if [[ ${#fm_lines[@]} -gt 1 ]]; then
@@ -239,6 +243,9 @@ print(json.dumps(entry))
   result=$(echo "$result" | jq --arg slug "$slug" --argjson entry "$entry" '. + {($slug): $entry}' 2>/dev/null || echo "$result")
 
   echo "  Done: ${slug} (${kw_count} keywords)"
+
+  # Rate limiting: avoid hitting API quota
+  sleep 0.5
 done
 
 echo ""
