@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # skill-hint-hook.sh — UserPromptSubmit hook
 #
 # Classifies user prompts against skill-rules.json using Gemini 2.5 Flash Lite API.
@@ -8,7 +8,7 @@
 # Silently exits 0 on: empty prompt, slash-prefix, missing API key, API error, no match.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 SKILL_RULES_FILE="${PLUGIN_ROOT}/.claude/skill-rules.json"
 
 # Read stdin
@@ -115,22 +115,21 @@ request_body = {
     }
 }
 
-url = f"{api_endpoint}?key={api_key}"
+url = api_endpoint
 payload = json.dumps(request_body).encode("utf-8")
 req = urllib.request.Request(
     url,
     data=payload,
-    headers={"Content-Type": "application/json"},
+    headers={
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key
+    },
     method="POST"
 )
 
 try:
-    import socket
-    old_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(3)
-    with urllib.request.urlopen(req, timeout=3) as resp:
+    with urllib.request.urlopen(req, timeout=1) as resp:
         raw = resp.read().decode("utf-8")
-    socket.setdefaulttimeout(old_timeout)
 except Exception:
     sys.exit(0)
 
@@ -146,11 +145,19 @@ except Exception:
 if not matched_skills:
     sys.exit(0)
 
+# Validate slugs against rules dict
+matched_skills = [s for s in matched_skills if s.get("slug", "") in rules]
+
+if not matched_skills:
+    sys.exit(0)
+
 # Build additionalContext
 lines = ["<skill-suggestion>", "Matched skills for your prompt:"]
 for s in matched_skills:
     slug = s.get("slug", "")
     hint = s.get("hint", "")
+    # Sanitize hint: strip newlines, limit to 200 chars
+    hint = hint.replace("\n", " ").replace("\r", " ")[:200]
     if slug:
         lines.append(f"- /{slug} - {hint}")
 lines.append("Use AskUserQuestion to let user choose, or invoke directly if HIGH confidence.")
