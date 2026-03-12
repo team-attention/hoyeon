@@ -1,7 +1,10 @@
 ---
 name: stepback
 description: |
-  "/stepback", "step back", "한발 물러서", "넓은 관점", "놓치는 거 없나",
+  One-shot perspective reset that surfaces blind spots mid-work. Scans what the user
+  has been doing, generates one abstract reframing question, and runs 3 quick checks
+  (scope drift, side effects, better approach) in under 10 lines. No dialogue, no code.
+  Trigger phrases: "/stepback", "step back", "한발 물러서", "넓은 관점", "놓치는 거 없나",
   "방향 맞나", "zoom out", "큰 그림", "방향이 맞는 거야", "잠깐 멈춰",
   "지금 뭘 하고 있는 거야", "blind spot", "재확인"
 allowed-tools:
@@ -111,7 +114,7 @@ Print the findings in this exact format. No headers, no markdown tables, no extr
 **Better Approach:** [1 sentence]
 ```
 
-Total output: exactly 4 lines (1 step-back + 1 blank + 3 checks). Never exceed this.
+Total output: 4 key lines (1 step-back question + 3 checks) plus closing. Keep under 10 lines.
 
 After the output, add exactly 1 line:
 ```
