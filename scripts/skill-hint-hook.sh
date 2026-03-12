@@ -8,7 +8,7 @@
 # Silently exits 0 on: empty prompt, slash-prefix, missing API key, API error, no match.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 SKILL_RULES_FILE="${PLUGIN_ROOT}/.claude/skill-rules.json"
 
 # Read stdin
@@ -128,7 +128,7 @@ req = urllib.request.Request(
 )
 
 try:
-    with urllib.request.urlopen(req, timeout=1) as resp:
+    with urllib.request.urlopen(req, timeout=3) as resp:
         raw = resp.read().decode("utf-8")
 except Exception:
     sys.exit(0)
