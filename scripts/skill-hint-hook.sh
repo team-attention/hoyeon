@@ -2,8 +2,8 @@
 # skill-hint-hook.sh — UserPromptSubmit hook
 #
 # Classifies user prompts against skill-rules.json using Gemini 2.5 Flash Lite API.
-# If a skill match is found, outputs hookSpecificOutput JSON with additionalContext
-# containing a <skill-suggestion> block with matched skills and AskUserQuestion instruction.
+# If a skill match is found, outputs plain text with the original prompt + <skill-suggestion>
+# block appended (Zeude-style). Plain text stdout is more effective than additionalContext JSON.
 #
 # Silently exits 0 on: empty prompt, slash-prefix, missing API key, API error, no match.
 
@@ -151,7 +151,8 @@ matched_skills = [s for s in matched_skills if s.get("slug", "") in rules]
 if not matched_skills:
     sys.exit(0)
 
-# Build skill suggestion as hookSpecificOutput.additionalContext
+# Build skill suggestion block (plain text output — Zeude style)
+# Plain text stdout is more effective than additionalContext JSON
 hint_lines = []
 for s in matched_skills:
     slug = s.get("slug", "")
@@ -163,29 +164,21 @@ for s in matched_skills:
 
 matched_hints = "\n".join(hint_lines)
 
-additional_context = (
-    "<skill-suggestion>\n"
-    "BLOCKING REQUIREMENT: Before responding to the user, you MUST use AskUserQuestion to ask which skill to use.\n"
-    f"Matched skills:\n{matched_hints}\n"
-    "Options to present:\n"
-    + "\n".join([f"- {h}" for h in hint_lines])
-    + "\n- Continue without skill\n"
-    "Do NOT skip this step. Do NOT proceed without asking.\n"
-    "</skill-suggestion>"
-)
+# Output plain text: original prompt + skill suggestion
+print(f"""{user_prompt}
 
-output = {
-    "hookSpecificOutput": {
-        "hookEventName": "UserPromptSubmit",
-        "additionalContext": additional_context
-    }
-}
-
-print(json.dumps(output))
+<skill-suggestion>
+MATCHED SKILLS (use AskUserQuestion to let user choose):
+{matched_hints}
+IMPORTANT: Use AskUserQuestion tool to ask the user which skill to use.
+- Show each matched skill as an option
+- Add "Continue without skill" as the last option
+- If user selects a skill, invoke it with the Skill tool
+</skill-suggestion>""")
 PYEOF
 )
 
-# If python3 produced JSON output, print it for Claude Code to process
+# If python3 produced plain text output (prompt + skill suggestion), print it
 if [[ -n "$RESULT" ]]; then
   printf '%s' "$RESULT"
 fi
