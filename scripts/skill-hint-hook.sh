@@ -2,8 +2,8 @@
 # skill-hint-hook.sh — UserPromptSubmit hook
 #
 # Classifies user prompts against skill-rules.json using Gemini 2.5 Flash Lite API.
-# If a skill match is found (non-empty matched_skills), outputs hookSpecificOutput
-# with additionalContext suggesting the relevant skill(s).
+# If a skill match is found, outputs the original prompt with <skill-suggestion> block
+# appended (Zeude-style prompt text modification).
 #
 # Silently exits 0 on: empty prompt, slash-prefix, missing API key, API error, no match.
 
@@ -151,34 +151,39 @@ matched_skills = [s for s in matched_skills if s.get("slug", "") in rules]
 if not matched_skills:
     sys.exit(0)
 
-# Build additionalContext
-lines = ["<skill-suggestion>", "Matched skills for your prompt:"]
+# Build skill suggestion block (Zeude-style: append to prompt text)
+hint_lines = []
 for s in matched_skills:
     slug = s.get("slug", "")
     hint = s.get("hint", "")
     # Sanitize hint: strip newlines, limit to 200 chars
     hint = hint.replace("\n", " ").replace("\r", " ")[:200]
     if slug:
-        lines.append(f"- /{slug} - {hint}")
-lines.append("Use AskUserQuestion to let user choose, or invoke directly if HIGH confidence.")
-lines.append("</skill-suggestion>")
+        hint_lines.append(f"- /{slug} - {hint}")
 
-additional_context = "\n".join(lines)
+matched_hints = "\n".join(hint_lines)
 
-output = {
-    "hookSpecificOutput": {
-        "hookEventName": "UserPromptSubmit",
-        "additionalContext": additional_context
-    }
-}
+# Output: original prompt + skill suggestion block
+suggestion = (
+    f"{user_prompt}\n\n"
+    f"<skill-suggestion>\n"
+    f"MATCHED SKILLS (use AskUserQuestion to let user choose):\n"
+    f"{matched_hints}\n"
+    f"IMPORTANT: Use AskUserQuestion tool to ask the user which skill to use.\n"
+    f"- Show each matched skill as an option\n"
+    f"- Add \"Continue without skill\" as the last option\n"
+    f"- If user selects a skill, invoke it with the Skill tool\n"
+    f"</skill-suggestion>"
+)
 
-print(json.dumps(output))
+print(suggestion)
 PYEOF
 )
 
-# If python3 produced output, print it; otherwise exit 0 silently
+# If python3 produced output (prompt + skill suggestion), print it as plain text
+# Claude Code will use this as the modified prompt text
 if [[ -n "$RESULT" ]]; then
-  echo "$RESULT"
+  printf '%s' "$RESULT"
 fi
 
 exit 0
