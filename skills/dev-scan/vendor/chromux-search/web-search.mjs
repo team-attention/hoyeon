@@ -202,8 +202,16 @@ async function search(query, { site, count, time, enrich, maxComments, bodyLen }
 const args = process.argv.slice(2);
 
 if (args.includes('--check')) {
+  // Use 'ps' (no daemon needed) to check Chrome, then 'list' to verify daemon.
+  // If daemon is dead, 'list' auto-recovers it via ensureDaemon().
   try {
-    cx('list');
+    cx('ps');  // fast: no daemon needed, just checks Chrome process
+    try {
+      cx('list');  // verifies daemon is alive (auto-starts if dead)
+    } catch {
+      // daemon auto-recovery may have just started — retry once
+      cx('list');
+    }
     console.log(JSON.stringify({ available: true, tool: 'chromux (web-search)' }));
   } catch (err) {
     console.log(JSON.stringify({ available: false, error: err.message }));
