@@ -659,13 +659,78 @@ Read the file and evaluate:
 
 **If OKAY** → proceed.
 
-### 5d. Verification Summary Confirmation (standard + interactive only)
+### 5d. AC Quality Gate (standard only)
 
 > **Mode Gate**:
 > - **Quick**: Skip. Proceed directly to Phase 5e.
-> - **Autopilot**: Skip. Proceed directly to Phase 5e.
 
-After plan review passes, derive the Verification Summary from `requirements[].scenarios` and present it to the user for lightweight confirmation.
+Inspect **every** AC across `tasks[].acceptance_criteria` and `requirements[].scenarios` to ensure classification completeness AND semantic quality. This gate runs a checklist-based loop (max 5 iterations) — NOT an LLM self-score.
+
+#### Checklist (all must pass)
+
+**Classification completeness:**
+- Every `requirements[].scenarios[]` has `verified_by` set (`machine` | `agent` | `human`)
+- Every `requirements[].scenarios[]` has a non-empty `verify` object matching its type
+- `verification_summary.gaps` is empty (all ACs classified)
+
+**Semantic quality:**
+- **Machine ACs**: `verify.run` is an executable shell command (not pseudocode, not natural language). `verify.expect` has a concrete value (e.g., `exit_code: 0`, not "should work")
+- **Agent ACs**: `verify.assert` is **falsifiable** — can be proven wrong by inspecting code/output (FAIL: "code is correct". PASS: "all public functions have JSDoc with @param and @returns")
+- **Human ACs**: `verify.ask` is **actionable** — a person can follow it step-by-step (FAIL: "verify it". PASS: "Open /login, enter invalid password, confirm error message shows 'Invalid password' not 'Login failed'")
+
+#### Gate Loop
+
+The orchestrator (this skill) owns the loop. The `ac-quality-gate` agent owns single-pass judgment + fix.
+
+```
+FOR iteration IN 1..5:
+  result = Agent(
+    subagent_type="ac-quality-gate",
+    description="AC quality check iteration {iteration}",
+    prompt="Check AC quality for spec: .dev/specs/{name}/spec.json"
+  )
+
+  IF result.status == "PASS":
+    print("AC Quality Gate: PASS ({iteration} iteration(s), {result.total_checked} items checked)")
+    BREAK
+
+  IF result.status == "FAIL":
+    print("AC Quality Gate: iteration {iteration} — {result.fixed} fixed, {len(result.remaining_failures)} remaining")
+    # Agent already applied fixes via spec merge. Loop continues to re-check.
+
+  # Re-validate after fixes
+  hoyeon-cli spec validate .dev/specs/{name}/spec.json
+
+IF iteration > 5 AND result.status == "FAIL":
+  # Escalate remaining issues to user
+  print("AC Quality Gate: {len(result.remaining_failures)} items could not be auto-fixed after 5 rounds.")
+  FOR EACH f IN result.remaining_failures:
+    print("  - {f.id}: {f.detail}")
+  AskUserQuestion(
+    question: "These ACs could not be auto-fixed. How should we proceed?",
+    options: [
+      { label: "Fix manually", description: "I'll provide specific verify commands" },
+      { label: "Accept as-is", description: "Proceed with current quality level" },
+      { label: "Abort", description: "Stop and rethink requirements" }
+    ]
+  )
+```
+
+#### Examples of auto-fix rewrites
+
+| Before (FAIL) | After (PASS) | Type |
+|---------------|-------------|------|
+| `run: "check auth works"` | `run: "npm test -- --grep 'auth'"`, `expect: { exit_code: 0 }` | machine |
+| `assert: "code is correct"` | `assert: "All API endpoints return JSON with 'status' field; no endpoint returns raw strings"` | agent |
+| `ask: "verify it"` | `ask: "Navigate to /dashboard after login. Confirm: (1) page loads within 3s, (2) username appears in top-right, (3) sidebar shows 5 menu items"` | human |
+
+### 5e. Verification Summary Confirmation (standard + interactive only)
+
+> **Mode Gate**:
+> - **Quick**: Skip. Proceed directly to Phase 5f.
+> - **Autopilot**: Skip. Proceed directly to Phase 5f.
+
+After plan review and AC Quality Gate pass, derive the Verification Summary from `requirements[].scenarios` and present it to the user for lightweight confirmation.
 
 **Derivation rules** (from requirements scenarios):
 - **A-items** = scenarios where `verified_by` is `"machine"` or `"agent"` AND `execution_env` is `"host"` (or omitted)
@@ -712,9 +777,9 @@ AskUserQuestion(
 )
 ```
 
-**If "Corrections needed"**: Ask which items to change, update via `spec merge` on `requirements` scenarios (the source of truth), then proceed to Phase 5e.
+**If "Corrections needed"**: Ask which items to change, update via `spec merge` on `requirements` scenarios (the source of truth), then proceed to Phase 5f.
 
-### 5e. Decision Summary (standard + interactive only)
+### 5f. Decision Summary (standard + interactive only)
 
 > **Mode Gate**:
 > - **Quick**: Skip
@@ -835,7 +900,7 @@ Constraints: {n} items
 |---------|---------------------|------|
 | Non-goals | `meta.non_goals[]` — strategic scope exclusions | When non_goals exist |
 | Task Overview | `tasks[]` — id, action, type, risk, depends_on | Always |
-| Verification | Derived from `requirements[].scenarios` — A/H/S classification (see Phase 5d rules) | Always |
+| Verification | Derived from `requirements[].scenarios` — A/H/S classification (see Phase 5e rules) | Always |
 | Pre-work | `external_dependencies.pre_work` — list all, mark blocking=true as Blocking | Always |
 | Post-work | `external_dependencies.post_work` — list all | Always |
 | Key Decisions | `context.decisions[]` — decision, rationale | Always |
@@ -891,7 +956,8 @@ AskUserQuestion(
 
 ### Standard mode (additional)
 - [ ] `context.research` is structured object (not string)
-- [ ] `verification_summary` derived from `requirements[].scenarios` (A/H/S classification presented in Phase 5d/6)
+- [ ] AC Quality Gate passed (Phase 5d) — all ACs classified + semantically valid
+- [ ] `verification_summary` derived from `requirements[].scenarios` (A/H/S classification presented in Phase 5e/6)
 - [ ] `constraints` populated from gap-analyzer
 - [ ] Analysis agents ran (gap + tradeoff + verification-planner)
 - [ ] TESTING.md pre-read and inlined into verification-planner prompt
@@ -907,8 +973,8 @@ AskUserQuestion(
 
 ### Interactive mode (additional)
 - [ ] Standard + Interactive: user explicitly triggered plan generation (not auto-transitioned)
-- [ ] Verification Summary Confirmation presented and confirmed (Phase 5d)
-- [ ] Decision Summary presented and confirmed (Phase 5e)
+- [ ] Verification Summary Confirmation presented and confirmed (Phase 5e)
+- [ ] Decision Summary presented and confirmed (Phase 5f)
 - [ ] All HIGH risk decision_points resolved with user
 
 ### Autopilot mode (overrides)
