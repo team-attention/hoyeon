@@ -2,8 +2,8 @@
 # skill-hint-hook.sh — UserPromptSubmit hook
 #
 # Classifies user prompts against skill-rules.json using Gemini 2.5 Flash Lite API.
-# If a skill match is found, outputs the original prompt with <skill-suggestion> block
-# appended (Zeude-style prompt text modification).
+# If a skill match is found, outputs hookSpecificOutput JSON with additionalContext
+# containing a <skill-suggestion> block with matched skills and AskUserQuestion instruction.
 #
 # Silently exits 0 on: empty prompt, slash-prefix, missing API key, API error, no match.
 
@@ -151,7 +151,7 @@ matched_skills = [s for s in matched_skills if s.get("slug", "") in rules]
 if not matched_skills:
     sys.exit(0)
 
-# Build skill suggestion block (Zeude-style: append to prompt text)
+# Build skill suggestion as hookSpecificOutput.additionalContext
 hint_lines = []
 for s in matched_skills:
     slug = s.get("slug", "")
@@ -161,27 +161,31 @@ for s in matched_skills:
     if slug:
         hint_lines.append(f"- /{slug} - {hint}")
 
-matched_hints = "\n".join(hint_lines)
+matched_hints = "\\n".join(hint_lines)
 
-# Output: original prompt + skill suggestion block
-suggestion = (
-    f"{user_prompt}\n\n"
-    f"<skill-suggestion>\n"
-    f"MATCHED SKILLS (use AskUserQuestion to let user choose):\n"
-    f"{matched_hints}\n"
-    f"IMPORTANT: Use AskUserQuestion tool to ask the user which skill to use.\n"
-    f"- Show each matched skill as an option\n"
-    f"- Add \"Continue without skill\" as the last option\n"
-    f"- If user selects a skill, invoke it with the Skill tool\n"
-    f"</skill-suggestion>"
+additional_context = (
+    "<skill-suggestion>\\n"
+    "BLOCKING REQUIREMENT: Before responding to the user, you MUST use AskUserQuestion to ask which skill to use.\\n"
+    f"Matched skills:\\n{matched_hints}\\n"
+    "Options to present:\\n"
+    + "\\n".join([f"- {h}" for h in hint_lines])
+    + "\\n- Continue without skill\\n"
+    "Do NOT skip this step. Do NOT proceed without asking.\\n"
+    "</skill-suggestion>"
 )
 
-print(suggestion)
+output = {
+    "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": additional_context
+    }
+}
+
+print(json.dumps(output))
 PYEOF
 )
 
-# If python3 produced output (prompt + skill suggestion), print it as plain text
-# Claude Code will use this as the modified prompt text
+# If python3 produced JSON output, print it for Claude Code to process
 if [[ -n "$RESULT" ]]; then
   printf '%s' "$RESULT"
 fi
