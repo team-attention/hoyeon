@@ -7836,7 +7836,12 @@ var dev_spec_v4_schema_default = {
         created_at: { type: "string" },
         updated_at: { type: "string" },
         approved_by: { type: "string" },
-        approved_at: { type: "string" }
+        approved_at: { type: "string" },
+        type: {
+          type: "string",
+          enum: ["dev", "plain"],
+          description: "Spec type: dev = developer task spec (default), plain = lightweight plain task spec"
+        }
       }
     },
     context: {
@@ -8483,6 +8488,15 @@ async function handleInit(args) {
       { ts: now, type: "spec_created" }
     ]
   };
+  if (parsed.type !== void 0) {
+    const validTypes = ["dev", "plain"];
+    if (!validTypes.includes(parsed.type)) {
+      process.stderr.write(`Error: invalid --type '${parsed.type}'. Valid values: ${validTypes.join(", ")}
+`);
+      process.exit(1);
+    }
+    specData.meta.type = parsed.type;
+  }
   if (parsed.depth || parsed.interaction) {
     specData.meta.mode = {};
     if (parsed.depth) specData.meta.mode.depth = parsed.depth;

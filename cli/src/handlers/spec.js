@@ -143,6 +143,16 @@ async function handleInit(args) {
     ],
   };
 
+  // Add optional type
+  if (parsed.type !== undefined) {
+    const validTypes = ['dev', 'plain'];
+    if (!validTypes.includes(parsed.type)) {
+      process.stderr.write(`Error: invalid --type '${parsed.type}'. Valid values: ${validTypes.join(', ')}\n`);
+      process.exit(1);
+    }
+    specData.meta.type = parsed.type;
+  }
+
   // Add optional mode
   if (parsed.depth || parsed.interaction) {
     specData.meta.mode = {};
