@@ -7,6 +7,12 @@
 #
 # Silently exits 0 on: empty prompt, slash-prefix, missing API key, API error, no match.
 
+# Source .zshenv for GEMINI_API_KEY (hooks run under bash, not zsh)
+[[ -f "$HOME/.zshenv" ]] && source "$HOME/.zshenv" 2>/dev/null
+
+# Early debug - log that hook was invoked at all
+echo "$(date '+%H:%M:%S') HOOK_INVOKED cwd=$(pwd) KEY=${GEMINI_API_KEY:+SET}" >> /tmp/skill-hint-debug.log
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 SKILL_RULES_FILE="${PLUGIN_ROOT}/.claude/skill-rules.json"
@@ -19,17 +25,20 @@ PROMPT=$(echo "$HOOK_INPUT" | jq -r '.prompt // empty')
 
 # Early exit: empty or whitespace-only prompt
 if [[ -z "${PROMPT// }" ]]; then
+  echo "$(date '+%H:%M:%S') EXIT:empty_prompt" >> /tmp/skill-hint-debug.log
   exit 0
 fi
 
 # Early exit: slash-prefix command (e.g. /execute, /specify)
 if [[ "$PROMPT" == /* ]]; then
+  echo "$(date '+%H:%M:%S') EXIT:slash_prefix prompt=$PROMPT" >> /tmp/skill-hint-debug.log
   exit 0
 fi
 
 # Early exit: missing API key
 GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 if [[ -z "$GEMINI_API_KEY" ]]; then
+  echo "$(date '+%H:%M:%S') EXIT:no_api_key" >> /tmp/skill-hint-debug.log
   exit 0
 fi
 
@@ -168,19 +177,26 @@ matched_hints = "\n".join(hint_lines)
 print(f"""{user_prompt}
 
 <skill-suggestion>
-MATCHED SKILLS (use AskUserQuestion to let user choose):
+MATCHED SKILLS:
 {matched_hints}
-IMPORTANT: Use AskUserQuestion tool to ask the user which skill to use.
-- Show each matched skill as an option
-- Add "Continue without skill" as the last option
-- If user selects a skill, invoke it with the Skill tool
+
+MANDATORY: You MUST call the AskUserQuestion tool BEFORE doing anything else.
+Do NOT read files, do NOT write code, do NOT respond with text first.
+Your VERY FIRST action must be AskUserQuestion with these options:
+{matched_hints}
+- Continue without skill
 </skill-suggestion>""")
 PYEOF
 )
 
-# If python3 produced plain text output (prompt + skill suggestion), print it
+# Debug: log to file
+echo "$(date '+%H:%M:%S') RESULT_LEN=${#RESULT}" >> /tmp/skill-hint-debug.log
 if [[ -n "$RESULT" ]]; then
+  echo "$RESULT" >> /tmp/skill-hint-debug.log
+  echo "---STDOUT_SENT---" >> /tmp/skill-hint-debug.log
   printf '%s' "$RESULT"
+else
+  echo "EMPTY_RESULT" >> /tmp/skill-hint-debug.log
 fi
 
 exit 0
