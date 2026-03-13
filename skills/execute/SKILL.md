@@ -172,14 +172,21 @@ FOR EACH round in plan.rounds:
     Bash("hoyeon-cli spec task {task.id} --status in_progress {spec_path}")
 
   FOR EACH task in runnable (single message, run_in_background=true if len > 1):
-    IF task.tool starts with "/":
+    IF task.tool AND task.tool starts with "/":
       # Invoke as Skill
       Skill(skill=task.tool, args=task.args ?? "")
-    ELSE:
-      # Invoke as Agent
+    ELIF task.tool:
+      # Invoke as Agent with specific subagent_type
       Agent(
         subagent_type=task.tool,
-        prompt=task.action + "\n\n" + (task.description ?? ""),
+        prompt=task.action + "\n\n" + (task.args ?? ""),
+        run_in_background=(len(runnable) > 1)
+      )
+    ELSE:
+      # Fallback: no tool specified — dispatch as general-purpose agent with action as prompt
+      Agent(
+        subagent_type="general-purpose",
+        prompt=task.action,
         run_in_background=(len(runnable) > 1)
       )
 
