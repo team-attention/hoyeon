@@ -21,7 +21,7 @@ validate_prompt: |
   2. "## Dependency DAG" showing task relationships
   3. "## Overlap Matrix" if any touch zone overlaps exist
   4. "## Coordination Mode" with mode (agent-spawn or team) and rationale
-  5. "## Agent Mapping" table with columns: Task, Agent, Model, Rationale
+  5. "## Agent Mapping" table with columns: #, Task, Tool, Type, Source, Rationale
   6. "## Execution Plan" with parallel rounds and context sharing notes
   Must end with AskUserQuestion offering next actions (실행/계획 수정/더 논의).
   Must NOT generate spec.json until user explicitly chooses "실행".
@@ -99,11 +99,37 @@ Decide between two modes:
 
 **Rule**: Orchestrator relay sufficient → `agent-spawn`. Agents need direct communication → `team`.
 
-### Phase 5: Agent Matching
+### Phase 5: Tool Discovery
 
-For each task, check the currently available agents (from the Agent tool's subagent_type list) and pick the best fit.
-- **Existing agent fits** → use it as `subagent_type`
-- **No existing agent fits** → use `general-purpose`
+For each task, perform priority-based tool discovery by scanning skill and agent directories in order:
+
+**Scan order (highest priority first):**
+
+1. **Plugin scope**: `${baseDir}/.claude/skills/` and `${baseDir}/.claude/agents/`
+   - Read each SKILL.md / agent.md description field
+2. **Project scope**: `{project_root}/.claude/skills/` and `{project_root}/.claude/agents/`
+   - `{project_root}` = directory containing the project's CLAUDE.md
+3. **User scope**: `~/.claude/skills/` and `~/.claude/agents/`
+4. **Default fallback**: Agent tool's subagent_type list → `general-purpose`
+
+**Matching logic per task:**
+
+- Match the task description against skill/agent description fields (semantic similarity)
+- First match wins (plugin scope takes priority over project, project over user, user over default)
+- Record both the matched tool and where it was found (source)
+
+**Assignment rules:**
+
+| Match result | task.tool | task.type |
+|---|---|---|
+| Skill found | `/skill-name` (e.g., `/bugfix`) | `plain` (unless skill does code changes → `dev`) |
+| Agent found | `agent-subtype` (e.g., `worker`) | `dev` if code changes, else `plain` |
+| Code changes needed, no match | `worker` | `dev` |
+| No code changes, no match | `general-purpose` | `plain` |
+
+**type inference heuristics:**
+- `dev`: task modifies source files, writes code, runs tests → requires dev pipeline
+- `plain`: task reads, analyzes, documents, or invokes a skill that handles its own execution
 
 ### Phase 6: Execution Plan
 
@@ -150,9 +176,9 @@ rationale: {one-line reason}
 
 ## Agent Mapping
 
-| # | Task | Agent (subagent_type) | Model | Rationale |
-|---|------|-----------------------|-------|-----------|
-| 1 | ... | worker | sonnet | ... |
+| # | Task | Tool | Type | Source | Rationale |
+|---|------|------|------|--------|-----------|
+| 1 | ... | worker | dev | default | ... |
 
 ## Execution Plan
 
@@ -201,8 +227,12 @@ SPEC_PATH="$SESSION_DIR/spec.json"
 
 #### 9.2 Initialize spec.json
 
+Determine the plan type based on task composition from Phase 5:
+- If **any task has `type: dev`** → use `--type dev` (dev pipeline with worktree isolation)
+- If **all tasks have `type: plain`** → use `--type plain` (lightweight skill-only pipeline)
+
 ```bash
-hoyeon-cli spec init {plan-name} --goal "{user's goal}" ${SPEC_PATH}
+hoyeon-cli spec init {plan-name} --goal "{user's goal}" --type dev|plain ${SPEC_PATH}
 ```
 
 `{plan-name}`: derive from user's goal (kebab-case, max 30 chars).
@@ -222,6 +252,7 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
       "status": "pending",
       "file_scope": ["{touch zone files}"],
       "depends_on": [],
+      "tool": "{tool from Phase 5, e.g. worker or /skill-name}",
       "acceptance_criteria": {
         "functional": [{"description": "{done-when condition}"}],
         "static": [],
@@ -236,6 +267,7 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
       "status": "pending",
       "file_scope": ["{touch zone files}"],
       "depends_on": ["T1"],
+      "tool": "{tool from Phase 5}",
       "acceptance_criteria": {
         "functional": [{"description": "{done-when condition}"}],
         "static": [],
@@ -251,6 +283,7 @@ Map from plan:
 - Task Breakdown → `action`, `file_scope` (touch zone)
 - Done condition → `acceptance_criteria.functional`
 - Dependency DAG → `depends_on`
+- Agent Mapping → `tool` (from Phase 5 discovery result)
 
 #### 9.4 Update state.json
 
