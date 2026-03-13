@@ -386,9 +386,3 @@ Calculate sentiment from **comment-level tags** (Step 3-0). The bar uses block c
 | Output too large for stdout | Results are in files — use Read tool (already the default approach) |
 | Topic too new | Note insufficient results, suggest related keywords |
 
-## Cleanup
-
-After synthesis is complete, clean up the temp directory:
-```bash
-D="$(cat /tmp/dev-scan-current-dir)" && rm -rf "$D" /tmp/dev-scan-current-dir
-```
