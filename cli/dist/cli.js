@@ -10006,7 +10006,7 @@ async function main() {
     process.exit(0);
   }
   if (args[0] === "--version") {
-    const version = true ? "0.11.0" : "dev";
+    const version = true ? "0.11.1" : "dev";
     process.stdout.write(`hoyeon-cli v${version}
 `);
     process.exit(0);

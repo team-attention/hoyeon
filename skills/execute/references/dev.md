@@ -606,47 +606,27 @@ Agent(subagent_type="worker", prompt="""
 
 > **Mode Gate**: Quick mode only. Replaces Code Review + Requirements Check.
 
-Dispatch a verify worker with ALL tasks' acceptance criteria combined:
+Holistic verification of the full spec — goal alignment, constraints, acceptance criteria,
+requirements, and deliverables.
 
 ```
-spec = Read(spec_path) → parse JSON
+Read: skills/execute/references/final-verify.md
+Follow the usage instructions to dispatch the verification worker.
+Provide spec_path and parsed spec JSON.
+```
 
-Agent(
-  subagent_type="worker",
-  description="Final verification of all tasks",
-  prompt="""
-  ## TASK
-  You are a FINAL VERIFICATION worker. Verify ALL acceptance criteria
-  across all completed tasks.
+On completion:
 
-  DO NOT modify any files. Only READ and RUN verification commands.
-
-  ## ACCEPTANCE CRITERIA
-  {FOR EACH task in spec.tasks where status == "done":}
-  ### {task.id}: {task.action}
-  {FOR EACH category in [functional, static, runtime]:}
-    {FOR EACH item in task.acceptance_criteria[category]:}
-    - [{category}] {item.description}
-      Command: `{item.command}`
-
-  ## OUTPUT FORMAT
-  ```json
-  {
-    "status": "VERIFIED" | "FAILED",
-    "results": [
-      {"task_id": "...", "criterion": "...", "status": "PASS|FAIL", "reason": "..."}
-    ]
-  }
-  ```
-  """
-)
-
+```
 IF result.status == "VERIFIED":
   TaskUpdate(taskId=fv, status="completed")
 ELSE:
   print("Final verification FAILED:")
-  FOR EACH failure in result.results.filter(r => r.status == "FAIL"):
-    print("  {failure.task_id}: {failure.criterion} — {failure.reason}")
+  IF result.goal_alignment.status == "FAIL":
+    print("  GOAL MISALIGNMENT: {result.goal_alignment.reason}")
+  FOR EACH category in [constraints, acceptance_criteria, requirements, deliverables]:
+    FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
+      print("  [{category}] {failure.description} — {failure.reason}")
   HALT
 ```
 
@@ -801,6 +781,6 @@ Details: {verify result summary}
 - [ ] Residual commit handled
 - [ ] No code review
 - [ ] No requirements check
-- [ ] Final verify worker ran all acceptance criteria
+- [ ] Final verify worker ran holistic spec verification (goal, constraints, AC, requirements, deliverables)
 - [ ] H-items listed for human follow-up
 - [ ] Final report output

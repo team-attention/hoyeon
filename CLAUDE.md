@@ -106,7 +106,12 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v0.11.0)
+## Recent Changes (v0.11.1)
+
+- feat(execute): extract Final Verify into reusable holistic verification recipe (goal, constraints, AC, requirements, deliverables)
+- docs: rewrite README with council-deliberated structure
+
+## Previous Changes (v0.11.0)
 
 - feat(council): add `/council` skill — multi-perspective decision committee with Team Mode debate
 - feat(council): iterative step-back judge loop (debate → CONVERGED/PARTIAL/FULL → re-debate, max 3 cycles)
