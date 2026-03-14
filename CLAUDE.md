@@ -106,7 +106,16 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v0.10.0)
+## Recent Changes (v0.11.0)
+
+- feat(council): add `/council` skill — multi-perspective decision committee with Team Mode debate
+- feat(council): iterative step-back judge loop (debate → CONVERGED/PARTIAL/FULL → re-debate, max 3 cycles)
+- refactor(execute): convert to generic engine with meta.type routing
+- feat(execute): add fallback dispatch for tasks without tool field
+- feat(spec/quick-plan): add `--type` flag and priority-based tool discovery
+- fix(skills): align specify and quick-plan with spec.json v4 schema
+
+## Previous Changes (v0.10.0)
 
 - feat(specify): add AC Quality Gate (Phase 5d) with checklist-based AC validation loop
 - feat(specify): add H→S conversion suggestions and env detection to AC Quality Gate
