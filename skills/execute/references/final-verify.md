@@ -71,6 +71,14 @@ Agent(
   Collect all scenarios where execution_env == "sandbox" from ALL tasks' acceptance_criteria.scenarios[].
 
   {IF sandbox_scenarios is not empty:}
+  # Guard: check sandbox availability
+  sandbox_check = Bash("docker-compose --version 2>/dev/null && echo AVAILABLE || echo UNAVAILABLE")
+  IF sandbox_check == "UNAVAILABLE":
+    FOR EACH scenario in sandbox_scenarios:
+      mark as SKIPPED with reason "sandbox_unavailable"
+    SKIP to next step
+
+  # Worker agents for sandbox scenarios have a default 5-minute timeout. If a sandbox scenario times out, mark as SKIPPED with reason "sandbox_timeout".
   For each sandbox scenario, delegate to a worker agent:
   ```
   FOR EACH sandbox_scenario in sandbox_scenarios:
@@ -90,13 +98,16 @@ Agent(
       Expected exit code: {sandbox_scenario.verify.expect.exit_code}
 
       Execute the command in the appropriate sandbox environment and report:
-      - status: PASS | FAIL
+      - status: PASS | FAIL | SKIPPED
       - exit_code: (actual exit code)
       - output: (stdout/stderr summary)
-      - reason: (explanation if FAIL)
+      - reason: (explanation if FAIL or SKIPPED)
       """
     )
-    Collect result into sandbox_results[]
+    IF result timed out (no response within 5 minutes):
+      mark scenario as SKIPPED with reason "sandbox_timeout"
+    ELSE:
+      Collect result into sandbox_results[]
   ```
   Include sandbox_results in the final output under "requirements" with source noted as "sandbox".
 
