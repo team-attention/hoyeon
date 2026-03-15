@@ -259,9 +259,10 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
       "steps": ["{step 1}", "{step 2}"],
       "must_not_do": ["Do not run git commands"],
       "acceptance_criteria": {
-        "functional": [{"description": "{done-when condition}"}],
-        "static": [],
-        "runtime": []
+        "scenarios": ["{requirement-scenario-id-from-R1}"],
+        "checks": [
+          {"type": "build", "run": "{done-when verification command}"}
+        ]
       },
       "risk": "low"
     },
@@ -276,9 +277,10 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
       "steps": ["{step 1}", "{step 2}"],
       "must_not_do": ["Do not run git commands"],
       "acceptance_criteria": {
-        "functional": [{"description": "{done-when condition}"}],
-        "static": [],
-        "runtime": []
+        "scenarios": ["{requirement-scenario-id-from-R2}"],
+        "checks": [
+          {"type": "build", "run": "{done-when verification command}"}
+        ]
       },
       "risk": "low"
     }
@@ -288,7 +290,7 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
 
 Map from plan:
 - Task Breakdown → `action`, `file_scope` (touch zone)
-- Done condition → `acceptance_criteria.functional`
+- Done condition → `acceptance_criteria.scenarios` (scenario IDs) + `acceptance_criteria.checks` (commands)
 - Dependency DAG → `depends_on`
 - Agent Mapping → `tool` (from Phase 5 discovery result)
 
