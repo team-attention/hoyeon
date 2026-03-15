@@ -852,12 +852,19 @@ async function handleStatus(args) {
   const pending = tasks.filter(t => t.status === 'pending' || !t.status);
   const remaining = tasks.filter(t => t.status !== 'done');
 
+  const plannedTasks = tasks.filter(t => t.origin !== 'derived');
+  const derivedTasks = tasks.filter(t => t.origin === 'derived');
+  const plannedDone = plannedTasks.filter(t => t.status === 'done');
+  const derivedDone = derivedTasks.filter(t => t.status === 'done');
+
   const result = {
     name: specData.meta?.name || 'unknown',
     done: done.length,
     in_progress: inProgress.length,
     pending: pending.length,
     total: tasks.length,
+    planned: { done: plannedDone.length, total: plannedTasks.length },
+    derived: { done: derivedDone.length, total: derivedTasks.length },
     complete: remaining.length === 0,
     remaining: remaining.map(t => ({ id: t.id, action: t.action, status: t.status || 'pending' })),
   };
@@ -929,6 +936,17 @@ async function handleCheck(args) {
     }
   }
 
+  // Check derived task constraints
+  for (const task of specData.tasks) {
+    if (task.origin === 'derived') {
+      if (!task.derived_from || !task.derived_from.parent) {
+        issues.push(`task '${task.id}' has origin=derived but is missing derived_from.parent`);
+      } else if (!taskIds.has(task.derived_from.parent)) {
+        issues.push(`task '${task.id}' derived_from.parent '${task.derived_from.parent}' does not reference a valid task ID`);
+      }
+    }
+  }
+
   // Check file_scope overlap across tasks (warning only)
   const warnings = [];
   const fileScopeMap = new Map();
@@ -982,6 +1000,7 @@ function generateGuide(section) {
     external: { ref: 'externalDependencies', desc: 'Human-only pre/post-work dependencies' },
     scenario: { ref: 'scenario', desc: 'Requirement scenario (given/when/then + verify)' },
     verify: { ref: null, desc: 'Verify types: command, assertion, instruction', custom: 'verify' },
+    merge: { ref: null, desc: 'Merge modes: replace (default), --append, --patch', custom: 'merge' },
   };
 
   if (!section || section === 'list') {
@@ -1020,6 +1039,10 @@ function generateGuide(section) {
 
   if (info.custom === 'verify') {
     return formatVerifyGuide(defs);
+  }
+
+  if (info.custom === 'merge') {
+    return formatMergeGuide();
   }
 
   const def = defs[info.ref];
@@ -1185,6 +1208,33 @@ function exampleValue(key, prop, defs) {
   if (prop.type === 'array') return [];
   if (prop.type === 'object') return {};
   return `<${key}>`;
+}
+
+function formatMergeGuide() {
+  const lines = [
+    'spec merge modes:',
+    '',
+    '  (default) — replace',
+    '    Arrays are replaced entirely. Objects are deep-merged.',
+    '    hoyeon-cli spec merge <path> --json \'{"tasks":[...]}\'',
+    '',
+    '  --append — concatenate arrays',
+    '    New array items are appended to existing arrays.',
+    '    hoyeon-cli spec merge <path> --json \'{"tasks":[{"id":"T2",...}]}\' --append',
+    '',
+    '  --patch — ID-based merge',
+    '    Array items with matching "id" are updated in place.',
+    '    Items with new ids are appended. Non-array fields deep-merge normally.',
+    '    hoyeon-cli spec merge <path> --json \'{"tasks":[{"id":"T1","status":"done"}]}\' --patch',
+    '',
+    '  --append and --patch are mutually exclusive.',
+    '',
+    '  When to use which:',
+    '    replace   — rewrite a section completely (e.g. set all tasks at once)',
+    '    --append  — add new items without touching existing (e.g. add requirements)',
+    '    --patch   — update specific items by id (e.g. update one task\'s status)',
+  ];
+  return lines.join('\n');
 }
 
 function formatVerifyGuide(defs) {
