@@ -282,7 +282,7 @@ Ask only what you cannot discover. Internally evaluate: scope boundaries? depend
 **Question rules:**
 - Max **3-5 questions**, prioritized by importance (not numeric scoring — use judgment)
 - Each question includes a **recommended answer** based on Discovery research
-- User can **skip** any question ("agent 판단에 맡김")
+- User can **skip** any question ("leave it to the agent's judgment")
 - **Escape hatch**: user can say "enough, proceed" at any point → transition to Phase 3
 - Propose based on research; don't ask what you can discover
 

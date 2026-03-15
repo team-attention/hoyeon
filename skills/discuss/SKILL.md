@@ -333,7 +333,7 @@ The following do NOT count as turns:
 /discuss --deep Our auth system feels fragile
 
 # Korean
-/discuss 이게 좋은 아이디어야? 캐싱 레이어 추가하려는데
+/discuss Is this a good idea? I want to add a caching layer
 
 # Vague exploration
 /discuss I feel like our API design is off but I can't pinpoint why
