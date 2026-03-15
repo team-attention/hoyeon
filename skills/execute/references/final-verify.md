@@ -67,52 +67,26 @@ Agent(
   {FOR EACH check in task.acceptance_criteria.checks ?? []:}
   - [{check.type}] Run: `{check.run}` → expect exit 0
 
-  ## Step 4: Sandbox Scenario Execution
-  Collect all scenarios where execution_env == "sandbox" from ALL tasks' acceptance_criteria.scenarios[].
+  ## Step 4: Scenario Status Check
+  Run: `hoyeon-cli spec requirement --status --json {spec_path}`
 
-  {IF sandbox_scenarios is not empty:}
-  # Guard: check sandbox availability
-  sandbox_check = Bash("docker-compose --version 2>/dev/null && echo AVAILABLE || echo UNAVAILABLE")
-  IF sandbox_check == "UNAVAILABLE":
-    FOR EACH scenario in sandbox_scenarios:
-      mark as SKIPPED with reason "sandbox_unavailable"
-    SKIP to next step
+  Parse the JSON output:
+  - If summary.fail > 0 → report each failed scenario with its id, status, and details
+  - If any sandbox scenario has status "pending" → mark as SKIPPED with reason "sandbox verification task not executed"
+  - Human scenarios with status "pending" → expected, mark as MANUAL REVIEW
+  - All machine/agent scenarios should be "pass" — any "pending" ones were missed
 
-  # Worker agents for sandbox scenarios have a default 5-minute timeout. If a sandbox scenario times out, mark as SKIPPED with reason "sandbox_timeout".
-  For each sandbox scenario, delegate to a worker agent:
+  Include scenario_status in the output:
+  ```json
+  "scenario_status": {
+    "pass": N, "fail": N, "pending": N, "skipped": N,
+    "results": [
+      {"id": "R1-S1", "status": "pass", "task": "T1"},
+      {"id": "R1-S2", "status": "pass", "task": "T_SV1"},
+      {"id": "R1-S3", "status": "pending", "reason": "human review"}
+    ]
+  }
   ```
-  FOR EACH sandbox_scenario in sandbox_scenarios:
-    result = Agent(
-      subagent_type="worker",
-      description="Run sandbox scenario: {sandbox_scenario.id}",
-      prompt="""
-      You are a sandbox verification worker.
-      Run the following scenario in a sandbox/container environment.
-
-      Scenario ID: {sandbox_scenario.id}
-      Given: {sandbox_scenario.given}
-      When: {sandbox_scenario.when}
-      Then: {sandbox_scenario.then}
-
-      Command to run: `{sandbox_scenario.verify.run}`
-      Expected exit code: {sandbox_scenario.verify.expect.exit_code}
-
-      Execute the command in the appropriate sandbox environment and report:
-      - status: PASS | FAIL | SKIPPED
-      - exit_code: (actual exit code)
-      - output: (stdout/stderr summary)
-      - reason: (explanation if FAIL or SKIPPED)
-      """
-    )
-    IF result timed out (no response within 5 minutes):
-      mark scenario as SKIPPED with reason "sandbox_timeout"
-    ELSE:
-      Collect result into sandbox_results[]
-  ```
-  Include sandbox_results in the final output under "requirements" with source noted as "sandbox".
-
-  {IF sandbox_scenarios is empty:}
-  No sandbox scenarios — skip this step.
 
   ## Step 5: Requirements Scenarios
   {FOR EACH req in spec.requirements ?? []:}
@@ -143,9 +117,11 @@ Agent(
         {"task_id": "T1", "scenario_id": "S1.1", "description": "...", "status": "PASS|FAIL", "reason": "..."}
       ]
     },
-    "sandbox_scenarios": {
-      "pass": 0, "fail": 0, "skipped": 0, "results": [
-        {"scenario_id": "S1.2", "task_id": "T1", "status": "PASS|FAIL|SKIPPED", "exit_code": 0, "reason": "..."}
+    "scenario_status": {
+      "pass": 0, "fail": 0, "pending": 0, "skipped": 0,
+      "results": [
+        {"id": "R1-S1", "status": "pass", "task": "T1"},
+        {"id": "R1-S2", "status": "pending", "reason": "human review"}
       ]
     },
     "requirements": {
