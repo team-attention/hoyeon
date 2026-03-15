@@ -103,14 +103,14 @@ VERIFICATION
 Final Verify: {result.status}
 
 ───────────────────────────────────────────────────
-H-ITEMS (require human verification)
+MANUAL REVIEW (require human verification)
 ───────────────────────────────────────────────────
 {FOR EACH req in spec.requirements ?? []:}
 {FOR EACH scenario where verified_by == "human":}
 - {scenario.id}: {scenario.then}
   Check: {scenario.verify.ask}
 
-{IF no H-items: "None"}
+{IF no manual items: "None"}
 
 ───────────────────────────────────────────────────
 POST-WORK (human actions after completion)
@@ -143,5 +143,5 @@ POST-WORK (human actions after completion)
 - [ ] Each task handled flexibly (direct work, Skill, or Agent)
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
 - [ ] Final verify worker ran holistic spec verification
-- [ ] H-items listed for human follow-up if present
+- [ ] Manual items listed for human follow-up if present
 - [ ] Final report output

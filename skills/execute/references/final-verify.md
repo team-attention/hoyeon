@@ -44,7 +44,7 @@ Agent(
     {IF constraint.verified_by == "agent":}
     Assert: {constraint.verify.checks}
     {IF constraint.verified_by == "human":}
-    [H-ITEM — skip, report only] {constraint.rule}
+    [MANUAL — skip, report only] {constraint.rule}
   {IF no constraints: "None defined — skip this step"}
 
   ## Step 3: Acceptance Criteria (all tasks)
@@ -59,7 +59,7 @@ Agent(
     {IF scenario.verified_by == "agent":}
     - [{scenario_id}] Assert: {scenario.verify.checks}
     {IF scenario.verified_by == "human":}
-    - [{scenario_id}] [H-ITEM — skip, report only] {scenario.then}
+    - [{scenario_id}] [MANUAL — skip, report only] {scenario.then}
     {IF scenario.verified_by == "machine" AND scenario.execution_env == "sandbox":}
     - [{scenario_id}] [SANDBOX — delegate to worker agent — see Step 4]
 
@@ -124,7 +124,7 @@ Agent(
     {IF scenario.verified_by == "agent":}
     - [{scenario.id}] Assert: {scenario.verify.checks}
     {IF scenario.verified_by == "human":}
-    - [{scenario.id}] [H-ITEM — skip, report only] {scenario.then}
+    - [{scenario.id}] [MANUAL — skip, report only] {scenario.then}
   {IF no requirements: "None defined — skip this step"}
 
   ## OUTPUT FORMAT
@@ -227,4 +227,4 @@ ELIF result.status == "FAILED":
 | Other failures | Create derived fix tasks via `spec derive --trigger final_verify` |
 | FV-derived fix tasks | Execute WITHOUT per-task verify (lightweight path) |
 | Max FV re-runs | 2 (circuit breaker — HALT after 2 failed attempts) |
-| H-items | SKIP (report only, never HALT) |
+| Manual items (verified_by: human) | SKIP (report only, never HALT) |

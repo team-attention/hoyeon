@@ -758,14 +758,14 @@ Issues: {count} entries
 Audit: {count} triage decisions
 
 ───────────────────────────────────────────────────
-H-ITEMS (require human verification)
+MANUAL REVIEW (require human verification)
 ───────────────────────────────────────────────────
 {FOR EACH req in spec.requirements:}
 {FOR EACH scenario where verified_by == "human":}
 - {scenario.id}: {scenario.then}
   Check: {scenario.verify.ask}
 
-{IF no H-items: "None"}
+{IF no manual items: "None"}
 
 ───────────────────────────────────────────────────
 POST-WORK (human actions after completion)
@@ -852,7 +852,7 @@ Details: {verify result summary}
 - [ ] Code review completed (SHIP verdict or fixes applied)
 - [ ] Final verify worker ran holistic spec verification (goal, constraints, AC, requirements, deliverables)
 - [ ] Adaptations logged in audit.md
-- [ ] H-items listed for human follow-up
+- [ ] Manual items listed for human follow-up
 - [ ] Final report output
 
 ### Quick Mode Checklist
@@ -867,5 +867,5 @@ Details: {verify result summary}
 - [ ] Residual commit handled
 - [ ] No code review
 - [ ] Final verify worker ran holistic spec verification (goal, constraints, AC, requirements, deliverables)
-- [ ] H-items listed for human follow-up
+- [ ] Manual items listed for human follow-up
 - [ ] Final report output
