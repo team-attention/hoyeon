@@ -55,6 +55,25 @@ function loadSchema() {
   return specSchema;
 }
 
+/**
+ * Extract unique top-level sections from validation errors and print guide hints.
+ */
+function printGuideHints(errors) {
+  const sections = new Set();
+  for (const e of errors) {
+    const path = e.instancePath || '';
+    // Extract first path segment: "/constraints/0/verify" → "constraints"
+    const match = path.match(/^\/([^/]+)/);
+    if (match) sections.add(match[1]);
+  }
+  if (sections.size > 0) {
+    process.stderr.write('\nHint: check schema with:\n');
+    for (const s of sections) {
+      process.stderr.write(`  hoyeon-cli spec guide ${s}\n`);
+    }
+  }
+}
+
 function validateSpec(specData) {
   let schema;
   try {
@@ -73,6 +92,7 @@ function validateSpec(specData) {
       const path = e.instancePath || '(root)';
       process.stderr.write(`  ${path}: ${e.message}\n`);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 }
@@ -324,6 +344,7 @@ async function handleValidate(args) {
       const path = e.instancePath || '(root)';
       process.stderr.write(`  ${path}: ${e.message}\n`);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 }
@@ -839,6 +860,7 @@ async function handleTask(args) {
       const path = e.instancePath || '(root)';
       process.stderr.write(`  ${path}: ${e.message}\n`);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 

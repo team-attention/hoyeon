@@ -477,6 +477,8 @@ Gap-analyzer results are handled by severity — not all gaps need user input:
 | `low` | Auto-merge silently | Not worth user attention |
 
 ```bash
+# IMPORTANT: merge one section at a time, sequentially. Do NOT merge multiple sections in parallel.
+
 # known_gaps from gap-analyzer (all severities merged, medium/low without asking user)
 hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json '{
   "context": {
@@ -1049,6 +1051,7 @@ AskUserQuestion(
 - **Always use cli** — `hoyeon-cli spec init`, `spec merge`, `spec validate`, `spec check`
 - **Never hand-write spec.json** — always go through `spec merge` for auto-validation
 - **Read guide before merge** — run `hoyeon-cli spec guide <section>` before constructing merge JSON for unfamiliar or complex sections (especially `requirements`, `constraints`, `verify`). Also run `hoyeon-cli spec guide merge` to choose the right mode (replace vs `--append` vs `--patch`)
+- **One merge per section** — call `spec merge` once per top-level key (context, constraints, requirements, tasks). Never merge multiple sections in parallel — if one fails validation, parallel calls get cancelled and waste tokens
 - **--append for arrays** — use `--append` when adding to existing arrays (decisions, assumptions, known_gaps)
 - **--patch for updates** — use `--patch` when updating specific items by id (e.g., updating a single task's status or a single requirement's scenario)
 - **Validate before presenting** — Phase 5 must pass before Phase 6

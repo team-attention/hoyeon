@@ -8453,6 +8453,21 @@ Examples:
 function loadSchema() {
   return dev_spec_v4_schema_default;
 }
+function printGuideHints(errors) {
+  const sections = /* @__PURE__ */ new Set();
+  for (const e of errors) {
+    const path2 = e.instancePath || "";
+    const match = path2.match(/^\/([^/]+)/);
+    if (match) sections.add(match[1]);
+  }
+  if (sections.size > 0) {
+    process.stderr.write("\nHint: check schema with:\n");
+    for (const s of sections) {
+      process.stderr.write(`  hoyeon-cli spec guide ${s}
+`);
+    }
+  }
+}
 function validateSpec(specData) {
   let schema;
   try {
@@ -8473,6 +8488,7 @@ function validateSpec(specData) {
       process.stderr.write(`  ${path2}: ${e.message}
 `);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 }
@@ -8695,6 +8711,7 @@ async function handleValidate(args) {
       process.stderr.write(`  ${path2}: ${e.message}
 `);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 }
@@ -9134,6 +9151,7 @@ async function handleTask(args) {
       process.stderr.write(`  ${path2}: ${e.message}
 `);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
   writeState(specPath, specData);
