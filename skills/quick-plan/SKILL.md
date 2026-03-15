@@ -23,8 +23,8 @@ validate_prompt: |
   4. "## Coordination Mode" with mode (agent-spawn or team) and rationale
   5. "## Agent Mapping" table with columns: #, Task, Tool, Type, Source, Rationale
   6. "## Execution Plan" with parallel rounds and context sharing notes
-  Must end with AskUserQuestion offering next actions (실행/계획 수정/더 논의).
-  Must NOT generate spec.json until user explicitly chooses "실행".
+  Must end with AskUserQuestion offering next actions (Execute / Revise plan / Discuss further).
+  Must NOT generate spec.json until user explicitly chooses "Execute".
   Must NOT: create teams or spawn agents during planning.
 ---
 

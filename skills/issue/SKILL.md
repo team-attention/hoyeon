@@ -1,9 +1,9 @@
 ---
 name: issue
 description: |
-  GitHub 이슈 생성 스킬. 사용자 요청을 받아 코드베이스 전체 영향 분석 후,
-  AI 검증 완료/사람 판단 필요/주의사항을 구분한 구조화된 이슈를 생성한다.
-  /issue "이슈 내용"
+  GitHub issue creation skill. Analyzes the entire codebase impact based on user request,
+  then creates a structured issue with AI-verified/human-judgment-needed/caution sections.
+  /issue "issue description"
   Trigger: "/issue", "이슈 만들어", "issue 만들자", "깃헙 이슈"
 allowed_tools:
   - Read

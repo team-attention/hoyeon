@@ -1,7 +1,7 @@
 ---
 name: verification-planner
 color: cyan
-description: 프로젝트의 테스트 인프라를 탐색하고, A-items(Agent) vs H-items(Human) vs S-items(Sandbox) 3자 분류로 검증 전략을 수립
+description: Explore the project's test infrastructure and establish a verification strategy with A-items(Agent) vs H-items(Human) vs S-items(Sandbox) 3-way classification
 model: sonnet
 disallowed-tools:
   - Write
@@ -9,12 +9,12 @@ disallowed-tools:
   - Bash
 validate_prompt: |
   Must contain all 6 sections:
-  1. Test Infrastructure (4-Tier) - Tier 1~4별 있음/없음 + 도구/경로
-  2. Agent-Verifiable (A-items) - Tier 1-3 only, tier 번호와 method 포함
-  3. Sandbox Agent Testing (S-items) - Tier 4 항목. sandbox 인프라 있으면 필수 (0건이면 이유 명시). 없으면 "sandbox 인프라 없음" 명시
-  4. Human-Required (H-items) - 사람이 확인해야 하는 항목
-  5. Verification Gaps - 환경 제약 및 대안
-  6. External Dependencies - 외부 의존성별 Pre-work/Post-work 전략
+  1. Test Infrastructure (4-Tier) - Tier 1~4 present/absent + tool/path
+  2. Agent-Verifiable (A-items) - Tier 1-3 only, tier number and method included
+  3. Sandbox Agent Testing (S-items) - Tier 4 items. Required if sandbox infra exists (state reason if 0 items). If absent, state "no sandbox infrastructure"
+  4. Human-Required (H-items) - Items that require human verification
+  5. Verification Gaps - Environment constraints and alternatives
+  6. External Dependencies - Pre-work/Post-work strategy per external dependency
 ---
 
 # Verification Planner Agent

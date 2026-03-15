@@ -12,7 +12,6 @@
       "web automation",
       "browser automation",
       "explore website",
-      "web automation",
       "site exploration",
       "LinkedIn task"
     ],
@@ -23,8 +22,6 @@
     "keywords": [
       "bugfix",
       "bug fix",
-      "fix bug",
-      "fix error",
       "fix bug",
       "fix error",
       "debug",
@@ -43,16 +40,10 @@
   "check": {
     "keywords": [
       "check",
-      "check",
-      "verify changes",
       "verify changes",
       "before push",
-      "before push",
-      "validate rules",
       "validate rules",
       "code review",
-      "code review",
-      "code quality",
       "code quality",
       "rule checklist",
       "checklist"
@@ -69,11 +60,9 @@
       "save what we learned",
       "after PR completion",
       "after pull request completion",
-      "document learnings",
       "record what we learned",
       "summarize learnings",
       "synthesis",
-      "compound",
       "consolidate",
       "code learnings",
       "documentation"
@@ -87,9 +76,7 @@
       "deep interview",
       "interview me",
       "clarify requirements",
-      "clarify requirements",
       "interview",
-      "deep interview",
       "not sure what to build",
       "requirements unclear",
       "refine idea",
@@ -108,11 +95,9 @@
       "deep research",
       "in-depth investigation",
       "web research",
-      "web research",
       "detailed search",
       "comprehensive research",
       "comprehensive analysis",
-      "cited report",
       "cited report",
       "research topic",
       "topic investigation",
@@ -137,7 +122,6 @@
       "developer community",
       "opinion aggregator",
       "what do devs think",
-      "developer reactions",
       "dev trends",
       "tech evaluation"
     ],
@@ -151,7 +135,6 @@
       "share opinions",
       "debate",
       "discuss this",
-      "brainstorm",
       "pros and cons analysis",
       "pros and cons",
       "explore ideas",
@@ -179,7 +162,6 @@
       "run",
       "run command",
       "run task",
-      "worker dispatch",
       "spec-based execution"
     ],
     "hint": "Executes tasks according to the spec, verifies results, and handles adaptation.",
@@ -234,9 +216,7 @@
       "run in parallel",
       "team mode",
       "agent deployment",
-      "plan",
-      "task planning",
-      "session planning"
+      "plan"
     ],
     "hint": "Quickly plans and organizes tasks to enable efficient execution.",
     "isGeneral": false
@@ -255,9 +235,7 @@
       "prompt re-injection",
       "stop hook",
       "task automation",
-      "verification",
-      "autonomous task",
-      "DoD verification"
+      "verification"
     ],
     "hint": "Autonomously performs and verifies repetitive tasks through definition-of-done verification.",
     "isGeneral": false
@@ -269,15 +247,13 @@
       "something to reference",
       "similar implementation",
       "any open source?",
-      "find references",
       "how others do this",
       "code examples",
       "implementation examples",
       "design patterns",
       "best practices",
       "technical resources",
-      "source code",
-      "code examples"
+      "source code"
     ],
     "hint": "Finds references and provides code examples, design patterns, and open-source implementations.",
     "isGeneral": false
@@ -296,8 +272,7 @@
       "scoring",
       "multi-model evaluation",
       "evaluate and improve",
-      "iterative improvement",
-      "grade this"
+      "iterative improvement"
     ],
     "hint": "Evaluates output based on rubrics and iteratively improves it.",
     "isGeneral": false
@@ -310,10 +285,6 @@
       "impact analysis",
       "file changes",
       "what to change",
-      "change scope",
-      "impact analysis",
-      "file changes",
-      "impact analysis",
       "quick analysis",
       "change analysis",
       "scope analysis",
@@ -330,7 +301,6 @@
       "session analysis",
       "evaluate skill execution",
       "skill execution evaluation",
-      "check session logs",
       "check session logs",
       "verify skill execution",
       "skill verification",
@@ -351,7 +321,6 @@
       "generate spec",
       "project planning",
       "unified spec",
-      "plan",
       "plan",
       "spec",
       "create a plan",
@@ -375,8 +344,6 @@
       "tech analysis",
       "architecture review",
       "technical choice",
-      "architecture decision",
-      "technology strategy",
       "evaluate technology",
       "analyze tech options"
     ],
@@ -391,8 +358,6 @@
       "3-way review",
       "risk-value-feasibility check",
       "multi-perspective adversarial review",
-      "tribunal",
-      "review this",
       "3-perspective review",
       "risk review",
       "code review",
@@ -406,7 +371,6 @@
   "ultrawork": {
     "keywords": [
       "ultrawork",
-      "ultrawork",
       "auto pipeline",
       "specify execute",
       "end-to-end workflow",
@@ -418,7 +382,6 @@
       "specify then execute",
       "full task automation",
       "one-stop execution",
-      "full pipeline",
       "run ultrawork"
     ],
     "hint": "Automatically runs the specify → execute pipeline in a single command.",
