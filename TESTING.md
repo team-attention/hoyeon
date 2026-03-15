@@ -119,16 +119,16 @@ Code-based tests verify what developers **anticipated**. Agent sandbox tests dis
 Gherkin is the natural interface between humans and agent testers. `Given/When/Then` provides LLMs with clear context, actions, and expected outcomes.
 
 ```gherkin
-Feature: 구독 관리
-  Background: 테스트 사용자로 로그인되어 있다
+Feature: Subscription Management
+  Background: Logged in as a test user
 
-  Scenario: 새 구독 추가
-    Given 대시보드 페이지에 있다
-    When "구독 추가" 버튼을 클릭한다
-    And URL "https://example.com/feed"를 입력한다
-    And "저장" 버튼을 클릭한다
-    Then 구독 목록에 "example.com"이 표시된다
-    And DB에 해당 구독 레코드가 존재한다
+  Scenario: Add a new subscription
+    Given I am on the dashboard page
+    When I click the "Add Subscription" button
+    And I enter the URL "https://example.com/feed"
+    And I click the "Save" button
+    Then "example.com" is displayed in the subscription list
+    And the corresponding subscription record exists in the DB
 ```
 
 ### Handling Non-Determinism
