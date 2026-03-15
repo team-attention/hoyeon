@@ -468,7 +468,13 @@
         "acceptance_criteria": { "$ref": "#/$defs/taskAcceptanceCriteria" },
         "tool": { "type": "string" },
         "args": { "type": "string" }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "origin": { "enum": ["derived", "adapted"] } }, "required": ["origin"] },
+          "then": { "required": ["derived_from"] }
+        }
+      ]
     },
     "historyEntry": {
       "type": "object",
