@@ -60,8 +60,8 @@ A HIGH risk item with Rollback=hard/impossible and no reversible alternative con
 Plans follow an Orchestrator-Worker pattern. Verify the following structural requirements:
 
 #### 7a. Required Sections
-- [ ] Verification Summary exists (A-items / H-items / S-items / Gaps)
-- [ ] If project has sandbox infra (docker-compose, `sandbox/`, `.feature` files), S-items should be present. If absent, flag as warning: "Sandbox infra detected but no S-items in Verification Summary"
+- [ ] Verification Summary exists (Auto / Agent / Manual / Gaps)
+- [ ] If project has sandbox infra (docker-compose, `sandbox/`, `.feature` files), Agent items should be present. If absent, flag as warning: "Sandbox infra detected but no Agent items in Verification Summary"
 - [ ] External Dependencies Strategy exists (or explicitly "(none)")
 - [ ] Context section exists (Original Request + Interview Summary)
 - [ ] Work Objectives exists (Core Objective, Deliverables, Definition of Done, Must NOT Do)
@@ -84,8 +84,8 @@ Missing a required category in any work TODO → **REJECT**
 Each criterion should include a re-executable shell command (not just a description).
 
 #### 7e. Sandbox Verification Maximization
-- If Verification Summary contains S-items, verify the TODO Final (verification) includes sandbox commands (e.g., `sandbox:up`, `docker-compose up`)
-- Flag H-items that could be S-items: if an H-item describes behavior testable via BDD/E2E in a sandbox environment and sandbox infra exists, flag as warning: "H-item could be promoted to S-item"
+- If Verification Summary contains Agent items, verify the TODO Final (verification) includes sandbox commands (e.g., `sandbox:up`, `docker-compose up`)
+- Flag Manual items that could be reclassified: if a Manual item describes behavior testable via BDD/E2E in a sandbox environment and sandbox infra exists, flag as warning: "Manual item could be reclassified to Agent"
 - This is a **warning** (not auto-reject) but should be noted to maximize agent-verifiable coverage
 
 #### 7d. TODO Granularity

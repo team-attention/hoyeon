@@ -124,26 +124,26 @@ Output EXACTLY this JSON after your pass:
 - `remaining_failures`: items that could not be auto-fixed (e.g., requires domain knowledge from user)
 - `fix_applied`: only present when a fix was made
 
-## H→S Conversion Suggestions
+## verified_by Reclassification Suggestions
 
-After the quality pass, scan all `verified_by: "human"` items and suggest conversions to `agent` (sandbox) where the user's environment supports it. **Do NOT auto-convert** — only suggest.
+After the quality pass, scan all `verified_by: "human"` items and suggest reclassification to `agent` or `machine` where the user's environment supports it. **Do NOT auto-reclassify** — only suggest.
 
-### Conversion Rules (only suggest if env_capabilities confirms support)
+### Reclassification Rules (only suggest if env_capabilities confirms support)
 
-| H-item pattern | Required capability | Suggested conversion |
-|---------------|--------------------|--------------------|
+| verified_by: human pattern | Required capability | Suggested reclassification |
+|---------------------------|--------------------|-----------------------------|
 | UI/page/loading/screen/layout | `browser` | `agent` + `execution_env: "sandbox"` — browser-explorer verifies DOM/screenshots |
 | API/response/endpoint | `docker` | `machine` + `execution_env: "sandbox"` — curl in container |
 | message/text/wording/error message | (none — host is fine) | `agent` + `execution_env: "host"` — agent reads code/output |
 | performance/latency/load time | `docker` | `machine` + `execution_env: "sandbox"` — benchmark in container |
 | email/notification | `docker` | `agent` + `execution_env: "sandbox"` — mock SMTP + agent checks |
 
-### Conversion Output
+### Reclassification Output
 
-Add a `h_to_s_suggestions` array to the output:
+Add a `reclassification_suggestions` array to the output:
 
 ```json
-"h_to_s_suggestions": [
+"reclassification_suggestions": [
   {
     "id": "REQ-2.S3",
     "current": "human",
@@ -161,7 +161,7 @@ If `env_capabilities` is not provided or empty, still suggest but mark `requires
 ## What NOT to Do
 
 - Do NOT add new requirements or scenarios — only fix existing ones
-- Do NOT auto-convert H→S items — only suggest (the caller presents to user)
+- Do NOT auto-reclassify verified_by values — only suggest (the caller presents to user)
 - Do NOT change `verified_by` classification unless clearly wrong (e.g., `machine` for a UX check)
 - Do NOT add numeric quality scores
 - Do NOT modify task DAG, dependencies, or scope
