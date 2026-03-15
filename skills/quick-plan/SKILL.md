@@ -26,6 +26,7 @@ validate_prompt: |
   Must end with AskUserQuestion offering next actions (Execute / Revise plan / Discuss further).
   Must NOT generate spec.json until user explicitly chooses "Execute".
   Must NOT: create teams or spawn agents during planning.
+  spec.json must include requirements (one per task) with scenarios before tasks are merged.
 ---
 
 # /quick-plan — Session Task Planner
@@ -236,6 +237,49 @@ hoyeon-cli spec init {plan-name} --goal "{user's goal}" --type dev|plain ${SPEC_
 ```
 
 `{plan-name}`: derive from user's goal (kebab-case, max 30 chars).
+
+#### 9.2.5 Merge lightweight requirements
+
+Before merging tasks, generate **lightweight requirements** from the task breakdown.
+Each task's "Done when" condition becomes a requirement with one scenario.
+
+Rules:
+- One requirement per task (R1 maps to T1, R2 to T2, etc.)
+- Each requirement has exactly one scenario with `verified_by: "machine"` and a `verify.run` command derived from the task's done-when condition
+- If a task has no runnable verification (e.g., "review document"), use `verified_by: "human"` with `verify.type: "manual"`
+- Keep it minimal — no gap analysis, no multi-scenario requirements
+
+```bash
+# Read guide first if unfamiliar with requirements schema
+hoyeon-cli spec guide requirements
+
+hoyeon-cli spec merge ${SPEC_PATH} --json '{
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "{what task 1 should achieve — from Done when}",
+      "priority": 1,
+      "scenarios": [{
+        "id": "R1-S1",
+        "given": "{precondition}",
+        "when": "{action}",
+        "then": "{expected outcome from Done when}",
+        "verified_by": "machine",
+        "execution_env": "host",
+        "verify": {
+          "type": "command",
+          "run": "{verification command from Done when}",
+          "expect": {"exit_code": 0}
+        }
+      }]
+    }
+  ]
+}'
+```
+
+This ensures:
+- `acceptance_criteria.scenarios` in tasks reference real scenario IDs
+- Final Verify in /execute can check requirement scenarios (not just build checks)
 
 #### 9.3 Merge tasks
 
