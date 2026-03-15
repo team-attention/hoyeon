@@ -10,6 +10,8 @@ const SPEC_HELP = `
 Usage:
   hoyeon-cli spec init <name> --goal "..." <path>   Create a minimal valid spec.json
   hoyeon-cli spec merge <path> --json '{...}'       Deep-merge a JSON fragment into spec.json
+                                                    --append: concatenate arrays
+                                                    --patch:  ID-based merge (match by id, update in place)
   hoyeon-cli spec validate <path>                   Validate a spec.json file against the schema
   hoyeon-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
   hoyeon-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
@@ -250,6 +252,7 @@ async function handleMerge(args) {
   process.stdout.write(`Spec merged: ${specPath}\n`);
   process.stdout.write(`  merged keys: ${mergedKeys}\n`);
   if (append) process.stdout.write('  mode: append (arrays concatenated)\n');
+  if (patch) process.stdout.write('  mode: patch (ID-based merge)\n');
   process.exit(0);
 }
 
