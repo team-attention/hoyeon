@@ -282,6 +282,78 @@ assert(result8.context.decisions[1].decision === 'second', 'D2 added');
 teardown();
 
 // ============================================================
+// Test 9: spec check detects broken scenario reference in AC
+// ============================================================
+console.log('\nTest 9: spec check detects broken scenario reference in AC (v5 referential integrity)');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  requirements: [
+    {
+      id: 'R1', behavior: 'parsing', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+      ],
+    },
+  ],
+  tasks: [
+    {
+      id: 'T1', action: 'implement', type: 'work', status: 'pending',
+      acceptance_criteria: {
+        scenarios: ['R1-S1', 'R1-S99'],  // R1-S99 does not exist
+        checks: [{ type: 'build', run: 'make build' }],
+      },
+    },
+  ],
+  history: [],
+});
+
+try {
+  run(`spec check ${specPath}`);
+  assert(false, 'spec check should have failed on broken scenario ref');
+} catch (e) {
+  assert(e.stderr.includes("unknown scenario 'R1-S99'"), 'Error mentions the broken scenario ID');
+  assert(e.status !== 0, 'Exit code is non-zero');
+}
+
+teardown();
+
+// ============================================================
+// Test 10: spec check passes when all AC scenario refs are valid
+// ============================================================
+console.log('\nTest 10: spec check passes when all AC scenario refs are valid');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  requirements: [
+    {
+      id: 'R1', behavior: 'parsing', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+        { id: 'R1-S2', given: 'x', when: 'y', then: 'z', verified_by: 'agent', verify: { type: 'assertion', checks: ['output ok'] } },
+      ],
+    },
+  ],
+  tasks: [
+    {
+      id: 'T1', action: 'implement', type: 'work', status: 'pending',
+      acceptance_criteria: {
+        scenarios: ['R1-S1', 'R1-S2'],
+        checks: [{ type: 'build', run: 'make build' }],
+      },
+    },
+  ],
+  history: [],
+});
+
+const checkOut = run(`spec check ${specPath}`);
+assert(checkOut.includes('check passed'), 'spec check passes with valid scenario refs');
+
+teardown();
+
+// ============================================================
 // Summary
 // ============================================================
 console.log(`\n${'='.repeat(50)}`);
