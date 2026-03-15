@@ -92,7 +92,7 @@ ${skill_description}
 
 Generate JSON with exactly these fields:
 - keywords: array of 10-15 strings (mix of Korean and English) that users might type to invoke this skill
-- hint: a single line (max 80 chars) in Korean describing what this skill does
+- hint: a single line (max 80 chars) in English describing what this skill does
 
 Rules:
 - keywords should include both the skill name, common Korean phrases, and English alternatives
@@ -100,7 +100,7 @@ Rules:
 - Return ONLY valid JSON, no markdown fences
 
 Example output:
-{"keywords":["bugfix","버그 수정","에러 고쳐줘","fix error","오류 해결"],"hint":"에러 원인 분석 후 원샷으로 버그를 수정합니다"}
+{"keywords":["bugfix","bug fix","fix error","error fix","resolve error"],"hint":"Analyzes the root cause and fixes the bug in one shot"}
 PROMPT
 }
 
