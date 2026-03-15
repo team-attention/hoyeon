@@ -129,11 +129,11 @@ Task(verification-planner):
    - Apply minimal fix at root cause
    - Verify fix resolves the issue
 
-   Focus on A-items only (what commands prove the fix works).
+   Focus on Auto items only (what commands prove the fix works).
    Keep it minimal — this is a bug fix, not a feature.
 
-   Note: /bugfix uses Tier 1-3 (A-items) only. Do not inline VERIFICATION.md.
-   Tier 4 (S-items) are not needed. Mark S-items section as 'bugfix mode — Tier 1-3 only'."
+   Note: /bugfix uses Tier 1-3 (Auto items) only. Do not inline VERIFICATION.md.
+   Tier 4 (sandbox items) are not needed. Mark sandbox section as 'bugfix mode — Tier 1-3 only'."
 ```
 
 **After receiving debugger results, update debug-state.md:**
@@ -226,7 +226,7 @@ Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single 
   - `file_scope`: affected files from debugger
   - `steps`: write regression test (RED) → apply minimal fix (GREEN) → verify
   - `must_not_do`: minimal diff (<5%), no refactoring, no unrelated changes, no git commands, fix root cause not symptom
-  - `acceptance_criteria.scenarios`: list of scenario IDs from `requirements[].scenarios[].id` (verification-planner's A-items map to machine scenarios)
+  - `acceptance_criteria.scenarios`: list of scenario IDs from `requirements[].scenarios[].id` (verification-planner's Auto items map to machine scenarios)
   - `acceptance_criteria.checks`: automated static/build/lint checks if applicable
   - If debugger found **similar issues**: add T2 (`depends_on: [T1]`) to fix those locations
 - **constraints**: minimal diff rule, root cause targeting rule (both `verified_by: agent`)

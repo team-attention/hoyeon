@@ -106,7 +106,15 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v0.11.2)
+## Recent Changes (v0.11.3)
+
+- refactor(verification): replace A-item/H-item/S-item terminology with 2-axis model (Auto/Agent/Manual × host/sandbox)
+- refactor(execute): H-ITEMS report section renamed to MANUAL REVIEW in dev.md and plain.md
+- refactor(execute): final-verify.md H-ITEM skip markers replaced with MANUAL and verified_by: human
+- refactor(execute): report-template.md updated with Auto/Agent/Manual sections + SKIPPED (sandbox unavailable) section
+- refactor(bugfix): A-items references updated to Auto items in verification-planner instructions
+
+## Previous Changes (v0.11.2)
 
 - refactor(execute): unify Final Verify across all execute paths (dev/standard, dev/quick, plain)
 - refactor(execute): replace Requirements Check with Final Verify in dev/standard finalize
