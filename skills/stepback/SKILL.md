@@ -71,11 +71,11 @@ Generate **exactly 1 abstract question** that reframes the current specific work
 
 | Current Work | Step-Back Question |
 |-------------|-------------------|
-| "Fix this null pointer bug" | "이 모듈의 에러 핸들링 전략 자체가 올바른가?" |
-| "Add a new API endpoint" | "이 기능이 API 레이어에 있어야 하는가, 아니면 다른 레이어인가?" |
-| "Refactor this function" | "이 함수가 존재해야 하는가, 아니면 호출 측이 잘못된 것인가?" |
-| "Write tests for module X" | "모듈 X의 경계가 테스트하기 적합하게 설계되어 있는가?" |
-| "Optimize this query" | "이 쿼리가 이 시점에 호출되어야 하는가?" |
+| "Fix this null pointer bug" | "Is the error handling strategy for this module fundamentally correct?" |
+| "Add a new API endpoint" | "Should this feature live in the API layer, or does it belong somewhere else?" |
+| "Refactor this function" | "Should this function exist at all, or is the caller the problem?" |
+| "Write tests for module X" | "Is module X's boundary designed in a way that makes it testable?" |
+| "Optimize this query" | "Should this query be called at this point at all?" |
 
 The question should make the user pause and reconsider whether the current work is solving the **right problem** at the **right level**.
 
@@ -86,17 +86,17 @@ The question should make the user pause and reconsider whether the current work 
 Run these 3 checks. Each check = 1 sentence max.
 
 ### Check 1: Scope Drift
-> "원래 목적에서 벗어나고 있나?"
+> "Are we drifting from the original goal?"
 
 Compare the current work direction to the original intent. If there's drift, name it. If not, say "Scope is on track."
 
 ### Check 2: Side Effects
-> "이 변경이 다른 곳에 영향 줄 수 있나?"
+> "Could this change affect something else?"
 
 Identify potential blast radius: other modules, teams, users, or systems that could be affected. If no obvious effects, say "No visible side effects."
 
 ### Check 3: Better Approach
-> "더 근본적인 해결책이 있나?"
+> "Is there a more fundamental solution?"
 
 If there's a clearly better or simpler alternative, name it in 1 sentence. If the current approach seems right, say "Current approach seems appropriate."
 
@@ -118,10 +118,10 @@ Total output: 4 key lines (1 step-back question + 3 checks) plus closing. Keep u
 
 After the output, add exactly 1 line:
 ```
-계속 진행하면 됩니다.
+Carry on.
 ```
 
-(or in English if the conversation was in English: "Carry on.")
+(or in Korean if the conversation was in Korean: "Carry on." translated appropriately)
 
 Then stop. No follow-up questions. No handoff menu. No "would you like to...".
 
@@ -158,13 +158,13 @@ Then stop. No follow-up questions. No handoff menu. No "would you like to...".
 /stepback
 
 # With explicit context
-/stepback 지금 인증 미들웨어 리팩토링 중인데
+/stepback currently refactoring the auth middleware
 
 # English
 /stepback I've been fixing edge cases in the payment flow for 2 hours
 
 # Feeling lost
-한발 물러서서 방향이 맞는지 확인해줘
+/stepback not sure if the direction is right
 ```
 
 ---
@@ -172,15 +172,15 @@ Then stop. No follow-up questions. No handoff menu. No "would you like to...".
 ## Example Output
 
 ```
-User: "/stepback 지금 인증 토큰 만료 처리 버그 고치는 중"
+User: "/stepback fixing a bug in auth token expiry handling"
 
-**Step-Back:** 토큰 만료 처리를 고치는 게 아니라, 인증 상태 관리 전체가 서버/클라이언트 간에 일관성이 있는가?
+**Step-Back:** Instead of fixing token expiry, is the auth state management as a whole consistent between server and client?
 
-**Scope Drift:** 원래 로그인 플로우 개선이 목적이었다면, 만료 처리 버그는 증상이지 원인이 아닐 수 있음.
-**Side Effects:** 토큰 갱신 로직 변경 시 모바일 앱과 웹 클라이언트 모두에 영향 가능.
-**Better Approach:** 버그 픽스 전 인증 상태 다이어그램을 먼저 그려보면 근본 원인이 다를 수 있음.
+**Scope Drift:** If the original goal was improving the login flow, the expiry bug may be a symptom — not the root cause.
+**Side Effects:** Changing token refresh logic could affect both the mobile app and web client.
+**Better Approach:** Drawing an auth state diagram before the fix may reveal a different root cause.
 
-계속 진행하면 됩니다.
+Carry on.
 ```
 
 ---
@@ -193,5 +193,5 @@ User: "/stepback 지금 인증 토큰 만료 처리 버그 고치는 중"
 - [ ] No AskUserQuestion used
 - [ ] No agents spawned
 - [ ] No code written
-- [ ] "계속 진행하면 됩니다." / "Carry on." appended
+- [ ] "Carry on." (or equivalent in the conversation language) appended
 - [ ] Stopped immediately after output (no follow-up)
