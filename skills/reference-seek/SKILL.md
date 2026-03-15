@@ -29,10 +29,10 @@ When building a feature, find what you can **reuse** or **learn from**:
 
 ## Use Cases
 
-- "OAuth 로그인 구현하려는데 참고할 만한 거 있나?"
+- "Looking to implement OAuth login — any good references?"
 - "Find references for implementing a rate limiter"
-- "pagination 어떻게 구현하지? 레퍼런스 찾아줘"
-- "WebSocket 연결 관리 비슷한 오픈소스?"
+- "How do I implement pagination? Find me some references"
+- "Any open source projects similar to WebSocket connection management?"
 
 ## Execution
 
@@ -60,9 +60,9 @@ Extract from user request:
 - `CONTEXT7_LIB`: Library name for context7 resolve (if `library` class, use directly; otherwise best guess or skip)
 
 Examples:
-- "rate limiter 참고할 만한 거" → TOPIC: `rate limiting`, CLASS: `pattern`, GH_QUERY: `rate+limiter+middleware`, CONTEXT7_LIB: `rate-limiter-flexible`
-- "NextAuth 구현 레퍼런스" → TOPIC: `NextAuth authentication`, CLASS: `library`, GH_QUERY: `nextauth+authentication`, CONTEXT7_LIB: `next-auth`
-- "pagination 레퍼런스" → TOPIC: `pagination implementation`, CLASS: `pattern`, GH_QUERY: `pagination+cursor`, CONTEXT7_LIB: skip
+- "any rate limiter references?" → TOPIC: `rate limiting`, CLASS: `pattern`, GH_QUERY: `rate+limiter+middleware`, CONTEXT7_LIB: `rate-limiter-flexible`
+- "NextAuth implementation references" → TOPIC: `NextAuth authentication`, CLASS: `library`, GH_QUERY: `nextauth+authentication`, CONTEXT7_LIB: `next-auth`
+- "pagination references" → TOPIC: `pagination implementation`, CLASS: `pattern`, GH_QUERY: `pagination+cursor`, CONTEXT7_LIB: skip
 
 ### Step 1: Parallel Search (1 message, up to 4 sources)
 
@@ -185,7 +185,7 @@ Combine all sources into the output format below.
 
 ---
 
-### Internal References (코드베이스)
+### Internal References (Codebase)
 
 #### Directly Reusable
 - `{file}:{lines}` - {description}
@@ -198,7 +198,7 @@ Combine all sources into the output format below.
 
 ---
 
-### GitHub References (품질 필터링됨)
+### GitHub References (Quality-Filtered)
 
 1. **[{owner}/{repo}]({url})** ★{stars} | {lang} | {license} | Updated {date}
    - What: {description}
@@ -238,7 +238,7 @@ Combine all sources into the output format below.
 
 ---
 
-### External References (블로그/튜토리얼)
+### External References (Blog / Tutorials)
 
 1. **[{title}]({url})** - Key insight: {content}
 

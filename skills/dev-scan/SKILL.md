@@ -95,7 +95,7 @@ User requests are often complex or conversational. Before generating platform-sp
    - `technical`: Specific feature/aspect if the question targets one ("A feature X")
 3. **Select best variant per platform** (see mapping below)
 
-**Example**: "React 19의 use() hook이 기존 useEffect 패턴을 대체할 수 있는가"
+**Example**: "Can React 19's use() hook replace the existing useEffect pattern?"
 
 | Variant | Query |
 |---------|-------|
@@ -104,7 +104,7 @@ User requests are often complex or conversational. Before generating platform-sp
 | `opinion` | `React 19 use hook worth it` |
 | `technical` | `React 19 use hook replace useEffect` |
 
-**Example**: "Cursor가 돈 낼 만한 가치가 있어? GitHub Copilot이랑 비교해서"
+**Example**: "Is Cursor worth paying for compared to GitHub Copilot?"
 
 | Variant | Query |
 |---------|-------|
@@ -157,10 +157,10 @@ Extract time period from user request. Default: `month`.
 | User says | `TIME_PERIOD` | `--time` value |
 |-----------|---------------|----------------|
 | (nothing) | `month` | `month` / `m` |
-| "지난주", "last week" | `week` | `week` / `w` |
-| "최근 3일", "last few days" | `week` | `week` / `w` |
-| "올해", "this year" | `year` | `year` / `y` |
-| "전체", "all time" | `all` | `all` / `a` |
+| "last week" | `week` | `week` / `w` |
+| "last few days" | `week` | `week` / `w` |
+| "this year" | `year` | `year` / `y` |
+| "all time" | `all` | `all` / `a` |
 
 Use `TIME_PERIOD` in all search commands below.
 
@@ -305,12 +305,12 @@ The report is designed for quick scanning AND decision-making — TL;DR first, d
 ## TL;DR
 
 > [1-2 sentence summary of overall community sentiment and the key takeaway.
-> e.g. "커뮤니티 전반적으로 X에 긍정적이나, Y 상황에서는 Z가 더 나은 선택이라는 의견 다수."]
+> e.g. "The community is broadly positive about X, but many suggest Z is a better choice in Y situations."]
 
 ## Sentiment Overview
 
-긍정 ████████░░ 75% | 부정 ██░░░░░░░░ 20% | 중립 █░░░░░░░░░ 5%
-Sources: Reddit N건, X N건, HN N건, Dev.to N건, Lobsters N건
+Positive ████████░░ 75% | Negative ██░░░░░░░░ 20% | Neutral █░░░░░░░░░ 5%
+Sources: Reddit N, X N, HN N, Dev.to N, Lobsters N
 
 ---
 
