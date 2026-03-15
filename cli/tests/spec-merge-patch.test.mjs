@@ -354,6 +354,99 @@ assert(checkOut.includes('check passed'), 'spec check passes with valid scenario
 teardown();
 
 // ============================================================
+// Test 11: spec scenario <id> --get returns correct scenario JSON
+// ============================================================
+console.log('\nTest 11: spec scenario <id> --get returns correct scenario JSON');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+  requirements: [
+    {
+      id: 'R1', behavior: 'parsing', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'input provided', when: 'parse called', then: 'output returned', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+        { id: 'R1-S2', given: 'empty input', when: 'parse called', then: 'error thrown', verified_by: 'machine', verify: { type: 'command', run: 'test2', expect: { exit_code: 1 } } },
+      ],
+    },
+  ],
+  history: [],
+});
+
+const out11 = run(`spec scenario R1-S1 --get ${specPath}`);
+const parsed11 = JSON.parse(out11);
+assert(parsed11.id === 'R1-S1', 'Returned scenario has correct id');
+assert(parsed11.given === 'input provided', 'Returned scenario has correct given field');
+assert(parsed11.when === 'parse called', 'Returned scenario has correct when field');
+assert(parsed11.then === 'output returned', 'Returned scenario has correct then field');
+
+teardown();
+
+// ============================================================
+// Test 12: spec scenario <id> --get with non-existent ID exits 1
+// ============================================================
+console.log('\nTest 12: spec scenario <id> --get with non-existent ID exits 1');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+  requirements: [
+    {
+      id: 'R1', behavior: 'parsing', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+      ],
+    },
+  ],
+  history: [],
+});
+
+try {
+  run(`spec scenario NONEXISTENT --get ${specPath}`);
+  assert(false, 'Should have thrown for non-existent scenario ID');
+} catch (e) {
+  assert(e.status !== 0, 'Exit code is non-zero for missing scenario');
+  assert(e.stderr.includes("scenario 'NONEXISTENT' not found"), 'Error message contains missing scenario ID');
+}
+
+teardown();
+
+// ============================================================
+// Test 13: spec scenario <id> --get can find scenario in second requirement
+// ============================================================
+console.log('\nTest 13: spec scenario <id> --get finds scenario in second requirement');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+  requirements: [
+    {
+      id: 'R1', behavior: 'parsing', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+      ],
+    },
+    {
+      id: 'R2', behavior: 'scanning', priority: 2,
+      scenarios: [
+        { id: 'R2-S1', given: 'file exists', when: 'scan invoked', then: 'results emitted', verified_by: 'agent', verify: { type: 'assertion', checks: ['results not empty'] } },
+      ],
+    },
+  ],
+  history: [],
+});
+
+const out13 = run(`spec scenario R2-S1 --get ${specPath}`);
+const parsed13 = JSON.parse(out13);
+assert(parsed13.id === 'R2-S1', 'Found scenario from second requirement has correct id');
+assert(parsed13.given === 'file exists', 'Found scenario from second requirement has correct given field');
+
+teardown();
+
+// ============================================================
 // Summary
 // ============================================================
 console.log(`\n${'='.repeat(50)}`);
