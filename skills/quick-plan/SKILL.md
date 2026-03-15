@@ -203,14 +203,14 @@ After presenting the plan, proceed immediately to Phase 8 (do NOT wait for appro
 Ask user via AskUserQuestion:
 
 ```
-계획이 준비됐습니다. 어떻게 할까요?
+The plan is ready. What would you like to do?
 
-1. 실행 — spec.json 생성 후 바로 /execute
-2. 계획 수정 — 변경할 부분을 말씀해주세요
-3. 더 논의 — 추가 검토가 필요한 부분이 있으면 알려주세요
+1. Execute — generate spec.json and run /execute immediately
+2. Revise plan — let me know what you'd like to change
+3. Discuss further — let me know if anything needs more review
 ```
 
-- If user chooses **1 (실행)**: proceed to Phase 9
+- If user chooses **1 (Execute)**: proceed to Phase 9
 - If user chooses **2 or 3**: handle feedback, revise plan, then re-ask Phase 8
 
 ### Phase 9: Generate spec.json & Execute
@@ -307,7 +307,7 @@ If validation fails, fix and retry once.
 
 #### 9.6 Hand off to /execute
 
-Output: `spec.json 생성 완료: ${SPEC_PATH}`
+Output: `spec.json generated: ${SPEC_PATH}`
 
 Then invoke the `/execute` skill to begin execution.
 
