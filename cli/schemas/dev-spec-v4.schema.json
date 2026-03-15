@@ -331,6 +331,31 @@
         }
       }
     },
+    "derivedFrom": {
+      "type": "object",
+      "required": ["parent", "trigger"],
+      "additionalProperties": false,
+      "description": "Provenance record linking a derived task back to its planned parent",
+      "properties": {
+        "parent": {
+          "type": "string",
+          "description": "ID of the planned parent task (depth-1 only)"
+        },
+        "source": {
+          "type": "string",
+          "description": "Source context that triggered the derivation (e.g. file path, agent name)"
+        },
+        "trigger": {
+          "type": "string",
+          "enum": ["adapt", "retry", "code_review", "final_verify"],
+          "description": "Event that caused this task to be derived"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable explanation for the derivation"
+        }
+      }
+    },
     "task": {
       "type": "object",
       "required": ["id", "action", "type"],
@@ -341,6 +366,16 @@
         "type": {
           "type": "string",
           "enum": ["work", "verification"]
+        },
+        "origin": {
+          "type": "string",
+          "enum": ["planned", "derived", "adapted"],
+          "default": "planned",
+          "description": "How this task was created: planned=authored in spec, derived=created at runtime via spec derive, adapted=manually adjusted from a derived task"
+        },
+        "derived_from": {
+          "$ref": "#/$defs/derivedFrom",
+          "description": "Provenance record — required when origin is derived or adapted"
         },
         "risk": {
           "type": "string",
