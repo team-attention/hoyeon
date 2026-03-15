@@ -456,13 +456,13 @@ Additionally:
 > **Autopilot**: HALT and ask user for HIGH risk only. Auto-select conservative option for MED/LOW.
 > **Interactive**: Present all decision_points via AskUserQuestion.
 
-### S-items Fallback Rules
+### Sandbox Scenario Fallback Rules
 
 When merging verification-planner results into `requirements`, apply these fallback rules:
 
 - **Misclassified Tier 4**: If verification-planner output has Tier 4 items without `execution_env: "sandbox"`, fix them — Tier 4 items MUST have `execution_env: "sandbox"`.
 - **Missing sandbox items despite sandbox infra**: If the project has sandbox infrastructure (docker-compose, `sandbox/features/`) but no requirement scenarios have `execution_env: "sandbox"`, flag this as a warning and check if Tier 4 items were misclassified.
-- **UI screenshot S-items**: If the work involves UI/frontend changes and verification-planner did not include screenshot-based sandbox scenarios, add them: screenshot capture at affected routes + comparison against design spec (`execution_env: "sandbox"`, `verified_by: "machine"`).
+- **UI screenshot sandbox scenarios**: If the work involves UI/frontend changes and verification-planner did not include screenshot-based sandbox scenarios, add them: screenshot capture at affected routes + comparison against design spec (`execution_env: "sandbox"`, `verified_by: "machine"`).
 
 ### Merge analysis results
 
@@ -494,7 +494,7 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
   ]
 }'
 
-# requirements from verification-planner (apply S-items fallback rules above)
+# requirements from verification-planner (apply Sandbox Scenario Fallback Rules above)
 # Requirements are the SINGLE SOURCE OF TRUTH for all verification.
 # verification_summary is DERIVED from requirements (not stored independently).
 hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
@@ -510,9 +510,9 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
   ]
 }'
 # verification_summary is derived from requirements at Phase 5d / Phase 6:
-#   A-items = scenarios where verified_by is "machine" or "agent" AND execution_env is "host"
-#   H-items = scenarios where verified_by is "human"
-#   S-items = scenarios where execution_env is "sandbox"
+#   Auto = scenarios where verified_by is "machine" or "agent" AND execution_env is "host"
+#   Manual = scenarios where verified_by is "human"
+#   Agent [sandbox] = scenarios where execution_env is "sandbox"
 
 # external_dependencies — HUMAN-ONLY tasks from exploration + verification-planner output
 # If no external dependencies exist, omit this merge entirely.
@@ -551,7 +551,7 @@ Build tasks from research findings + analysis results. This is the main spec aut
 - HIGH risk tasks: include rollback steps in `steps`
 - Map `research.patterns` → `tasks[].references`
 - Map `research.commands` → `TF.acceptance_criteria.checks` (type: build/lint/static)
-- Apply S-items from `requirements[].scenarios` where `execution_env: "sandbox"` to TF acceptance criteria where applicable
+- Apply execution_env: sandbox scenarios from `requirements[].scenarios` to TF acceptance criteria where applicable
 
 #### Type Field
 
@@ -577,30 +577,30 @@ Build tasks from research findings + analysis results. This is the main spec aut
 
 Always generate the `requirements` section with Given-When-Then scenarios — do not skip even if success criteria were not explicitly discussed. Derive from the goal, acceptance criteria, and user intent.
 
-#### S-item Sandbox Infra Auto-task
+#### Sandbox Scenario Infra Auto-task
 
-When any scenario has `execution_env: "sandbox"` (an S-item), check if the project already has sandbox infrastructure:
+When any scenario has `execution_env: "sandbox"`, check if the project already has sandbox infrastructure:
 
 ```
 sandbox_infra_exists = Bash("test -f docker-compose.yml || test -f docker-compose.yaml || ls sandbox/features/*.feature 2>/dev/null | head -1").exit_code == 0
 ```
 
 - **If `sandbox_infra_exists` is true**: No extra task needed — existing infra is used.
-- **If `sandbox_infra_exists` is false AND S-items exist**: Automatically add a sandbox infra build task to the task list **before** TF:
+- **If `sandbox_infra_exists` is false AND execution_env: sandbox scenarios exist**: Automatically add a sandbox infra build task to the task list **before** TF:
 
 ```bash
-# Auto-insert when S-items found but no sandbox infra
+# Auto-insert when execution_env: sandbox scenarios found but no sandbox infra
 hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json '{
   "tasks": [
     {
-      "id": "T_SANDBOX", "action": "Build sandbox infrastructure for S-item verification",
+      "id": "T_SANDBOX", "action": "Build sandbox infrastructure for execution_env: sandbox scenario verification",
       "type": "work", "status": "pending", "risk": "medium",
       "file_scope": ["docker-compose.yml", "sandbox/"],
       "inputs": [],
       "outputs": [{"id": "sandbox_up_cmd", "path": "docker-compose.yml"}],
       "steps": [
         "Create docker-compose.yml with required services",
-        "Add sandbox/features/ directory with .feature files for S-item scenarios",
+        "Add sandbox/features/ directory with .feature files for execution_env: sandbox scenarios",
         "Verify sandbox boots: docker-compose up -d && docker-compose ps"
       ],
       "must_not_do": ["Do not run git commands"],
@@ -754,7 +754,7 @@ Inspect **every** AC across `tasks[].acceptance_criteria` and `requirements[].sc
 
 #### Environment Detection (once, before loop)
 
-Detect available sandbox capabilities so the agent can suggest H→S conversions:
+Detect available sandbox capabilities so the agent can suggest verified_by reclassifications:
 
 ```
 env_capabilities = []
@@ -805,39 +805,39 @@ IF iteration > 5 AND result.status == "FAIL":
   )
 ```
 
-#### H→S Conversion Suggestions (after gate completes)
+#### verified_by Reclassification Suggestions (after gate completes)
 
-After the quality gate passes (or user accepts as-is), check the last result for `h_to_s_suggestions`:
+After the quality gate passes (or user accepts as-is), check the last result for `reclassification_suggestions`:
 
 ```
-IF result.h_to_s_suggestions AND len(result.h_to_s_suggestions) > 0:
-  print("Some Human verification items could be automated with sandbox capabilities:")
-  FOR EACH s IN result.h_to_s_suggestions:
+IF result.reclassification_suggestions AND len(result.reclassification_suggestions) > 0:
+  print("Some Manual verification items could be reclassified to Auto or Agent with sandbox capabilities:")
+  FOR EACH s IN result.reclassification_suggestions:
     print("  - {s.id}: {s.current} → {s.suggested} ({s.method})")
     print("    Requires: {s.requires} | Reason: {s.reason}")
 
   AskUserQuestion(
-    question: "Apply these H→S conversions?",
+    question: "Apply these verified_by reclassifications?",
     options: [
-      { label: "Apply all", description: "Convert all suggested items to agent/sandbox verification" },
+      { label: "Apply all", description: "Convert all suggested items to Auto or Agent verification" },
       { label: "Let me pick", description: "I'll choose which ones to convert" },
-      { label: "Skip", description: "Keep all as human verification" }
+      { label: "Skip", description: "Keep all as manual verification" }
     ]
   )
 
   IF answer == "Apply all":
-    FOR EACH s IN result.h_to_s_suggestions:
+    FOR EACH s IN result.reclassification_suggestions:
       Bash("hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{...}'")
       # Update scenario: verified_by → s.suggested, execution_env → s.execution_env, verify → appropriate format
 
   IF answer == "Let me pick":
     # Present each suggestion individually for user selection
-    FOR EACH s IN result.h_to_s_suggestions:
+    FOR EACH s IN result.reclassification_suggestions:
       choice = AskUserQuestion(
-        question: "{s.id}: Convert from {s.current} to {s.suggested}? ({s.method})",
+        question: "{s.id}: Reclassify from {s.current} to {s.suggested}? ({s.method})",
         options: [
-          { label: "Yes", description: "Convert" },
-          { label: "No", description: "Keep as human" }
+          { label: "Yes", description: "Reclassify" },
+          { label: "No", description: "Keep as manual" }
         ]
       )
       IF choice == "Yes":
@@ -860,12 +860,14 @@ IF result.h_to_s_suggestions AND len(result.h_to_s_suggestions) > 0:
 
 After plan review and AC Quality Gate pass, derive the Verification Summary from `requirements[].scenarios` and present it to the user for lightweight confirmation.
 
-**Derivation rules** (from requirements scenarios):
-- **A-items** = scenarios where `verified_by` is `"machine"` or `"agent"` AND `execution_env` is `"host"` (or omitted)
-- **H-items** = scenarios where `verified_by` is `"human"`
-- **S-items** = scenarios where `execution_env` is `"sandbox"`
+**Derivation rules** (from requirements scenarios, 2-axis model):
+- **Auto** = scenarios where `verified_by` is `"machine"` or `"agent"` AND `execution_env` is `"host"` (or omitted)
+- **Auto [sandbox]** = scenarios where `verified_by` is `"machine"` or `"agent"` AND `execution_env` is `"sandbox"`
+- **Agent [sandbox]** = scenarios where `verified_by` is `"agent"` AND `execution_env` is `"sandbox"`
+- **Manual** = scenarios where `verified_by` is `"human"`
 
-The summary must include counts for **all three categories**: A-items, H-items, and S-items (if sandbox infra exists).
+Group by `verified_by` first, then append `[sandbox]` qualifier when `execution_env` is `"sandbox"`.
+The summary must include counts for **all groups present**: Auto, Agent [sandbox] (if sandbox infra exists), and Manual.
 
 > **IMPORTANT — Show Before Ask**: FIRST output the full item list as assistant text so the user can read each item. THEN call `AskUserQuestion` for confirmation only. Never put the item details inside the `question` field — the user cannot see truncated content.
 
@@ -874,20 +876,20 @@ The summary must include counts for **all three categories**: A-items, H-items, 
 ```
 ## Verification Summary
 
-### Agent-verifiable (A): {A-count}
-- A-1: {criterion} → {method}
-- A-2: {criterion} → {method}
+### Auto (machine-verified): {auto-count}
+- Auto-1: {criterion} → {method}
+- Auto-2: {criterion} [sandbox] → {method}
 ...
 
-### Human-required (H): {H-count}
-- H-1: {criterion} — {reason}
-- H-2: {criterion} — {reason}
+### Agent [sandbox] (agent-verified, sandbox): {agent-sandbox-count}
+- Agent-1: {criterion} [sandbox] → {method}
 ...
+(or omit section if no sandbox infra)
 
-### Sandbox (S): {S-count}
-- S-1: {criterion} → {method}
+### Manual (human review): {manual-count}
+- Manual-1: {criterion} — {reason}
+- Manual-2: {criterion} — {reason}
 ...
-(or "none" if no S-items)
 
 ### Gaps
 {gap summary or "none"}
@@ -932,7 +934,7 @@ Present summary to user.
 ...
 
 ### Verification Strategy
-- A-items: {count}, H-items: {count}, S-items: {count}
+- Auto: {count}, Manual: {count}, Agent [sandbox]: {count}
 ```
 
 **Step 2**: Then ask for confirmation:
@@ -982,13 +984,13 @@ TF: Full verification                    [verification] — pending
 
 Verification (recap)
 ────────────────────────────────────────
-Agent-verifiable (A): {count}
-  - {A-1 criterion} → {method}
-  - {A-2 criterion} → {method}
-Human-required (H): {count}
-  - {H-1 criterion} — {reason}
-Sandbox (S): {count} (or "none" if no S-items)
-  - {S-1 scenario} (if exists)
+Auto (machine-verified): {count}
+  - {Auto-1 criterion} → {method}
+  - {Auto-2 criterion} [sandbox] → {method}
+Agent [sandbox] (agent-verified, sandbox): {count} (or "none" if no sandbox infra)
+  - {Agent-1 scenario} [sandbox] (if exists)
+Manual (human review): {count}
+  - {Manual-1 criterion} — {reason}
 Gaps: {gap summary or "none"}
 ────────────────────────────────────────
 
@@ -1039,7 +1041,7 @@ Constraints: {n} items
 |---------|---------------------|------|
 | Non-goals | `meta.non_goals[]` — strategic scope exclusions | When non_goals exist |
 | Task Overview | `tasks[]` — id, action, type, risk, depends_on | Always |
-| Verification | Derived from `requirements[].scenarios` — A/H/S classification (see Phase 5e rules) | Always |
+| Verification | Derived from `requirements[].scenarios` — Auto/Agent/Manual classification (see Phase 5e rules) | Always |
 | Pre-work | `external_dependencies.pre_work` — list all, mark blocking=true as Blocking | Always |
 | Post-work | `external_dependencies.post_work` — list all | Always |
 | Key Decisions | `context.decisions[]` — decision, rationale | Always |
@@ -1088,7 +1090,7 @@ AskUserQuestion(
 - [ ] All tasks have `status: "pending"`
 - [ ] All tasks have `must_not_do` and `acceptance_criteria` (`scenarios` + `checks`)
 - [ ] All tasks have `inputs` field
-- [ ] S-item sandbox infra auto-task (T_SANDBOX) added if S-items exist and no sandbox infra found
+- [ ] Sandbox infra auto-task (T_SANDBOX) added if execution_env: sandbox scenarios exist and no sandbox infra found
 - [ ] `requirements` section populated with Given-When-Then scenarios + `verified_by` + `execution_env`
 - [ ] `external_dependencies` populated (if applicable)
 - [ ] `history` includes `spec_created` entry
@@ -1100,12 +1102,12 @@ AskUserQuestion(
 ### Standard mode (additional)
 - [ ] `context.research` is structured object (not string)
 - [ ] AC Quality Gate passed (Phase 5d) — all ACs classified + semantically valid
-- [ ] H→S conversion suggestions presented to user (if any from ac-quality-gate)
-- [ ] `verification_summary` derived from `requirements[].scenarios` (A/H/S classification presented in Phase 5e/6)
+- [ ] verified_by Reclassification Suggestions presented to user (if any from ac-quality-gate)
+- [ ] `verification_summary` derived from `requirements[].scenarios` (Auto/Agent/Manual classification presented in Phase 5e/6)
 - [ ] `constraints` populated from gap-analyzer
 - [ ] Analysis agents ran (gap + tradeoff + verification-planner)
 - [ ] VERIFICATION.md pre-read and inlined into verification-planner prompt
-- [ ] S-items fallback rules applied (Tier 4 reclassification, UI screenshot check)
+- [ ] Sandbox Scenario Fallback Rules applied (Tier 4 reclassification, UI screenshot check)
 - [ ] Codex strategist attempted (standard only)
 - [ ] plan-reviewer returned OKAY
 

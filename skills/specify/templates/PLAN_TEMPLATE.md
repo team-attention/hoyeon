@@ -82,27 +82,27 @@ Each TODO is executed by an isolated Worker agent (not a human). Agent call over
 ```markdown
 ## Verification Summary
 
-### Agent-Verifiable (A-items)
+### Auto (machine-verified)
 | ID | Criterion | Method | Related TODO |
 |----|-----------|--------|-------------|
-| A-1 | [criterion] | command: `npm test` | TODO 2 |
-| A-2 | [criterion] | e2e test | TODO Final |
+| Auto-1 | [criterion] | command: `npm test` | TODO 2 |
+| Auto-2 | [criterion] [sandbox] | e2e test | TODO Final |
 
-### Human-Required (H-items)
-| ID | Criterion | Reason | Review Material |
-|----|-----------|--------|----------------|
-| H-1 | [criterion] | Subjective judgment | [link/path] |
-
-### Sandbox Agent Testing (S-items)
+### Agent [sandbox] (agent-verified, sandbox)
 
 > Include when project has Tier 4 sandbox infrastructure (docker-compose, .feature files, sandbox fixtures).
 > If no sandbox infra exists, omit this section and note in Verification Gaps.
 
 | ID | Scenario | Agent | Method |
 |----|----------|-------|--------|
-| S-1 | [user-facing scenario] | sandbox-user (browser) + sandbox-admin (DB) | [action → verification] |
+| Agent-1 | [user-facing scenario] [sandbox] | sandbox-user (browser) + sandbox-admin (DB) | [action → verification] |
 
-**Sandbox prerequisites**: `{sandbox-up-command}` must succeed before S-items execute.
+**Sandbox prerequisites**: `{sandbox-up-command}` must succeed before Agent [sandbox] items execute.
+
+### Manual (human review)
+| ID | Criterion | Reason | Review Material |
+|----|-----------|--------|----------------|
+| Manual-1 | [criterion] | Subjective judgment | [link/path] |
 
 ### Verification Gaps
 - [environment constraints and alternatives]
@@ -392,7 +392,7 @@ TODO-1 → TODO-2 → TODO-Final
 - [ ] Run lint (if applicable)
 - [ ] Run tests
 - [ ] Verify all deliverables exist
-- [ ] Boot and run sandbox E2E tests (if S-items exist in Verification Summary)
+- [ ] Boot and run sandbox E2E tests (if Agent [sandbox] items exist in Verification Summary)
 
 **Must NOT do**:
 - Do not use Edit or Write tools (source code modification forbidden)
@@ -403,7 +403,7 @@ TODO-1 → TODO-2 → TODO-Final
 
 **Acceptance Criteria**:
 
-> Scenarios from requirements; checks from DRAFT's Agent Findings > Project Commands + A-items
+> Scenarios from requirements; checks from DRAFT's Agent Findings > Project Commands + Auto items
 
 *Scenarios:* (all requirement scenario IDs this verification task covers)
 - R1-S1, R1-S2, R2-S1, R2-S2
@@ -750,7 +750,7 @@ Completion Rule: Scenarios verified AND all Checks pass
 - [ ] Run lint (if applicable)
 - [ ] Run tests
 - [ ] Verify middleware is imported in routes file
-- [ ] Boot and run sandbox E2E tests (if S-items exist in Verification Summary)
+- [ ] Boot and run sandbox E2E tests (if Agent [sandbox] items exist in Verification Summary)
 
 **Must NOT do**:
 - Do not use Edit or Write tools (source code modification forbidden)
