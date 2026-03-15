@@ -46,8 +46,7 @@ Throughout this document, `{depth}` refers to the resolved mode value:
 | On failure | triage: HALT / ADAPT / RETRY (max 2) | HALT immediately |
 | Parallel | Round-based background workers | Round-based background workers |
 | Code Review | code-reviewer agent (SHIP/NEEDS_FIXES) | Skipped |
-| Requirements Check | A-items from requirements[].scenarios | Skipped |
-| Final Verify | Included in Requirements Check | Final verify worker (all acceptance criteria) |
+| Final Verify | Holistic spec verification (after Code Review) | Holistic spec verification |
 
 ---
 
@@ -78,9 +77,9 @@ rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 cr = TaskCreate(subject="Finalize:Code Review",
      description="Review complete diff for integration issues.",
      activeForm="Reviewing all changes")
-rq = TaskCreate(subject="Finalize:Requirements Check",
-     description="Run A-items from requirements[].scenarios.",
-     activeForm="Checking requirements")
+fv = TaskCreate(subject="Finalize:Final Verify",
+     description="Holistic spec verification (goal, constraints, AC, requirements, deliverables).",
+     activeForm="Running final verification")
 rp = TaskCreate(subject="Finalize:Report",
      activeForm="Generating report")
 ```
@@ -99,7 +98,7 @@ FOR EACH task in plan (flattened, excluding done):
 # Finalize tasks
 rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 fv = TaskCreate(subject="Finalize:Final Verify",
-     description="Run all acceptance criteria across all tasks.",
+     description="Holistic spec verification (goal, constraints, AC, requirements, deliverables).",
      activeForm="Running final verification")
 rp = TaskCreate(subject="Finalize:Report",
      activeForm="Generating report")
@@ -138,6 +137,21 @@ Meet ALL acceptance_criteria (run commands to verify before reporting DONE).
 Respect must_not_do constraints.
 Do NOT run git commands — Orchestrator handles commits.
 
+### Verifying acceptance_criteria (v5 schema)
+Task AC has two parts:
+1. `acceptance_criteria.scenarios[]` — list of scenario IDs from `requirements[].scenarios[].id`
+   - Fetch full spec: `hoyeon-cli spec task {task_id} --get {spec_path}` to get scenario IDs
+   - Then look up each scenario in `requirements[].scenarios[]` to find verify commands
+   - Run each `verified_by: "machine"` scenario's `verify.run` command (skip `execution_env: "sandbox"` — unless this task's ID starts with T_SV, in which case sandbox scenarios MUST be executed)
+   - For `verified_by: "agent"` scenarios, assert the checks manually
+   - For `verified_by: "human"` scenarios, skip (report only)
+   - After verifying each scenario, record the result:
+     Run: `hoyeon-cli spec requirement {scenario_id} --status pass|fail --task {task_id} {spec_path}`
+2. `acceptance_criteria.checks[]` — automated checks (static/build/lint/format)
+   - Run each check's `run` command and verify exit code 0
+
+Note: If this task's ID starts with T_SV, it is a sandbox verification task — do NOT skip sandbox scenarios. Run them and record each result with `hoyeon-cli spec requirement`.
+
 ## Step 5: Update context files
 Append to {CONTEXT_DIR}/learnings.md:
   ## {task_id}
@@ -163,9 +177,22 @@ You are a Verification agent. Verify task {task_id} independently.
 ## Step 1: Read task spec
 Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
 
-## Step 2: Run ALL acceptance criteria commands
-Re-execute every command from acceptance_criteria yourself.
-Do NOT trust the Worker's self-reported status.
+## Step 2: Run ALL acceptance criteria
+Re-execute every check yourself. Do NOT trust the Worker's self-reported status.
+
+### AC verification (v5 schema)
+Task AC has two parts:
+1. `acceptance_criteria.scenarios[]` — list of scenario IDs from `requirements[].scenarios[].id`
+   - Look up each scenario ID in the full spec's `requirements[].scenarios[]`
+   - Run each `verified_by: "machine"` scenario's `verify.run` command (skip `execution_env: "sandbox"` — unless this task's ID starts with T_SV, in which case sandbox scenarios MUST be executed)
+   - For `verified_by: "agent"` scenarios, assert the checks manually
+   - For `verified_by: "human"` scenarios, skip (report only)
+   - After verifying each scenario, record the result:
+     Run: `hoyeon-cli spec requirement {scenario_id} --status pass|fail --task {task_id} {spec_path}`
+2. `acceptance_criteria.checks[]` — automated checks (static/build/lint/format)
+   - Run each check's `run` command and verify exit code 0
+
+Note: If this task's ID starts with T_SV, it is a sandbox verification task — do NOT skip sandbox scenarios. Run them and record each result with `hoyeon-cli spec requirement`.
 
 ## Step 3: Check must_not_do violations
 Run `git diff` to check for violations.
@@ -212,10 +239,10 @@ all_last = [task_ids[T].commit for each T]
 FOR EACH last in all_last:
   TaskUpdate(taskId=last, addBlocks=[rc])
 
-# Standard finalize chain: Residual Commit → Code Review → Requirements Check → Report
+# Standard finalize chain: Residual Commit → Code Review → Final Verify → Report
 TaskUpdate(taskId=rc, addBlocks=[cr])
-TaskUpdate(taskId=cr, addBlocks=[rq])
-TaskUpdate(taskId=rq, addBlocks=[rp])
+TaskUpdate(taskId=cr, addBlocks=[fv])
+TaskUpdate(taskId=fv, addBlocks=[rp])
 
 # Quick finalize chain: Residual Commit → Final Verify → Report
 TaskUpdate(taskId=rc, addBlocks=[fv])
@@ -249,7 +276,7 @@ WHILE TaskList() has pending tasks:
 ### Parallel Dispatch Rules
 
 ```
-IF len(runnable) > 1 AND all are :Worker or :Verify or :Commit:
+IF len(runnable) > 1 AND all are :Worker or :Verify:
   # PARALLEL — mark in_progress FIRST, then send ALL in ONE message
   FOR EACH task in runnable:
     TaskUpdate(taskId=task.id, status="in_progress")
@@ -265,6 +292,75 @@ ELSE:
 - `:Worker` — YES (if touching disjoint files per spec file_scope)
 - `:Verify` — YES (read-only, no conflicts)
 - `:Commit` — NO (git operations must be sequential)
+
+---
+
+### Derived Task Helpers
+
+When `spec derive` creates a new task in spec.json, the orchestrator must also create
+Claude Code tracking tasks (TaskCreate/TaskUpdate) to keep both DAGs in sync.
+
+```
+function dispatch_derived_task(derive_result, spec_path, depth):
+  """
+  After spec derive, create tracking tasks and dispatch worker.
+  Returns {task_id, worker, commit} for the caller to chain dependencies.
+  """
+  task_id = derive_result.created        # e.g. "T1.retry-1"
+  task_action = derive_result.action     # from derive JSON output
+
+  # 1. Create tracking tasks
+  fw = TaskCreate(
+    subject="{task_id}.1:Worker — {task_action}",
+    description=WORKER_DESCRIPTION(task_id),
+    activeForm="{task_id}.1: Running Worker")
+
+  IF depth == "standard":
+    fv = TaskCreate(subject="{task_id}.2:Verify",
+                    description=VERIFY_DESCRIPTION(task_id),
+                    activeForm="{task_id}.2: Verifying")
+    fc = TaskCreate(subject="{task_id}.3:Commit",
+                    description="Commit {task_id} changes.",
+                    activeForm="{task_id}.3: Committing")
+    TaskUpdate(taskId=fw, addBlocks=[fv])
+    TaskUpdate(taskId=fv, addBlocks=[fc])
+  ELSE:  # quick
+    fc = TaskCreate(subject="{task_id}.2:Commit",
+                    description="Commit {task_id} changes.",
+                    activeForm="{task_id}.2: Committing")
+    TaskUpdate(taskId=fw, addBlocks=[fc])
+
+  # 2. Dispatch worker immediately
+  TaskUpdate(taskId=fw, status="in_progress")
+  Agent(subagent_type="worker", description="Implement: {task_id}",
+        prompt=TaskGet(fw).description)
+
+  # 3. On completion, mark spec task done
+  Bash("hoyeon-cli spec task {task_id} --status done --summary '{result.summary}' {spec_path}")
+  TaskUpdate(taskId=fw, status="completed")
+
+  return {task_id: task_id, worker: fw, commit: fc}
+
+
+function dispatch_fv_fix(derive_result, spec_path):
+  """
+  Lightweight dispatch for Final Verify fixes — NO per-task verify, NO per-task commit.
+  FV fixes are committed together after all fixes complete.
+  """
+  task_id = derive_result.created
+
+  fw = TaskCreate(
+    subject="{task_id}.1:Worker — FV fix",
+    description=WORKER_DESCRIPTION(task_id),
+    activeForm="{task_id}.1: FV fix")
+
+  TaskUpdate(taskId=fw, status="in_progress")
+  Agent(subagent_type="worker", description="FV fix: {task_id}",
+        prompt=TaskGet(fw).description)
+
+  Bash("hoyeon-cli spec task {task_id} --status done --summary 'FV fix applied' {spec_path}")
+  TaskUpdate(taskId=fw, status="completed")
+```
 
 ---
 
@@ -389,24 +485,20 @@ function retry(task_id, verify_result, attempt):
 
   # Build fix prompt from failed criteria
   failed = verify_result.acceptance_criteria.results.filter(r => r.status == "FAIL")
+  failed_summary = failed.map(f => f.description).join(", ")
 
-  Agent(subagent_type="worker", prompt="""
-    ## FIX TASK
-    Previous implementation of {task_id} failed verification.
+  # Track retry and dispatch fix worker via shared helper
+  derive_result = Bash("""hoyeon-cli spec derive \
+    --parent {task_id} \
+    --source verify \
+    --trigger retry \
+    --action "Retry: fix {failed_summary}" \
+    --reason "Attempt {attempt}: {failed_summary}" \
+    {spec_path}""")
 
-    ## FAILED CRITERIA
-    {FOR EACH f in failed:}
-    - {f.description}: {f.reason}
-      Command: {f.command}
+  tracking = dispatch_derived_task(derive_result, spec_path, depth)
 
-    ## MUST-NOT-DO VIOLATIONS
-    {verify_result.must_not_do.violations}
-
-    Fix these issues. Same rules as original task apply.
-    Update context files ({CONTEXT_DIR}/learnings.md, issues.md) with what you learn.
-  """)
-
-  # Re-verify
+  # Re-verify the ORIGINAL task (not the derived one)
   re_verify_result = dispatch_verify_worker(task_id)
 
   IF re_verify_result.status == "VERIFIED":
@@ -428,53 +520,30 @@ function adapt(task_id, verify_result):
   adaptation = verify_result.suggested_adaptation
   # OR build from failed criteria if task_type == "verification"
 
-  # 1. Add new fix task to spec.json
-  fix_task_id = "T{next_id}"
-  Bash("""hoyeon-cli spec merge {spec_path} --json '{
-    "tasks": [{
-      "id": "{fix_task_id}",
-      "action": "{adaptation.suggested_todo.title}",
-      "type": "work",
-      "status": "pending",
-      "depends_on": ["{task_id}"],
-      "steps": {adaptation.suggested_todo.steps as JSON array},
-      "file_scope": {adaptation.suggested_todo.file_scope as JSON array},
-      "must_not_do": ["Do not run git commands"],
-      "acceptance_criteria": {
-        "functional": [{"description": "Fix applied and working"}],
-        "static": [{"description": "Type check passes", "command": "..."}],
-        "runtime": [{"description": "Tests pass", "command": "..."}]
-      }
-    }]
-  }'""")
+  # 1. Create derived fix task in spec.json + tracking tasks via helper
+  derive_result = Bash("""hoyeon-cli spec derive \
+    --parent {task_id} \
+    --source verify \
+    --trigger adapt \
+    --action "{adaptation.suggested_todo.title}" \
+    --reason "{adaptation.blockage_type}: {adaptation.reason}" \
+    {spec_path}""")
 
-  log_to_audit("ADAPT: created {fix_task_id} for {task_id} — {adaptation.blockage_type}")
+  log_to_audit("ADAPT: created {derive_result.created} for {task_id} — {adaptation.blockage_type}")
 
-  # 2. Re-plan to get updated DAG
-  new_plan = Bash("hoyeon-cli spec plan {spec_path} --format slim")
+  # 2. Dispatch via shared helper (creates TaskCreate + dependencies + dispatches worker)
+  tracking = dispatch_derived_task(derive_result, spec_path, depth)
 
-  # 3. Create tracking tasks for the fix (use same self-read pattern)
-  fw = TaskCreate(subject="{fix_task_id}.1:Worker — {adaptation.suggested_todo.title}",
-                  description=WORKER_DESCRIPTION(fix_task_id))
-  fv = TaskCreate(subject="{fix_task_id}.2:Verify",
-                  description=VERIFY_DESCRIPTION(fix_task_id))  # standard only
-  fc = TaskCreate(subject="{fix_task_id}.3:Commit",
-                  description="Commit {fix_task_id} changes.")
-
-  # Set dependencies: fix task depends on current task's commit
-  # After fix completes, add a re-verify of original task
-
-  # 4. Create re-verify task for original
+  # 3. Create re-verify task for original
   rv = TaskCreate(subject="{task_id}.R:Re-Verify",
-       description="Re-verify {task_id} after fix {fix_task_id} applied.",
+       description="Re-verify {task_id} after fix {derive_result.created} applied.",
        activeForm="{task_id}: Re-verifying")
 
-  # Chain: fix commit → re-verify original
-  TaskUpdate(taskId=fc, addBlocks=[rv])
-  # Re-verify blocks finalize
+  # Chain: fix commit → re-verify original → finalize
+  TaskUpdate(taskId=tracking.commit, addBlocks=[rv])
   TaskUpdate(taskId=rv, addBlocks=[rc])  # rc = Residual Commit
 
-  # 5. Mark current verify as completed (adaptation handled)
+  # 4. Mark current verify as completed (adaptation handled)
   TaskUpdate(taskId=current_verify, status="completed")
   # Loop continues — fix task will be picked up
 ```
@@ -561,56 +630,34 @@ Agent(
 ```
 
 **If NEEDS_FIXES:**
-- Create fix tasks via adaptation flow (same as 1b.2)
+
+For each fix identified by the code reviewer, create and dispatch via shared helper:
+
+```
+FOR EACH fix in code_review_result.fixes:
+  derive_result = Bash("""hoyeon-cli spec derive \
+    --parent {closest_related_task_id or last_task_id} \
+    --source code-reviewer \
+    --trigger code_review \
+    --action "{fix.title}" \
+    --reason "{fix.reason}" \
+    {spec_path}""")
+  tracking = dispatch_derived_task(derive_result, spec_path, depth)
+  log_to_audit("CODE_REVIEW: created {derive_result.created} — {fix.reason}")
+```
+
 - Execute fixes → re-review (max 1 round)
 
 **If SHIP:**
 - `TaskUpdate(taskId=cr, status="completed")`
 
-### 2c. :Requirements Check (Standard Only)
-
-> **Mode Gate**: Quick mode uses `:Final Verify` instead.
-
-Run A-items from `requirements[].scenarios` where `verified_by == "machine"` and `execution_env == "host"`:
-
-```
-spec = Read(spec_path) → parse JSON
-
-FOR EACH req in spec.requirements:
-  FOR EACH scenario in req.scenarios:
-    IF scenario.verified_by == "machine" AND (scenario.execution_env == "host" OR !scenario.execution_env):
-      result = Bash(scenario.verify.run)
-      IF result.exit_code != scenario.verify.expect.exit_code:
-        print("FAIL: {scenario.id} — {scenario.then}")
-        failures.push(scenario)
-
-IF failures.length > 0:
-  # Create fix tasks for failed requirements
-  adapt_from_requirements(failures)
-ELSE:
-  TaskUpdate(taskId=rq, status="completed")
-```
-
-For S-items (`execution_env == "sandbox"`), dispatch a verify worker:
-
-```
-Agent(subagent_type="worker", prompt="""
-  Run sandbox verification scenarios.
-  {FOR EACH scenario where execution_env == "sandbox":}
-  - {scenario.id}: {scenario.verify.run} → expect exit {scenario.verify.expect.exit_code}
-  Start sandbox, run tests, tear down, report results.
-""")
-```
-
-### 2c-quick. :Final Verify (Quick Only)
-
-> **Mode Gate**: Quick mode only. Replaces Code Review + Requirements Check.
+### 2c. :Final Verify (Both Modes)
 
 Holistic verification of the full spec — goal alignment, constraints, acceptance criteria,
-requirements, and deliverables.
+requirements, and deliverables. Runs in **both** standard and quick modes.
 
 ```
-Read: skills/execute/references/final-verify.md
+Read: ${baseDir}/references/final-verify.md
 Follow the usage instructions to dispatch the verification worker.
 Provide spec_path and parsed spec JSON.
 ```
@@ -621,13 +668,60 @@ On completion:
 IF result.status == "VERIFIED":
   TaskUpdate(taskId=fv, status="completed")
 ELSE:
-  print("Final verification FAILED:")
+  # Classify failures — goal misalignment is unrecoverable
   IF result.goal_alignment.status == "FAIL":
-    print("  GOAL MISALIGNMENT: {result.goal_alignment.reason}")
-  FOR EACH category in [constraints, acceptance_criteria, requirements, deliverables]:
-    FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
-      print("  [{category}] {failure.description} — {failure.reason}")
-  HALT
+    print("GOAL MISALIGNMENT — cannot auto-fix. HALT.")
+    print("  Reason: {result.goal_alignment.reason}")
+    HALT
+
+  # For all other failures (constraints, AC, requirements, deliverables):
+  # Create derived fix tasks and re-run Final Verify (max 2 attempts)
+  fv_attempt = 0
+  WHILE fv_attempt < 2:
+    fv_attempt += 1
+    fix_tasks = []
+
+    FOR EACH category in [constraints, acceptance_criteria, requirements, deliverables]:
+      FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
+        # Find the most relevant parent task (from failure context or last planned task)
+        parent_task_id = failure.task_id ?? last_planned_task_id
+
+        derive_result = Bash("""hoyeon-cli spec derive \
+          --parent {parent_task_id} \
+          --source final-verify \
+          --trigger final_verify \
+          --action "FV fix: {failure.description}" \
+          --reason "Final Verify {category} failure: {failure.reason}" \
+          {spec_path}""")
+        fix_tasks.append(derive_result.created)
+
+    log_to_audit("FINAL_VERIFY attempt {fv_attempt}: created {len(fix_tasks)} fix tasks")
+
+    # Execute fix tasks via lightweight FV helper (no per-task verify, no per-task commit)
+    FOR EACH fix_task_id in fix_tasks:
+      dispatch_fv_fix({created: fix_task_id}, spec_path)
+
+    # Commit all FV fixes together
+    Agent(subagent_type="git-master", prompt="Commit Final Verify fixes")
+
+    # Re-run Final Verify
+    result = dispatch_final_verify_worker()
+
+    IF result.status == "VERIFIED":
+      TaskUpdate(taskId=fv, status="completed")
+      BREAK
+
+    # If goal alignment now fails, halt immediately (no further recovery)
+    IF result.goal_alignment.status == "FAIL":
+      print("GOAL MISALIGNMENT after FV fix — cannot auto-fix. HALT.")
+      HALT
+
+  IF result.status != "VERIFIED":
+    print("Final Verify failed after {fv_attempt} recovery attempt(s). HALT.")
+    FOR EACH category in [constraints, acceptance_criteria, requirements, deliverables]:
+      FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
+        print("  [{category}] {failure.description} — {failure.reason}")
+    HALT
 ```
 
 ### 2d. :Report
@@ -656,7 +750,7 @@ TASKS
 ───────────────────────────────────────────────────
 VERIFICATION
 ───────────────────────────────────────────────────
-{Standard: Code Review verdict + Requirements Check results}
+{Standard: Code Review verdict + Final Verify results}
 {Quick: Final Verify results}
 
 ───────────────────────────────────────────────────
@@ -672,14 +766,14 @@ Issues: {count} entries
 Audit: {count} triage decisions
 
 ───────────────────────────────────────────────────
-H-ITEMS (require human verification)
+MANUAL REVIEW (require human verification)
 ───────────────────────────────────────────────────
-{FOR EACH req in spec.requirements:}
+{FOR EACH req in (spec.requirements ?? []):}
 {FOR EACH scenario where verified_by == "human":}
 - {scenario.id}: {scenario.then}
   Check: {scenario.verify.ask}
 
-{IF no H-items: "None"}
+{IF no manual items: "None"}
 
 ───────────────────────────────────────────────────
 POST-WORK (human actions after completion)
@@ -744,7 +838,7 @@ Details: {verify result summary}
 6. **Description = recipe** — TaskCreate description contains the full self-read recipe (CLI commands, context paths, output format). At dispatch time, orchestrator just passes `TaskGet(id).description` as the Agent prompt.
 7. **Per-task commit** — every task gets its own commit via git-master
 8. **Verify is standard-only** — quick mode skips per-task verification
-9. **Adaptation updates spec.json** — new tasks go through `spec merge`, then re-plan
+9. **Adaptation updates spec.json** — new tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on, re-plan automatically)
 10. **Max 2 retries** — after 2 failed retry attempts, HALT
 11. **Background for parallel** — use `run_in_background: true` for round-parallel workers
 
@@ -764,9 +858,9 @@ Details: {verify result summary}
 - [ ] `hoyeon-cli spec check` passes at end
 - [ ] Residual commit handled
 - [ ] Code review completed (SHIP verdict or fixes applied)
-- [ ] Requirements check completed (A-items + S-items)
+- [ ] Final verify worker ran holistic spec verification (goal, constraints, AC, requirements, deliverables)
 - [ ] Adaptations logged in audit.md
-- [ ] H-items listed for human follow-up
+- [ ] Manual items listed for human follow-up
 - [ ] Final report output
 
 ### Quick Mode Checklist
@@ -780,7 +874,6 @@ Details: {verify result summary}
 - [ ] `hoyeon-cli spec check` passes at end
 - [ ] Residual commit handled
 - [ ] No code review
-- [ ] No requirements check
 - [ ] Final verify worker ran holistic spec verification (goal, constraints, AC, requirements, deliverables)
-- [ ] H-items listed for human follow-up
+- [ ] Manual items listed for human follow-up
 - [ ] Final report output

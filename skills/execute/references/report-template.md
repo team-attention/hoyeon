@@ -31,16 +31,28 @@ ADAPTATIONS MADE:
                     VERIFICATION SUMMARY
 ───────────────────────────────────────────────────────────
 
-AGENT-VERIFIED (A-items):
+AUTO (machine-verified):
    {id}  {PASS|FAIL}  {description}
    {id}  {PASS|FAIL}  {description}
    ...
 
    Result: {N}/{total} passed
 
-HUMAN REVIEW REQUIRED (H-items):
+AGENT (agent-verified):
+   {id}  {PASS|FAIL}  {description}
+   {id}  {PASS|FAIL}  {description}
+   ...
+
+   Result: {N}/{total} passed
+
+MANUAL (human review required):
    {id}  {description}                    → {review material / file to check}
    {id}  {description}                    → {review material / file to check}
+   ...
+
+SKIPPED (sandbox unavailable):
+   {id}  {description}                    → sandbox_unavailable
+   {id}  {description}                    → sandbox_timeout
    ...
 
 SANDBOX TESTING:
@@ -82,9 +94,11 @@ ISSUES:
 
 ## Section Guide
 
-- **A-items**: Acceptance criteria the verify worker checked with deterministic commands (test -f, npm test, tsc --noEmit, etc.). Pull from each `:Verify` worker's `acceptance_criteria.results[]`.
-- **H-items**: Judgment-required items that agents cannot verify — UX quality, design review, naming conventions, documentation clarity, manual integration testing. Pull from Plan's acceptance criteria that have no automated check, plus any `side_effects.suspicious_passes` from verify workers.
+- **AUTO**: Machine-verified items — acceptance criteria checked with deterministic commands (test -f, npm test, tsc --noEmit, etc.). Pull from each `:Verify` worker's `acceptance_criteria.results[]` where `verified_by == "machine"`.
+- **AGENT**: Agent-verified items — checked by agents asserting behavior (verified_by: "agent"). Pull from `:Verify` worker results where `verified_by == "agent"`.
+- **MANUAL**: Judgment-required items that agents cannot verify — UX quality, design review, naming conventions, documentation clarity, manual integration testing. Pull from scenarios where `verified_by == "human"`, plus any `side_effects.suspicious_passes` from verify workers.
+- **SKIPPED**: Sandbox scenarios that could not run — `execution_env == "sandbox"` but sandbox was unavailable or timed out. Pull from Final Verify sandbox_scenarios results where `status == "SKIPPED"`.
 - **ADAPTATIONS MADE**: Dynamic plan changes made during execution — tasks added/modified/removed from original plan due to discovered dependencies, blockers, or scope changes. Pull from context/audit.md (filter for "Adapt" entries). Shows the difference between what was planned vs what was actually executed.
 - **SANDBOX TESTING**: Summary of sandbox infrastructure tests run during verification. Pull from `context/sandbox-report.md`. Shows per-TODO sandbox results and teardown status. If no sandbox was used, print "No sandbox testing performed". If teardown FAILED for any TODO, flag it in POST-WORK.
 - **FINAL VERIFICATION**: Post-review integration verification results. Pull from `context/audit.md` (filter for "Final Verification" entries). Shows the status of project-level acceptance command re-runs after Code Review. In quick mode, print "SKIPPED (quick mode)". If FAILED and unresolved, flag failed commands in POST-WORK.
-- **POST-WORK**: Remaining tasks that execution could not complete — things requiring human action, deployment steps, cross-repo changes, manual QA. Pull from context/issues.md + any FAILED A-items that were not resolved.
+- **POST-WORK**: Remaining tasks that execution could not complete — things requiring human action, deployment steps, cross-repo changes, manual QA. Pull from context/issues.md + any FAILED Auto items that were not resolved.

@@ -14,13 +14,13 @@ Recon-first browser automation: explore → document → delegate.
 
 ## Purpose
 
-사용자의 브라우저 작업 요청을 안정적으로 수행하기 위해, 오케스트레이터가 먼저 사이트를 직접 정찰하고,
-삽질 방지 가이드를 만든 뒤, browser-explorer agent에게 위임한다.
+To reliably execute browser tasks on the user's behalf, the orchestrator first scouts the site directly,
+creates a pitfall-prevention guide, then delegates execution to the browser-explorer agent.
 
 ## Why Recon First?
 
-Agent가 사이트를 처음 보면 시행착오가 많다 (snapshot vs screenshot 혼동, 잘못된 요소 클릭, 사이트 구조 모름).
-오케스트레이터가 먼저 한 사이클을 돌면서 "지도"를 만들어두면 agent가 정확하게 실행할 수 있다.
+When an agent sees a site for the first time, there's a lot of trial and error (snapshot vs. screenshot confusion, clicking wrong elements, unfamiliar site structure).
+If the orchestrator walks through one cycle first and builds a "map," the agent can execute accurately.
 
 ## Execution
 
@@ -129,9 +129,9 @@ cat > "$WORK_DIR/guide.md" << 'GUIDE_EOF'
 
 ## Pitfalls & Insights
 - [Things that could trip up the agent]
-- [e.g., "Sort dropdown is NOT the first artdeco-dropdown — look for text '관련순'"]
+- [e.g., "Sort dropdown is NOT the first artdeco-dropdown — look for text 'Most Relevant'"]
 - [e.g., "'Load more' button changes @ref every time — always re-snapshot"]
-- [e.g., "Confirmation modal appears after clicking Connect — look for '메모 없이 보내기'"]
+- [e.g., "Confirmation modal appears after clicking Connect — look for 'Send without a note'"]
 
 ## Bot Detection Notes
 - [Recommended delay between actions]

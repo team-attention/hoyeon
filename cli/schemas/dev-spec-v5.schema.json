@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "dev-spec/v4",
-  "title": "dev-spec v4",
-  "description": "JSON Schema for dev spec v4 — unified spec + state document",
+  "$id": "dev-spec/v5",
+  "title": "dev-spec v5",
+  "description": "JSON Schema for dev spec v5 — unified spec + state document. AC uses scenarios[] + checks[] instead of functional/static/runtime/cleanup categories.",
   "type": "object",
   "required": ["meta", "tasks"],
   "additionalProperties": false,
@@ -129,7 +129,21 @@
           "enum": ["host", "sandbox", "ci"],
           "description": "WHERE verification runs: host=local, sandbox=docker/container, ci=CI pipeline"
         },
-        "verify": { "$ref": "#/$defs/verify" }
+        "verify": { "$ref": "#/$defs/verify" },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail", "pending", "skipped"],
+          "default": "pending",
+          "description": "Verification result for this scenario"
+        },
+        "verified_by_task": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ],
+          "default": null,
+          "description": "The task ID that verified this scenario (e.g. 'T1' or 'T_SV1')"
+        }
       },
       "allOf": [
         {
@@ -227,6 +241,10 @@
       "additionalProperties": false,
       "properties": {
         "request": { "type": "string" },
+        "confirmed_goal": {
+          "type": "string",
+          "description": "The confirmed goal statement from the mirror phase. Set after user confirms the mirrored interpretation."
+        },
         "interview": {
           "type": "array",
           "items": {
@@ -299,7 +317,11 @@
                 "type": "string",
                 "enum": ["low", "medium", "high", "critical"]
               },
-              "mitigation": { "type": "string" }
+              "mitigation": { "type": "string" },
+              "auto_merged": {
+                "type": "boolean",
+                "description": "True when this gap was auto-merged (medium/low severity) without asking the user"
+              }
             }
           }
         }
@@ -358,6 +380,41 @@
         "reason": {
           "type": "string",
           "description": "Human-readable explanation for the derivation"
+        }
+      }
+    },
+    "taskCheck": {
+      "type": "object",
+      "required": ["type", "run"],
+      "additionalProperties": false,
+      "description": "A static/build/lint/format check to run as part of task acceptance",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["static", "build", "lint", "format"],
+          "description": "Category of check: static=type check, build=compilation, lint=linting, format=formatting"
+        },
+        "run": {
+          "type": "string",
+          "description": "Shell command to execute for this check"
+        }
+      }
+    },
+    "taskAcceptanceCriteria": {
+      "type": "object",
+      "required": ["scenarios", "checks"],
+      "additionalProperties": false,
+      "description": "v5: AC is expressed as scenario references + automated checks. scenarios[] references requirements[].scenarios[].id. checks[] are runnable static/build/lint/format commands.",
+      "properties": {
+        "scenarios": {
+          "type": "array",
+          "description": "List of scenario IDs from requirements[].scenarios[].id that this task fulfills",
+          "items": { "type": "string" }
+        },
+        "checks": {
+          "type": "array",
+          "description": "Automated checks to verify the task (static, build, lint, format)",
+          "items": { "$ref": "#/$defs/taskCheck" }
         }
       }
     },
@@ -494,41 +551,6 @@
         "task": { "type": "string" },
         "summary": { "type": "string" },
         "detail": { "type": "string" }
-      }
-    },
-    "acceptanceCriterionItem": {
-      "type": "object",
-      "required": ["description"],
-      "additionalProperties": false,
-      "properties": {
-        "description": { "type": "string" },
-        "command": { "type": "string" },
-        "status": {
-          "type": "string",
-          "enum": ["PASS", "FAIL", "SKIP"]
-        }
-      }
-    },
-    "taskAcceptanceCriteria": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "functional": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/acceptanceCriterionItem" }
-        },
-        "static": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/acceptanceCriterionItem" }
-        },
-        "runtime": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/acceptanceCriterionItem" }
-        },
-        "cleanup": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/acceptanceCriterionItem" }
-        }
       }
     },
     "verificationSummary": {

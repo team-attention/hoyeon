@@ -24,9 +24,9 @@ launch everything at once and get results in ~1 minute.
 ## Input
 
 The user provides a requirement, bug description, or feature request. Examples:
-- "hook 시스템을 리팩토링하고 싶어"
-- "check 스킬에 auto-fix 기능 추가"
-- "spec.json validation이 너무 느려"
+- "I want to refactor the hook system"
+- "Add auto-fix feature to the check skill"
+- "spec.json validation is too slow"
 
 If the requirement is too vague to search for (e.g., "improve things"), ask ONE
 clarifying question. Otherwise, proceed immediately.

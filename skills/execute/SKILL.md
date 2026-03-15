@@ -22,7 +22,8 @@ allowed-tools:
 validate_prompt: |
   All tasks in spec.json must have status "done" at completion.
   hoyeon-cli spec check must pass (internal consistency).
-  Context files (learnings.md, issues.md) must exist. audit.md must be populated if meta.type == "dev".
+  Context files (learnings.md, issues.md) must exist if meta.type == "dev". audit.md must be populated if meta.type == "dev".
+  Final Verify must run (all modes and types).
   Final report must be output.
 ---
 
@@ -34,7 +35,7 @@ All task data comes from spec.json via `hoyeon-cli spec plan`.
 
 ## Core Principles
 
-1. **DELEGATE** — All work goes to agents or skills. You only Read, Grep, Glob, Bash (for orchestration), and manage Tasks.
+1. **DELEGATE** — In dev mode, all work goes to worker agents. In plain mode, the orchestrator may handle tasks directly or delegate. You only use Read, Grep, Glob, Bash (for orchestration), and Task tools for coordination.
 2. **PARALLELIZE** — Run all unblocked tasks within a round simultaneously via `run_in_background: true`.
 3. **spec.json is truth** — Task status and progress flow through `hoyeon-cli spec` commands.
 4. **Context flows forward** — Workers write learnings/issues to shared context files. Next workers read them.
@@ -56,11 +57,11 @@ SESSION_ID="[session ID from UserPromptSubmit hook]"
 2) IF arg is a feature name (e.g. "auth-login"):
    spec_path = ".dev/specs/{arg}/spec.json"
 
-3) No arg: session state (quick-plan, specify 등이 등록한 경로)
+3) No arg: session state (path registered by quick-plan, specify, etc.)
    hoyeon-cli session get --sid $SESSION_ID
-   → state.spec 필드가 있으면 spec_path = state.spec
+   → if state.spec field exists, spec_path = state.spec
 
-If none found → error: "spec.json을 찾을 수 없습니다. /specify 또는 /quick-plan으로 먼저 생성해주세요."
+If none found → error: "spec.json not found. Please generate one first with /specify or /quick-plan."
 ```
 
 Read spec.json and validate:
@@ -142,97 +143,21 @@ After Phase 0, route based on `meta_type`:
 ### meta.type == "dev" (or absent)
 
 ```
-Read: skills/execute/references/dev.md
+Read: ${baseDir}/references/dev.md
 Follow ALL instructions in dev.md for task execution, verification, and finalization.
 ```
 
 dev.md owns: Worker/Verify/Commit chain, triage, adaptation, code-review,
-requirements-check, WORKER_DESCRIPTION, VERIFY_DESCRIPTION, and mode selection (quick/standard).
+Final Verify, WORKER_DESCRIPTION, VERIFY_DESCRIPTION, and mode selection (quick/standard).
 
 ### meta.type == "plain"
 
-Use the inline dispatch logic below.
-
----
-
-## Plain Dispatch (meta.type == "plain")
-
-Execute tasks in DAG order from `plan.rounds`.
-
-### Task Loop
-
 ```
-FOR EACH round in plan.rounds:
-  runnable = round.tasks.filter(t => t.status != "done")
-
-  IF len(runnable) == 0: CONTINUE
-
-  # Mark all in_progress, dispatch in parallel
-  FOR EACH task in runnable:
-    Bash("hoyeon-cli spec task {task.id} --status in_progress {spec_path}")
-
-  FOR EACH task in runnable (single message, run_in_background=true if len > 1):
-    IF task.tool AND task.tool starts with "/":
-      # Invoke as Skill
-      Skill(skill=task.tool, args=task.args ?? "")
-    ELIF task.tool:
-      # Invoke as Agent with specific subagent_type
-      Agent(
-        subagent_type=task.tool,
-        prompt=task.action + "\n\n" + (task.args ?? ""),
-        run_in_background=(len(runnable) > 1)
-      )
-    ELSE:
-      # Fallback: no tool specified — dispatch as general-purpose agent with action as prompt
-      Agent(
-        subagent_type="general-purpose",
-        prompt=task.action,
-        run_in_background=(len(runnable) > 1)
-      )
-
-  # Collect results
-  FOR EACH task in runnable:
-    result = await task completion
-    IF result indicates success:
-      Bash("hoyeon-cli spec task {task.id} --status done --summary '{result.summary}' {spec_path}")
-    ELSE:
-      print("Task {task.id} FAILED: {result.reason}")
-      HALT
+Read: ${baseDir}/references/plain.md
+Follow ALL instructions in plain.md for task execution and finalization.
 ```
 
-### Plain Finalize
-
-No commits, no code review. Report only:
-
-```
-spec = Read(spec_path) → parse JSON
-
-print("""
-═══════════════════════════════════════════════════
-              EXECUTE COMPLETE (plain)
-═══════════════════════════════════════════════════
-
-SPEC: {spec_path}
-GOAL: {spec.meta.goal}
-
-───────────────────────────────────────────────────
-TASKS
-───────────────────────────────────────────────────
-{FOR EACH task in spec.tasks:}
-{task.id}: {task.action} — {task.status}
-  {task.summary}
-
-───────────────────────────────────────────────────
-POST-WORK (human actions after completion)
-───────────────────────────────────────────────────
-{post_work = spec.external_dependencies.post_work ?? []}
-{FOR EACH item in post_work:}
-- [{item.id ?? ''}] {item.dependency}: {item.action}
-
-{IF no post_work: "None"}
-═══════════════════════════════════════════════════
-""")
-```
+plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 
 ---
 
@@ -257,9 +182,7 @@ POST-WORK (human actions after completion)
 - [ ] Final report output
 
 ### dev mode (additional)
-- [ ] Follow references/dev.md completely for all dev-specific steps
+- [ ] Follow ${baseDir}/references/dev.md completely for all dev-specific steps
 
 ### plain mode (additional)
-- [ ] Each task dispatched via Skill (if "/" prefix) or Agent (otherwise)
-- [ ] No git commits, no code review performed
-- [ ] H-items listed for human follow-up if present
+- [ ] Follow ${baseDir}/references/plain.md completely for all plain-specific steps

@@ -119,16 +119,16 @@ Code-based tests verify what developers **anticipated**. Agent sandbox tests dis
 Gherkin is the natural interface between humans and agent testers. `Given/When/Then` provides LLMs with clear context, actions, and expected outcomes.
 
 ```gherkin
-Feature: 구독 관리
-  Background: 테스트 사용자로 로그인되어 있다
+Feature: Subscription Management
+  Background: Logged in as a test user
 
-  Scenario: 새 구독 추가
-    Given 대시보드 페이지에 있다
-    When "구독 추가" 버튼을 클릭한다
-    And URL "https://example.com/feed"를 입력한다
-    And "저장" 버튼을 클릭한다
-    Then 구독 목록에 "example.com"이 표시된다
-    And DB에 해당 구독 레코드가 존재한다
+  Scenario: Add a new subscription
+    Given I am on the dashboard page
+    When I click the "Add Subscription" button
+    And I enter the URL "https://example.com/feed"
+    And I click the "Save" button
+    Then "example.com" is displayed in the subscription list
+    And the corresponding subscription record exists in the DB
 ```
 
 ### Handling Non-Determinism
@@ -174,7 +174,7 @@ When DB schemas, external services, or infrastructure configs change, the sandbo
 - [ ] Seed data still idempotent after schema change?
 
 > **Principle**: Every infrastructure change PR should include sandbox updates in the same commit.
-> If sandbox cannot be updated immediately, add an explicit H-item to the verification plan.
+> If sandbox cannot be updated immediately, mark the item as `verified_by: Manual` in the verification plan.
 
 ### Sandbox Bootstrapping Patterns
 
@@ -285,6 +285,51 @@ Always verify when bootstrapping a sandbox:
 
 ---
 
+## Verification Classification: 2-Axis Model
+
+Each acceptance criterion is classified on two independent axes:
+
+### Axis 1: verified_by (who verifies)
+
+| Value | Meaning |
+|-------|---------|
+| `Auto` | Machine verified — deterministic exit code (shell command, test runner) |
+| `Agent` | Agent verified — probabilistic, LLM judgment (spot-check worthy) |
+| `Manual` | Human judgment required — design quality, UX feel, business sign-off |
+
+### Axis 2: execution_env (where it runs)
+
+| Value | Meaning |
+|-------|---------|
+| `host` | Runs directly on the developer machine / CI runner |
+| `sandbox` | Requires isolated environment (Docker, test DB, mocked external services) |
+
+### Display Convention
+
+When reporting verification results, use these labels:
+
+```
+Auto    — machine verified, deterministic
+Agent   — agent verified, probabilistic (spot-check worthy)
+Manual  — human judgment required
+```
+
+Append `[sandbox]` inline when `execution_env != host`:
+
+```
+Auto [sandbox]    — machine verified but requires sandbox to be running
+Agent [sandbox]   — agent verified inside sandbox environment
+```
+
+When a sandbox is unavailable, collect all sandbox-dependent items in a `SKIPPED` section rather than marking them as failures:
+
+```
+## SKIPPED (sandbox unavailable)
+- <item description> (Auto [sandbox]) — sandbox not running
+```
+
+---
+
 ## For Verification Agents
 
 When building a verification strategy, scan all 4 tiers:
@@ -292,9 +337,11 @@ When building a verification strategy, scan all 4 tiers:
 1. **Read `CLAUDE.md`** — project-specific test commands, sandbox setup, custom scripts
 2. **Read `package.json` scripts** — discover `test`, `test:e2e`, `sandbox:*` commands
 3. **Scan for test infrastructure** — config files, test directories, feature files
-4. **Classify each acceptance criterion** into the appropriate tier
-5. **Agent-verifiable (A-items)**: Tiers 1-3 produce deterministic exit codes
-6. **Judgment-required (H-items)**: Tier 4 findings + UX/design quality
+4. **Classify each acceptance criterion** using the 2-axis model (`verified_by` × `execution_env`)
+5. **Auto items**: Tiers 1-3 produce deterministic exit codes → `verified_by: Auto`
+6. **Agent items**: Tier 4 findings evaluated by LLM judgment → `verified_by: Agent`
+7. **Manual items**: UX/design quality, business sign-off → `verified_by: Manual`
+8. **Sandbox items**: Tiers 2-4 requiring Docker/test DB → `execution_env: sandbox`, append `[sandbox]` tag
 
 ### The Key Insight
 

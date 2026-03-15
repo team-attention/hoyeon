@@ -82,27 +82,27 @@ Each TODO is executed by an isolated Worker agent (not a human). Agent call over
 ```markdown
 ## Verification Summary
 
-### Agent-Verifiable (A-items)
+### Auto (machine-verified)
 | ID | Criterion | Method | Related TODO |
 |----|-----------|--------|-------------|
-| A-1 | [criterion] | command: `npm test` | TODO 2 |
-| A-2 | [criterion] | e2e test | TODO Final |
+| Auto-1 | [criterion] | command: `npm test` | TODO 2 |
+| Auto-2 | [criterion] [sandbox] | e2e test | TODO Final |
 
-### Human-Required (H-items)
-| ID | Criterion | Reason | Review Material |
-|----|-----------|--------|----------------|
-| H-1 | [criterion] | Subjective judgment | [link/path] |
-
-### Sandbox Agent Testing (S-items)
+### Agent [sandbox] (agent-verified, sandbox)
 
 > Include when project has Tier 4 sandbox infrastructure (docker-compose, .feature files, sandbox fixtures).
 > If no sandbox infra exists, omit this section and note in Verification Gaps.
 
 | ID | Scenario | Agent | Method |
 |----|----------|-------|--------|
-| S-1 | [user-facing scenario] | sandbox-user (browser) + sandbox-admin (DB) | [action → verification] |
+| Agent-1 | [user-facing scenario] [sandbox] | sandbox-user (browser) + sandbox-admin (DB) | [action → verification] |
 
-**Sandbox prerequisites**: `{sandbox-up-command}` must succeed before S-items execute.
+**Sandbox prerequisites**: `{sandbox-up-command}` must succeed before Agent [sandbox] items execute.
+
+### Manual (human review)
+| ID | Criterion | Reason | Review Material |
+|----|-----------|--------|----------------|
+| Manual-1 | [criterion] | Subjective judgment | [link/path] |
 
 ### Verification Gaps
 - [environment constraints and alternatives]
@@ -328,15 +328,12 @@ TODO-1 → TODO-2 → TODO-Final
 
 **Acceptance Criteria**:
 
-*Functional:*
-- [ ] File exists: `./config/app.json`
-- [ ] Config contains required fields: `name`, `version`
+*Scenarios:* (requirement scenario IDs this task fulfills)
+- R1-S1, R1-S2
 
-*Static:*
-- [ ] `cat ./config/app.json` → Valid JSON (parseable)
-
-*Runtime:*
-- [ ] (no tests for config-only task)
+*Checks:*
+- [ ] `cat ./config/app.json` → Valid JSON (parseable) `[static]`
+- [ ] (no build/lint/format checks for config-only task)
 
 ---
 
@@ -369,15 +366,12 @@ TODO-1 → TODO-2 → TODO-Final
 
 **Acceptance Criteria**:
 
-*Functional:*
-- [ ] File exists: `src/api/index.ts`
-- [ ] Module exports `api` function
+*Scenarios:* (requirement scenario IDs this task fulfills)
+- R2-S1, R2-S2
 
-*Static:*
-- [ ] `tsc --noEmit src/api/index.ts` → exit 0
-
-*Runtime:*
-- [ ] `npm test -- api.test.ts` → passes
+*Checks:*
+- [ ] `tsc --noEmit src/api/index.ts` → exit 0 `[static]`
+- [ ] `npm test -- api.test.ts` → passes `[build]`
 
 ---
 
@@ -398,7 +392,7 @@ TODO-1 → TODO-2 → TODO-Final
 - [ ] Run lint (if applicable)
 - [ ] Run tests
 - [ ] Verify all deliverables exist
-- [ ] Boot and run sandbox E2E tests (if S-items exist in Verification Summary)
+- [ ] Boot and run sandbox E2E tests (if Agent [sandbox] items exist in Verification Summary)
 
 **Must NOT do**:
 - Do not use Edit or Write tools (source code modification forbidden)
@@ -409,19 +403,15 @@ TODO-1 → TODO-2 → TODO-Final
 
 **Acceptance Criteria**:
 
-> Use commands from DRAFT's Agent Findings > Project Commands + A-items from verification-planner
+> Scenarios from requirements; checks from DRAFT's Agent Findings > Project Commands + Auto items
 
-*Functional:*
-- [ ] All deliverables from Work Objectives exist
-- [ ] `config_path` file exists and is valid
-- [ ] `api_module` file exists and exports expected functions
+*Scenarios:* (all requirement scenario IDs this verification task covers)
+- R1-S1, R1-S2, R2-S1, R2-S2
 
-*Static:*
-- [ ] `{type-check-command}` → exit 0 (e.g., `tsc --noEmit`, `mypy .`, `go vet ./...`)
-- [ ] `{lint-command}` → no errors (e.g., `eslint .`, `ruff check .`, `golangci-lint run`)
-
-*Runtime:*
-- [ ] `{test-command}` → all pass (e.g., `npm test`, `pytest`, `go test ./...`)
+*Checks:*
+- [ ] `{type-check-command}` → exit 0 (e.g., `tsc --noEmit`, `mypy .`, `go vet ./...`) `[static]`
+- [ ] `{lint-command}` → no errors (e.g., `eslint .`, `ruff check .`, `golangci-lint run`) `[lint]`
+- [ ] `{test-command}` → all pass (e.g., `npm test`, `pytest`, `go test ./...`) `[build]`
 ```
 
 ---
@@ -440,45 +430,14 @@ Worker outputs **JSON** in a ```json code block. The Verify Worker independently
     "config_path": "./config/app.json",
     "exported_name": "configLoader"
   },
-  "acceptance_criteria": [
-    {
-      "id": "file_exists",
-      "category": "functional",
-      "description": "File exists: ./config/app.json",
-      "command": "test -f ./config/app.json",
-      "status": "PASS"
-    },
-    {
-      "id": "exports_function",
-      "category": "functional",
-      "description": "File exports configLoader function",
-      "command": "grep -q 'export.*configLoader' ./config/app.json",
-      "status": "PASS"
-    },
-    {
-      "id": "tsc_check",
-      "category": "static",
-      "description": "tsc --noEmit passes",
-      "command": "tsc --noEmit ./config/app.json",
-      "status": "PASS"
-    },
-    {
-      "id": "eslint_check",
-      "category": "static",
-      "description": "eslint passes",
-      "command": "eslint ./config/app.json",
-      "status": "FAIL",
-      "reason": "Unexpected console.log statement (line 42)"
-    },
-    {
-      "id": "test_config",
-      "category": "runtime",
-      "description": "Config tests pass",
-      "command": "npm test -- config.test.ts",
-      "status": "SKIP",
-      "reason": "No test file exists"
-    }
-  ],
+  "acceptance_criteria": {
+    "scenarios": ["R1-S1", "R1-S2"],
+    "checks": [
+      { "type": "static", "run": "tsc --noEmit ./config/app.json" },
+      { "type": "lint", "run": "eslint ./config/app.json" },
+      { "type": "build", "run": "npm test -- config.test.ts" }
+    ]
+  },
   "learnings": ["Config uses JSON schema validation"],
   "issues": ["Existing type definitions incomplete (out of scope)"],
   "decisions": ["Used standard JSON format over YAML for simplicity"]
@@ -495,27 +454,23 @@ Worker outputs **JSON** in a ```json code block. The Verify Worker independently
 | `issues` | ❌ | Problems found but **not resolved** (out of scope) |
 | `decisions` | ❌ | Decisions made and why |
 
-### acceptance_criteria Item Structure
+### acceptance_criteria Structure (v5)
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | ✅ | Unique identifier (e.g., `tsc_check`, `test_auth`) |
-| `category` | ✅ | `functional` / `static` / `runtime` / `cleanup` |
-| `description` | ✅ | Human-readable description |
-| `command` | ✅ | Re-executable shell command for verification |
-| `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
-| `reason` | ❌ | Required when status is `FAIL` or `SKIP` |
+| `scenarios` | ✅ | Array of scenario IDs from `requirements[].scenarios[].id` this task fulfills |
+| `checks` | ✅ | Array of automated checks (`{ type, run }`) |
 
-### Category Requirements
+### Check Types
 
-| Category | Required | What to Verify |
-|----------|----------|----------------|
-| `functional` | ✅ | Feature works (file exists, exports correct, behavior correct) |
-| `static` | ✅ | `tsc --noEmit`, `eslint` pass for modified files |
-| `runtime` | ✅ | Related tests pass (SKIP if no tests) |
-| `cleanup` | ❌ | Unused imports/files removed (only if specified in TODO) |
+| Type | What to Verify |
+|------|----------------|
+| `static` | Type checking (`tsc --noEmit`) |
+| `build` | Compilation and tests (`npm test`) |
+| `lint` | Linting (`eslint`) |
+| `format` | Formatting (`prettier --check`) |
 
-**Completion Rule**: All required categories must have all items `PASS` or `SKIP`
+**Completion Rule**: All referenced scenarios verified AND all checks pass
 
 ### Verification Flow
 
@@ -612,36 +567,27 @@ Actionable items the Worker must complete. **All items must be checkboxes.**
 
 ### Acceptance Criteria Field
 
-Verifiable conditions that prove the TODO is complete. **All required categories must pass for completion.**
+Verifiable conditions that prove the TODO is complete. **Scenarios + Checks must all pass for completion.**
 
-**Categories:**
+**Structure (v5):**
 
-| Category | Required | Description |
-|----------|----------|-------------|
-| *Functional* | ✅ | Feature works as expected (business logic) |
-| *Static* | ✅ | Type check, lint pass for modified files |
-| *Runtime* | ✅ | Related tests pass |
-| *Cleanup* | ❌ | Unused imports/files removed (when applicable) |
+| Field | Required | Description |
+|-------|----------|-------------|
+| *Scenarios* | ✅ | Requirement scenario IDs (`requirements[].scenarios[].id`) this task fulfills |
+| *Checks* | ✅ | Runnable commands tagged by type: `[static]`, `[build]`, `[lint]`, `[format]` |
 
-**Worker Completion Rule**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
+**Worker Completion Rule**: All scenarios verified AND all checks pass
 
 ```markdown
 **Acceptance Criteria**:
 
-*Functional:*
-- [ ] Feature behavior check (e.g., "Returns 401 without token")
-- [ ] Output exists and is valid
+*Scenarios:*
+- R1-S1, R2-S1
 
-*Static:*
-- [ ] `tsc --noEmit` passes for modified files
-- [ ] `eslint` passes for modified files
-
-*Runtime:*
-- [ ] `npm test -- <related-test>` passes
-
-*Cleanup:* (optional)
-- [ ] No unused imports in modified files
-- [ ] Removed deprecated files listed in Outputs
+*Checks:*
+- [ ] `tsc --noEmit` passes for modified files `[static]`
+- [ ] `eslint` passes for modified files `[lint]`
+- [ ] `npm test -- <related-test>` passes `[build]`
 ```
 
 ---
@@ -664,16 +610,14 @@ Each Worker follows this flow for its assigned TODO:
    ├─ Work through each checkbox
    └─ Mark completed as done
 
-5. Verify Acceptance Criteria (ALL required categories must pass)
-   ├─ Functional: Feature works as specified
-   ├─ Static: tsc, eslint pass for modified files
-   ├─ Runtime: Related tests pass
-   └─ Cleanup (if specified): Unused code removed
+5. Verify Acceptance Criteria (scenarios verified AND all checks pass)
+   ├─ Scenarios: All referenced requirement scenario IDs are fulfilled
+   └─ Checks: All static/build/lint/format checks pass
 
 6. Report Results
    └─ Output JSON to stdout (success or failure)
 
-Completion Rule: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅)
+Completion Rule: Scenarios verified AND all Checks pass
 (Worker does NOT commit - Orchestrator handles git)
 ```
 
@@ -738,18 +682,13 @@ Completion Rule: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅)
 
 **Acceptance Criteria**:
 
-*Functional:*
-- [ ] File exists: `src/middleware/auth.ts`
-- [ ] File exports `authMiddleware` function
-- [ ] Request without token → 401 Unauthorized
-- [ ] Request with valid token → Passes to next handler
+*Scenarios:* (requirement scenario IDs this task fulfills)
+- R1-S1, R1-S2, R1-S3
 
-*Static:*
-- [ ] `tsc --noEmit src/middleware/auth.ts` → exit 0
-- [ ] `eslint src/middleware/auth.ts` → no errors
-
-*Runtime:*
-- [ ] `npm test -- auth.test.ts` → passes
+*Checks:*
+- [ ] `tsc --noEmit src/middleware/auth.ts` → exit 0 `[static]`
+- [ ] `eslint src/middleware/auth.ts` → no errors `[lint]`
+- [ ] `npm test -- auth.test.ts` → passes `[build]`
 ```
 
 ---
@@ -776,7 +715,7 @@ Completion Rule: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅)
 - [ ] Run lint (if applicable)
 - [ ] Run tests
 - [ ] Verify middleware is imported in routes file
-- [ ] Boot and run sandbox E2E tests (if S-items exist in Verification Summary)
+- [ ] Boot and run sandbox E2E tests (if Agent [sandbox] items exist in Verification Summary)
 
 **Must NOT do**:
 - Do not use Edit or Write tools (source code modification forbidden)
@@ -787,15 +726,11 @@ Completion Rule: Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅)
 
 **Acceptance Criteria**:
 
-*Functional:*
-- [ ] All deliverables from Work Objectives exist
-- [ ] `middleware_path` file exists
-- [ ] `routes_path` file imports middleware
+*Scenarios:* (all requirement scenario IDs covered by this verification)
+- R1-S1, R1-S2, R1-S3, R2-S1
 
-*Static:*
-- [ ] Type check passes (e.g., `tsc --noEmit`, `mypy .`, `go vet ./...`)
-- [ ] Lint passes (e.g., `eslint .`, `ruff check .`, `golangci-lint run`)
-
-*Runtime:*
-- [ ] Tests pass (e.g., `npm test`, `pytest`, `go test ./...`, `cargo test`)
+*Checks:*
+- [ ] Type check passes (e.g., `tsc --noEmit`, `mypy .`, `go vet ./...`) `[static]`
+- [ ] Lint passes (e.g., `eslint .`, `ruff check .`, `golangci-lint run`) `[lint]`
+- [ ] Tests pass (e.g., `npm test`, `pytest`, `go test ./...`, `cargo test`) `[build]`
 ```

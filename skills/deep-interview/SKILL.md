@@ -415,16 +415,16 @@ The following do NOT count as rounds:
 
 ```bash
 # Basic interview
-/deep-interview 할일 관리 CLI 만들래
+/deep-interview I want to build a todo management CLI
 
 # With codebase context
 /deep-interview --deep Our auth system needs improvement
 
-# Korean
-/deep-interview 뭘 만들어야 할지 모르겠어, 사이드 프로젝트 아이디어가 있는데
+# Not sure what to build
+/deep-interview not sure what to build, I have a side project idea
 
 # Requirement clarification
-/deep-interview 요구사항이 불명확해 — 알림 시스템 리팩토링
+/deep-interview requirements are unclear — notification system refactoring
 ```
 
 ---
@@ -432,10 +432,10 @@ The following do NOT count as rounds:
 ## Example Flow
 
 ```
-User: "/deep-interview 할일 관리 CLI 만들래"
+User: "/deep-interview I want to build a todo management CLI"
 
 [Stage 1: INITIATE]
-1. Parse: Core problem = 할일 관리 CLI, Proposed solution = CLI tool
+1. Parse: Core problem = todo management CLI, Proposed solution = CLI tool
 2. Declare role: "I'll run a structured interview..."
 3. Early gate → User selects "Interview me"
 4. Launch interviewer agent → First question:
@@ -443,19 +443,19 @@ User: "/deep-interview 할일 관리 CLI 만들래"
     or is CLI a temporary choice before building a UI?"
 
 [Stage 2: INTERVIEW]
-5. User: "개발자용이고, 터미널에서 쓰고 싶어"
+5. User: "It's for developers, I want to use it from the terminal"
 6. Direction selection → User picks "Challenge assumptions" + "Stress test"
 7. Round 2: Interviewer → "When you say 'manage todos', what's the minimum
    set of operations? Create-Read-Update-Delete, or something beyond CRUD?"
-8. User: "CRUD + 우선순위, 마감일, 태그"
+8. User: "CRUD + priorities, due dates, tags"
 9. Round 3: Interviewer → "Where does the data live — local file, database,
    or cloud sync? Each forces a very different architecture."
    📊 Ambiguity: 0.55 (Goal: 0.6, Constraints: 0.4, Criteria: 0.3)
-10. User: "로컬 JSON 파일, 심플하게"
+10. User: "Local JSON file, keep it simple"
 11. Round 4: Interviewer → "What does 'done' look like for v1? If you ship
     tomorrow, what's the one thing it absolutely must do?"
     📊 Ambiguity: 0.35 (Goal: 0.75, Constraints: 0.7, Criteria: 0.5)
-12. User: "할일 추가하고, 리스트 보고, 완료 체크"
+12. User: "Add a todo, list them, mark as done"
 13. Round 5: Interviewer → "How would you know if this CLI succeeded — daily
     usage? Replaced another tool? Specific task completion rate?"
     📊 Ambiguity: 0.18 ✅ (Goal: 0.85, Constraints: 0.8, Criteria: 0.85)
@@ -467,7 +467,7 @@ User: "/deep-interview 할일 관리 CLI 만들래"
 16. Insights summary with all sections
 17. Next steps → User selects "Hand off to /specify"
 18. Save insights + generate:
-    /specify --context .dev/deep-interview/todo-cli/insights.md "할일 관리 CLI — 로컬 JSON 기반 CRUD + 우선순위/마감일/태그"
+    /specify --context .dev/deep-interview/todo-cli/insights.md "Todo management CLI — local JSON-based CRUD + priorities/due dates/tags"
 ```
 
 ---

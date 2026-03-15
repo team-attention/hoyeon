@@ -1,97 +1,97 @@
 # spec.json Schema Design
 
 > Date: 2026-03-05
-> Status: v4 — spec/state 분리 + 모호함 해소 (Document v2)
+> Status: v5 — scenario-based AC + v4 backward compatibility (Document v3, supersedes v4 design)
 
 ## Background
 
-기존 PLAN.md (마크다운 자유 텍스트) 기반의 spec을 JSON 구조화 포맷으로 전환하는 설계.
-Worker/Observer/Coordinator 3-agent 루프에서 Observer가 프로그래매틱하게 파싱, 검증, 업데이트할 수 있는 형태를 목표로 함.
+A design for converting the existing PLAN.md (free-text markdown) based spec into a JSON-structured format.
+The goal is a format where the Observer in a Worker/Observer/Coordinator 3-agent loop can programmatically parse, validate, and update.
 
-### 참고 자료
-- `.references/OpenSpec/` — Fission AI의 spec framework (behavior contract, delta specs, RFC 2119)
-- `.references/spec-kit/` — GitHub의 spec-driven development toolkit (user stories, tasks template)
-- 기존 `/specify` skill 산출물: DRAFT.md → PLAN.md 흐름
+### References
+- `.references/OpenSpec/` — Fission AI's spec framework (behavior contract, delta specs, RFC 2119)
+- `.references/spec-kit/` — GitHub's spec-driven development toolkit (user stories, tasks template)
+- Existing `/specify` skill output: DRAFT.md → PLAN.md flow
 
-### 설계 원칙
+### Design Principles
 
-1. **모호하면 안 된다** — 모든 필드가 하나의 해석만 허용
-2. **검증/재현 가능해야 한다** — human/agent/machine 구분
-3. **작업 단위가 atomic해야 한다** — 하나의 task = 하나의 action (steps 3개 이하)
-4. **제약 사항이 명확해야 한다** — 금지/보존을 타입으로 구분
-5. **계약과 현황을 분리한다** — spec.json은 불변 계약, state.json은 런타임 현황
+1. **No ambiguity** — Every field allows only one interpretation
+2. **Must be verifiable/reproducible** — Distinguish human/agent/machine
+3. **Work units must be atomic** — One task = one action (3 steps or fewer)
+4. **Constraints must be explicit** — Distinguish prohibition/preservation by type
+5. **Separate contract from status** — spec.json is an immutable contract, state.json is runtime status
 
 ---
 
-## Architecture: spec.json + state.json 분리
+## Architecture: spec.json + state.json Separation
 
-### 왜 분리하는가
+### Why Separate
 
-v3까지 spec.json 안에 `status`, `verified` 같은 **런타임 상태**가 섞여 있었음.
-이로 인해:
-- 계약(spec)과 현황(state)의 경계가 모호
-- spec 변경과 상태 변경이 같은 파일에서 발생 → diff 오염
-- Worker가 spec을 직접 수정해야 하는 위험
+Up through v3, **runtime state** like `status` and `verified` was mixed inside spec.json.
+This caused:
+- Blurred boundary between contract (spec) and status (state)
+- Spec changes and state changes happening in the same file → diff pollution
+- Risk of Workers needing to directly modify the spec
 
-### 분리 구조
+### Separation Structure
 
 ```
-spec.json  (immutable after approval — 계약서)
+spec.json  (immutable after approval — the contract)
 ├── meta, context, requirements, tasks, constraints
-├── status 필드 없음
-└── 변경 = Coordinator만 가능 (Observer feedback 반영 시)
+├── No status fields
+└── Changes = Coordinator only (when reflecting Observer feedback)
 
-state.json  (mutable — 진행 현황)
+state.json  (mutable — progress status)
 ├── spec_ref: "spec.json"
-├── spec_hash: "sha256:..."           ← spec 변경 감지
+├── spec_hash: "sha256:..."           ← spec change detection
 ├── tasks: { "T1": { status, owner, started_at, completed_at } }
 ├── verifications: { "R1.S1": { passed, evidence, at } }
 ├── assumptions: { "A1": { verified, verified_at } }
 └── history: [ { action, by, at, detail } ]
 ```
 
-### 소유권 모델
+### Ownership Model
 
-| 파일 | 성격 | 읽기 | 쓰기 | 변경 시점 |
-|------|------|------|------|----------|
-| spec.json | 계약서 | 모든 agent | Coordinator만 | feedback 반영 시 (드물게) |
-| state.json | 진행 대장 | 모든 agent | Worker, Observer (cli 경유) | 매 task 완료마다 |
-| feedback/*.json | Observer 의견 | Coordinator | Observer | 검증 후 |
+| File | Nature | Read | Write | When Changed |
+|------|--------|------|-------|--------------|
+| spec.json | Contract | All agents | Coordinator only | When reflecting feedback (rarely) |
+| state.json | Progress log | All agents | Worker, Observer (via cli) | On every task completion |
+| feedback/*.json | Observer opinion | Coordinator | Observer | After verification |
 
-### Drift 방지 규칙
+### Drift Prevention Rules
 
-| 규칙 | 설명 | 강제 방법 |
-|------|------|----------|
-| **Hash lock** | state.json의 `spec_hash`가 현재 spec.json 해시와 불일치 시 경고/중단 | cli가 매 조작 시 검증 |
-| **Key 정합성** | state.json에 있는 task/requirement ID는 반드시 spec.json에 존재 | cli가 orphan key 거부 |
-| **단일 진입점** | spec/state 직접 수정 금지, 반드시 cli 경유 | pre-commit hook으로 raw edit 차단 |
+| Rule | Description | Enforcement |
+|------|-------------|-------------|
+| **Hash lock** | Warning/halt when `spec_hash` in state.json mismatches current spec.json hash | cli validates on every operation |
+| **Key consistency** | Task/requirement IDs in state.json must exist in spec.json | cli rejects orphan keys |
+| **Single entry point** | Direct spec/state modification prohibited, must go through cli | pre-commit hook blocks raw edits |
 
-### spec 변경 흐름 (Observer feedback → Coordinator amend)
+### Spec Change Flow (Observer feedback → Coordinator amend)
 
 ```
-1. Observer: cli feedback create "R1.S2 시나리오 누락"
-   → feedback/fb-001.json 생성
+1. Observer: cli feedback create "R1.S2 scenario missing"
+   → feedback/fb-001.json created
 
 2. Coordinator: cli spec amend --reason "fb-001"
-   → spec.json 수정 (requirement 추가 등)
-   → spec_hash 변경
+   → spec.json modified (requirement added, etc.)
+   → spec_hash changed
 
 3. cli state sync
-   → spec에서 삭제된 task → state에서 archived
-   → spec에서 추가된 task → state에 pending으로 추가
-   → hash 갱신, 기존 완료 상태 보존
+   → tasks deleted from spec → archived in state
+   → tasks added to spec → added as pending in state
+   → hash updated, existing completion status preserved
 ```
 
-### 파일 배치
+### File Layout
 
 ```
 .dev/specs/{spec-name}/
-├── spec.json              ← 계약 (Coordinator 소유)
-├── state.json             ← 현황 (Worker/Observer, cli 경유)
+├── spec.json              ← Contract (Coordinator-owned)
+├── state.json             ← Status (Worker/Observer, via cli)
 ├── feedback/
-│   ├── fb-001.json        ← Observer 피드백
+│   ├── fb-001.json        ← Observer feedback
 │   └── fb-002.json
-└── (git이 spec.json 이력 관리)
+└── (git manages spec.json history)
 ```
 
 ---
@@ -100,77 +100,77 @@ state.json  (mutable — 진행 현황)
 
 ```
 spec.json
-├── meta          — 이게 뭔가? (identity + provenance + strategic scope)
-│   ├── goal        — 무엇을 달성하는가 (전략)
-│   └── non_goals   — 무엇을 달성하지 않는가 (전략적 범위 제외)
-├── context       — 왜, 어떤 전제 위에? (background + rationale)
-├── requirements  — 어떤 행동이 있어야 하는가? (behavior contract)
-├── tasks         — 어떤 작업을 해야 하는가? (atomic work units)
-└── constraints   — 어떤 경계를 넘으면 안 되는가? (boundary guards)
+├── meta          — What is this? (identity + provenance + strategic scope)
+│   ├── goal        — What is being achieved (strategy)
+│   └── non_goals   — What is not being achieved (strategic scope exclusions)
+├── context       — Why, on what premise? (background + rationale)
+├── requirements  — What behaviors must exist? (behavior contract)
+├── tasks         — What work must be done? (atomic work units)
+└── constraints   — What boundaries must not be crossed? (boundary guards)
 ```
 
-### Orthogonality 검증
+### Orthogonality Verification
 
-| Section | 질문 | 시간축 | 소유 agent |
-|---------|------|--------|-----------|
-| meta | 이게 뭔가? + 뭘 안 하는가? | — | 생성자 |
-| context | 왜, 어떤 전제 위에? | 과거 → 현재 | 모두 읽기, Coordinator 수정 |
-| requirements | 어떤 행동이 있어야 하는가? | 현재 → 미래 | Observer 검증 |
-| tasks | 어떤 작업을 해야 하는가? | 현재 | Worker 수행 |
-| constraints | 어떤 경계를 넘으면 안 되는가? | 과거 보호 + 미래 금지 | Observer 감시 |
+| Section | Question | Time Axis | Owning Agent |
+|---------|----------|-----------|--------------|
+| meta | What is this? + What is not done? | — | Creator |
+| context | Why, on what premise? | Past → Present | All read, Coordinator modifies |
+| requirements | What behaviors must exist? | Present → Future | Observer verifies |
+| tasks | What work must be done? | Present | Worker executes |
+| constraints | What boundaries must not be crossed? | Past protection + Future prohibition | Observer monitors |
 
 ---
 
-## 기존 PLAN.md 대비 매핑
+## Mapping from Existing PLAN.md
 
-| Old PLAN.md Section | New spec.json | 비고 |
-|---------------------|---------------|------|
-| Context.Original Request | `context.request` | 분리 |
-| Context.Interview Summary | `context.interview[]` | **v4** 배열 + 구조화 |
-| Context.Research Findings | `context.research` | v3 신규 |
-| Context.Assumptions | `context.assumptions[]` | 구조화 (belief + if_wrong + impact) |
-| Work Objectives.Goal | `meta.goal` | 1문장 |
-| Work Objectives.Deliverables | `meta.deliverables[]` | **v4** 객체화 {path, description} |
-| Work Objectives.DoD | `requirements[].scenarios` | DoD = scenarios 집합 |
-| Non-goals | `meta.non_goals[]` | 전략적 범위 제외 |
-| Must NOT Do (글로벌) | `constraints[]` (typed) | must_not_do/preserve |
-| Must NOT Do (TODO별) | `tasks[].task_constraints[]` | **v4** typed object |
-| TODOs.Steps | `tasks[].steps[]` | 3개 이하 권장 |
-| TODOs.Inputs/Outputs | `tasks[].inputs[]` / `tasks[].outputs[]` | artifact 흐름 |
-| TODOs.References | `tasks[].references[]` | **v4** 객체화 {path, start_line, end_line} |
-| TODOs.Type (Work/Verification) | `tasks[].type` | work/verification 정의 명시 |
-| TODOs.Risk | `tasks[].risk` | **v4** 판단 기준 명시 |
-| TODOs.Acceptance Criteria | `requirements.scenarios` (via fulfills) | AC 중복 제거 |
-| Verification (A-items, H-items) | `requirements.scenarios[].verified_by` | 내장 |
-| Verification Gaps | `context.known_gaps[]` | **v4** 객체화 {gap, severity, mitigation} |
-| Dependency Graph | `tasks[].depends_on` + `tasks[].outputs` | 내장 + artifact 흐름 |
-| Commit Strategy | `tasks[].checkpoint{}` | **v4** condition enum화 |
-| Key Decisions | `context.decisions[]` | **v4** alternatives_rejected 객체화 |
-| Plan Approval Summary | `meta.approved_by/at` (optional) | 경량 |
-| **진행 현황** | **→ state.json으로 분리** | **v4 핵심 변경** |
+| Old PLAN.md Section | New spec.json | Notes |
+|---------------------|---------------|-------|
+| Context.Original Request | `context.request` | Separated |
+| Context.Interview Summary | `context.interview[]` | **v4** array + structured |
+| Context.Research Findings | `context.research` | New in v3 |
+| Context.Assumptions | `context.assumptions[]` | Structured (belief + if_wrong + impact) |
+| Work Objectives.Goal | `meta.goal` | 1 sentence |
+| Work Objectives.Deliverables | `meta.deliverables[]` | **v4** objectified {path, description} |
+| Work Objectives.DoD | `requirements[].scenarios` | DoD = set of scenarios |
+| Non-goals | `meta.non_goals[]` | Strategic scope exclusions |
+| Must NOT Do (global) | `constraints[]` (typed) | must_not_do/preserve |
+| Must NOT Do (per-TODO) | `tasks[].task_constraints[]` | **v4** typed object |
+| TODOs.Steps | `tasks[].steps[]` | 3 or fewer recommended |
+| TODOs.Inputs/Outputs | `tasks[].inputs[]` / `tasks[].outputs[]` | artifact flow |
+| TODOs.References | `tasks[].references[]` | **v4** objectified {path, start_line, end_line} |
+| TODOs.Type (Work/Verification) | `tasks[].type` | work/verification explicitly defined |
+| TODOs.Risk | `tasks[].risk` | **v4** judgment criteria defined |
+| TODOs.Acceptance Criteria | `requirements.scenarios` (via fulfills) | AC deduplication |
+| Verification (A-items, H-items) | `requirements.scenarios[].verified_by` | Built-in |
+| Verification Gaps | `context.known_gaps[]` | **v4** objectified {gap, severity, mitigation} |
+| Dependency Graph | `tasks[].depends_on` + `tasks[].outputs` | Built-in + artifact flow |
+| Commit Strategy | `tasks[].checkpoint{}` | **v4** condition enumerated |
+| Key Decisions | `context.decisions[]` | **v4** alternatives_rejected objectified |
+| Plan Approval Summary | `meta.approved_by/at` (optional) | Lightweight |
+| **Progress Status** | **→ Separated to state.json** | **v4 core change** |
 
-### 핵심 개선: 3중 중복 제거 (v3에서 해결, v4 유지)
+### Key Improvement: Triple Redundancy Elimination (resolved in v3, maintained in v4)
 
 ```
-OLD:  success_criteria + acceptance_criteria + a_items  (3곳에서 검증 중복)
-NEW:  requirements.scenarios (유일한 검증 소스)
+OLD:  success_criteria + acceptance_criteria + a_items  (verification duplicated in 3 places)
+NEW:  requirements.scenarios (sole source of verification)
 ```
 
 ---
 
-## verify 필드 타입 시스템
+## verify Field Type System
 
-`verified_by`와 `verify.type`이 1:1 매핑 (JSON Schema if/then으로 강제):
+`verified_by` and `verify.type` map 1:1 (enforced by JSON Schema if/then):
 
-| verified_by | verify.type | verify 내용 | 판정 방식 |
-|-------------|-------------|-------------|----------|
+| verified_by | verify.type | verify content | Judgment method |
+|-------------|-------------|----------------|-----------------|
 | `machine` | `command` | `run` + `expect` | exit code + optional regex |
-| `agent` | `assertion` | `checks[]` | Observer가 체크리스트 순회 |
-| `human` | `instruction` | `ask` | 사람 확인 |
+| `agent` | `assertion` | `checks[]` | Observer traverses checklist |
+| `human` | `instruction` | `ask` | Human confirmation |
 
-### expect 필드 (v4 확장)
+### expect field (v4 expansion)
 
-v3의 `"exit_0"` 문자열 → v4에서 객체화:
+v3's `"exit_0"` string → objectified in v4:
 
 ```json
 "expect": {
@@ -180,19 +180,19 @@ v3의 `"exit_0"` 문자열 → v4에서 객체화:
 }
 ```
 
-모든 하위 필드는 optional. 최소 `exit_code` 하나는 필수.
+All sub-fields are optional. At minimum, `exit_code` is required.
 
-### assertion checks[] (v4 신규)
+### assertion checks[] (new in v4)
 
-v3의 `"check": "자유 텍스트"` → v4에서 체크리스트화:
+v3's `"check": "free text"` → checklist in v4:
 
 ```json
 "verify": {
   "type": "assertion",
   "checks": [
-    "unknown type이 case문에서 default로 빠지는지 확인",
-    "exit 0이 명시적으로 호출되는지 확인",
-    "stderr에 warning 메시지가 출력되는지 확인"
+    "Verify that unknown type falls through to default in the case statement",
+    "Verify that exit 0 is explicitly called",
+    "Verify that a warning message is output to stderr"
   ]
 }
 ```
@@ -201,23 +201,23 @@ v3의 `"check": "자유 텍스트"` → v4에서 체크리스트화:
 
 ## Constraint Types
 
-| Type | 의미 | 예시 |
-|------|------|------|
-| `must_not_do` | 새 행동 금지 | "block reason 텍스트 변경 금지" |
-| `preserve` | 기존 행동 보호 (regression guard) | "execute hook 동작 유지" |
+| Type | Meaning | Example |
+|------|---------|---------|
+| `must_not_do` | Prohibit new behavior | "Do not change block reason text" |
+| `preserve` | Protect existing behavior (regression guard) | "Maintain execute hook behavior" |
 
-> **Note:** `scope_boundary`는 v4.1에서 제거됨. 전략적 범위 제외는 `meta.non_goals[]`로, 물리적 파일 범위는 `tasks[].file_scope[]`로 표현. 글로벌 파일 접근 제한이 필요하면 `must_not_do` + `verify` command로 대체.
+> **Note:** `scope_boundary` was removed in v4.1. Strategic scope exclusions go in `meta.non_goals[]`, physical file scope goes in `tasks[].file_scope[]`. If global file access restriction is needed, use `must_not_do` + `verify` command as a substitute.
 
-### 글로벌 vs task-local 제약 규칙
+### Global vs Task-local Constraint Rules
 
-- `constraints[]` = **글로벌** (전 task에 적용)
-- `tasks[].task_constraints[]` = **task-local** (해당 task에만 적용)
-- 2개 이상 task에 동일 제약 필요 → `constraints[]`로 승격
-- `tasks[].file_scope[]` 중복 시 cli가 warning 출력 (교차 검증)
+- `constraints[]` = **Global** (applies to all tasks)
+- `tasks[].task_constraints[]` = **Task-local** (applies only to that task)
+- If same constraint is needed for 2+ tasks → promote to `constraints[]`
+- cli outputs a warning when `tasks[].file_scope[]` overlaps (cross-validation)
 
-### task_constraints 구조화 (v4)
+### task_constraints Structure (v4)
 
-v3의 자유 텍스트 → v4에서 typed object:
+v3's free text → typed object in v4:
 
 ```json
 "task_constraints": [
@@ -229,85 +229,85 @@ v3의 자유 텍스트 → v4에서 typed object:
 
 ---
 
-## 모호함 해소 목록 (v3→v4)
+## Ambiguity Resolution List (v3→v4)
 
-### 치명적 (v4에서 해결)
+### Critical (resolved in v4)
 
-| # | 필드 | v3 문제 | v4 해결 |
-|---|------|--------|---------|
-| 1 | `behavior` + `strength` | 같은 정보 이중 인코딩 | **`strength` 제거**. behavior의 RFC2119 키워드(SHALL/MUST/SHOULD)가 유일 소스 |
-| 2 | `checkpoint.condition` | 자유 텍스트 ("all acceptance criteria pass") | enum: `"always"` \| `"on_fulfill"` \| `"manual"` |
-| 3 | `expect` | 문자열 `"exit_0"` | 객체: `{exit_code, stdout_contains?, stderr_empty?}` |
-| 4 | `references[]` | 문자열 `"file:40-75"` 포맷 미정의 | 객체: `{path, start_line?, end_line?}` |
-| 5 | `task_constraints[]` | 자유 텍스트 | typed: `{type, target}` |
+| # | Field | v3 Problem | v4 Solution |
+|---|-------|-----------|-------------|
+| 1 | `behavior` + `strength` | Same information double-encoded | **`strength` removed**. RFC2119 keywords (SHALL/MUST/SHOULD) in behavior are the sole source |
+| 2 | `checkpoint.condition` | Free text ("all acceptance criteria pass") | enum: `"always"` \| `"on_fulfill"` \| `"manual"` |
+| 3 | `expect` | String `"exit_0"` | Object: `{exit_code, stdout_contains?, stderr_empty?}` |
+| 4 | `references[]` | String `"file:40-75"` format undefined | Object: `{path, start_line?, end_line?}` |
+| 5 | `task_constraints[]` | Free text | typed: `{type, target}` |
 
-### 중간 (v4에서 해결)
+### Medium (resolved in v4)
 
-| # | 필드 | v3 문제 | v4 해결 |
-|---|------|--------|---------|
-| 6 | `status` (tasks/requirements) | 런타임 상태가 spec에 혼재 | **state.json으로 이동**. spec에서 제거 |
-| 7 | `risk` | 판단 기준 없음 | 정의: low=단일파일+reversible, medium=다중파일 or side-effect, high=삭제/외부연동/비가역 |
-| 8 | `type` | "테스트 코드 작성"이 work인지 verification인지 | 정의: work=artifact 생성/변경, verification=read-only 검증만 (파일 생성/수정 금지) |
-| 9 | `priority` | 숫자 범위/방향 미정의 | 정의: 1=highest, 5=lowest (정수). 동일 우선순위 허용 |
-| 10 | `inputs[].artifact` | artifact ID가 outputs에 존재해야 함이 암묵적 | lint 규칙: 모든 `inputs[].artifact`는 해당 `from_task`의 `outputs[].id`에 존재해야 함 |
-| 11 | `scenarios given/when/then` | Gherkin 강제 여부 불명 | 규칙: Gherkin 형식 필수. 각 필드 1문장 |
-| 12 | `context.interview` | 단일 문자열에 여러 결정 압축 | 배열로 전환: `[{topic, decision}]` |
+| # | Field | v3 Problem | v4 Solution |
+|---|-------|-----------|-------------|
+| 6 | `status` (tasks/requirements) | Runtime state mixed in spec | **Moved to state.json**. Removed from spec |
+| 7 | `risk` | No judgment criteria | Defined: low=single file+reversible, medium=multiple files or side-effects, high=deletion/external integration/irreversible |
+| 8 | `type` | Unclear if "writing test code" is work or verification | Defined: work=creates/changes artifacts, verification=read-only validation only (no file creation/modification) |
+| 9 | `priority` | Number range/direction undefined | Defined: 1=highest, 5=lowest (integer). Equal priority allowed |
+| 10 | `inputs[].artifact` | Implicit that artifact ID must exist in outputs | lint rule: all `inputs[].artifact` must exist in the `outputs[].id` of the referenced `from_task` |
+| 11 | `scenarios given/when/then` | Whether Gherkin is required was unclear | Rule: Gherkin format required. One sentence per field |
+| 12 | `context.interview` | Multiple decisions compressed into a single string | Converted to array: `[{topic, decision}]` |
 
-### 경미 (v4에서 해결)
+### Minor (resolved in v4)
 
-| # | 필드 | v3 문제 | v4 해결 |
-|---|------|--------|---------|
-| 13 | `meta.source` | 의미 불명확 | 필드명 변경: `derived_from` |
-| 14 | `meta.deliverables[]` | path + 설명 혼합 문자열 | 객체: `{path, description}` |
-| 15 | `constraints[].verify.check` | agent마다 다르게 수행 | `checks[]` 체크리스트로 분해 |
-| 16 | `known_gaps[]` | 문자열, 심각도 없음 | 객체: `{gap, severity, mitigation}` |
-| 17 | `decisions[].alternatives_rejected` | 거부 사유 없음 | 객체: `[{option, reason}]` |
-| 18 | `meta.workflow_notes` | 정의만 있고 용도 불명 | 제거. 필요 시 `context.research`에 포함 |
-| 19 | `assumptions[].if_wrong` | 영향도 불명 | `impact` 필드 추가: `"minor"` \| `"major"` \| `"critical"` |
+| # | Field | v3 Problem | v4 Solution |
+|---|-------|-----------|-------------|
+| 13 | `meta.source` | Unclear meaning | Field renamed: `derived_from` |
+| 14 | `meta.deliverables[]` | Mixed path + description string | Object: `{path, description}` |
+| 15 | `constraints[].verify.check` | Different execution by each agent | Decomposed into `checks[]` checklist |
+| 16 | `known_gaps[]` | String, no severity | Object: `{gap, severity, mitigation}` |
+| 17 | `decisions[].alternatives_rejected` | No rejection reason | Object: `[{option, reason}]` |
+| 18 | `meta.workflow_notes` | Only defined, purpose unclear | Removed. Include in `context.research` if needed |
+| 19 | `assumptions[].if_wrong` | Impact unclear | Added `impact` field: `"minor"` \| `"major"` \| `"critical"` |
 
 ---
 
-## Field Definitions (v4 신규)
+## Field Definitions (new in v4)
 
-모든 enum/타입의 정확한 정의:
+Exact definitions for all enums/types:
 
 ### task.type
 
-| 값 | 정의 | 허용 action |
-|----|------|------------|
-| `work` | artifact를 생성하거나 변경하는 작업 | 파일 생성, 수정, 삭제 |
-| `verification` | read-only 검증만 수행 | 파일 읽기, 명령 실행. **Edit/Write 금지** |
+| Value | Definition | Allowed Actions |
+|-------|-----------|-----------------|
+| `work` | Work that creates or modifies artifacts | File creation, modification, deletion |
+| `verification` | Performs read-only verification only | File reading, command execution. **Edit/Write prohibited** |
 
 ### task.risk
 
-| 값 | 기준 | 예시 |
-|----|------|------|
-| `low` | 단일 파일, reversible, side-effect 없음 | 함수 1개 추가 |
-| `medium` | 다중 파일, 또는 side-effect 있음 | settings.json + script 동시 수정 |
-| `high` | 파일 삭제, 외부 연동, 비가역적 변경 | 기존 hook 삭제, API endpoint 변경 |
+| Value | Criteria | Example |
+|-------|----------|---------|
+| `low` | Single file, reversible, no side-effects | Adding one function |
+| `medium` | Multiple files, or has side-effects | Simultaneously modifying settings.json + script |
+| `high` | File deletion, external integration, irreversible change | Deleting existing hook, changing API endpoint |
 
 ### checkpoint.condition
 
-| 값 | 의미 |
-|----|------|
-| `always` | task 완료 즉시 커밋 |
-| `on_fulfill` | fulfills에 명시된 requirement가 모두 pass일 때 커밋 |
-| `manual` | Coordinator/사람이 명시적으로 지시할 때 커밋 |
+| Value | Meaning |
+|-------|---------|
+| `always` | Commit immediately on task completion |
+| `on_fulfill` | Commit when all requirements specified in fulfills have passed |
+| `manual` | Commit when Coordinator/human explicitly instructs |
 
 ### requirement.priority
 
-1=highest, 5=lowest. 동일 우선순위 가능. Worker는 낮은 숫자부터 처리.
+1=highest, 5=lowest. Equal priority allowed. Workers process from lowest number first.
 
 ### task_constraints.type
 
-| 값 | 정의 | target 예시 |
-|----|------|------------|
-| `no_modify` | 해당 파일/모듈 수정 금지 | `"loop-state.js"` |
-| `no_delete` | 해당 파일/심볼 삭제 금지 | `"chain-stop-hook.sh"` |
-| `preserve_string` | 특정 문자열 값 변경 금지 | `"blockReason values"` |
-| `read_only` | 읽기만 허용 (verification task용) | `"all files"` |
+| Value | Definition | target example |
+|-------|-----------|----------------|
+| `no_modify` | Prohibit modification of the file/module | `"loop-state.js"` |
+| `no_delete` | Prohibit deletion of the file/symbol | `"chain-stop-hook.sh"` |
+| `preserve_string` | Prohibit changing specific string values | `"blockReason values"` |
+| `read_only` | Allow reading only (for verification tasks) | `"all files"` |
 
-확장 시 이 테이블에 추가하고 JSON Schema 업데이트 필수.
+When extending, add to this table and update JSON Schema as well.
 
 ---
 
@@ -319,15 +319,15 @@ v3의 자유 텍스트 → v4에서 typed object:
 
   "meta": {
     "name": "stop-router",
-    "goal": "chain/rv/rph 3개 Stop hook을 단일 stop-router로 통합",
+    "goal": "Consolidate chain/rv/rph 3 Stop hooks into a single stop-router",
     "non_goals": [
-      "execute hook 통합 (별도 유지)",
-      "hook 테스트 자동화 프레임워크 구축"
+      "execute hook consolidation (keep separate)",
+      "Build hook test automation framework"
     ],
     "deliverables": [
-      { "path": "scripts/stop-router.sh", "description": "단일 Stop hook entry point" },
-      { "path": "cli/src/handlers/stop-evaluate.js", "description": "통합 평가 핸들러" },
-      { "path": ".claude/settings.json", "description": "Stop hook 등록 업데이트" }
+      { "path": "scripts/stop-router.sh", "description": "Single Stop hook entry point" },
+      { "path": "cli/src/handlers/stop-evaluate.js", "description": "Unified evaluation handler" },
+      { "path": ".claude/settings.json", "description": "Stop hook registration update" }
     ],
     "derived_from": ".dev/specs/stop-router/PLAN.md",
     "created_at": "2026-03-04T10:00:00Z",
@@ -335,44 +335,44 @@ v3의 자유 텍스트 → v4에서 typed object:
   },
 
   "context": {
-    "request": "Stop hook 4개를 단일 stop-router.sh + dev-cli stop-evaluate로 통합",
+    "request": "Consolidate 4 Stop hooks into a single stop-router.sh + dev-cli stop-evaluate",
     "interview": [
       { "topic": "crash safety", "decision": "accept risk" },
-      { "topic": "execute hook", "decision": "제외 (별도 유지)" },
+      { "topic": "execute hook", "decision": "exclude (keep separate)" },
       { "topic": "priority", "decision": "execute > chain > rv > rph" },
-      { "topic": "old scripts", "decision": "chain/rv/rph 삭제" }
+      { "topic": "old scripts", "decision": "delete chain/rv/rph" }
     ],
-    "research": "3개 hook(chain/rv/rph)은 이미 dev-cli 얇은 래퍼(34-75줄). execute hook만 155줄 직접 shell. ARCHITECTURE_REVIEW.md에서 단일 디스패처 이미 제안됨.",
+    "research": "3 hooks (chain/rv/rph) are already thin dev-cli wrappers (34-75 lines). Only execute hook is 155 lines of direct shell. Single dispatcher already proposed in ARCHITECTURE_REVIEW.md.",
     "assumptions": [
       {
         "id": "A1",
-        "belief": "기존 Stop hook들은 exit code로 성공/실패를 판단한다",
-        "if_wrong": "handler 인터페이스 재설계 필요",
+        "belief": "Existing Stop hooks determine success/failure by exit code",
+        "if_wrong": "Handler interface redesign required",
         "impact": "major"
       },
       {
         "id": "A2",
-        "belief": "settings.json Stop 블록에 여러 hook 등록 가능",
-        "if_wrong": "단일 dispatcher 필수",
+        "belief": "Multiple hooks can be registered in settings.json Stop block",
+        "if_wrong": "Single dispatcher required",
         "impact": "minor"
       }
     ],
     "decisions": [
       {
         "id": "D1",
-        "decision": "case문 기반 dispatcher",
-        "rationale": "handler 추가 시 1줄 추가, 가독성 높음",
+        "decision": "case-statement based dispatcher",
+        "rationale": "Adding a handler requires 1 line, high readability",
         "alternatives_rejected": [
-          { "option": "if-else chain", "reason": "handler 수 증가 시 가독성 저하" },
-          { "option": "JSON lookup table", "reason": "과도한 추상화, 디버깅 어려움" }
+          { "option": "if-else chain", "reason": "Readability degrades as handler count increases" },
+          { "option": "JSON lookup table", "reason": "Over-abstraction, difficult to debug" }
         ]
       }
     ],
     "known_gaps": [
       {
-        "gap": "자동 통합 테스트 없음",
+        "gap": "No automated integration tests",
         "severity": "medium",
-        "mitigation": "hooks는 manual Claude session으로 테스트. 향후 sandbox 자동화 검토"
+        "mitigation": "hooks tested via manual Claude session. Future sandbox automation under consideration"
       }
     ]
   },
@@ -404,9 +404,9 @@ v3의 자유 텍스트 → v4에서 typed object:
           "verify": {
             "type": "assertion",
             "checks": [
-              "unknown type이 case문에서 default/*)로 빠지는지 확인",
-              "exit 0이 명시적으로 호출되는지 확인",
-              "stderr에 warning 메시지가 출력되는지 확인"
+              "Verify that unknown type falls through to default/*) in the case statement",
+              "Verify that exit 0 is explicitly called",
+              "Verify that a warning message is output to stderr"
             ]
           }
         }
@@ -580,20 +580,20 @@ v3의 자유 텍스트 → v4에서 typed object:
     {
       "id": "C1",
       "type": "must_not_do",
-      "rule": "block reason 텍스트를 변경하지 않는다",
+      "rule": "Do not change block reason text",
       "verified_by": "agent",
       "verify": {
         "type": "assertion",
         "checks": [
-          "git diff에서 blockReason 문자열이 변경되지 않았는지 확인",
-          "새 handler의 blockReason이 기존과 byte-for-byte 동일한지 확인"
+          "Verify that blockReason strings have not changed in git diff",
+          "Verify that blockReason in new handler is byte-for-byte identical to original"
         ]
       }
     },
     {
       "id": "C2",
       "type": "preserve",
-      "rule": "기존 execute hook의 동작이 유지되어야 한다",
+      "rule": "Existing execute hook behavior must be preserved",
       "verified_by": "machine",
       "verify": {
         "type": "command",
@@ -604,7 +604,7 @@ v3의 자유 텍스트 → v4에서 typed object:
     {
       "id": "C3",
       "type": "must_not_do",
-      "rule": "허용 경로 외 파일 수정 금지 (scripts/, .claude/settings.json, cli/ 만 허용)",
+      "rule": "Prohibit file modification outside allowed paths (only scripts/, .claude/settings.json, cli/ permitted)",
       "verified_by": "machine",
       "verify": {
         "type": "command",
@@ -616,7 +616,7 @@ v3의 자유 텍스트 → v4에서 typed object:
 }
 ```
 
-### state.json 예시 (별도 파일)
+### state.json Example (Separate File)
 
 ```json
 {
@@ -650,42 +650,42 @@ v3의 자유 텍스트 → v4에서 typed object:
 }
 ```
 
-### state.json task.status 상태머신
+### state.json task.status State Machine
 
 ```
 pending → in_progress → done
-                      → blocked_by (depends_on 미완료 시)
+                      → blocked_by (when depends_on not complete)
 ```
 
-- `pending`: 아직 시작되지 않음
-- `in_progress`: Worker가 작업 중
-- `done`: 완료
-- `blocked_by`: depends_on에 명시된 task가 아직 done이 아님 (+ `blocked_by` 필드에 task ID 목록)
+- `pending`: Not yet started
+- `in_progress`: Worker is working on it
+- `done`: Complete
+- `blocked_by`: A task specified in depends_on is not yet done (+ `blocked_by` field contains task ID list)
 
 ---
 
-## v3→v4 변경 요약
+## v3→v4 Change Summary
 
-| 항목 | v3 | v4 | 이유 |
-|------|----|----|------|
-| `strength` 필드 | `"must"` | **제거** | behavior의 RFC2119 키워드가 유일 소스 |
-| `status` (spec내) | `"pending"` | **state.json으로 이동** | 계약/현황 분리 |
-| `verified` (assumptions) | spec 내 boolean | **state.json으로 이동** | 런타임 상태 |
-| `checkpoint.condition` | 자유 텍스트 | enum: `always\|on_fulfill\|manual` | 파싱 가능 |
-| `expect` | `"exit_0"` 문자열 | 객체: `{exit_code, stdout_contains?, ...}` | 표현력 확장 |
-| `references[]` | 문자열 | 객체: `{path, start_line?, end_line?}` | 포맷 명확화 |
-| `task_constraints[]` | 자유 텍스트 | typed: `{type, target}` | machine-check 가능 |
-| `deliverables[]` | 문자열 | 객체: `{path, description}` | 구조화 |
-| `interview` | 단일 문자열 | 배열: `[{topic, decision}]` | 항목별 분리 |
-| `known_gaps[]` | 문자열 | 객체: `{gap, severity, mitigation}` | 심각도+대응 포함 |
-| `alternatives_rejected` | 문자열 배열 | 객체: `[{option, reason}]` | 거부 사유 포함 |
-| `assumptions[].impact` | 없음 | `minor\|major\|critical` | 영향도 명시 |
-| `meta.source` | 의미 불명 | `derived_from`으로 변경 | 명확화 |
-| `meta.workflow_notes` | 용도 불명 | **제거** | 불필요 |
-| `verify.check` (assertion) | 단일 문자열 | `checks[]` 체크리스트 | 판정 편차 축소 |
-| T2 (1 task) | 3개 action 묶음 | T2+T3으로 분리 | 원자성 강화 |
-| T3 (1 verification) | 6개 검증 묶음 | T4+T5로 분리 | 실패 지점 추적 |
-| scope_boundary | 별도 type | **제거** → `meta.non_goals` + `tasks[].file_scope` | orthogonality 개선 |
+| Item | v3 | v4 | Reason |
+|------|----|----|--------|
+| `strength` field | `"must"` | **Removed** | RFC2119 keywords in behavior are the sole source |
+| `status` (in spec) | `"pending"` | **Moved to state.json** | Contract/status separation |
+| `verified` (assumptions) | boolean in spec | **Moved to state.json** | Runtime state |
+| `checkpoint.condition` | Free text | enum: `always\|on_fulfill\|manual` | Parseable |
+| `expect` | `"exit_0"` string | Object: `{exit_code, stdout_contains?, ...}` | Expanded expressiveness |
+| `references[]` | String | Object: `{path, start_line?, end_line?}` | Format clarification |
+| `task_constraints[]` | Free text | typed: `{type, target}` | Machine-checkable |
+| `deliverables[]` | String | Object: `{path, description}` | Structured |
+| `interview` | Single string | Array: `[{topic, decision}]` | Per-item separation |
+| `known_gaps[]` | String | Object: `{gap, severity, mitigation}` | Includes severity+response |
+| `alternatives_rejected` | String array | Object: `[{option, reason}]` | Includes rejection reason |
+| `assumptions[].impact` | None | `minor\|major\|critical` | Impact explicitly stated |
+| `meta.source` | Unclear meaning | Changed to `derived_from` | Clarification |
+| `meta.workflow_notes` | Purpose unclear | **Removed** | Unnecessary |
+| `verify.check` (assertion) | Single string | `checks[]` checklist | Reduced judgment variance |
+| T2 (1 task) | 3 actions bundled | Split into T2+T3 | Stronger atomicity |
+| T3 (1 verification) | 6 verifications bundled | Split into T4+T5 | Failure point tracking |
+| scope_boundary | Separate type | **Removed** → `meta.non_goals` + `tasks[].file_scope` | Improved orthogonality |
 
 ---
 
@@ -693,89 +693,89 @@ pending → in_progress → done
 
 ### Schema v1 Review (24/30 → APPROVE)
 
-Members: Codex(OpenAI), Chairman(Claude). Gemini 429 실패.
+Members: Codex(OpenAI), Chairman(Claude). Gemini 429 failure.
 
-| Rubric | Codex | Claude | 합의 |
-|--------|-------|--------|------|
-| R1 모호함 제거 | 4 | 4 | 4 |
-| R2 검증/재현 | 4 | 4 | 4 |
-| R3 Task 원자성 | 4 | 4 | 4 |
-| R4 제약 명확성 | 4 | 4 | 4 |
-| R5 중복 제거 | 5 | 5 | 5 |
-| R6 내용 누락 | **3** | **3** | **3** |
+| Rubric | Codex | Claude | Consensus |
+|--------|-------|--------|-----------|
+| R1 Ambiguity removal | 4 | 4 | 4 |
+| R2 Verification/reproducibility | 4 | 4 | 4 |
+| R3 Task atomicity | 4 | 4 | 4 |
+| R4 Constraint clarity | 4 | 4 | 4 |
+| R5 Redundancy elimination | 5 | 5 | 5 |
+| R6 Missing content | **3** | **3** | **3** |
 | TOTAL | 24 | 24 | 24/30 |
 
-**v1 주요 약점:** context/assumptions/decisions 누락, verify가 plain string
+**v1 Key weaknesses:** Missing context/assumptions/decisions, verify was plain string
 
-### v1→v2 변경사항 (Schema 내부 버전)
+### v1→v2 Changes (Schema internal version)
 
-1. `context` 섹션 신설 (summary, assumptions[], decisions[])
+1. `context` section added (summary, assumptions[], decisions[])
 2. `verify` string → typed object ({type, run/check/ask, expect})
-3. `tasks[].checkpoint: boolean` 추가
+3. `tasks[].checkpoint: boolean` added
 
 ### Schema v2 Review (25.5/30 → APPROVE, +1.5)
 
-| Rubric | Codex | Claude | 합의 | v1→v2 |
-|--------|-------|--------|------|-------|
-| R1 모호함 제거 | 4 | 4 | 4 | = |
-| R2 검증/재현 | **5** | **5** | **5** | **+1** |
-| R3 Task 원자성 | 4 | 4 | 4 | = |
-| R4 제약 명확성 | 4 | 4.5 | 4 | = |
-| R5 중복 제거 | 4 | 5 | 4.5 | -0.5 |
-| R6 내용 누락 | **4** | **4.5** | **4** | **+1** |
+| Rubric | Codex | Claude | Consensus | v1→v2 |
+|--------|-------|--------|-----------|-------|
+| R1 Ambiguity removal | 4 | 4 | 4 | = |
+| R2 Verification/reproducibility | **5** | **5** | **5** | **+1** |
+| R3 Task atomicity | 4 | 4 | 4 | = |
+| R4 Constraint clarity | 4 | 4.5 | 4 | = |
+| R5 Redundancy elimination | 4 | 5 | 4.5 | -0.5 |
+| R6 Missing content | **4** | **4.5** | **4** | **+1** |
 | TOTAL | 25 | 27 | 25.5/30 | +1.5 |
 
-### Schema v3 Review (21/30 — 더 엄격한 기준 적용)
+### Schema v3 Review (21/30 — Stricter criteria applied)
 
-Members: Codex(GPT-5.3), Chairman(Claude Opus 4.6). Gemini 429 실패.
+Members: Codex(GPT-5.3), Chairman(Claude Opus 4.6). Gemini 429 failure.
 
-**주의:** v2보다 점수가 낮은 이유는 평가 기준이 변경됨. v2까지는 "스키마 설계 자체"만 평가, v3부터는 "실전 3-agent 시스템 작동 가능성"까지 포함.
+**Note:** The reason for lower scores than v2 is that evaluation criteria changed. Through v2, only "schema design itself" was evaluated; from v3 onward, "real-world 3-agent system operability" is also included.
 
-| Rubric | Codex | Claude | 합의 |
-|--------|-------|--------|------|
-| R1 모호함 제거 | 3 | 3.5 | 3 |
-| R2 검증/재현 | 4 | 4 | 4 |
-| R3 Task 원자성 | 3 | 3 | 3 |
-| R4 제약 명확성 | 3 | 3.5 | 3 |
-| R5 중복 제거 | 4 | 3.5 | 4 |
-| R6 내용 누락 | 4 | 4.5 | 4 |
+| Rubric | Codex | Claude | Consensus |
+|--------|-------|--------|-----------|
+| R1 Ambiguity removal | 3 | 3.5 | 3 |
+| R2 Verification/reproducibility | 4 | 4 | 4 |
+| R3 Task atomicity | 3 | 3 | 3 |
+| R4 Constraint clarity | 3 | 3.5 | 3 |
+| R5 Redundancy elimination | 4 | 3.5 | 4 |
+| R6 Missing content | 4 | 4.5 | 4 |
 | TOTAL | 21 | 22 | 21/30 |
 
-**v3 주요 약점 (v4에서 해결):**
-- behavior vs strength 중복 → strength 제거
-- status/verified가 spec에 혼재 → state.json 분리
-- checkpoint.condition 자유 텍스트 → enum
-- references/task_constraints 비구조화 → 객체화
-- T2 원자성 부족 → T2/T3 분리
-- T3 verification 묶음 → T4/T5 분리
-- scope_boundary vs file_scope 충돌 → scope_boundary 제거, non_goals + file_scope로 대체
+**v3 Key weaknesses (resolved in v4):**
+- behavior vs strength duplication → strength removed
+- status/verified mixed in spec → state.json separation
+- checkpoint.condition free text → enum
+- references/task_constraints unstructured → objectified
+- T2 atomicity insufficient → T2/T3 separated
+- T3 verification bundle → T4/T5 separated
+- scope_boundary vs file_scope conflict → scope_boundary removed, replaced with non_goals + file_scope
 
-### v3→v4 핵심 변경 근거
+### v3→v4 Core Change Rationale
 
-| 문제 카테고리 | v3 이슈 수 | v4 해결 수 |
-|-------------|-----------|-----------|
-| 치명적 모호함 | 5 | 5 (전수 해결) |
-| 중간 모호함 | 7 | 7 (전수 해결) |
-| 경미 모호함 | 7 | 7 (전수 해결) |
-| 구조적 문제 | 1 (spec/state 혼재) | 1 (분리 완료) |
+| Problem Category | v3 Issue Count | v4 Resolved Count |
+|-----------------|----------------|-------------------|
+| Critical ambiguity | 5 | 5 (all resolved) |
+| Medium ambiguity | 7 | 7 (all resolved) |
+| Minor ambiguity | 7 | 7 (all resolved) |
+| Structural issues | 1 (spec/state mixed) | 1 (separated) |
 
 ---
 
-## PLAN.md 대비 장단점
+## Advantages and Disadvantages vs PLAN.md
 
-### 장점
-1. **프로그래매틱 파싱** — Observer가 `jq`로 즉시 검증 (PLAN.md는 regex 파싱)
-2. **경계 명시** — requirements/tasks/constraints 분리로 관심사 혼합 방지
-3. **diff 추적** — JSON 구조 변경이 git diff로 명확
-4. **자동 검증 파이프라인** — `verify.type: command` → CI/Observer 직결
-5. **3중 중복 해결** — scenarios가 유일한 검증 소스
-6. **계약/현황 분리** — spec은 불변, state는 자유 변경
+### Advantages
+1. **Programmatic parsing** — Observer can immediately verify with `jq` (PLAN.md requires regex parsing)
+2. **Explicit boundaries** — requirements/tasks/constraints separation prevents concern mixing
+3. **Diff tracking** — JSON structure changes are clear in git diff
+4. **Automated verification pipeline** — `verify.type: command` → direct CI/Observer integration
+5. **Triple redundancy resolved** — scenarios are the sole verification source
+6. **Contract/status separation** — spec is immutable, state can change freely
 
-### 단점
-1. **작성 비용** — specify skill이 자동 생성해야 실용적
-2. **탐색적 사고 기록 약화** — 자유 서술이 구조화 필드로 축소
-3. **raw 가독성** — 사람이 직접 읽기에는 PLAN.md가 더 편함
-4. **스키마 강제 필요** — JSON Schema 없이는 "구조화된 마크다운"에 불과
+### Disadvantages
+1. **Authoring cost** — Practical only if specify skill auto-generates
+2. **Reduced exploratory thinking** — Free-form writing compressed into structured fields
+3. **Raw readability** — PLAN.md is easier for humans to read directly
+4. **Schema enforcement required** — Without JSON Schema, it's just "structured markdown"
 
 ---
 
@@ -783,21 +783,21 @@ Members: Codex(GPT-5.3), Chairman(Claude Opus 4.6). Gemini 429 실패.
 
 ### Phase 1: Schema + cli (DONE)
 
-- [x] JSON Schema validation 파일 작성 (dev-spec-v4.schema.json, dev-state-v1.schema.json)
-- [x] cli에 spec/state 조작 커맨드 구현
-  - `cli spec validate` — spec.json을 schema로 검증
-  - `cli state init` — spec.json에서 state.json 초기 생성
-  - `cli state update T1 --done` — state.json 업데이트
-  - `cli state check` — spec_hash 정합성 + orphan key 검증
-  - `cli state sync` — spec 변경 후 state 동기화
-  - `cli feedback create "message"` — feedback 파일 생성
-  - `cli spec amend --reason fb-001` — spec 수정 (placeholder)
+- [x] JSON Schema validation file written (dev-spec-v4.schema.json, dev-state-v1.schema.json)
+- [x] spec/state manipulation commands implemented in cli
+  - `cli spec validate` — validate spec.json against schema
+  - `cli state init` — generate initial state.json from spec.json
+  - `cli state update T1 --done` — update state.json
+  - `cli state check` — spec_hash consistency + orphan key validation
+  - `cli state sync` — sync state after spec change
+  - `cli feedback create "message"` — create feedback file
+  - `cli spec amend --reason fb-001` — modify spec (placeholder)
 
-### Phase 2: /specify 통합 + Observer/Coordinator
+### Phase 2: /specify Integration + Observer/Coordinator
 
-- [ ] /specify skill에서 spec.json v4 + state.json 생성 흐름 구현
-- [ ] Observer agent가 spec.json + state.json을 읽고 feedback.json을 작성하는 프로토타입
-- [ ] Coordinator가 feedback → spec amend 흐름 구현
-- [ ] pre-commit hook: spec/state 직접 수정 차단 (cli 경유만 허용)
-- [ ] lint 규칙: inputs[].artifact ↔ outputs[].id 교차 검증
-- [ ] lint 규칙: tasks[].file_scope 중복 경고 (cli spec check에 구현 완료)
+- [ ] Implement spec.json v4 + state.json generation flow in /specify skill
+- [ ] Prototype Observer agent reading spec.json + state.json and writing feedback.json
+- [ ] Implement Coordinator feedback → spec amend flow
+- [ ] pre-commit hook: block direct spec/state modification (cli only)
+- [ ] lint rule: inputs[].artifact ↔ outputs[].id cross-validation
+- [ ] lint rule: tasks[].file_scope overlap warning (implemented in cli spec check)

@@ -1,7 +1,7 @@
 ---
 name: specify
 description: |
-  Full-featured spec generator that outputs unified spec.json v4 via cli.
+  Full-featured spec generator that outputs unified spec.json v5 via cli.
   Interview-driven planning with mode support (quick/standard × interactive/autopilot).
   Incremental spec.json build via cli spec merge.
   Use when: "/specify", "specify", "plan this", "계획 짜줘", "스펙 만들어줘"
@@ -20,7 +20,7 @@ validate_prompt: |
   Output files must be in .dev/specs/{name}/ directory.
 ---
 
-# /specify — Full Spec Generator (spec.json v4)
+# /specify — Full Spec Generator (spec.json v5)
 
 Generate a schema-validated, machine-executable spec.json through interview-driven planning.
 Single file output — no DRAFT.md, no PLAN.md. All data flows through `hoyeon-cli spec` commands.
@@ -246,54 +246,67 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json '{
 }'
 ```
 
-### Interactive → Decisions
+### Interactive → Mirror + Decisions
 
-Use `AskUserQuestion` for boundaries, trade-offs, success criteria only.
-Propose based on research; don't ask what you can discover.
+#### Step 0: Mirror Protocol
 
-#### What to ASK (user knows, agent doesn't)
+Before asking any questions, mirror the user's goal back to confirm alignment:
 
-Use `AskUserQuestion` only for:
-- **Non-goals**: "What is this project NOT trying to achieve?" (→ merge into `meta.non_goals`)
-- **Boundaries**: "Any restrictions on what not to do?"
-- **Trade-offs**: Only when multiple valid options exist and exploration doesn't resolve them
-- **Success Criteria**: "When is this considered complete?"
+```
+"I understand you want [goal]. Scope: [what's included / what's excluded].
+ Done when: [success criteria].
+ I'll handle [agent scope]. You'll need to [human scope, if any].
+ Does this match?"
+```
+
+**Mirror rules:**
+- Mirror confirms **goal, scope, and done criteria ONLY**. Do NOT make technology choices, implementation decisions, or architectural picks in the mirror — those belong in Step 1 Questions.
+- Mirror must include at least one **inference** beyond the literal request (assumed scope boundary or success criterion). A parrot echo ("You want auth, correct?") confirms nothing. An interpretive mirror ("You want auth middleware for /api/* routes, with session management, correct?") reveals scope assumptions the user can correct — without prescribing *how* (JWT, sessions, etc.).
+- If you cannot fill goal, scope, or done criteria → ask that specific item directly instead of mirroring
+- Max 3 mirror attempts. If still unclear after 3 → transition to questions with the unfilled items
+- When the user corrects, update understanding and re-mirror
+
+After Mirror is confirmed, merge the confirmed goal:
+
+```bash
+hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
+  "context": {
+    "confirmed_goal": "[confirmed goal statement from mirror]"
+  }
+}'
+```
+
+#### Step 1: Structured Questions (MANDATORY, iterative)
+
+**This step MUST run after Mirror confirmation.** Even if the Mirror feels "complete", there are always technology choices, trade-offs, and constraints that need explicit user input.
+
+Ask only what you cannot discover. Internally evaluate: scope boundaries? dependencies? constraints? success criteria? technology choices? — then surface the gaps as questions.
+
+**Question rules:**
+- **Minimum 2 questions, max 5 per round**, prioritized by importance (not numeric scoring — use judgment)
+- Each question includes a **recommended answer** based on Discovery research
+- Technology/framework choices deferred from Mirror MUST appear here as questions
+- User can **skip** any question ("leave it to the agent's judgment")
+- Propose based on research; don't ask what you can discover
+
+**What to DISCOVER** (agent finds — do NOT ask):
+- File locations, existing patterns, integration points, project commands
+
+**What to PROPOSE** (research first, then suggest):
+- After exploration, propose instead of asking open-ended questions
 
 ```
 AskUserQuestion(
-  question: "Which authentication method should we use?",
+  question: "[specific question about boundary/trade-off]",
   options: [
-    { label: "JWT (Recommended)", description: "jsonwebtoken already installed" },
-    { label: "Session", description: "Requires server state management" },
-    { label: "Need comparison", description: "Research with tech-decision" }
+    { label: "[Option A] (Recommended)", description: "[why, based on research]" },
+    { label: "[Option B]", description: "[trade-off]" },
+    { label: "Agent decides", description: "Use your best judgment" }
   ]
 )
 ```
 
-#### What to DISCOVER (agent finds)
-
-Agent explores — do NOT ask the user about these:
-- File locations
-- Existing patterns to follow
-- Integration points
-- Project commands (lint, test, build)
-
-#### What to PROPOSE (research first, then suggest)
-
-After exploration completes, propose instead of asking:
-
-```
-"Based on my investigation, this approach should work:
-- Middleware at src/middleware/auth.ts
-- Following existing logging.ts pattern
-- Using jwt.ts verify() function
-
-Let me know if you prefer a different approach."
-```
-
-> **Core Principle**: Minimize questions, maximize proposals based on research.
-
-After each decision, immediately merge (continuous update):
+After each round of questions, immediately merge decisions:
 
 ```bash
 hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json '{
@@ -305,6 +318,44 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json '{
   }
 }'
 ```
+
+#### Step 2: Interview Progress Check (iterative loop)
+
+After each question round, present a progress summary and let the user decide whether to continue:
+
+```markdown
+## Interview Progress
+
+### Confirmed (what we know)
+- Goal: [confirmed goal from Mirror]
+- D1: [decision 1]
+- D2: [decision 2]
+- ...
+
+### Open Items (what we could still clarify)
+- [remaining gap 1 — e.g., "error handling strategy not discussed"]
+- [remaining gap 2 — e.g., "performance requirements unclear"]
+- [or "None — all major areas covered"]
+```
+
+Then ask:
+
+```
+AskUserQuestion(
+  question: "How should we proceed?",
+  header: "Interview Progress",
+  options: [
+    { label: "Continue interviewing", description: "Clarify the open items above" },
+    { label: "Enough, proceed to planning", description: "Use agent judgment for remaining gaps" }
+  ]
+)
+```
+
+- **"Continue interviewing"** → generate 2-5 new questions targeting the listed open items, then loop back to Step 2
+- **"Enough, proceed to planning"** → merge remaining gaps as assumptions, transition to Phase 3
+- **Max 3 interview rounds** (circuit breaker). After round 3, auto-transition to Phase 3 with remaining gaps as assumptions.
+
+> **Core Principle**: Mirror first, then iteratively clarify with visibility into what's known vs unknown.
 
 ### Phase 2.5: Tech-Decision Support (Conditional)
 
@@ -348,9 +399,11 @@ Then merge tech-decision results into spec.json and continue to Phase 2 Transiti
 
 #### Plan Transition Conditions:
 
-- [ ] No `severity: "critical"` gaps remain in `known_gaps`
 - [ ] Key decisions/assumptions recorded
+- [ ] Mirror confirmed (goal_statement agreed by user)
 - [ ] **Standard + Interactive only**: User explicitly says "make it a plan", "generate the plan", "create the work plan", or similar
+
+> Note: `known_gaps` are populated in Phase 3 (after this gate). Critical gap checking happens during Phase 3 analysis — if gap-analyzer finds critical gaps, the agent asks the user before proceeding to Phase 4.
 
 #### If critical gaps remain:
 
@@ -370,15 +423,15 @@ If all conditions are met but user hasn't explicitly requested plan generation, 
 > - **Quick**: 1 agent (tradeoff-analyzer lite)
 > - **Standard**: 3-4 agents parallel + codex-strategist sequential
 
-### Phase 3 Pre-read: TESTING.md
+### Phase 3 Pre-read: VERIFICATION.md
 
-**Before launching analysis agents**, read TESTING.md to inline into verification-planner's prompt:
+**Before launching analysis agents**, read VERIFICATION.md to inline into verification-planner's prompt:
 
 ```bash
-# Read TESTING.md from plugin root (3 levels up from skill baseDir)
+# Read VERIFICATION.md via the symlink in this skill's references/ directory
 # ${baseDir} is shown in the "Base directory for this skill:" header above.
-# Resolve: ${baseDir}/../../../TESTING.md
-TESTING_MD_CONTENT = Read("${baseDir}/../../../TESTING.md")
+# Resolve: ${baseDir}/references/VERIFICATION_GUIDE.md
+TESTING_MD_CONTENT = Read("${baseDir}/references/VERIFICATION_GUIDE.md")
 ```
 
 > **Why inline?** Subagents cannot resolve `${baseDir}` — it's only available as header context to the main agent. The main agent must read the file and pass the content directly into the subagent prompt.
@@ -411,7 +464,7 @@ Each scenario MUST include:
 - execution_env: 'host' (local), 'sandbox' (docker/container), or 'ci' (CI pipeline) — optional, default 'host'
 - verify: command (for machine), assertion (for agent), or instruction (for human)
 
-## Testing Strategy (from TESTING.md)
+## Testing Strategy (from VERIFICATION.md)
 [Paste TESTING_MD_CONTENT here — the full content read in the pre-read step above.
  If the file was not found, note this in Verification Gaps and proceed without it.]
 
@@ -430,7 +483,11 @@ Task(subagent_type="external-researcher",
 
 ```
 Task(subagent_type="codex-strategist",
-     prompt="Synthesize gap, tradeoff, verification results. Find contradictions and blind spots.")
+     prompt="Synthesize gap, tradeoff, verification results. Find contradictions and blind spots.
+Additionally:
+- Evaluate at least 2 implementation approaches for the core task and justify the chosen one
+- For each auto-merged gap (severity: medium), validate that the severity classification is correct
+- Flag any gap whose mitigation conflicts with a proposed task or decision")
 ```
 
 ### Handle HIGH risk decision_points
@@ -438,22 +495,34 @@ Task(subagent_type="codex-strategist",
 > **Autopilot**: HALT and ask user for HIGH risk only. Auto-select conservative option for MED/LOW.
 > **Interactive**: Present all decision_points via AskUserQuestion.
 
-### S-items Fallback Rules
+### Sandbox Scenario Fallback Rules
 
 When merging verification-planner results into `requirements`, apply these fallback rules:
 
 - **Misclassified Tier 4**: If verification-planner output has Tier 4 items without `execution_env: "sandbox"`, fix them — Tier 4 items MUST have `execution_env: "sandbox"`.
 - **Missing sandbox items despite sandbox infra**: If the project has sandbox infrastructure (docker-compose, `sandbox/features/`) but no requirement scenarios have `execution_env: "sandbox"`, flag this as a warning and check if Tier 4 items were misclassified.
-- **UI screenshot S-items**: If the work involves UI/frontend changes and verification-planner did not include screenshot-based sandbox scenarios, add them: screenshot capture at affected routes + comparison against design spec (`execution_env: "sandbox"`, `verified_by: "machine"`).
+- **UI screenshot sandbox scenarios**: If the work involves UI/frontend changes and verification-planner did not include screenshot-based sandbox scenarios, add them: screenshot capture at affected routes + comparison against design spec (`execution_env: "sandbox"`, `verified_by: "machine"`).
 
 ### Merge analysis results
 
+#### Silent Gap Merge
+
+Gap-analyzer results are handled by severity — not all gaps need user input:
+
+| Severity | Action | Rationale |
+|----------|--------|-----------|
+| `critical` | Ask user via `AskUserQuestion` | Human judgment required |
+| `medium` | Auto-merge with mitigation, log as assumption | Reduces question fatigue; visible in Phase 6 Plan Approval Summary |
+| `low` | Auto-merge silently | Not worth user attention |
+
 ```bash
-# known_gaps from gap-analyzer
+# IMPORTANT: merge one section at a time, sequentially. Do NOT merge multiple sections in parallel.
+
+# known_gaps from gap-analyzer (all severities merged, medium/low without asking user)
 hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json '{
   "context": {
     "known_gaps": [
-      {"gap": "...", "severity": "medium", "mitigation": "..."}
+      {"gap": "...", "severity": "medium", "mitigation": "...", "auto_merged": true}
     ]
   }
 }'
@@ -466,7 +535,7 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
   ]
 }'
 
-# requirements from verification-planner (apply S-items fallback rules above)
+# requirements from verification-planner (apply Sandbox Scenario Fallback Rules above)
 # Requirements are the SINGLE SOURCE OF TRUTH for all verification.
 # verification_summary is DERIVED from requirements (not stored independently).
 hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
@@ -482,9 +551,9 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
   ]
 }'
 # verification_summary is derived from requirements at Phase 5d / Phase 6:
-#   A-items = scenarios where verified_by is "machine" or "agent" AND execution_env is "host"
-#   H-items = scenarios where verified_by is "human"
-#   S-items = scenarios where execution_env is "sandbox"
+#   Auto = scenarios where verified_by is "machine" or "agent" AND execution_env is "host"
+#   Manual = scenarios where verified_by is "human"
+#   Agent [sandbox] = scenarios where execution_env is "sandbox"
 
 # external_dependencies — HUMAN-ONLY tasks from exploration + verification-planner output
 # If no external dependencies exist, omit this merge entirely.
@@ -518,12 +587,12 @@ Build tasks from research findings + analysis results. This is the main spec aut
 
 - Task IDs: `T1`, `T2`, ... with final `TF` (type: `verification`)
 - Every task: `must_not_do: ["Do not run git commands"]`
-- Every task: `acceptance_criteria` with at least `functional` + `static` + `runtime`
+- Every task: `acceptance_criteria` with `scenarios` (scenario ID refs) + `checks` (runnable commands)
 - Every task: `inputs` listing dependencies from previous tasks (use task output IDs)
 - HIGH risk tasks: include rollback steps in `steps`
 - Map `research.patterns` → `tasks[].references`
-- Map `research.commands` → `TF.acceptance_criteria.runtime`
-- Apply S-items from `requirements[].scenarios` where `execution_env: "sandbox"` to TF acceptance criteria where applicable
+- Map `research.commands` → `TF.acceptance_criteria.checks` (type: build/lint/static)
+- Apply execution_env: sandbox scenarios from `requirements[].scenarios` to TF acceptance criteria where applicable
 
 #### Type Field
 
@@ -534,20 +603,38 @@ Build tasks from research findings + analysis results. This is the main spec aut
 
 **Note**: Failure handling logic is unified for both types. Type only determines retry permission and file modification rights.
 
-#### Acceptance Criteria Categories
+#### Acceptance Criteria Structure (v5)
 
-| Category | Required | Description |
-|----------|----------|-------------|
-| Functional | Yes | Feature functionality verification (business logic) |
-| Static | Yes | Type check, lint pass (modified files) |
-| Runtime | Yes | Related tests pass |
-| Cleanup | No | Unused import/file cleanup (only when needed) |
+`acceptance_criteria` uses `scenarios` (scenario ID references) + `checks` (runnable commands):
 
-**Worker completion condition**: `Functional AND Static AND Runtime pass (AND Cleanup if specified)`
+| Field | Required | Description |
+|-------|----------|-------------|
+| `scenarios` | Yes | Scenario IDs from `requirements[].scenarios[].id` this task fulfills |
+| `checks` | Yes | Automated checks: `[{type: "static"|"build"|"lint"|"format", run: "<command>"}]` |
+
+**Worker completion condition**: All referenced scenarios verified AND all checks pass
 
 #### Requirements (Given-When-Then)
 
 Always generate the `requirements` section with Given-When-Then scenarios — do not skip even if success criteria were not explicitly discussed. Derive from the goal, acceptance criteria, and user intent.
+
+#### Sandbox Scenario Infra Auto-task
+
+When any scenario has `execution_env: "sandbox"`, run the following CLI command to automatically generate sandbox tasks:
+
+```bash
+# Auto-generates T_SANDBOX (infra prep) + T_SV1~N (per-scenario verification) tasks
+# Also auto-calculates depends_on for all generated tasks
+hoyeon-cli spec sandbox-tasks .dev/specs/{name}/spec.json
+```
+
+This single command handles everything:
+- Checks whether sandbox infrastructure already exists
+- Creates **T_SANDBOX** (infra build task) if needed
+- Creates **T_SV1~N** tasks (one per sandbox scenario) for verification
+- Auto-sets `depends_on` so T_SV tasks wait for T_SANDBOX, and TF waits for all T_SV tasks
+
+> No manual docker-compose check or task JSON construction required — `sandbox-tasks` encapsulates all that logic.
 
 ### Merge tasks
 
@@ -564,9 +651,11 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
       "references": [{"path": "src/...", "start_line": 10, "end_line": 25}],
       "must_not_do": ["Do not run git commands"],
       "acceptance_criteria": {
-        "functional": [{"description": "Config file created with required fields"}],
-        "static": [{"description": "Valid JSON", "command": "node -e \"require(...)\""}],
-        "runtime": [{"description": "Existing tests pass", "command": "npm test"}]
+        "scenarios": ["R1-S1", "R1-S2"],
+        "checks": [
+          {"type": "static", "run": "node -e \"require('./src/config/auth.json')\""},
+          {"type": "build", "run": "npm test"}
+        ]
       }
     },
     {
@@ -575,9 +664,11 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
       "inputs": [{"from_task": "T1", "artifact": "all_outputs"}],
       "must_not_do": ["Do not modify any files", "Do not run git commands"],
       "acceptance_criteria": {
-        "functional": [{"description": "All deliverables exist and work"}],
-        "static": [{"description": "Lint passes", "command": "npm run lint"}],
-        "runtime": [{"description": "All tests pass", "command": "npm test"}]
+        "scenarios": ["R1-S1", "R1-S2", "R2-S1"],
+        "checks": [
+          {"type": "lint", "run": "npm run lint"},
+          {"type": "build", "run": "npm test"}
+        ]
       }
     }
   ]
@@ -599,7 +690,7 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
          "verify": {"type": "command", "run": "...", "expect": {"exit_code": 0}}},
         {"id": "R1-S2", "given": "...", "when": "...", "then": "...",
          "verified_by": "human",
-         "verify": {"type": "instruction", "check": "Visually confirm layout matches design"}},
+         "verify": {"type": "instruction", "ask": "Visually confirm layout matches design"}},
         {"id": "R1-S3", "given": "...", "when": "...", "then": "...",
          "verified_by": "machine", "execution_env": "sandbox",
          "verify": {"type": "command", "run": "docker exec ...", "expect": {"exit_code": 0}}}
@@ -637,13 +728,12 @@ Show the output to user.
 
 ```
 Task(subagent_type="plan-reviewer",
-     prompt="Review this spec: .dev/specs/{name}/spec.json
-Read the file and evaluate:
-- Task decomposition: reasonable granularity?
-- Acceptance criteria: verifiable?
-- Dependencies: logical order?
-- Must NOT do: covers actual risks?
-- Risk tags: appropriate levels?")
+     prompt="Review spec: .dev/specs/{name}/spec.json
+Read the file and evaluate all 4 layers:
+1. Meta & Context — goal clarity, decisions, assumptions, gaps
+2. Requirements & Scenarios — behavior coverage, verify quality
+3. Tasks — goal alignment, requirement coverage, granularity, dependencies, AC
+4. Cross-cutting — constraints, simplicity, verification strategy")
 ```
 
 #### Handle reviewer response
@@ -672,15 +762,16 @@ Inspect **every** AC across `tasks[].acceptance_criteria` and `requirements[].sc
 - Every `requirements[].scenarios[]` has `verified_by` set (`machine` | `agent` | `human`)
 - Every `requirements[].scenarios[]` has a non-empty `verify` object matching its type
 - `verification_summary.gaps` is empty (all ACs classified)
+- Every auto-merged gap (`context.known_gaps[]` where `auto_merged: true`) has its mitigation covered by at least one requirement scenario
 
 **Semantic quality:**
 - **Machine ACs**: `verify.run` is an executable shell command (not pseudocode, not natural language). `verify.expect` has a concrete value (e.g., `exit_code: 0`, not "should work")
-- **Agent ACs**: `verify.assert` is **falsifiable** — can be proven wrong by inspecting code/output (FAIL: "code is correct". PASS: "all public functions have JSDoc with @param and @returns")
+- **Agent ACs**: `verify.checks` is **falsifiable** — can be proven wrong by inspecting code/output (FAIL: "code is correct". PASS: "all public functions have JSDoc with @param and @returns")
 - **Human ACs**: `verify.ask` is **actionable** — a person can follow it step-by-step (FAIL: "verify it". PASS: "Open /login, enter invalid password, confirm error message shows 'Invalid password' not 'Login failed'")
 
 #### Environment Detection (once, before loop)
 
-Detect available sandbox capabilities so the agent can suggest H→S conversions:
+Detect available sandbox capabilities so the agent can suggest verified_by reclassifications:
 
 ```
 env_capabilities = []
@@ -731,39 +822,39 @@ IF iteration > 5 AND result.status == "FAIL":
   )
 ```
 
-#### H→S Conversion Suggestions (after gate completes)
+#### verified_by Reclassification Suggestions (after gate completes)
 
-After the quality gate passes (or user accepts as-is), check the last result for `h_to_s_suggestions`:
+After the quality gate passes (or user accepts as-is), check the last result for `reclassification_suggestions`:
 
 ```
-IF result.h_to_s_suggestions AND len(result.h_to_s_suggestions) > 0:
-  print("Some Human verification items could be automated with sandbox capabilities:")
-  FOR EACH s IN result.h_to_s_suggestions:
+IF result.reclassification_suggestions AND len(result.reclassification_suggestions) > 0:
+  print("Some Manual verification items could be reclassified to Auto or Agent with sandbox capabilities:")
+  FOR EACH s IN result.reclassification_suggestions:
     print("  - {s.id}: {s.current} → {s.suggested} ({s.method})")
     print("    Requires: {s.requires} | Reason: {s.reason}")
 
   AskUserQuestion(
-    question: "Apply these H→S conversions?",
+    question: "Apply these verified_by reclassifications?",
     options: [
-      { label: "Apply all", description: "Convert all suggested items to agent/sandbox verification" },
+      { label: "Apply all", description: "Convert all suggested items to Auto or Agent verification" },
       { label: "Let me pick", description: "I'll choose which ones to convert" },
-      { label: "Skip", description: "Keep all as human verification" }
+      { label: "Skip", description: "Keep all as manual verification" }
     ]
   )
 
   IF answer == "Apply all":
-    FOR EACH s IN result.h_to_s_suggestions:
+    FOR EACH s IN result.reclassification_suggestions:
       Bash("hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{...}'")
       # Update scenario: verified_by → s.suggested, execution_env → s.execution_env, verify → appropriate format
 
   IF answer == "Let me pick":
     # Present each suggestion individually for user selection
-    FOR EACH s IN result.h_to_s_suggestions:
+    FOR EACH s IN result.reclassification_suggestions:
       choice = AskUserQuestion(
-        question: "{s.id}: Convert from {s.current} to {s.suggested}? ({s.method})",
+        question: "{s.id}: Reclassify from {s.current} to {s.suggested}? ({s.method})",
         options: [
-          { label: "Yes", description: "Convert" },
-          { label: "No", description: "Keep as human" }
+          { label: "Yes", description: "Reclassify" },
+          { label: "No", description: "Keep as manual" }
         ]
       )
       IF choice == "Yes":
@@ -786,12 +877,16 @@ IF result.h_to_s_suggestions AND len(result.h_to_s_suggestions) > 0:
 
 After plan review and AC Quality Gate pass, derive the Verification Summary from `requirements[].scenarios` and present it to the user for lightweight confirmation.
 
-**Derivation rules** (from requirements scenarios):
-- **A-items** = scenarios where `verified_by` is `"machine"` or `"agent"` AND `execution_env` is `"host"` (or omitted)
-- **H-items** = scenarios where `verified_by` is `"human"`
-- **S-items** = scenarios where `execution_env` is `"sandbox"`
+> **NOTE — verification_summary is DERIVED, never written**: The `verification_summary` section in spec.json (with fields `agent_items`, `human_items`, `sandbox_items`) is derived at reporting time and is NEVER merged into spec.json via `spec merge`. Because it is never written, the schema field naming (`agent_items`/`human_items`/`sandbox_items`) vs SKILL.md display naming (Auto/Manual/Agent) does NOT cause validation issues. Present the summary to the user using the SKILL.md labels (Auto, Manual, Agent [sandbox]) for readability — do not attempt to persist it.
 
-The summary must include counts for **all three categories**: A-items, H-items, and S-items (if sandbox infra exists).
+**Derivation rules** (from requirements scenarios, 2-axis model):
+- **Auto** = scenarios where `verified_by` is `"machine"` or `"agent"` AND `execution_env` is `"host"` (or omitted)
+- **Auto [sandbox]** = scenarios where `verified_by` is `"machine"` or `"agent"` AND `execution_env` is `"sandbox"`
+- **Agent [sandbox]** = scenarios where `verified_by` is `"agent"` AND `execution_env` is `"sandbox"`
+- **Manual** = scenarios where `verified_by` is `"human"`
+
+Group by `verified_by` first, then append `[sandbox]` qualifier when `execution_env` is `"sandbox"`.
+The summary must include counts for **all groups present**: Auto, Agent [sandbox] (if sandbox infra exists), and Manual.
 
 > **IMPORTANT — Show Before Ask**: FIRST output the full item list as assistant text so the user can read each item. THEN call `AskUserQuestion` for confirmation only. Never put the item details inside the `question` field — the user cannot see truncated content.
 
@@ -800,20 +895,20 @@ The summary must include counts for **all three categories**: A-items, H-items, 
 ```
 ## Verification Summary
 
-### Agent-verifiable (A): {A-count}
-- A-1: {criterion} → {method}
-- A-2: {criterion} → {method}
+### Auto (machine-verified): {auto-count}
+- Auto-1: {criterion} → {method}
+- Auto-2: {criterion} [sandbox] → {method}
 ...
 
-### Human-required (H): {H-count}
-- H-1: {criterion} — {reason}
-- H-2: {criterion} — {reason}
+### Agent [sandbox] (agent-verified, sandbox): {agent-sandbox-count}
+- Agent-1: {criterion} [sandbox] → {method}
 ...
+(or omit section if no sandbox infra)
 
-### Sandbox (S): {S-count}
-- S-1: {criterion} → {method}
+### Manual (human review): {manual-count}
+- Manual-1: {criterion} — {reason}
+- Manual-2: {criterion} — {reason}
 ...
-(or "none" if no S-items)
 
 ### Gaps
 {gap summary or "none"}
@@ -858,7 +953,7 @@ Present summary to user.
 ...
 
 ### Verification Strategy
-- A-items: {count}, H-items: {count}, S-items: {count}
+- Auto: {count}, Manual: {count}, Agent [sandbox]: {count}
 ```
 
 **Step 2**: Then ask for confirmation:
@@ -908,13 +1003,13 @@ TF: Full verification                    [verification] — pending
 
 Verification (recap)
 ────────────────────────────────────────
-Agent-verifiable (A): {count}
-  - {A-1 criterion} → {method}
-  - {A-2 criterion} → {method}
-Human-required (H): {count}
-  - {H-1 criterion} — {reason}
-Sandbox (S): {count} (or "none" if no S-items)
-  - {S-1 scenario} (if exists)
+Auto (machine-verified): {count}
+  - {Auto-1 criterion} → {method}
+  - {Auto-2 criterion} [sandbox] → {method}
+Agent [sandbox] (agent-verified, sandbox): {count} (or "none" if no sandbox infra)
+  - {Agent-1 scenario} [sandbox] (if exists)
+Manual (human review): {count}
+  - {Manual-1 criterion} — {reason}
 Gaps: {gap summary or "none"}
 ────────────────────────────────────────
 
@@ -936,6 +1031,17 @@ Key Decisions
   - {decision point 2}: {chosen approach}
 ────────────────────────────────────────
 
+{If auto-merged gaps exist (medium severity, auto_merged: true):}
+Auto-merged Gaps (agent-decided — not confirmed by user)
+────────────────────────────────────────
+  - {gap}: {mitigation applied} (severity: medium)
+  {If gap mitigation conflicts with any task or decision:}
+  ⚠ CONFLICT: {gap} mitigation says "{mitigation}" but {task/decision} does the opposite. Resolve before approval.
+  {If no task implements gap mitigation:}
+  ⚠ UNCOVERED: {gap} has mitigation but no task addresses it.
+  Note: These gaps were auto-resolved. Review and flag if incorrect.
+────────────────────────────────────────
+
 {If quick or autopilot mode (assumptions section exists):}
 Assumptions (auto-decided — not confirmed by user)
 ────────────────────────────────────────
@@ -954,10 +1060,11 @@ Constraints: {n} items
 |---------|---------------------|------|
 | Non-goals | `meta.non_goals[]` — strategic scope exclusions | When non_goals exist |
 | Task Overview | `tasks[]` — id, action, type, risk, depends_on | Always |
-| Verification | Derived from `requirements[].scenarios` — A/H/S classification (see Phase 5e rules) | Always |
+| Verification | Derived from `requirements[].scenarios` — Auto/Agent/Manual classification (see Phase 5e rules) | Always |
 | Pre-work | `external_dependencies.pre_work` — list all, mark blocking=true as Blocking | Always |
 | Post-work | `external_dependencies.post_work` — list all | Always |
 | Key Decisions | `context.decisions[]` — decision, rationale | Always |
+| Auto-merged Gaps | `context.known_gaps[]` where `auto_merged: true` — gap, mitigation | When auto-merged gaps exist |
 | Assumptions | `context.assumptions[]` — belief, rationale | quick/autopilot only |
 
 ### Then Ask Next Step (Interactive only)
@@ -983,10 +1090,13 @@ AskUserQuestion(
 - **spec.json is the ONLY output** — no DRAFT.md, no PLAN.md, no state.json
 - **Always use cli** — `hoyeon-cli spec init`, `spec merge`, `spec validate`, `spec check`
 - **Never hand-write spec.json** — always go through `spec merge` for auto-validation
+- **Read guide before merge** — run `hoyeon-cli spec guide <section>` before constructing merge JSON for unfamiliar or complex sections (especially `requirements`, `constraints`, `verify`). Also run `hoyeon-cli spec guide merge` to choose the right mode (replace vs `--append` vs `--patch`)
+- **One merge per section** — call `spec merge` once per top-level key (context, constraints, requirements, tasks). Never merge multiple sections in parallel — if one fails validation, parallel calls get cancelled and waste tokens
 - **--append for arrays** — use `--append` when adding to existing arrays (decisions, assumptions, known_gaps)
+- **--patch for updates** — use `--patch` when updating specific items by id (e.g., updating a single task's status or a single requirement's scenario)
 - **Validate before presenting** — Phase 5 must pass before Phase 6
 - **Every task needs must_not_do** — at minimum `["Do not run git commands"]`
-- **Every task needs acceptance_criteria** — functional + static + runtime at minimum
+- **Every task needs acceptance_criteria** — `scenarios` (refs to requirement scenario IDs) + `checks` (runnable commands) at minimum
 - **known_gaps gate** — no `severity: "critical"` gaps may remain at Phase 4 entry
 - **Incremental merge** — merge after every phase and every user response; do not batch
 - **Requirements = single source of truth** — all verification lives in `requirements[].scenarios` with `verified_by` + `execution_env`; `verification_summary` is derived, not stored independently
@@ -998,25 +1108,26 @@ AskUserQuestion(
 - [ ] `hoyeon-cli spec validate` passes
 - [ ] `hoyeon-cli spec check` passes
 - [ ] All tasks have `status: "pending"`
-- [ ] All tasks have `must_not_do` and `acceptance_criteria`
+- [ ] All tasks have `must_not_do` and `acceptance_criteria` (`scenarios` + `checks`)
 - [ ] All tasks have `inputs` field
+- [ ] Sandbox infra auto-task (T_SANDBOX) added if execution_env: sandbox scenarios exist and no sandbox infra found
 - [ ] `requirements` section populated with Given-When-Then scenarios + `verified_by` + `execution_env`
 - [ ] `external_dependencies` populated (if applicable)
 - [ ] `history` includes `spec_created` entry
 - [ ] `meta.mode` is set
-- [ ] `context.intent_classification` merged (Phase 0.1)
+- [ ] Intent classification performed internally (Phase 0.1) — NOT merged to spec.json
 - [ ] `meta.non_goals` populated (collect during Phase 2 Interview)
 - [ ] Plan Approval Summary presented
 
 ### Standard mode (additional)
 - [ ] `context.research` is structured object (not string)
 - [ ] AC Quality Gate passed (Phase 5d) — all ACs classified + semantically valid
-- [ ] H→S conversion suggestions presented to user (if any from ac-quality-gate)
-- [ ] `verification_summary` derived from `requirements[].scenarios` (A/H/S classification presented in Phase 5e/6)
+- [ ] verified_by Reclassification Suggestions presented to user (if any from ac-quality-gate)
+- [ ] `verification_summary` derived from `requirements[].scenarios` (Auto/Agent/Manual classification presented in Phase 5e/6)
 - [ ] `constraints` populated from gap-analyzer
 - [ ] Analysis agents ran (gap + tradeoff + verification-planner)
-- [ ] TESTING.md pre-read and inlined into verification-planner prompt
-- [ ] S-items fallback rules applied (Tier 4 reclassification, UI screenshot check)
+- [ ] VERIFICATION.md pre-read and inlined into verification-planner prompt
+- [ ] Sandbox Scenario Fallback Rules applied (Tier 4 reclassification, UI screenshot check)
 - [ ] Codex strategist attempted (standard only)
 - [ ] plan-reviewer returned OKAY
 

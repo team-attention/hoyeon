@@ -123,10 +123,10 @@ After analysis, classify severity to help the orchestrator decide the workflow:
 | **SIMPLE** | Single file affected, clear root cause, low risk, non-sensitive path | Skip gap-analyzer and code-reviewer |
 | **COMPLEX** | Multiple files, unclear causation, high risk, or INTEGRATION type | Run full pipeline with gap-analyzer and code-reviewer |
 
-**COMPLEX 강제 조건 (SIMPLE 판정이라도 아래에 해당하면 COMPLEX로 승격):**
-- Bug Type이 `INTEGRATION`인 경우
-- Root cause 파일 경로가 보안 민감 패턴과 일치: `auth/`, `crypto/`, `permission/`, `security/`, `session/`, `token/`, `credential/`
-- Root cause가 여러 컴포넌트의 경계에 걸쳐있는 경우
+**COMPLEX forced conditions (promote to COMPLEX even if initially assessed SIMPLE):**
+- Bug Type is `INTEGRATION`
+- Root cause file path matches security-sensitive patterns: `auth/`, `crypto/`, `permission/`, `security/`, `session/`, `token/`, `credential/`
+- Root cause spans boundaries across multiple components
 
 ## Anti-Pattern Checklist (mandatory self-check)
 

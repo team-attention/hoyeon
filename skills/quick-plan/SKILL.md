@@ -23,9 +23,10 @@ validate_prompt: |
   4. "## Coordination Mode" with mode (agent-spawn or team) and rationale
   5. "## Agent Mapping" table with columns: #, Task, Tool, Type, Source, Rationale
   6. "## Execution Plan" with parallel rounds and context sharing notes
-  Must end with AskUserQuestion offering next actions (실행/계획 수정/더 논의).
-  Must NOT generate spec.json until user explicitly chooses "실행".
+  Must end with AskUserQuestion offering next actions (Execute / Revise plan / Discuss further).
+  Must NOT generate spec.json until user explicitly chooses "Execute".
   Must NOT: create teams or spawn agents during planning.
+  spec.json must include requirements (one per task) with scenarios before tasks are merged.
 ---
 
 # /quick-plan — Session Task Planner
@@ -203,14 +204,14 @@ After presenting the plan, proceed immediately to Phase 8 (do NOT wait for appro
 Ask user via AskUserQuestion:
 
 ```
-계획이 준비됐습니다. 어떻게 할까요?
+The plan is ready. What would you like to do?
 
-1. 실행 — spec.json 생성 후 바로 /execute
-2. 계획 수정 — 변경할 부분을 말씀해주세요
-3. 더 논의 — 추가 검토가 필요한 부분이 있으면 알려주세요
+1. Execute — generate spec.json and run /execute immediately
+2. Revise plan — let me know what you'd like to change
+3. Discuss further — let me know if anything needs more review
 ```
 
-- If user chooses **1 (실행)**: proceed to Phase 9
+- If user chooses **1 (Execute)**: proceed to Phase 9
 - If user chooses **2 or 3**: handle feedback, revise plan, then re-ask Phase 8
 
 ### Phase 9: Generate spec.json & Execute
@@ -232,10 +233,53 @@ Determine the plan type based on task composition from Phase 5:
 - If **all tasks have `type: plain`** → use `--type plain` (lightweight skill-only pipeline)
 
 ```bash
-hoyeon-cli spec init {plan-name} --goal "{user's goal}" --type dev|plain ${SPEC_PATH}
+hoyeon-cli spec init {plan-name} --goal "{user's goal}" --type dev|plain --depth quick --interaction autopilot ${SPEC_PATH}
 ```
 
 `{plan-name}`: derive from user's goal (kebab-case, max 30 chars).
+
+#### 9.2.5 Merge lightweight requirements
+
+Before merging tasks, generate **lightweight requirements** from the task breakdown.
+Each task's "Done when" condition becomes a requirement with one scenario.
+
+Rules:
+- One requirement per task (R1 maps to T1, R2 to T2, etc.)
+- Each requirement has exactly one scenario with `verified_by: "machine"` and a `verify.run` command derived from the task's done-when condition
+- If a task has no runnable verification (e.g., "review document"), use `verified_by: "human"` with `verify: {"type": "instruction", "ask": "..."}`
+- Keep it minimal — no gap analysis, no multi-scenario requirements
+
+```bash
+# Read guide first if unfamiliar with requirements schema
+hoyeon-cli spec guide requirements
+
+hoyeon-cli spec merge ${SPEC_PATH} --json '{
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "{what task 1 should achieve — from Done when}",
+      "priority": 1,
+      "scenarios": [{
+        "id": "R1-S1",
+        "given": "{precondition}",
+        "when": "{action}",
+        "then": "{expected outcome from Done when}",
+        "verified_by": "machine",
+        "execution_env": "host",
+        "verify": {
+          "type": "command",
+          "run": "{verification command from Done when}",
+          "expect": {"exit_code": 0}
+        }
+      }]
+    }
+  ]
+}'
+```
+
+This ensures:
+- `acceptance_criteria.scenarios` in tasks reference real scenario IDs
+- Final Verify in /execute can check requirement scenarios (not just build checks)
 
 #### 9.3 Merge tasks
 
@@ -244,6 +288,9 @@ Do NOT call merge per task (without `--append`, each call overwrites the previou
 
 ```bash
 hoyeon-cli spec merge ${SPEC_PATH} --json '{
+  "context": {
+    "request": "{user original goal/request}"
+  },
   "tasks": [
     {
       "id": "T1",
@@ -256,9 +303,10 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
       "steps": ["{step 1}", "{step 2}"],
       "must_not_do": ["Do not run git commands"],
       "acceptance_criteria": {
-        "functional": [{"description": "{done-when condition}"}],
-        "static": [],
-        "runtime": []
+        "scenarios": ["{requirement-scenario-id-from-R1}"],
+        "checks": [
+          {"type": "build", "run": "{done-when verification command}"}
+        ]
       },
       "risk": "low"
     },
@@ -273,9 +321,10 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
       "steps": ["{step 1}", "{step 2}"],
       "must_not_do": ["Do not run git commands"],
       "acceptance_criteria": {
-        "functional": [{"description": "{done-when condition}"}],
-        "static": [],
-        "runtime": []
+        "scenarios": ["{requirement-scenario-id-from-R2}"],
+        "checks": [
+          {"type": "build", "run": "{done-when verification command}"}
+        ]
       },
       "risk": "low"
     }
@@ -285,9 +334,21 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
 
 Map from plan:
 - Task Breakdown → `action`, `file_scope` (touch zone)
-- Done condition → `acceptance_criteria.functional`
+- Done condition → `acceptance_criteria.scenarios` (scenario IDs) + `acceptance_criteria.checks` (commands)
 - Dependency DAG → `depends_on`
 - Agent Mapping → `tool` (from Phase 5 discovery result)
+
+#### 9.3.5 Auto-generate sandbox tasks
+
+After all tasks are merged, check for sandbox scenarios and generate infra + verification tasks:
+
+```bash
+# Auto-generates T_SANDBOX (infra prep) + T_SV1~N (per-scenario verification) tasks
+# No-ops if no execution_env: sandbox scenarios exist
+hoyeon-cli spec sandbox-tasks ${SPEC_PATH}
+```
+
+This command scans all scenarios for `execution_env: "sandbox"` and automatically creates the required infra and per-scenario verification tasks with correct `depends_on` wiring.
 
 #### 9.4 Update state.json
 
@@ -307,7 +368,7 @@ If validation fails, fix and retry once.
 
 #### 9.6 Hand off to /execute
 
-Output: `spec.json 생성 완료: ${SPEC_PATH}`
+Output: `spec.json generated: ${SPEC_PATH}`
 
 Then invoke the `/execute` skill to begin execution.
 

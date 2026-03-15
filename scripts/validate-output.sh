@@ -1,24 +1,24 @@
 #!/bin/bash
-# PostToolUse hook: agent/skill의 validate_prompt가 있으면 validation 안내
+# PostToolUse hook: if agent/skill has validate_prompt, output validation guidance
 set -euo pipefail
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name')
 
-# Task 또는 Skill이 아니면 무시
+# Ignore if not Task or Skill
 if [[ "$TOOL_NAME" != "Task" && "$TOOL_NAME" != "Skill" ]]; then
   exit 0
 fi
 
 CWD=$(echo "$INPUT" | jq -r '.cwd')
 
-# Agent/Skill 파일 찾기
+# Find Agent/Skill file
 find_file() {
   local name="$1"
   local type="$2"  # "agent" or "skill"
 
   if [[ "$type" == "agent" ]]; then
-    # Agent 파일 검색 순서: 프로젝트 → 플러그인 → 사용자
+    # Agent file search order: project → plugin → user
     for path in \
       "$CWD/.claude/agents/${name}.md" \
       "${CLAUDE_PLUGIN_ROOT:-}/agents/${name}.md" \
@@ -29,7 +29,7 @@ find_file() {
       fi
     done
 
-    # 플러그인 agents 폴더들 검색
+    # Search plugin agents folders
     if [[ -d "$CWD/.claude" ]]; then
       local found=$(find "$CWD/.claude" -path "*/agents/${name}.md" 2>/dev/null | head -1)
       if [[ -n "$found" ]]; then
@@ -38,7 +38,7 @@ find_file() {
       fi
     fi
   else
-    # Skill 파일 검색
+    # Search Skill files
     for path in \
       "$CWD/.claude/skills/${name}/SKILL.md" \
       "${CLAUDE_PLUGIN_ROOT:-}/skills/${name}/SKILL.md" \
@@ -49,7 +49,7 @@ find_file() {
       fi
     done
 
-    # 플러그인 skills 폴더들 검색
+    # Search plugin skills folders
     if [[ -d "$CWD/.claude" ]]; then
       local found=$(find "$CWD/.claude" -path "*/skills/${name}/SKILL.md" 2>/dev/null | head -1)
       if [[ -n "$found" ]]; then
@@ -62,20 +62,20 @@ find_file() {
   return 1
 }
 
-# frontmatter에서 validate_prompt 추출
+# Extract validate_prompt from frontmatter
 extract_validate_prompt() {
   local file="$1"
-  # YAML frontmatter에서 validate_prompt 추출 (멀티라인 지원)
+  # Extract validate_prompt from YAML frontmatter (multiline support)
   awk '
     /^---$/ { if (in_frontmatter) exit; in_frontmatter=1; next }
     in_frontmatter && /^validate_prompt:/ {
       sub(/^validate_prompt:[ ]*/, "")
       if (/^[|>]/) {
-        # 멀티라인
+        # multiline
         multiline=1
         next
       }
-      # 싱글라인 (따옴표 제거)
+      # single-line (strip quotes)
       gsub(/^["'"'"']|["'"'"']$/, "")
       print
       exit
@@ -85,7 +85,7 @@ extract_validate_prompt() {
   ' "$file"
 }
 
-# 타입과 이름 추출
+# Extract type and name
 if [[ "$TOOL_NAME" == "Task" ]]; then
   NAME=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // empty')
   TYPE="agent"
@@ -98,20 +98,20 @@ if [[ -z "$NAME" ]]; then
   exit 0
 fi
 
-# 파일 찾기
+# Find file
 FILE=$(find_file "$NAME" "$TYPE" 2>/dev/null) || exit 0
 
-# validate_prompt 추출
+# Extract validate_prompt
 VALIDATE_PROMPT=$(extract_validate_prompt "$FILE")
 
 if [[ -z "$VALIDATE_PROMPT" ]]; then
   exit 0
 fi
 
-# tool_response 추출
+# Extract tool_response
 TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response')
 
-# validation 안내 메시지를 additionalContext JSON으로 출력
+# Output validation guidance message as additionalContext JSON
 CONTEXT="⚠️ VALIDATION REQUIRED for ${TYPE}: ${NAME}\n\nValidate Prompt:\n${VALIDATE_PROMPT}\n\nPlease verify the output meets the above criteria before proceeding."
 
 jq -n --arg ctx "$CONTEXT" '{

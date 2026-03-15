@@ -3,6 +3,8 @@ import { resolve, dirname } from 'path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import specSchema from '../../schemas/dev-spec-v4.schema.json' with { type: 'json' };
+import specSchemaV5 from '../../schemas/dev-spec-v5.schema.json' with { type: 'json' };
+// v5 is the default schema. Pass specData with meta.schema_version === 'v4' to use legacy v4 validation.
 
 import { writeState } from '../lib/state-io.js';
 
@@ -10,6 +12,8 @@ const SPEC_HELP = `
 Usage:
   hoyeon-cli spec init <name> --goal "..." <path>   Create a minimal valid spec.json
   hoyeon-cli spec merge <path> --json '{...}'       Deep-merge a JSON fragment into spec.json
+                                                    --append: concatenate arrays
+                                                    --patch:  ID-based merge (match by id, update in place)
   hoyeon-cli spec validate <path>                   Validate a spec.json file against the schema
   hoyeon-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
   hoyeon-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
@@ -18,6 +22,14 @@ Usage:
   hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
   hoyeon-cli spec check <path>                      Check internal consistency
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
+  hoyeon-cli spec guide [section]                             Show schema guide for a section
+  hoyeon-cli spec scenario <scenario-id> --get <path>              Get scenario details as JSON
+  hoyeon-cli spec derive --parent <id> --source <src> --trigger <t> --action <a> --reason <r> <path>  Create a derived task
+  hoyeon-cli spec drift <path>                       Show drift ratio (derived vs planned tasks)
+  hoyeon-cli spec requirement --status <path> [--json]  Show all requirements/scenarios with verification status
+  hoyeon-cli spec requirement <id> --get <path>     Get individual scenario as JSON
+  hoyeon-cli spec requirement <id> --status pass|fail|skipped --task <task_id> [--reason <msg>] <path>  Update scenario status
+  hoyeon-cli spec sandbox-tasks <path> [--json]     Auto-generate T_SANDBOX + T_SV tasks for sandbox scenarios
 
 Options:
   --help, -h    Show this help message
@@ -33,16 +45,42 @@ Examples:
   hoyeon-cli spec meta ./spec.json
   hoyeon-cli spec check ./spec.json
   hoyeon-cli spec amend --reason fb-001 --spec ./spec.json
+  hoyeon-cli spec requirement --status ./spec.json
+  hoyeon-cli spec requirement R1-S1 --get ./spec.json
+  hoyeon-cli spec requirement R1-S1 --status pass --task T1 ./spec.json
+  hoyeon-cli spec sandbox-tasks ./spec.json
 `;
 
-function loadSchema() {
-  return specSchema;
+function loadSchema(specData) {
+  if (specData?.meta?.schema_version === 'v4') {
+    return specSchema;
+  }
+  return specSchemaV5;
+}
+
+/**
+ * Extract unique top-level sections from validation errors and print guide hints.
+ */
+function printGuideHints(errors) {
+  const sections = new Set();
+  for (const e of errors) {
+    const path = e.instancePath || '';
+    // Extract first path segment: "/constraints/0/verify" → "constraints"
+    const match = path.match(/^\/([^/]+)/);
+    if (match) sections.add(match[1]);
+  }
+  if (sections.size > 0) {
+    process.stderr.write('\nHint: check schema with:\n');
+    for (const s of sections) {
+      process.stderr.write(`  hoyeon-cli spec guide ${s}\n`);
+    }
+  }
 }
 
 function validateSpec(specData) {
   let schema;
   try {
-    schema = loadSchema();
+    schema = loadSchema(specData);
   } catch (err) {
     process.stderr.write(`Error: could not load schema: ${err.message}\n`);
     process.exit(1);
@@ -57,6 +95,7 @@ function validateSpec(specData) {
       const path = e.instancePath || '(root)';
       process.stderr.write(`  ${path}: ${e.message}\n`);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 }
@@ -66,13 +105,28 @@ function validateSpec(specData) {
  * - Objects are recursively merged
  * - Arrays are replaced by default, or concatenated with --append
  */
-function deepMerge(target, source, append = false) {
+function deepMerge(target, source, append = false, patch = false) {
   for (const key of Object.keys(source)) {
     if (source[key] === null || source[key] === undefined) {
       continue;
     }
     if (Array.isArray(source[key])) {
-      if (append && Array.isArray(target[key])) {
+      if (patch && Array.isArray(target[key])) {
+        // --patch: ID-based merge — match by id, update in place, append new
+        for (const item of source[key]) {
+          if (item && typeof item === 'object' && item.id) {
+            const idx = target[key].findIndex(t => t && t.id === item.id);
+            if (idx >= 0) {
+              target[key][idx] = { ...target[key][idx], ...item };
+            } else {
+              target[key].push(item);
+            }
+          } else {
+            // No id field — append as-is
+            target[key].push(item);
+          }
+        }
+      } else if (append && Array.isArray(target[key])) {
         target[key] = target[key].concat(source[key]);
       } else {
         target[key] = source[key];
@@ -81,7 +135,7 @@ function deepMerge(target, source, append = false) {
       if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
         target[key] = {};
       }
-      deepMerge(target[key], source[key], append);
+      deepMerge(target[key], source[key], append, patch);
     } else {
       target[key] = source[key];
     }
@@ -184,7 +238,7 @@ async function handleMerge(args) {
 
   if (!parsed.json) {
     process.stderr.write('Error: --json \'{...}\' is required\n');
-    process.stderr.write('Usage: hoyeon-cli spec merge <path> --json \'{...}\' [--append]\n');
+    process.stderr.write('Usage: hoyeon-cli spec merge <path> --json \'{...}\' [--append] [--patch]\n');
     process.exit(1);
   }
 
@@ -205,7 +259,12 @@ async function handleMerge(args) {
   const specData = loadSpec(specPath);
 
   const append = parsed.append === true;
-  deepMerge(specData, fragment, append);
+  const patch = parsed.patch === true;
+  if (append && patch) {
+    process.stderr.write('Error: --append and --patch are mutually exclusive\n');
+    process.exit(1);
+  }
+  deepMerge(specData, fragment, append, patch);
 
   // Auto-add history entry for merge
   const now = new Date().toISOString();
@@ -228,6 +287,7 @@ async function handleMerge(args) {
   process.stdout.write(`Spec merged: ${specPath}\n`);
   process.stdout.write(`  merged keys: ${mergedKeys}\n`);
   if (append) process.stdout.write('  mode: append (arrays concatenated)\n');
+  if (patch) process.stdout.write('  mode: patch (ID-based merge)\n');
   process.exit(0);
 }
 
@@ -257,7 +317,7 @@ async function handleValidate(args) {
 
   let schema;
   try {
-    schema = loadSchema();
+    schema = loadSchema(data);
   } catch (err) {
     process.stderr.write(`Error: could not load schema: ${err.message}\n`);
     process.exit(1);
@@ -287,6 +347,7 @@ async function handleValidate(args) {
       const path = e.instancePath || '(root)';
       process.stderr.write(`  ${path}: ${e.message}\n`);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 }
@@ -547,11 +608,13 @@ function formatSlim(spec, rounds, criticalPath) {
       parallel: round.length > 1,
       tasks: round.map(id => {
         const t = (spec.tasks || []).find(task => task.id === id) || {};
+        const isDerived = t.origin === 'derived';
         return {
           id: t.id,
           action: t.action,
           type: t.type,
           status: t.status || 'pending',
+          derived: isDerived,
           depends_on: t.depends_on || [],
           ...(t.tool ? { tool: t.tool } : {}),
           ...(t.args ? { args: t.args } : {}),
@@ -783,7 +846,7 @@ async function handleTask(args) {
   // Validate before writing
   let schema;
   try {
-    schema = loadSchema();
+    schema = loadSchema(specData);
   } catch (err) {
     process.stderr.write(`Error: could not load schema: ${err.message}\n`);
     process.exit(1);
@@ -800,6 +863,7 @@ async function handleTask(args) {
       const path = e.instancePath || '(root)';
       process.stderr.write(`  ${path}: ${e.message}\n`);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 
@@ -827,12 +891,19 @@ async function handleStatus(args) {
   const pending = tasks.filter(t => t.status === 'pending' || !t.status);
   const remaining = tasks.filter(t => t.status !== 'done');
 
+  const plannedTasks = tasks.filter(t => t.origin !== 'derived');
+  const derivedTasks = tasks.filter(t => t.origin === 'derived');
+  const plannedDone = plannedTasks.filter(t => t.status === 'done');
+  const derivedDone = derivedTasks.filter(t => t.status === 'done');
+
   const result = {
     name: specData.meta?.name || 'unknown',
     done: done.length,
     in_progress: inProgress.length,
     pending: pending.length,
     total: tasks.length,
+    planned: { done: plannedDone.length, total: plannedTasks.length },
+    derived: { done: derivedDone.length, total: derivedTasks.length },
     complete: remaining.length === 0,
     remaining: remaining.map(t => ({ id: t.id, action: t.action, status: t.status || 'pending' })),
   };
@@ -904,6 +975,32 @@ async function handleCheck(args) {
     }
   }
 
+  // Check derived task constraints
+  for (const task of specData.tasks) {
+    if (task.origin === 'derived') {
+      if (!task.derived_from || !task.derived_from.parent) {
+        issues.push(`task '${task.id}' has origin=derived but is missing derived_from.parent`);
+      } else if (!taskIds.has(task.derived_from.parent)) {
+        issues.push(`task '${task.id}' derived_from.parent '${task.derived_from.parent}' does not reference a valid task ID`);
+      }
+    }
+  }
+
+  // Referential integrity: AC.scenarios[] must reference valid requirements[].scenarios[].id
+  const allScenarioIds = new Set();
+  for (const req of (specData.requirements || [])) {
+    for (const sc of (req.scenarios || [])) {
+      if (sc.id) allScenarioIds.add(sc.id);
+    }
+  }
+  for (const task of specData.tasks) {
+    for (const scenarioRef of (task.acceptance_criteria?.scenarios || [])) {
+      if (!allScenarioIds.has(scenarioRef)) {
+        issues.push(`task '${task.id}' acceptance_criteria.scenarios references unknown scenario '${scenarioRef}'`);
+      }
+    }
+  }
+
   // Check file_scope overlap across tasks (warning only)
   const warnings = [];
   const fileScopeMap = new Map();
@@ -938,6 +1035,885 @@ async function handleCheck(args) {
   process.exit(0);
 }
 
+/**
+ * Generate compact, LLM-friendly guide from the JSON Schema.
+ * Resolves $ref, shows required/optional fields, types, enums, and minimal examples.
+ */
+function generateGuide(section) {
+  const schema = loadSchema(); // defaults to v5
+  const defs = schema.$defs || {};
+
+  const SECTIONS = {
+    meta: { ref: 'meta', desc: 'Spec metadata (name, goal, mode, etc.)' },
+    context: { ref: 'context', desc: 'Request context, interview decisions, research, assumptions' },
+    tasks: { ref: 'task', desc: 'Task DAG (work items + verification)', isArray: true },
+    requirements: { ref: 'requirement', desc: 'Requirements with scenarios and verification', isArray: true },
+    constraints: { ref: 'constraint', desc: 'Must-not-do / preserve constraints', isArray: true },
+    history: { ref: 'historyEntry', desc: 'Spec change history entries', isArray: true },
+    verification: { ref: 'verificationSummary', desc: 'A/H/S verification classification summary' },
+    external: { ref: 'externalDependencies', desc: 'Human-only pre/post-work dependencies' },
+    scenario: { ref: 'scenario', desc: 'Requirement scenario (given/when/then + verify)' },
+    verify: { ref: null, desc: 'Verify types: command, assertion, instruction', custom: 'verify' },
+    merge: { ref: null, desc: 'Merge modes: replace (default), --append, --patch', custom: 'merge' },
+    'acceptance-criteria': { ref: null, desc: 'v5 AC structure: scenarios[] + checks[]', custom: 'acceptance-criteria' },
+  };
+
+  if (!section || section === 'list') {
+    const lines = ['Available guide sections:'];
+    for (const [name, info] of Object.entries(SECTIONS)) {
+      lines.push(`  ${name.padEnd(16)} ${info.desc}`);
+    }
+    lines.push('');
+    lines.push('Usage: hoyeon-cli spec guide <section>');
+    lines.push('       hoyeon-cli spec guide full      (all sections)');
+    lines.push('       hoyeon-cli spec guide root      (top-level structure)');
+    return lines.join('\n');
+  }
+
+  if (section === 'root') {
+    return formatRoot(schema);
+  }
+
+  if (section === 'full') {
+    const lines = [formatRoot(schema), ''];
+    for (const [name, info] of Object.entries(SECTIONS)) {
+      const def = defs[info.ref];
+      if (def) {
+        lines.push(`--- ${name} ---`);
+        lines.push(formatDef(name, def, defs, info.isArray));
+        lines.push('');
+      }
+    }
+    return lines.join('\n');
+  }
+
+  const info = SECTIONS[section];
+  if (!info) {
+    return `Error: unknown section '${section}'. Run 'hoyeon-cli spec guide' to see available sections.`;
+  }
+
+  if (info.custom === 'verify') {
+    return formatVerifyGuide(defs);
+  }
+
+  if (info.custom === 'merge') {
+    return formatMergeGuide();
+  }
+
+  if (info.custom === 'acceptance-criteria') {
+    return formatAcceptanceCriteriaGuide();
+  }
+
+  const def = defs[info.ref];
+  if (!def) {
+    return `Error: schema definition '${info.ref}' not found.`;
+  }
+
+  return formatDef(section, def, defs, info.isArray);
+}
+
+function formatRoot(schema) {
+  const lines = ['spec.json top-level structure:'];
+  lines.push(`  required: ${(schema.required || []).join(', ')}`);
+  lines.push('  fields:');
+  for (const [key, val] of Object.entries(schema.properties || {})) {
+    if (key === '$schema') continue;
+    const req = (schema.required || []).includes(key) ? '*' : ' ';
+    const desc = val.description || '';
+    lines.push(`    ${req} ${key}${desc ? ` — ${desc}` : ''}`);
+  }
+  lines.push('');
+  lines.push('  * = required');
+  return lines.join('\n');
+}
+
+function formatDef(name, def, defs, isArray) {
+  const lines = [];
+  if (isArray) {
+    lines.push(`${name}: array of objects`);
+  } else {
+    lines.push(`${name}: object`);
+  }
+
+  const required = new Set(def.required || []);
+  if (required.size > 0) {
+    lines.push(`  required: ${[...required].join(', ')}`);
+  }
+
+  const props = def.properties || {};
+  for (const [key, prop] of Object.entries(props)) {
+    const req = required.has(key) ? '*' : ' ';
+    const typeStr = resolveType(prop, defs, '    ');
+    lines.push(`  ${req} ${key}: ${typeStr}`);
+  }
+
+  // Add example
+  const example = generateExample(name, def, defs, required);
+  if (example) {
+    lines.push('');
+    if (isArray) {
+      lines.push(`  example merge: --json '{"${name}":[${example}]}'`);
+    } else {
+      lines.push(`  example merge: --json '{"${name}":${example}}'`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function resolveType(prop, defs, indent) {
+  if (prop.$ref) {
+    const refName = prop.$ref.replace('#/$defs/', '');
+    const refDef = defs[refName];
+    if (refDef) {
+      if (refDef.enum) return `enum(${refDef.enum.join('|')})`;
+      if (refDef.type === 'object') return `{${refName}}`;
+      return refDef.type || refName;
+    }
+    return refName;
+  }
+  if (prop.oneOf) {
+    const types = prop.oneOf.map(o => {
+      if (o.$ref) return `{${o.$ref.replace('#/$defs/', '')}}`;
+      if (o.type) return o.type;
+      return '?';
+    });
+    return types.join(' | ');
+  }
+  if (prop.enum) return `enum(${prop.enum.join('|')})`;
+  if (prop.type === 'array') {
+    if (prop.items) {
+      if (prop.items.$ref) {
+        const refName = prop.items.$ref.replace('#/$defs/', '');
+        return `[{${refName}}]`;
+      }
+      if (prop.items.oneOf) return `[mixed]`;
+      // Inline anonymous object arrays
+      if (prop.items.type === 'object' && prop.items.properties) {
+        return formatInlineObject(prop.items, indent);
+      }
+      return `[${prop.items.type || 'any'}]`;
+    }
+    return '[]';
+  }
+  if (prop.const) return `"${prop.const}"`;
+  // Inline anonymous objects
+  if (prop.type === 'object' && prop.properties) {
+    return formatInlineObject(prop, indent);
+  }
+  let t = prop.type || 'any';
+  if (prop.minimum !== undefined || prop.maximum !== undefined) {
+    const parts = [];
+    if (prop.minimum !== undefined) parts.push(`min:${prop.minimum}`);
+    if (prop.maximum !== undefined) parts.push(`max:${prop.maximum}`);
+    t += `(${parts.join(',')})`;
+  }
+  return t;
+}
+
+function formatInlineObject(schema, indent = '    ') {
+  const req = new Set(schema.required || []);
+  const props = schema.properties || {};
+  const fields = [];
+  for (const [k, v] of Object.entries(props)) {
+    const r = req.has(k) ? '*' : ' ';
+    const t = v.enum ? `enum(${v.enum.join('|')})` : (v.const ? `"${v.const}"` : (v.type || 'any'));
+    fields.push(`${indent}  ${r} ${k}: ${t}`);
+  }
+  const isArray = schema === schema ? '' : ''; // just object
+  return `[object]\n${fields.join('\n')}`;
+}
+
+function generateExample(name, def, defs, required) {
+  const props = def.properties || {};
+  const obj = {};
+  for (const key of required) {
+    const prop = props[key];
+    if (!prop) continue;
+    obj[key] = exampleValue(key, prop, defs);
+  }
+
+  // Add 1-2 common optional fields for context
+  const optionals = Object.keys(props).filter(k => !required.has(k));
+  let added = 0;
+  for (const key of optionals) {
+    if (added >= 2) break;
+    const prop = props[key];
+    if (prop.type === 'string' || prop.enum) {
+      obj[key] = exampleValue(key, prop, defs);
+      added++;
+    }
+  }
+
+  try {
+    return JSON.stringify(obj);
+  } catch {
+    return null;
+  }
+}
+
+function exampleValue(key, prop, defs) {
+  if (prop.enum) return prop.enum[0];
+  if (prop.const) return prop.const;
+  if (prop.$ref) {
+    const refName = prop.$ref.replace('#/$defs/', '');
+    const refDef = defs[refName];
+    if (refDef?.enum) return refDef.enum[0];
+    return `<${refName}>`;
+  }
+  if (prop.type === 'string') return `<${key}>`;
+  if (prop.type === 'integer') return prop.minimum || 1;
+  if (prop.type === 'boolean') return false;
+  if (prop.type === 'array') return [];
+  if (prop.type === 'object') return {};
+  return `<${key}>`;
+}
+
+function formatMergeGuide() {
+  const lines = [
+    'spec merge modes:',
+    '',
+    '  (default) — replace',
+    '    Arrays are replaced entirely. Objects are deep-merged.',
+    '    hoyeon-cli spec merge <path> --json \'{"tasks":[...]}\'',
+    '',
+    '  --append — concatenate arrays',
+    '    New array items are appended to existing arrays.',
+    '    hoyeon-cli spec merge <path> --json \'{"tasks":[{"id":"T2",...}]}\' --append',
+    '',
+    '  --patch — ID-based merge',
+    '    Array items with matching "id" are updated in place.',
+    '    Items with new ids are appended. Non-array fields deep-merge normally.',
+    '    hoyeon-cli spec merge <path> --json \'{"tasks":[{"id":"T1","status":"done"}]}\' --patch',
+    '',
+    '  --append and --patch are mutually exclusive.',
+    '',
+    '  When to use which:',
+    '    replace   — rewrite a section completely (e.g. set all tasks at once)',
+    '    --append  — add new items without touching existing (e.g. add requirements)',
+    '    --patch   — update specific items by id (e.g. update one task\'s status)',
+  ];
+  return lines.join('\n');
+}
+
+function formatAcceptanceCriteriaGuide() {
+  const lines = [
+    'acceptance_criteria (v5): scenarios[] + checks[]',
+    '',
+    '  scenarios: string[]',
+    '    List of scenario IDs from requirements[].scenarios[].id that this task fulfills.',
+    '    These are referential — spec check validates that each ID exists in requirements.',
+    '    example: ["R1-S1", "R1-S2", "R2-S1"]',
+    '',
+    '  checks: taskCheck[]',
+    '    Automated checks to run when verifying the task.',
+    '    Each check has:',
+    '      * type: enum(static|build|lint|format)',
+    '      * run: string (shell command)',
+    '    example: [{"type":"build","run":"cd cli && node build.mjs"},{"type":"static","run":"tsc --noEmit"}]',
+    '',
+    '  example acceptance_criteria:',
+    '    {',
+    '      "scenarios": ["R1-S1", "R2-S1"],',
+    '      "checks": [',
+    '        {"type": "build", "run": "cd cli && node build.mjs"},',
+    '        {"type": "lint", "run": "eslint src/"}',
+    '      ]',
+    '    }',
+    '',
+    '  Note: spec check validates referential integrity.',
+    '    AC.scenarios IDs must exist in requirements[].scenarios[].id.',
+    '    Run: hoyeon-cli spec check <path>',
+  ];
+  return lines.join('\n');
+}
+
+function formatVerifyGuide(defs) {
+  const lines = [
+    'verify: oneOf — choose based on verified_by value:',
+    '',
+    '  verified_by: "machine" → verifyCommand',
+    '    * type: "command"',
+    '    * run: string (shell command)',
+    '    * expect: { *exit_code: int, stdout_contains?: string, stderr_empty?: bool }',
+    '    example: {"type":"command","run":"npm test","expect":{"exit_code":0}}',
+    '',
+    '  verified_by: "agent" → verifyAssertion',
+    '    * type: "assertion"',
+    '    * checks: [string] (min 1 item)',
+    '    example: {"type":"assertion","checks":["file exists at src/foo.ts"]}',
+    '',
+    '  verified_by: "human" → verifyInstruction',
+    '    * type: "instruction"',
+    '    * ask: string (question for human)',
+    '    example: {"type":"instruction","ask":"Does the UI look correct?"}',
+  ];
+  return lines.join('\n');
+}
+
+async function handleGuide(args) {
+  const section = args[0];
+  const output = generateGuide(section);
+  process.stdout.write(output + '\n');
+  process.exit(0);
+}
+
+/**
+ * Generate the next available derived task ID for a given parent and trigger.
+ * Format: {parent_id}.{trigger}-{N} where N starts at 1 and increments.
+ */
+function generateDerivedId(tasks, parentId, trigger) {
+  const prefix = `${parentId}.${trigger}-`;
+  let maxN = 0;
+  for (const t of tasks) {
+    if (t.id.startsWith(prefix)) {
+      const suffix = t.id.slice(prefix.length);
+      const n = parseInt(suffix, 10);
+      if (!isNaN(n) && n > maxN) maxN = n;
+    }
+  }
+  return `${prefix}${maxN + 1}`;
+}
+
+async function handleDerive(args) {
+  const parsed = parseArgs(args);
+
+  // Required flags
+  const requiredFlags = ['parent', 'source', 'trigger', 'action', 'reason'];
+  for (const flag of requiredFlags) {
+    if (!parsed[flag]) {
+      process.stderr.write(`Error: --${flag} is required\n`);
+      process.stderr.write('Usage: hoyeon-cli spec derive --parent <id> --source <src> --trigger <trigger> --action <action> --reason <reason> [--attempt <n>] [--file-scope <f1,f2>] [--steps <s1,s2>] <path>\n');
+      process.exit(1);
+    }
+  }
+
+  // Validate trigger value
+  const validTriggers = ['adapt', 'retry', 'code_review', 'final_verify'];
+  if (!validTriggers.includes(parsed.trigger)) {
+    process.stderr.write(`Error: --trigger must be one of: ${validTriggers.join(', ')}\n`);
+    process.exit(1);
+  }
+
+  // Path argument
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write('Error: <path> to spec.json is required\n');
+    process.exit(1);
+  }
+
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+
+  // Validate parent task exists
+  const parentTask = (specData.tasks || []).find(t => t.id === parsed.parent);
+  if (!parentTask) {
+    process.stderr.write(`Error: parent task '${parsed.parent}' not found in spec\n`);
+    process.exit(1);
+  }
+
+  // Depth-1 enforcement: parent must be planned (or have no origin, which defaults to planned)
+  const parentOrigin = parentTask.origin || 'planned';
+  if (parentOrigin === 'derived' || parentOrigin === 'adapted') {
+    process.stderr.write(`Error: Parent must be a planned task (depth-1 enforcement)\n`);
+    process.exit(1);
+  }
+
+  // Auto-generate ID
+  const newId = generateDerivedId(specData.tasks || [], parsed.parent, parsed.trigger);
+
+  // Parse optional flags
+  const fileScope = parsed['file-scope']
+    ? parsed['file-scope'].split(',').map(s => s.trim()).filter(Boolean)
+    : undefined;
+
+  const steps = parsed.steps
+    ? parsed.steps.split(',').map(s => s.trim()).filter(Boolean)
+    : undefined;
+
+  // Build derived_from object (schema: parent, trigger, source, reason — no attempt in schema)
+  const derivedFrom = {
+    parent: parsed.parent,
+    trigger: parsed.trigger,
+    source: parsed.source,
+    reason: parsed.reason,
+  };
+
+  // Build new task object
+  const newTask = {
+    id: newId,
+    action: parsed.action,
+    type: 'work',
+    status: 'pending',
+    origin: 'derived',
+    derived_from: derivedFrom,
+    depends_on: [parsed.parent],
+  };
+
+  if (fileScope) newTask.file_scope = fileScope;
+  if (steps) newTask.steps = steps;
+
+  // Merge task into spec using append logic
+  if (!specData.tasks) specData.tasks = [];
+  specData.tasks = specData.tasks.concat([newTask]);
+
+  // Add history entry
+  const now = new Date().toISOString();
+  if (!specData.history) specData.history = [];
+  specData.history.push({
+    ts: now,
+    type: 'tasks_changed',
+    task: newId,
+    detail: `derived from ${parsed.parent} via ${parsed.trigger}`,
+  });
+
+  // Update meta
+  if (specData.meta) specData.meta.updated_at = now;
+
+  // Validate spec
+  validateSpec(specData);
+
+  // Rebuild DAG (plan) to verify consistency — just call buildPlan for validation
+  buildPlan(specData.tasks);
+
+  // Write spec
+  writeState(specPath, specData);
+
+  // Output created task ID as JSON
+  process.stdout.write(JSON.stringify({ created: newId }) + '\n');
+  process.exit(0);
+}
+
+async function handleDrift(args) {
+  const filePath = args[0];
+
+  if (!filePath) {
+    process.stderr.write('Error: missing <path> argument\n');
+    process.stderr.write('Usage: hoyeon-cli spec drift <path>\n');
+    process.exit(1);
+  }
+
+  const specData = loadSpec(resolve(filePath));
+  const tasks = specData.tasks || [];
+
+  const plannedTasks = tasks.filter(t => !t.origin || t.origin === 'planned' || t.origin === 'adapted');
+  const derivedTasks = tasks.filter(t => t.origin === 'derived');
+
+  const plannedCount = plannedTasks.length;
+  const derivedCount = derivedTasks.length;
+  const driftRatio = plannedCount === 0 ? 0 : derivedCount / plannedCount;
+
+  // Group derived tasks by trigger
+  const byTrigger = {};
+  for (const t of derivedTasks) {
+    const trigger = t.derived_from?.trigger || 'unknown';
+    byTrigger[trigger] = (byTrigger[trigger] || 0) + 1;
+  }
+
+  // Group derived tasks by source
+  const bySource = {};
+  for (const t of derivedTasks) {
+    const source = t.derived_from?.source || 'unknown';
+    bySource[source] = (bySource[source] || 0) + 1;
+  }
+
+  const result = {
+    planned: plannedCount,
+    derived: derivedCount,
+    drift_ratio: Math.round(driftRatio * 1000) / 1000,
+    by_trigger: byTrigger,
+    by_source: bySource,
+  };
+
+  process.stdout.write(JSON.stringify(result) + '\n');
+  process.exit(0);
+}
+
+async function handleScenario(args) {
+  const scenarioId = args[0];
+
+  if (!scenarioId || scenarioId.startsWith('--')) {
+    process.stderr.write('Error: <scenario-id> is required\n');
+    process.stderr.write('Usage: hoyeon-cli spec scenario <scenario-id> --get <path>\n');
+    process.exit(1);
+  }
+
+  const parsed = parseArgs(args.slice(1));
+
+  if (parsed.get === undefined) {
+    process.stderr.write('Error: --get <path> is required\n');
+    process.stderr.write('Usage: hoyeon-cli spec scenario <scenario-id> --get <path>\n');
+    process.exit(1);
+  }
+
+  if (typeof parsed.get !== 'string') {
+    process.stderr.write('Error: --get requires <path> argument\n');
+    process.stderr.write('Usage: hoyeon-cli spec scenario <scenario-id> --get <path>\n');
+    process.exit(1);
+  }
+
+  const filePath = parsed.get;
+  const specData = loadSpec(resolve(filePath));
+
+  let found = null;
+  for (const req of (specData.requirements || [])) {
+    for (const scenario of (req.scenarios || [])) {
+      if (scenario.id === scenarioId) {
+        found = scenario;
+        break;
+      }
+    }
+    if (found) break;
+  }
+
+  if (!found) {
+    process.stderr.write(`Error: scenario '${scenarioId}' not found in spec\n`);
+    process.exit(1);
+  }
+
+  process.stdout.write(JSON.stringify(found, null, 2) + '\n');
+  process.exit(0);
+}
+
+/**
+ * Helper to find a scenario by ID across all requirements.
+ * Returns { scenario, requirement } or null.
+ */
+function findScenarioById(specData, scenarioId) {
+  for (const req of (specData.requirements || [])) {
+    for (const scenario of (req.scenarios || [])) {
+      if (scenario.id === scenarioId) {
+        return { scenario, requirement: req };
+      }
+    }
+  }
+  return null;
+}
+
+async function handleRequirement(args) {
+  const parsed = parseArgs(args);
+
+  // Determine mode:
+  // A) --status (flag without id) → full status view  (args[0] === '--status' or no positional id but --status flag)
+  // B) <id> --get <path>         → individual scenario lookup
+  // C) <id> --status <val> --task <task_id> <path> → update scenario status
+
+  // Check if first positional looks like a flag (or absent)
+  const firstPositional = parsed._[0];
+  const isStatusFlag = parsed.status === true; // --status without value
+
+  // Mode A: spec requirement --status <path>
+  // Detection: no scenario id positional AND --status is boolean true
+  if (!firstPositional && isStatusFlag) {
+    const filePath = parsed._[0] || parsed._[1];
+    // path comes as next positional after --status
+    // Re-parse with positional collection
+    // The path is in parsed._ but --status consumed nothing, so path is parsed._[0]
+    // Actually parseArgs puts the path in _[0] if it appears before --status,
+    // or the user runs: spec requirement --status <path>
+    // parseArgs sees --status <path> where path doesn't start with --, so it becomes parsed.status = path
+    // Let's handle that:
+    const resolvedPath = typeof parsed.status === 'string' ? parsed.status : parsed._[0];
+    if (!resolvedPath) {
+      process.stderr.write('Error: <path> is required\n');
+      process.stderr.write('Usage: hoyeon-cli spec requirement --status <path> [--json]\n');
+      process.exit(1);
+    }
+    const specData = loadSpec(resolve(resolvedPath));
+    const useJson = parsed.json === true;
+    return handleRequirementStatusView(specData, useJson);
+  }
+
+  // Mode A (alternative detection): first token is a path-like string and --status is string
+  // e.g. spec requirement --status ./spec.json
+  if (!firstPositional && typeof parsed.status === 'string') {
+    const resolvedPath = parsed.status;
+    if (!resolvedPath) {
+      process.stderr.write('Error: <path> is required\n');
+      process.exit(1);
+    }
+    const specData = loadSpec(resolve(resolvedPath));
+    const useJson = parsed.json === true;
+    return handleRequirementStatusView(specData, useJson);
+  }
+
+  // If we have a positional (scenario id):
+  const scenarioId = firstPositional;
+
+  if (!scenarioId) {
+    process.stderr.write('Error: <scenario-id> or --status flag is required\n');
+    process.stderr.write('Usage: hoyeon-cli spec requirement --status <path>\n');
+    process.stderr.write('       hoyeon-cli spec requirement <id> --get <path>\n');
+    process.stderr.write('       hoyeon-cli spec requirement <id> --status pass|fail|skipped --task <task_id> <path>\n');
+    process.exit(1);
+  }
+
+  // Mode B: spec requirement <id> --get <path>
+  if (parsed.get !== undefined) {
+    if (typeof parsed.get !== 'string') {
+      process.stderr.write('Error: --get requires <path> argument\n');
+      process.exit(1);
+    }
+    const specData = loadSpec(resolve(parsed.get));
+    const found = findScenarioById(specData, scenarioId);
+    if (!found) {
+      process.stderr.write(`Error: scenario '${scenarioId}' not found in spec\n`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify(found.scenario, null, 2) + '\n');
+    process.exit(0);
+  }
+
+  // Mode C: spec requirement <id> --status pass|fail|skipped --task <task_id> [--reason <msg>] <path>
+  const statusValue = typeof parsed.status === 'string' ? parsed.status : null;
+  if (statusValue) {
+    const validStatuses = ['pass', 'fail', 'skipped'];
+    if (!validStatuses.includes(statusValue)) {
+      process.stderr.write(`Error: --status must be one of: ${validStatuses.join(', ')}\n`);
+      process.exit(1);
+    }
+
+    if (!parsed.task) {
+      process.stderr.write('Error: --task <task_id> is required when updating scenario status\n');
+      process.exit(1);
+    }
+
+    const filePath = parsed._[1];
+    if (!filePath) {
+      process.stderr.write('Error: <path> to spec.json is required\n');
+      process.exit(1);
+    }
+
+    const specPath = resolve(filePath);
+    const specData = loadSpec(specPath);
+
+    const found = findScenarioById(specData, scenarioId);
+    if (!found) {
+      process.stderr.write(`Error: scenario '${scenarioId}' not found in spec\n`);
+      process.exit(1);
+    }
+
+    // Update scenario fields
+    found.scenario.status = statusValue;
+    found.scenario.verified_by_task = parsed.task;
+    if (parsed.reason) {
+      found.scenario.verification_reason = parsed.reason;
+    }
+
+    // Add history entry
+    const now = new Date().toISOString();
+    if (!specData.history) specData.history = [];
+    specData.history.push({
+      ts: now,
+      type: 'scenario_verified',
+      scenario: scenarioId,
+      status: statusValue,
+      task: parsed.task,
+    });
+    if (specData.meta) specData.meta.updated_at = now;
+
+    writeState(specPath, specData);
+
+    process.stdout.write(`Updated scenario '${scenarioId}': status=${statusValue}, verified_by_task=${parsed.task}\n`);
+    process.exit(0);
+  }
+
+  // Fallback: unknown usage
+  process.stderr.write('Error: could not determine mode. Use --get, --status (flag), or --status <value> --task <id>\n');
+  process.exit(1);
+}
+
+function handleRequirementStatusView(specData, useJson) {
+  const requirements = specData.requirements || [];
+
+  const requirementRows = requirements.map(req => {
+    const scenarios = (req.scenarios || []).map(sc => {
+      const verifiedBy = sc.verified_by || 'unknown';
+      const execEnv = sc.execution_env ? `[${sc.execution_env}]` : '';
+      const status = sc.status || 'pending';
+      const verifiedByTask = sc.verified_by_task || null;
+
+      return {
+        id: sc.id,
+        verified_by: verifiedBy,
+        execution_env: sc.execution_env || null,
+        status,
+        verified_by_task: verifiedByTask,
+      };
+    });
+    return {
+      id: req.id,
+      behavior: req.behavior,
+      scenarios,
+    };
+  });
+
+  // Compute summary
+  let passCount = 0;
+  let failCount = 0;
+  let pendingCount = 0;
+  let skippedCount = 0;
+  for (const req of requirementRows) {
+    for (const sc of req.scenarios) {
+      if (sc.status === 'pass') passCount++;
+      else if (sc.status === 'fail') failCount++;
+      else if (sc.status === 'skipped') skippedCount++;
+      else pendingCount++;
+    }
+  }
+
+  const summary = { pass: passCount, fail: failCount, pending: pendingCount, skipped: skippedCount };
+
+  if (useJson) {
+    process.stdout.write(JSON.stringify({ requirements: requirementRows, summary }, null, 2) + '\n');
+    process.exit(0);
+  }
+
+  // Text format
+  const lines = [];
+  for (const req of requirementRows) {
+    const scCount = req.scenarios.length;
+    lines.push(`${req.id}: ${req.behavior} (${scCount} scenario${scCount !== 1 ? 's' : ''})`);
+    for (const sc of req.scenarios) {
+      const verifiedByLabel = sc.verified_by === 'human' ? 'Manual' :
+        sc.verified_by === 'agent' ? `Agent ${sc.execution_env ? `[${sc.execution_env}]` : ''}`.trim() :
+        sc.verified_by === 'machine' ? `Auto ${sc.execution_env ? `[${sc.execution_env}]` : ''}`.trim() :
+        sc.verified_by;
+      const taskLabel = sc.verified_by_task ? ` (${sc.verified_by_task})` : '';
+      lines.push(`  ${sc.id}: ${verifiedByLabel.padEnd(16)} ${sc.status}${taskLabel}`);
+    }
+    lines.push('');
+  }
+
+  const summaryParts = [];
+  if (passCount > 0) summaryParts.push(`${passCount} pass`);
+  if (failCount > 0) summaryParts.push(`${failCount} fail`);
+  if (pendingCount > 0) summaryParts.push(`${pendingCount} pending`);
+  if (skippedCount > 0) summaryParts.push(`${skippedCount} skipped`);
+  lines.push(`Summary: ${summaryParts.join(', ') || 'no scenarios'}`);
+
+  process.stdout.write(lines.join('\n') + '\n');
+  process.exit(0);
+}
+
+async function handleSandboxTasks(args) {
+  const parsed = parseArgs(args);
+  const filePath = parsed._[0];
+
+  if (!filePath) {
+    process.stderr.write('Error: <path> is required\n');
+    process.stderr.write('Usage: hoyeon-cli spec sandbox-tasks <path> [--json]\n');
+    process.exit(1);
+  }
+
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+  const useJson = parsed.json === true;
+
+  // Find all sandbox scenarios
+  const sandboxScenarios = [];
+  for (const req of (specData.requirements || [])) {
+    for (const sc of (req.scenarios || [])) {
+      if (sc.execution_env === 'sandbox') {
+        sandboxScenarios.push({ ...sc, requirement_id: req.id });
+      }
+    }
+  }
+
+  if (sandboxScenarios.length === 0) {
+    if (useJson) {
+      process.stdout.write(JSON.stringify({ sandbox_scenarios: [], created_tasks: [] }, null, 2) + '\n');
+    } else {
+      process.stdout.write('No sandbox scenarios found. Nothing to do.\n');
+    }
+    process.exit(0);
+  }
+
+  const existingTasks = specData.tasks || [];
+  const existingTaskIds = new Set(existingTasks.map(t => t.id));
+
+  // Build set of sandbox scenario IDs for lookup
+  const sandboxScenarioIds = new Set(sandboxScenarios.map(sc => sc.id));
+
+  // Find work tasks that reference sandbox scenarios in their acceptance_criteria.scenarios
+  const workTasksReferencingSandbox = existingTasks.filter(t => {
+    const acScenarios = t.acceptance_criteria?.scenarios || [];
+    return acScenarios.some(sid => sandboxScenarioIds.has(sid));
+  });
+
+  const createdTasks = [];
+
+  // Create T_SANDBOX if it doesn't exist
+  if (!existingTaskIds.has('T_SANDBOX')) {
+    const sandboxInfraTask = {
+      id: 'T_SANDBOX',
+      action: 'Prepare sandbox environment for scenario verification',
+      type: 'work',
+      status: 'pending',
+      depends_on: workTasksReferencingSandbox.map(t => t.id),
+    };
+    existingTasks.push(sandboxInfraTask);
+    existingTaskIds.add('T_SANDBOX');
+    createdTasks.push(sandboxInfraTask);
+  }
+
+  // Create T_SV1, T_SV2, ... for each sandbox scenario
+  let svCounter = 1;
+  // Find the max existing T_SV number
+  for (const t of existingTasks) {
+    const m = t.id.match(/^T_SV(\d+)$/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n >= svCounter) svCounter = n + 1;
+    }
+  }
+
+  const newSvTasks = [];
+  for (const sc of sandboxScenarios) {
+    const svId = `T_SV${svCounter++}`;
+    if (!existingTaskIds.has(svId)) {
+      const svTask = {
+        id: svId,
+        action: `Verify ${sc.id}: ${sc.then}`,
+        type: 'work',
+        status: 'pending',
+        depends_on: ['T_SANDBOX'],
+      };
+      existingTasks.push(svTask);
+      existingTaskIds.add(svId);
+      createdTasks.push(svTask);
+      newSvTasks.push(svTask);
+    }
+  }
+
+  // Update spec tasks and write
+  specData.tasks = existingTasks;
+
+  const now = new Date().toISOString();
+  if (!specData.history) specData.history = [];
+  specData.history.push({
+    ts: now,
+    type: 'tasks_changed',
+    detail: `sandbox-tasks: created ${createdTasks.map(t => t.id).join(', ')}`,
+  });
+  if (specData.meta) specData.meta.updated_at = now;
+
+  writeState(specPath, specData);
+
+  if (useJson) {
+    process.stdout.write(JSON.stringify({
+      sandbox_scenarios: sandboxScenarios.map(sc => sc.id),
+      created_tasks: createdTasks.map(t => t.id),
+    }, null, 2) + '\n');
+  } else {
+    process.stdout.write(`Created ${createdTasks.length} task(s):\n`);
+    for (const t of createdTasks) {
+      process.stdout.write(`  ${t.id}: ${t.action}\n`);
+    }
+  }
+  process.exit(0);
+}
+
 export default async function spec(args) {
   const subcommand = args[0];
 
@@ -964,6 +1940,18 @@ export default async function spec(args) {
     await handleCheck(args.slice(1));
   } else if (subcommand === 'amend') {
     await handleAmend(args.slice(1));
+  } else if (subcommand === 'guide') {
+    await handleGuide(args.slice(1));
+  } else if (subcommand === 'scenario') {
+    await handleScenario(args.slice(1));
+  } else if (subcommand === 'derive') {
+    await handleDerive(args.slice(1));
+  } else if (subcommand === 'drift') {
+    await handleDrift(args.slice(1));
+  } else if (subcommand === 'requirement') {
+    await handleRequirement(args.slice(1));
+  } else if (subcommand === 'sandbox-tasks') {
+    await handleSandboxTasks(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown spec subcommand '${subcommand}'\n`);
     process.stderr.write(`Run 'hoyeon-cli spec --help' for usage.\n`);

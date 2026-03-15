@@ -6351,14 +6351,14 @@ var require_format = __commonJS({
           }
         }
         function validateFormat() {
-          const formatDef = self.formats[schema];
-          if (!formatDef) {
+          const formatDef2 = self.formats[schema];
+          if (!formatDef2) {
             unknownFormat();
             return;
           }
-          if (formatDef === true)
+          if (formatDef2 === true)
             return;
-          const [fmtType, format, fmtRef] = getFormat(formatDef);
+          const [fmtType, format, fmtRef] = getFormat(formatDef2);
           if (fmtType === ruleType)
             cxt.pass(validCondition());
           function unknownFormat() {
@@ -6380,7 +6380,7 @@ var require_format = __commonJS({
             return ["string", fmtDef, fmt];
           }
           function validCondition() {
-            if (typeof formatDef == "object" && !(formatDef instanceof RegExp) && formatDef.async) {
+            if (typeof formatDef2 == "object" && !(formatDef2 instanceof RegExp) && formatDef2.async) {
               if (!schemaEnv.$async)
                 throw new Error("async format in sync schema");
               return (0, codegen_1._)`await ${fmtRef}(${data})`;
@@ -7841,6 +7841,11 @@ var dev_spec_v4_schema_default = {
           type: "string",
           enum: ["dev", "plain"],
           description: "Spec type: dev = developer task spec (default), plain = lightweight plain task spec"
+        },
+        schema_version: {
+          type: "string",
+          enum: ["v4", "v5"],
+          description: "Schema version for validation routing. Defaults to v5 if omitted."
         }
       }
     },
@@ -7958,6 +7963,31 @@ var dev_spec_v4_schema_default = {
         }
       }
     },
+    derivedFrom: {
+      type: "object",
+      required: ["parent", "trigger"],
+      additionalProperties: false,
+      description: "Provenance record linking a derived task back to its planned parent",
+      properties: {
+        parent: {
+          type: "string",
+          description: "ID of the planned parent task (depth-1 only)"
+        },
+        source: {
+          type: "string",
+          description: "Source context that triggered the derivation (e.g. file path, agent name)"
+        },
+        trigger: {
+          type: "string",
+          enum: ["adapt", "retry", "code_review", "final_verify"],
+          description: "Event that caused this task to be derived"
+        },
+        reason: {
+          type: "string",
+          description: "Human-readable explanation for the derivation"
+        }
+      }
+    },
     task: {
       type: "object",
       required: ["id", "action", "type"],
@@ -7968,6 +7998,16 @@ var dev_spec_v4_schema_default = {
         type: {
           type: "string",
           enum: ["work", "verification"]
+        },
+        origin: {
+          type: "string",
+          enum: ["planned", "derived", "adapted"],
+          default: "planned",
+          description: "How this task was created: planned=authored in spec, derived=created at runtime via spec derive, adapted=manually adjusted from a derived task"
+        },
+        derived_from: {
+          $ref: "#/$defs/derivedFrom",
+          description: "Provenance record \u2014 required when origin is derived or adapted"
         },
         risk: {
           type: "string",
@@ -8060,7 +8100,13 @@ var dev_spec_v4_schema_default = {
         acceptance_criteria: { $ref: "#/$defs/taskAcceptanceCriteria" },
         tool: { type: "string" },
         args: { type: "string" }
-      }
+      },
+      allOf: [
+        {
+          if: { properties: { origin: { enum: ["derived", "adapted"] } }, required: ["origin"] },
+          then: { required: ["derived_from"] }
+        }
+      ]
     },
     historyEntry: {
       type: "object",
@@ -8330,6 +8376,780 @@ var dev_spec_v4_schema_default = {
   }
 };
 
+// schemas/dev-spec-v5.schema.json
+var dev_spec_v5_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "dev-spec/v5",
+  title: "dev-spec v5",
+  description: "JSON Schema for dev spec v5 \u2014 unified spec + state document. AC uses scenarios[] + checks[] instead of functional/static/runtime/cleanup categories.",
+  type: "object",
+  required: ["meta", "tasks"],
+  additionalProperties: false,
+  properties: {
+    $schema: { type: "string" },
+    meta: { $ref: "#/$defs/meta" },
+    context: { $ref: "#/$defs/context" },
+    requirements: {
+      type: "array",
+      items: { $ref: "#/$defs/requirement" }
+    },
+    tasks: {
+      type: "array",
+      minItems: 1,
+      items: { $ref: "#/$defs/task" }
+    },
+    constraints: {
+      type: "array",
+      items: { $ref: "#/$defs/constraint" }
+    },
+    history: {
+      type: "array",
+      items: { $ref: "#/$defs/historyEntry" }
+    },
+    verification_summary: {
+      $ref: "#/$defs/verificationSummary",
+      description: "Derived from requirements \u2014 A/H/S classification. Do not author independently."
+    },
+    external_dependencies: { $ref: "#/$defs/externalDependencies" }
+  },
+  $defs: {
+    sha256Hash: {
+      type: "string",
+      pattern: "^[a-f0-9]{64}$",
+      description: "Raw SHA-256 hex digest (64 lowercase hex characters, no prefix)"
+    },
+    reference: {
+      type: "object",
+      required: ["path"],
+      additionalProperties: false,
+      properties: {
+        path: { type: "string" },
+        start_line: { type: "integer", minimum: 1 },
+        end_line: { type: "integer", minimum: 1 }
+      }
+    },
+    taskConstraint: {
+      type: "object",
+      required: ["type", "target"],
+      additionalProperties: false,
+      properties: {
+        type: {
+          type: "string",
+          enum: ["no_modify", "no_delete", "preserve_string", "read_only"]
+        },
+        target: { type: "string" }
+      }
+    },
+    expect: {
+      type: "object",
+      required: ["exit_code"],
+      additionalProperties: false,
+      properties: {
+        exit_code: { type: "integer" },
+        stdout_contains: { type: "string" },
+        stderr_empty: { type: "boolean" }
+      }
+    },
+    verifyCommand: {
+      type: "object",
+      required: ["type", "run", "expect"],
+      additionalProperties: false,
+      properties: {
+        type: { type: "string", const: "command" },
+        run: { type: "string" },
+        expect: { $ref: "#/$defs/expect" }
+      }
+    },
+    verifyAssertion: {
+      type: "object",
+      required: ["type", "checks"],
+      additionalProperties: false,
+      properties: {
+        type: { type: "string", const: "assertion" },
+        checks: {
+          type: "array",
+          minItems: 1,
+          items: { type: "string" }
+        }
+      }
+    },
+    verifyInstruction: {
+      type: "object",
+      required: ["type", "ask"],
+      additionalProperties: false,
+      properties: {
+        type: { type: "string", const: "instruction" },
+        ask: { type: "string" }
+      }
+    },
+    verify: {
+      oneOf: [
+        { $ref: "#/$defs/verifyCommand" },
+        { $ref: "#/$defs/verifyAssertion" },
+        { $ref: "#/$defs/verifyInstruction" }
+      ]
+    },
+    scenario: {
+      type: "object",
+      required: ["id", "given", "when", "then", "verified_by", "verify"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        given: { type: "string" },
+        when: { type: "string" },
+        then: { type: "string" },
+        verified_by: {
+          type: "string",
+          enum: ["machine", "agent", "human"],
+          description: "WHO verifies: machine=automated command, agent=AI assertion, human=manual inspection"
+        },
+        execution_env: {
+          type: "string",
+          enum: ["host", "sandbox", "ci"],
+          description: "WHERE verification runs: host=local, sandbox=docker/container, ci=CI pipeline"
+        },
+        verify: { $ref: "#/$defs/verify" },
+        status: {
+          type: "string",
+          enum: ["pass", "fail", "pending", "skipped"],
+          default: "pending",
+          description: "Verification result for this scenario"
+        },
+        verified_by_task: {
+          oneOf: [
+            { type: "string" },
+            { type: "null" }
+          ],
+          default: null,
+          description: "The task ID that verified this scenario (e.g. 'T1' or 'T_SV1')"
+        }
+      },
+      allOf: [
+        {
+          if: {
+            properties: { verified_by: { const: "machine" } },
+            required: ["verified_by"]
+          },
+          then: {
+            properties: {
+              verify: { $ref: "#/$defs/verifyCommand" }
+            }
+          }
+        },
+        {
+          if: {
+            properties: { verified_by: { const: "agent" } },
+            required: ["verified_by"]
+          },
+          then: {
+            properties: {
+              verify: { $ref: "#/$defs/verifyAssertion" }
+            }
+          }
+        },
+        {
+          if: {
+            properties: { verified_by: { const: "human" } },
+            required: ["verified_by"]
+          },
+          then: {
+            properties: {
+              verify: { $ref: "#/$defs/verifyInstruction" }
+            }
+          }
+        }
+      ]
+    },
+    meta: {
+      type: "object",
+      required: ["name", "goal"],
+      additionalProperties: false,
+      properties: {
+        name: { type: "string" },
+        goal: { type: "string" },
+        non_goals: {
+          type: "array",
+          items: { type: "string" },
+          description: "What this project is explicitly NOT trying to achieve (strategic scope exclusion)"
+        },
+        deliverables: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["path", "description"],
+            additionalProperties: false,
+            properties: {
+              path: { type: "string" },
+              description: { type: "string" }
+            }
+          }
+        },
+        mode: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            depth: {
+              type: "string",
+              enum: ["quick", "standard"]
+            },
+            interaction: {
+              type: "string",
+              enum: ["interactive", "autopilot"]
+            }
+          }
+        },
+        derived_from: { type: "string" },
+        created_at: { type: "string" },
+        updated_at: { type: "string" },
+        approved_by: { type: "string" },
+        approved_at: { type: "string" },
+        type: {
+          type: "string",
+          enum: ["dev", "plain"],
+          description: "Spec type: dev = developer task spec (default), plain = lightweight plain task spec"
+        },
+        schema_version: {
+          type: "string",
+          enum: ["v4", "v5"],
+          description: "Schema version for validation routing. Defaults to v5 if omitted."
+        }
+      }
+    },
+    context: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        request: { type: "string" },
+        confirmed_goal: {
+          type: "string",
+          description: "The confirmed goal statement from the mirror phase. Set after user confirms the mirrored interpretation."
+        },
+        interview: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["topic", "decision"],
+            additionalProperties: false,
+            properties: {
+              topic: { type: "string" },
+              decision: { type: "string" }
+            }
+          }
+        },
+        research: {
+          oneOf: [
+            { type: "string" },
+            { $ref: "#/$defs/researchFindings" }
+          ]
+        },
+        assumptions: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "belief", "if_wrong", "impact"],
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              belief: { type: "string" },
+              if_wrong: { type: "string" },
+              impact: {
+                type: "string",
+                enum: ["minor", "major", "critical"]
+              }
+            }
+          }
+        },
+        decisions: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "decision", "rationale"],
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              decision: { type: "string" },
+              rationale: { type: "string" },
+              alternatives_rejected: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["option", "reason"],
+                  additionalProperties: false,
+                  properties: {
+                    option: { type: "string" },
+                    reason: { type: "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        known_gaps: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["gap", "severity", "mitigation"],
+            additionalProperties: false,
+            properties: {
+              gap: { type: "string" },
+              severity: {
+                type: "string",
+                enum: ["low", "medium", "high", "critical"]
+              },
+              mitigation: { type: "string" },
+              auto_merged: {
+                type: "boolean",
+                description: "True when this gap was auto-merged (medium/low severity) without asking the user"
+              }
+            }
+          }
+        }
+      }
+    },
+    requirement: {
+      type: "object",
+      required: ["id", "behavior", "priority", "scenarios"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        behavior: { type: "string" },
+        priority: {
+          type: "integer",
+          minimum: 1,
+          maximum: 5
+        },
+        scenarios: {
+          type: "array",
+          items: { $ref: "#/$defs/scenario" }
+        }
+      }
+    },
+    checkpoint: {
+      type: "object",
+      required: ["enabled"],
+      additionalProperties: false,
+      properties: {
+        enabled: { type: "boolean" },
+        message: { type: "string" },
+        condition: {
+          type: "string",
+          enum: ["always", "on_fulfill", "manual"]
+        }
+      }
+    },
+    derivedFrom: {
+      type: "object",
+      required: ["parent", "trigger"],
+      additionalProperties: false,
+      description: "Provenance record linking a derived task back to its planned parent",
+      properties: {
+        parent: {
+          type: "string",
+          description: "ID of the planned parent task (depth-1 only)"
+        },
+        source: {
+          type: "string",
+          description: "Source context that triggered the derivation (e.g. file path, agent name)"
+        },
+        trigger: {
+          type: "string",
+          enum: ["adapt", "retry", "code_review", "final_verify"],
+          description: "Event that caused this task to be derived"
+        },
+        reason: {
+          type: "string",
+          description: "Human-readable explanation for the derivation"
+        }
+      }
+    },
+    taskCheck: {
+      type: "object",
+      required: ["type", "run"],
+      additionalProperties: false,
+      description: "A static/build/lint/format check to run as part of task acceptance",
+      properties: {
+        type: {
+          type: "string",
+          enum: ["static", "build", "lint", "format"],
+          description: "Category of check: static=type check, build=compilation, lint=linting, format=formatting"
+        },
+        run: {
+          type: "string",
+          description: "Shell command to execute for this check"
+        }
+      }
+    },
+    taskAcceptanceCriteria: {
+      type: "object",
+      required: ["scenarios", "checks"],
+      additionalProperties: false,
+      description: "v5: AC is expressed as scenario references + automated checks. scenarios[] references requirements[].scenarios[].id. checks[] are runnable static/build/lint/format commands.",
+      properties: {
+        scenarios: {
+          type: "array",
+          description: "List of scenario IDs from requirements[].scenarios[].id that this task fulfills",
+          items: { type: "string" }
+        },
+        checks: {
+          type: "array",
+          description: "Automated checks to verify the task (static, build, lint, format)",
+          items: { $ref: "#/$defs/taskCheck" }
+        }
+      }
+    },
+    task: {
+      type: "object",
+      required: ["id", "action", "type"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        action: { type: "string" },
+        type: {
+          type: "string",
+          enum: ["work", "verification"]
+        },
+        origin: {
+          type: "string",
+          enum: ["planned", "derived", "adapted"],
+          default: "planned",
+          description: "How this task was created: planned=authored in spec, derived=created at runtime via spec derive, adapted=manually adjusted from a derived task"
+        },
+        derived_from: {
+          $ref: "#/$defs/derivedFrom",
+          description: "Provenance record \u2014 required when origin is derived or adapted"
+        },
+        risk: {
+          type: "string",
+          enum: ["low", "medium", "high"]
+        },
+        file_scope: {
+          type: "array",
+          items: { type: "string" }
+        },
+        fulfills: {
+          type: "array",
+          items: { type: "string" }
+        },
+        depends_on: {
+          type: "array",
+          items: { type: "string" }
+        },
+        steps: {
+          type: "array",
+          description: "Task steps \u2014 either plain strings (backward compat) or structured objects with done tracking",
+          items: {
+            oneOf: [
+              { type: "string" },
+              {
+                type: "object",
+                required: ["text"],
+                additionalProperties: false,
+                properties: {
+                  text: { type: "string" },
+                  done: { type: "boolean", default: false }
+                }
+              }
+            ]
+          }
+        },
+        references: {
+          type: "array",
+          items: { $ref: "#/$defs/reference" }
+        },
+        inputs: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["from_task", "artifact"],
+            additionalProperties: false,
+            properties: {
+              from_task: { type: "string" },
+              artifact: { type: "string" }
+            }
+          }
+        },
+        outputs: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "path"],
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              path: { type: "string" }
+            }
+          }
+        },
+        task_constraints: {
+          type: "array",
+          items: { $ref: "#/$defs/taskConstraint" }
+        },
+        checkpoint: {
+          oneOf: [
+            { $ref: "#/$defs/checkpoint" },
+            { type: "null" }
+          ]
+        },
+        status: {
+          type: "string",
+          enum: ["pending", "in_progress", "done"],
+          default: "pending"
+        },
+        started_at: { type: "string" },
+        completed_at: { type: "string" },
+        summary: { type: "string" },
+        required_tools: {
+          type: "array",
+          items: { type: "string" }
+        },
+        must_not_do: {
+          type: "array",
+          items: { type: "string" }
+        },
+        acceptance_criteria: { $ref: "#/$defs/taskAcceptanceCriteria" },
+        tool: { type: "string" },
+        args: { type: "string" }
+      },
+      allOf: [
+        {
+          if: { properties: { origin: { enum: ["derived", "adapted"] } }, required: ["origin"] },
+          then: { required: ["derived_from"] }
+        }
+      ]
+    },
+    historyEntry: {
+      type: "object",
+      required: ["ts", "type"],
+      additionalProperties: false,
+      properties: {
+        ts: { type: "string" },
+        type: {
+          type: "string",
+          enum: ["spec_created", "task_start", "task_done", "tasks_changed", "spec_updated"]
+        },
+        task: { type: "string" },
+        summary: { type: "string" },
+        detail: { type: "string" }
+      }
+    },
+    verificationSummary: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        agent_items: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "criterion", "method"],
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              criterion: { type: "string" },
+              method: { type: "string" },
+              related_task: { type: "string" }
+            }
+          }
+        },
+        human_items: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "criterion", "reason"],
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              criterion: { type: "string" },
+              reason: { type: "string" },
+              review_material: { type: "string" }
+            }
+          }
+        },
+        sandbox_items: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "scenario", "agent", "method"],
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              scenario: { type: "string" },
+              agent: { type: "string" },
+              method: { type: "string" }
+            }
+          }
+        },
+        gaps: {
+          type: "array",
+          items: { type: "string" }
+        }
+      }
+    },
+    externalDependencies: {
+      description: "Human-only tasks that the agent cannot perform (infra setup, API keys, deployment, etc.). If automatable, put it in the Task DAG instead.",
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        pre_work: {
+          description: "Human actions that must be completed BEFORE execution starts.",
+          type: "array",
+          items: {
+            type: "object",
+            required: ["dependency", "action"],
+            additionalProperties: false,
+            properties: {
+              id: { type: "string", description: "Optional identifier (e.g., PW-1)" },
+              dependency: { type: "string" },
+              action: { type: "string", description: "What the human must do" },
+              command: { type: "string", description: "Hint command for the human (not agent-executed)" },
+              blocking: { type: "boolean", description: "If true, execution halts until human confirms completion" }
+            }
+          }
+        },
+        post_work: {
+          description: "Human actions to perform AFTER execution completes.",
+          type: "array",
+          items: {
+            type: "object",
+            required: ["dependency", "action"],
+            additionalProperties: false,
+            properties: {
+              id: { type: "string", description: "Optional identifier (e.g., POW-1)" },
+              dependency: { type: "string" },
+              action: { type: "string", description: "What the human must do" },
+              command: { type: "string", description: "Hint command for the human (not agent-executed)" }
+            }
+          }
+        }
+      }
+    },
+    researchFindings: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: {
+          type: "string",
+          description: "High-level summary of exploration results"
+        },
+        patterns: {
+          type: "array",
+          description: "Existing code patterns discovered (file:line format)",
+          items: {
+            type: "object",
+            required: ["path", "description"],
+            additionalProperties: false,
+            properties: {
+              path: { type: "string" },
+              start_line: { type: "integer", minimum: 1 },
+              end_line: { type: "integer", minimum: 1 },
+              description: { type: "string" }
+            }
+          }
+        },
+        structure: {
+          type: "array",
+          description: "Key directory/file structure paths",
+          items: { type: "string" }
+        },
+        commands: {
+          type: "object",
+          description: "Project commands discovered",
+          additionalProperties: false,
+          properties: {
+            typecheck: { type: "string" },
+            lint: { type: "string" },
+            test: { type: "string" },
+            build: { type: "string" }
+          }
+        },
+        documentation: {
+          type: "array",
+          description: "Internal docs findings (ADRs, conventions, constraints)",
+          items: {
+            type: "object",
+            required: ["path", "description"],
+            additionalProperties: false,
+            properties: {
+              path: { type: "string" },
+              line: { type: "integer", minimum: 1 },
+              description: { type: "string" }
+            }
+          }
+        },
+        ux_review: {
+          type: "object",
+          description: "UX impact assessment from ux-reviewer agent",
+          additionalProperties: false,
+          properties: {
+            current_flow: { type: "string" },
+            impact: { type: "string" },
+            recommendations: {
+              type: "array",
+              items: { type: "string" }
+            },
+            must_not_do: {
+              type: "array",
+              items: { type: "string" }
+            }
+          }
+        }
+      }
+    },
+    constraint: {
+      type: "object",
+      required: ["id", "type", "rule", "verified_by", "verify"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        type: {
+          type: "string",
+          enum: ["must_not_do", "preserve"]
+        },
+        rule: { type: "string" },
+        verified_by: {
+          type: "string",
+          enum: ["machine", "agent", "human"]
+        },
+        verify: { $ref: "#/$defs/verify" }
+      },
+      allOf: [
+        {
+          if: {
+            properties: { verified_by: { const: "machine" } },
+            required: ["verified_by"]
+          },
+          then: {
+            properties: {
+              verify: { $ref: "#/$defs/verifyCommand" }
+            }
+          }
+        },
+        {
+          if: {
+            properties: { verified_by: { const: "agent" } },
+            required: ["verified_by"]
+          },
+          then: {
+            properties: {
+              verify: { $ref: "#/$defs/verifyAssertion" }
+            }
+          }
+        },
+        {
+          if: {
+            properties: { verified_by: { const: "human" } },
+            required: ["verified_by"]
+          },
+          then: {
+            properties: {
+              verify: { $ref: "#/$defs/verifyInstruction" }
+            }
+          }
+        }
+      ]
+    }
+  }
+};
+
 // src/lib/state-io.js
 import fs from "fs";
 import path from "path";
@@ -8371,6 +9191,8 @@ var SPEC_HELP = `
 Usage:
   hoyeon-cli spec init <name> --goal "..." <path>   Create a minimal valid spec.json
   hoyeon-cli spec merge <path> --json '{...}'       Deep-merge a JSON fragment into spec.json
+                                                    --append: concatenate arrays
+                                                    --patch:  ID-based merge (match by id, update in place)
   hoyeon-cli spec validate <path>                   Validate a spec.json file against the schema
   hoyeon-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
   hoyeon-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
@@ -8379,6 +9201,14 @@ Usage:
   hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
   hoyeon-cli spec check <path>                      Check internal consistency
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
+  hoyeon-cli spec guide [section]                             Show schema guide for a section
+  hoyeon-cli spec scenario <scenario-id> --get <path>              Get scenario details as JSON
+  hoyeon-cli spec derive --parent <id> --source <src> --trigger <t> --action <a> --reason <r> <path>  Create a derived task
+  hoyeon-cli spec drift <path>                       Show drift ratio (derived vs planned tasks)
+  hoyeon-cli spec requirement --status <path> [--json]  Show all requirements/scenarios with verification status
+  hoyeon-cli spec requirement <id> --get <path>     Get individual scenario as JSON
+  hoyeon-cli spec requirement <id> --status pass|fail|skipped --task <task_id> [--reason <msg>] <path>  Update scenario status
+  hoyeon-cli spec sandbox-tasks <path> [--json]     Auto-generate T_SANDBOX + T_SV tasks for sandbox scenarios
 
 Options:
   --help, -h    Show this help message
@@ -8394,14 +9224,36 @@ Examples:
   hoyeon-cli spec meta ./spec.json
   hoyeon-cli spec check ./spec.json
   hoyeon-cli spec amend --reason fb-001 --spec ./spec.json
+  hoyeon-cli spec requirement --status ./spec.json
+  hoyeon-cli spec requirement R1-S1 --get ./spec.json
+  hoyeon-cli spec requirement R1-S1 --status pass --task T1 ./spec.json
+  hoyeon-cli spec sandbox-tasks ./spec.json
 `;
-function loadSchema() {
-  return dev_spec_v4_schema_default;
+function loadSchema(specData) {
+  if (specData?.meta?.schema_version === "v4") {
+    return dev_spec_v4_schema_default;
+  }
+  return dev_spec_v5_schema_default;
+}
+function printGuideHints(errors) {
+  const sections = /* @__PURE__ */ new Set();
+  for (const e of errors) {
+    const path2 = e.instancePath || "";
+    const match = path2.match(/^\/([^/]+)/);
+    if (match) sections.add(match[1]);
+  }
+  if (sections.size > 0) {
+    process.stderr.write("\nHint: check schema with:\n");
+    for (const s of sections) {
+      process.stderr.write(`  hoyeon-cli spec guide ${s}
+`);
+    }
+  }
 }
 function validateSpec(specData) {
   let schema;
   try {
-    schema = loadSchema();
+    schema = loadSchema(specData);
   } catch (err) {
     process.stderr.write(`Error: could not load schema: ${err.message}
 `);
@@ -8418,16 +9270,30 @@ function validateSpec(specData) {
       process.stderr.write(`  ${path2}: ${e.message}
 `);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 }
-function deepMerge(target, source, append = false) {
+function deepMerge(target, source, append = false, patch = false) {
   for (const key of Object.keys(source)) {
     if (source[key] === null || source[key] === void 0) {
       continue;
     }
     if (Array.isArray(source[key])) {
-      if (append && Array.isArray(target[key])) {
+      if (patch && Array.isArray(target[key])) {
+        for (const item of source[key]) {
+          if (item && typeof item === "object" && item.id) {
+            const idx = target[key].findIndex((t) => t && t.id === item.id);
+            if (idx >= 0) {
+              target[key][idx] = { ...target[key][idx], ...item };
+            } else {
+              target[key].push(item);
+            }
+          } else {
+            target[key].push(item);
+          }
+        }
+      } else if (append && Array.isArray(target[key])) {
         target[key] = target[key].concat(source[key]);
       } else {
         target[key] = source[key];
@@ -8436,7 +9302,7 @@ function deepMerge(target, source, append = false) {
       if (!target[key] || typeof target[key] !== "object" || Array.isArray(target[key])) {
         target[key] = {};
       }
-      deepMerge(target[key], source[key], append);
+      deepMerge(target[key], source[key], append, patch);
     } else {
       target[key] = source[key];
     }
@@ -8528,7 +9394,7 @@ async function handleMerge(args) {
   }
   if (!parsed.json) {
     process.stderr.write("Error: --json '{...}' is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec merge <path> --json '{...}' [--append]\n");
+    process.stderr.write("Usage: hoyeon-cli spec merge <path> --json '{...}' [--append] [--patch]\n");
     process.exit(1);
   }
   let fragment;
@@ -8546,7 +9412,12 @@ async function handleMerge(args) {
   const specPath = resolve(filePath);
   const specData = loadSpec(specPath);
   const append = parsed.append === true;
-  deepMerge(specData, fragment, append);
+  const patch = parsed.patch === true;
+  if (append && patch) {
+    process.stderr.write("Error: --append and --patch are mutually exclusive\n");
+    process.exit(1);
+  }
+  deepMerge(specData, fragment, append, patch);
   const now = (/* @__PURE__ */ new Date()).toISOString();
   if (!specData.history) specData.history = [];
   const mergedKeys = Object.keys(fragment).join(", ");
@@ -8565,6 +9436,7 @@ async function handleMerge(args) {
   process.stdout.write(`  merged keys: ${mergedKeys}
 `);
   if (append) process.stdout.write("  mode: append (arrays concatenated)\n");
+  if (patch) process.stdout.write("  mode: patch (ID-based merge)\n");
   process.exit(0);
 }
 async function handleValidate(args) {
@@ -8593,7 +9465,7 @@ async function handleValidate(args) {
   }
   let schema;
   try {
-    schema = loadSchema();
+    schema = loadSchema(data);
   } catch (err) {
     process.stderr.write(`Error: could not load schema: ${err.message}
 `);
@@ -8621,6 +9493,7 @@ async function handleValidate(args) {
       process.stderr.write(`  ${path2}: ${e.message}
 `);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
 }
@@ -8835,11 +9708,13 @@ function formatSlim(spec2, rounds, criticalPath) {
       parallel: round.length > 1,
       tasks: round.map((id) => {
         const t = (spec2.tasks || []).find((task) => task.id === id) || {};
+        const isDerived = t.origin === "derived";
         return {
           id: t.id,
           action: t.action,
           type: t.type,
           status: t.status || "pending",
+          derived: isDerived,
           depends_on: t.depends_on || [],
           ...t.tool ? { tool: t.tool } : {},
           ...t.args ? { args: t.args } : {}
@@ -9041,7 +9916,7 @@ async function handleTask(args) {
   specData.history.push(entry);
   let schema;
   try {
-    schema = loadSchema();
+    schema = loadSchema(specData);
   } catch (err) {
     process.stderr.write(`Error: could not load schema: ${err.message}
 `);
@@ -9058,6 +9933,7 @@ async function handleTask(args) {
       process.stderr.write(`  ${path2}: ${e.message}
 `);
     }
+    printGuideHints(validate.errors);
     process.exit(1);
   }
   writeState(specPath, specData);
@@ -9078,12 +9954,18 @@ async function handleStatus(args) {
   const inProgress = tasks.filter((t) => t.status === "in_progress");
   const pending = tasks.filter((t) => t.status === "pending" || !t.status);
   const remaining = tasks.filter((t) => t.status !== "done");
+  const plannedTasks = tasks.filter((t) => t.origin !== "derived");
+  const derivedTasks = tasks.filter((t) => t.origin === "derived");
+  const plannedDone = plannedTasks.filter((t) => t.status === "done");
+  const derivedDone = derivedTasks.filter((t) => t.status === "done");
   const result = {
     name: specData.meta?.name || "unknown",
     done: done.length,
     in_progress: inProgress.length,
     pending: pending.length,
     total: tasks.length,
+    planned: { done: plannedDone.length, total: plannedTasks.length },
+    derived: { done: derivedDone.length, total: derivedTasks.length },
     complete: remaining.length === 0,
     remaining: remaining.map((t) => ({ id: t.id, action: t.action, status: t.status || "pending" }))
   };
@@ -9137,6 +10019,28 @@ async function handleCheck(args) {
       }
     }
   }
+  for (const task of specData.tasks) {
+    if (task.origin === "derived") {
+      if (!task.derived_from || !task.derived_from.parent) {
+        issues.push(`task '${task.id}' has origin=derived but is missing derived_from.parent`);
+      } else if (!taskIds.has(task.derived_from.parent)) {
+        issues.push(`task '${task.id}' derived_from.parent '${task.derived_from.parent}' does not reference a valid task ID`);
+      }
+    }
+  }
+  const allScenarioIds = /* @__PURE__ */ new Set();
+  for (const req of specData.requirements || []) {
+    for (const sc of req.scenarios || []) {
+      if (sc.id) allScenarioIds.add(sc.id);
+    }
+  }
+  for (const task of specData.tasks) {
+    for (const scenarioRef of task.acceptance_criteria?.scenarios || []) {
+      if (!allScenarioIds.has(scenarioRef)) {
+        issues.push(`task '${task.id}' acceptance_criteria.scenarios references unknown scenario '${scenarioRef}'`);
+      }
+    }
+  }
   const warnings = [];
   const fileScopeMap = /* @__PURE__ */ new Map();
   for (const task of specData.tasks) {
@@ -9168,6 +10072,715 @@ async function handleCheck(args) {
   process.stdout.write("Spec check passed: internal consistency OK\n");
   process.exit(0);
 }
+function generateGuide(section) {
+  const schema = loadSchema();
+  const defs = schema.$defs || {};
+  const SECTIONS = {
+    meta: { ref: "meta", desc: "Spec metadata (name, goal, mode, etc.)" },
+    context: { ref: "context", desc: "Request context, interview decisions, research, assumptions" },
+    tasks: { ref: "task", desc: "Task DAG (work items + verification)", isArray: true },
+    requirements: { ref: "requirement", desc: "Requirements with scenarios and verification", isArray: true },
+    constraints: { ref: "constraint", desc: "Must-not-do / preserve constraints", isArray: true },
+    history: { ref: "historyEntry", desc: "Spec change history entries", isArray: true },
+    verification: { ref: "verificationSummary", desc: "A/H/S verification classification summary" },
+    external: { ref: "externalDependencies", desc: "Human-only pre/post-work dependencies" },
+    scenario: { ref: "scenario", desc: "Requirement scenario (given/when/then + verify)" },
+    verify: { ref: null, desc: "Verify types: command, assertion, instruction", custom: "verify" },
+    merge: { ref: null, desc: "Merge modes: replace (default), --append, --patch", custom: "merge" },
+    "acceptance-criteria": { ref: null, desc: "v5 AC structure: scenarios[] + checks[]", custom: "acceptance-criteria" }
+  };
+  if (!section || section === "list") {
+    const lines = ["Available guide sections:"];
+    for (const [name, info2] of Object.entries(SECTIONS)) {
+      lines.push(`  ${name.padEnd(16)} ${info2.desc}`);
+    }
+    lines.push("");
+    lines.push("Usage: hoyeon-cli spec guide <section>");
+    lines.push("       hoyeon-cli spec guide full      (all sections)");
+    lines.push("       hoyeon-cli spec guide root      (top-level structure)");
+    return lines.join("\n");
+  }
+  if (section === "root") {
+    return formatRoot(schema);
+  }
+  if (section === "full") {
+    const lines = [formatRoot(schema), ""];
+    for (const [name, info2] of Object.entries(SECTIONS)) {
+      const def2 = defs[info2.ref];
+      if (def2) {
+        lines.push(`--- ${name} ---`);
+        lines.push(formatDef(name, def2, defs, info2.isArray));
+        lines.push("");
+      }
+    }
+    return lines.join("\n");
+  }
+  const info = SECTIONS[section];
+  if (!info) {
+    return `Error: unknown section '${section}'. Run 'hoyeon-cli spec guide' to see available sections.`;
+  }
+  if (info.custom === "verify") {
+    return formatVerifyGuide(defs);
+  }
+  if (info.custom === "merge") {
+    return formatMergeGuide();
+  }
+  if (info.custom === "acceptance-criteria") {
+    return formatAcceptanceCriteriaGuide();
+  }
+  const def = defs[info.ref];
+  if (!def) {
+    return `Error: schema definition '${info.ref}' not found.`;
+  }
+  return formatDef(section, def, defs, info.isArray);
+}
+function formatRoot(schema) {
+  const lines = ["spec.json top-level structure:"];
+  lines.push(`  required: ${(schema.required || []).join(", ")}`);
+  lines.push("  fields:");
+  for (const [key, val] of Object.entries(schema.properties || {})) {
+    if (key === "$schema") continue;
+    const req = (schema.required || []).includes(key) ? "*" : " ";
+    const desc = val.description || "";
+    lines.push(`    ${req} ${key}${desc ? ` \u2014 ${desc}` : ""}`);
+  }
+  lines.push("");
+  lines.push("  * = required");
+  return lines.join("\n");
+}
+function formatDef(name, def, defs, isArray) {
+  const lines = [];
+  if (isArray) {
+    lines.push(`${name}: array of objects`);
+  } else {
+    lines.push(`${name}: object`);
+  }
+  const required = new Set(def.required || []);
+  if (required.size > 0) {
+    lines.push(`  required: ${[...required].join(", ")}`);
+  }
+  const props = def.properties || {};
+  for (const [key, prop] of Object.entries(props)) {
+    const req = required.has(key) ? "*" : " ";
+    const typeStr = resolveType(prop, defs, "    ");
+    lines.push(`  ${req} ${key}: ${typeStr}`);
+  }
+  const example = generateExample(name, def, defs, required);
+  if (example) {
+    lines.push("");
+    if (isArray) {
+      lines.push(`  example merge: --json '{"${name}":[${example}]}'`);
+    } else {
+      lines.push(`  example merge: --json '{"${name}":${example}}'`);
+    }
+  }
+  return lines.join("\n");
+}
+function resolveType(prop, defs, indent) {
+  if (prop.$ref) {
+    const refName = prop.$ref.replace("#/$defs/", "");
+    const refDef = defs[refName];
+    if (refDef) {
+      if (refDef.enum) return `enum(${refDef.enum.join("|")})`;
+      if (refDef.type === "object") return `{${refName}}`;
+      return refDef.type || refName;
+    }
+    return refName;
+  }
+  if (prop.oneOf) {
+    const types = prop.oneOf.map((o) => {
+      if (o.$ref) return `{${o.$ref.replace("#/$defs/", "")}}`;
+      if (o.type) return o.type;
+      return "?";
+    });
+    return types.join(" | ");
+  }
+  if (prop.enum) return `enum(${prop.enum.join("|")})`;
+  if (prop.type === "array") {
+    if (prop.items) {
+      if (prop.items.$ref) {
+        const refName = prop.items.$ref.replace("#/$defs/", "");
+        return `[{${refName}}]`;
+      }
+      if (prop.items.oneOf) return `[mixed]`;
+      if (prop.items.type === "object" && prop.items.properties) {
+        return formatInlineObject(prop.items, indent);
+      }
+      return `[${prop.items.type || "any"}]`;
+    }
+    return "[]";
+  }
+  if (prop.const) return `"${prop.const}"`;
+  if (prop.type === "object" && prop.properties) {
+    return formatInlineObject(prop, indent);
+  }
+  let t = prop.type || "any";
+  if (prop.minimum !== void 0 || prop.maximum !== void 0) {
+    const parts = [];
+    if (prop.minimum !== void 0) parts.push(`min:${prop.minimum}`);
+    if (prop.maximum !== void 0) parts.push(`max:${prop.maximum}`);
+    t += `(${parts.join(",")})`;
+  }
+  return t;
+}
+function formatInlineObject(schema, indent = "    ") {
+  const req = new Set(schema.required || []);
+  const props = schema.properties || {};
+  const fields = [];
+  for (const [k, v] of Object.entries(props)) {
+    const r = req.has(k) ? "*" : " ";
+    const t = v.enum ? `enum(${v.enum.join("|")})` : v.const ? `"${v.const}"` : v.type || "any";
+    fields.push(`${indent}  ${r} ${k}: ${t}`);
+  }
+  const isArray = schema === schema ? "" : "";
+  return `[object]
+${fields.join("\n")}`;
+}
+function generateExample(name, def, defs, required) {
+  const props = def.properties || {};
+  const obj = {};
+  for (const key of required) {
+    const prop = props[key];
+    if (!prop) continue;
+    obj[key] = exampleValue(key, prop, defs);
+  }
+  const optionals = Object.keys(props).filter((k) => !required.has(k));
+  let added = 0;
+  for (const key of optionals) {
+    if (added >= 2) break;
+    const prop = props[key];
+    if (prop.type === "string" || prop.enum) {
+      obj[key] = exampleValue(key, prop, defs);
+      added++;
+    }
+  }
+  try {
+    return JSON.stringify(obj);
+  } catch {
+    return null;
+  }
+}
+function exampleValue(key, prop, defs) {
+  if (prop.enum) return prop.enum[0];
+  if (prop.const) return prop.const;
+  if (prop.$ref) {
+    const refName = prop.$ref.replace("#/$defs/", "");
+    const refDef = defs[refName];
+    if (refDef?.enum) return refDef.enum[0];
+    return `<${refName}>`;
+  }
+  if (prop.type === "string") return `<${key}>`;
+  if (prop.type === "integer") return prop.minimum || 1;
+  if (prop.type === "boolean") return false;
+  if (prop.type === "array") return [];
+  if (prop.type === "object") return {};
+  return `<${key}>`;
+}
+function formatMergeGuide() {
+  const lines = [
+    "spec merge modes:",
+    "",
+    "  (default) \u2014 replace",
+    "    Arrays are replaced entirely. Objects are deep-merged.",
+    `    hoyeon-cli spec merge <path> --json '{"tasks":[...]}'`,
+    "",
+    "  --append \u2014 concatenate arrays",
+    "    New array items are appended to existing arrays.",
+    `    hoyeon-cli spec merge <path> --json '{"tasks":[{"id":"T2",...}]}' --append`,
+    "",
+    "  --patch \u2014 ID-based merge",
+    '    Array items with matching "id" are updated in place.',
+    "    Items with new ids are appended. Non-array fields deep-merge normally.",
+    `    hoyeon-cli spec merge <path> --json '{"tasks":[{"id":"T1","status":"done"}]}' --patch`,
+    "",
+    "  --append and --patch are mutually exclusive.",
+    "",
+    "  When to use which:",
+    "    replace   \u2014 rewrite a section completely (e.g. set all tasks at once)",
+    "    --append  \u2014 add new items without touching existing (e.g. add requirements)",
+    "    --patch   \u2014 update specific items by id (e.g. update one task's status)"
+  ];
+  return lines.join("\n");
+}
+function formatAcceptanceCriteriaGuide() {
+  const lines = [
+    "acceptance_criteria (v5): scenarios[] + checks[]",
+    "",
+    "  scenarios: string[]",
+    "    List of scenario IDs from requirements[].scenarios[].id that this task fulfills.",
+    "    These are referential \u2014 spec check validates that each ID exists in requirements.",
+    '    example: ["R1-S1", "R1-S2", "R2-S1"]',
+    "",
+    "  checks: taskCheck[]",
+    "    Automated checks to run when verifying the task.",
+    "    Each check has:",
+    "      * type: enum(static|build|lint|format)",
+    "      * run: string (shell command)",
+    '    example: [{"type":"build","run":"cd cli && node build.mjs"},{"type":"static","run":"tsc --noEmit"}]',
+    "",
+    "  example acceptance_criteria:",
+    "    {",
+    '      "scenarios": ["R1-S1", "R2-S1"],',
+    '      "checks": [',
+    '        {"type": "build", "run": "cd cli && node build.mjs"},',
+    '        {"type": "lint", "run": "eslint src/"}',
+    "      ]",
+    "    }",
+    "",
+    "  Note: spec check validates referential integrity.",
+    "    AC.scenarios IDs must exist in requirements[].scenarios[].id.",
+    "    Run: hoyeon-cli spec check <path>"
+  ];
+  return lines.join("\n");
+}
+function formatVerifyGuide(defs) {
+  const lines = [
+    "verify: oneOf \u2014 choose based on verified_by value:",
+    "",
+    '  verified_by: "machine" \u2192 verifyCommand',
+    '    * type: "command"',
+    "    * run: string (shell command)",
+    "    * expect: { *exit_code: int, stdout_contains?: string, stderr_empty?: bool }",
+    '    example: {"type":"command","run":"npm test","expect":{"exit_code":0}}',
+    "",
+    '  verified_by: "agent" \u2192 verifyAssertion',
+    '    * type: "assertion"',
+    "    * checks: [string] (min 1 item)",
+    '    example: {"type":"assertion","checks":["file exists at src/foo.ts"]}',
+    "",
+    '  verified_by: "human" \u2192 verifyInstruction',
+    '    * type: "instruction"',
+    "    * ask: string (question for human)",
+    '    example: {"type":"instruction","ask":"Does the UI look correct?"}'
+  ];
+  return lines.join("\n");
+}
+async function handleGuide(args) {
+  const section = args[0];
+  const output = generateGuide(section);
+  process.stdout.write(output + "\n");
+  process.exit(0);
+}
+function generateDerivedId(tasks, parentId, trigger) {
+  const prefix = `${parentId}.${trigger}-`;
+  let maxN = 0;
+  for (const t of tasks) {
+    if (t.id.startsWith(prefix)) {
+      const suffix = t.id.slice(prefix.length);
+      const n = parseInt(suffix, 10);
+      if (!isNaN(n) && n > maxN) maxN = n;
+    }
+  }
+  return `${prefix}${maxN + 1}`;
+}
+async function handleDerive(args) {
+  const parsed = parseArgs(args);
+  const requiredFlags = ["parent", "source", "trigger", "action", "reason"];
+  for (const flag of requiredFlags) {
+    if (!parsed[flag]) {
+      process.stderr.write(`Error: --${flag} is required
+`);
+      process.stderr.write("Usage: hoyeon-cli spec derive --parent <id> --source <src> --trigger <trigger> --action <action> --reason <reason> [--attempt <n>] [--file-scope <f1,f2>] [--steps <s1,s2>] <path>\n");
+      process.exit(1);
+    }
+  }
+  const validTriggers = ["adapt", "retry", "code_review", "final_verify"];
+  if (!validTriggers.includes(parsed.trigger)) {
+    process.stderr.write(`Error: --trigger must be one of: ${validTriggers.join(", ")}
+`);
+    process.exit(1);
+  }
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write("Error: <path> to spec.json is required\n");
+    process.exit(1);
+  }
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+  const parentTask = (specData.tasks || []).find((t) => t.id === parsed.parent);
+  if (!parentTask) {
+    process.stderr.write(`Error: parent task '${parsed.parent}' not found in spec
+`);
+    process.exit(1);
+  }
+  const parentOrigin = parentTask.origin || "planned";
+  if (parentOrigin === "derived" || parentOrigin === "adapted") {
+    process.stderr.write(`Error: Parent must be a planned task (depth-1 enforcement)
+`);
+    process.exit(1);
+  }
+  const newId = generateDerivedId(specData.tasks || [], parsed.parent, parsed.trigger);
+  const fileScope = parsed["file-scope"] ? parsed["file-scope"].split(",").map((s) => s.trim()).filter(Boolean) : void 0;
+  const steps = parsed.steps ? parsed.steps.split(",").map((s) => s.trim()).filter(Boolean) : void 0;
+  const derivedFrom = {
+    parent: parsed.parent,
+    trigger: parsed.trigger,
+    source: parsed.source,
+    reason: parsed.reason
+  };
+  const newTask = {
+    id: newId,
+    action: parsed.action,
+    type: "work",
+    status: "pending",
+    origin: "derived",
+    derived_from: derivedFrom,
+    depends_on: [parsed.parent]
+  };
+  if (fileScope) newTask.file_scope = fileScope;
+  if (steps) newTask.steps = steps;
+  if (!specData.tasks) specData.tasks = [];
+  specData.tasks = specData.tasks.concat([newTask]);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  if (!specData.history) specData.history = [];
+  specData.history.push({
+    ts: now,
+    type: "tasks_changed",
+    task: newId,
+    detail: `derived from ${parsed.parent} via ${parsed.trigger}`
+  });
+  if (specData.meta) specData.meta.updated_at = now;
+  validateSpec(specData);
+  buildPlan(specData.tasks);
+  writeState(specPath, specData);
+  process.stdout.write(JSON.stringify({ created: newId }) + "\n");
+  process.exit(0);
+}
+async function handleDrift(args) {
+  const filePath = args[0];
+  if (!filePath) {
+    process.stderr.write("Error: missing <path> argument\n");
+    process.stderr.write("Usage: hoyeon-cli spec drift <path>\n");
+    process.exit(1);
+  }
+  const specData = loadSpec(resolve(filePath));
+  const tasks = specData.tasks || [];
+  const plannedTasks = tasks.filter((t) => !t.origin || t.origin === "planned" || t.origin === "adapted");
+  const derivedTasks = tasks.filter((t) => t.origin === "derived");
+  const plannedCount = plannedTasks.length;
+  const derivedCount = derivedTasks.length;
+  const driftRatio = plannedCount === 0 ? 0 : derivedCount / plannedCount;
+  const byTrigger = {};
+  for (const t of derivedTasks) {
+    const trigger = t.derived_from?.trigger || "unknown";
+    byTrigger[trigger] = (byTrigger[trigger] || 0) + 1;
+  }
+  const bySource = {};
+  for (const t of derivedTasks) {
+    const source = t.derived_from?.source || "unknown";
+    bySource[source] = (bySource[source] || 0) + 1;
+  }
+  const result = {
+    planned: plannedCount,
+    derived: derivedCount,
+    drift_ratio: Math.round(driftRatio * 1e3) / 1e3,
+    by_trigger: byTrigger,
+    by_source: bySource
+  };
+  process.stdout.write(JSON.stringify(result) + "\n");
+  process.exit(0);
+}
+async function handleScenario(args) {
+  const scenarioId = args[0];
+  if (!scenarioId || scenarioId.startsWith("--")) {
+    process.stderr.write("Error: <scenario-id> is required\n");
+    process.stderr.write("Usage: hoyeon-cli spec scenario <scenario-id> --get <path>\n");
+    process.exit(1);
+  }
+  const parsed = parseArgs(args.slice(1));
+  if (parsed.get === void 0) {
+    process.stderr.write("Error: --get <path> is required\n");
+    process.stderr.write("Usage: hoyeon-cli spec scenario <scenario-id> --get <path>\n");
+    process.exit(1);
+  }
+  if (typeof parsed.get !== "string") {
+    process.stderr.write("Error: --get requires <path> argument\n");
+    process.stderr.write("Usage: hoyeon-cli spec scenario <scenario-id> --get <path>\n");
+    process.exit(1);
+  }
+  const filePath = parsed.get;
+  const specData = loadSpec(resolve(filePath));
+  let found = null;
+  for (const req of specData.requirements || []) {
+    for (const scenario of req.scenarios || []) {
+      if (scenario.id === scenarioId) {
+        found = scenario;
+        break;
+      }
+    }
+    if (found) break;
+  }
+  if (!found) {
+    process.stderr.write(`Error: scenario '${scenarioId}' not found in spec
+`);
+    process.exit(1);
+  }
+  process.stdout.write(JSON.stringify(found, null, 2) + "\n");
+  process.exit(0);
+}
+function findScenarioById(specData, scenarioId) {
+  for (const req of specData.requirements || []) {
+    for (const scenario of req.scenarios || []) {
+      if (scenario.id === scenarioId) {
+        return { scenario, requirement: req };
+      }
+    }
+  }
+  return null;
+}
+async function handleRequirement(args) {
+  const parsed = parseArgs(args);
+  const firstPositional = parsed._[0];
+  const isStatusFlag = parsed.status === true;
+  if (!firstPositional && isStatusFlag) {
+    const filePath = parsed._[0] || parsed._[1];
+    const resolvedPath = typeof parsed.status === "string" ? parsed.status : parsed._[0];
+    if (!resolvedPath) {
+      process.stderr.write("Error: <path> is required\n");
+      process.stderr.write("Usage: hoyeon-cli spec requirement --status <path> [--json]\n");
+      process.exit(1);
+    }
+    const specData = loadSpec(resolve(resolvedPath));
+    const useJson = parsed.json === true;
+    return handleRequirementStatusView(specData, useJson);
+  }
+  if (!firstPositional && typeof parsed.status === "string") {
+    const resolvedPath = parsed.status;
+    if (!resolvedPath) {
+      process.stderr.write("Error: <path> is required\n");
+      process.exit(1);
+    }
+    const specData = loadSpec(resolve(resolvedPath));
+    const useJson = parsed.json === true;
+    return handleRequirementStatusView(specData, useJson);
+  }
+  const scenarioId = firstPositional;
+  if (!scenarioId) {
+    process.stderr.write("Error: <scenario-id> or --status flag is required\n");
+    process.stderr.write("Usage: hoyeon-cli spec requirement --status <path>\n");
+    process.stderr.write("       hoyeon-cli spec requirement <id> --get <path>\n");
+    process.stderr.write("       hoyeon-cli spec requirement <id> --status pass|fail|skipped --task <task_id> <path>\n");
+    process.exit(1);
+  }
+  if (parsed.get !== void 0) {
+    if (typeof parsed.get !== "string") {
+      process.stderr.write("Error: --get requires <path> argument\n");
+      process.exit(1);
+    }
+    const specData = loadSpec(resolve(parsed.get));
+    const found = findScenarioById(specData, scenarioId);
+    if (!found) {
+      process.stderr.write(`Error: scenario '${scenarioId}' not found in spec
+`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify(found.scenario, null, 2) + "\n");
+    process.exit(0);
+  }
+  const statusValue = typeof parsed.status === "string" ? parsed.status : null;
+  if (statusValue) {
+    const validStatuses = ["pass", "fail", "skipped"];
+    if (!validStatuses.includes(statusValue)) {
+      process.stderr.write(`Error: --status must be one of: ${validStatuses.join(", ")}
+`);
+      process.exit(1);
+    }
+    if (!parsed.task) {
+      process.stderr.write("Error: --task <task_id> is required when updating scenario status\n");
+      process.exit(1);
+    }
+    const filePath = parsed._[1];
+    if (!filePath) {
+      process.stderr.write("Error: <path> to spec.json is required\n");
+      process.exit(1);
+    }
+    const specPath = resolve(filePath);
+    const specData = loadSpec(specPath);
+    const found = findScenarioById(specData, scenarioId);
+    if (!found) {
+      process.stderr.write(`Error: scenario '${scenarioId}' not found in spec
+`);
+      process.exit(1);
+    }
+    found.scenario.status = statusValue;
+    found.scenario.verified_by_task = parsed.task;
+    if (parsed.reason) {
+      found.scenario.verification_reason = parsed.reason;
+    }
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    if (!specData.history) specData.history = [];
+    specData.history.push({
+      ts: now,
+      type: "scenario_verified",
+      scenario: scenarioId,
+      status: statusValue,
+      task: parsed.task
+    });
+    if (specData.meta) specData.meta.updated_at = now;
+    writeState(specPath, specData);
+    process.stdout.write(`Updated scenario '${scenarioId}': status=${statusValue}, verified_by_task=${parsed.task}
+`);
+    process.exit(0);
+  }
+  process.stderr.write("Error: could not determine mode. Use --get, --status (flag), or --status <value> --task <id>\n");
+  process.exit(1);
+}
+function handleRequirementStatusView(specData, useJson) {
+  const requirements = specData.requirements || [];
+  const requirementRows = requirements.map((req) => {
+    const scenarios = (req.scenarios || []).map((sc) => {
+      const verifiedBy = sc.verified_by || "unknown";
+      const execEnv = sc.execution_env ? `[${sc.execution_env}]` : "";
+      const status = sc.status || "pending";
+      const verifiedByTask = sc.verified_by_task || null;
+      return {
+        id: sc.id,
+        verified_by: verifiedBy,
+        execution_env: sc.execution_env || null,
+        status,
+        verified_by_task: verifiedByTask
+      };
+    });
+    return {
+      id: req.id,
+      behavior: req.behavior,
+      scenarios
+    };
+  });
+  let passCount = 0;
+  let failCount = 0;
+  let pendingCount = 0;
+  let skippedCount = 0;
+  for (const req of requirementRows) {
+    for (const sc of req.scenarios) {
+      if (sc.status === "pass") passCount++;
+      else if (sc.status === "fail") failCount++;
+      else if (sc.status === "skipped") skippedCount++;
+      else pendingCount++;
+    }
+  }
+  const summary = { pass: passCount, fail: failCount, pending: pendingCount, skipped: skippedCount };
+  if (useJson) {
+    process.stdout.write(JSON.stringify({ requirements: requirementRows, summary }, null, 2) + "\n");
+    process.exit(0);
+  }
+  const lines = [];
+  for (const req of requirementRows) {
+    const scCount = req.scenarios.length;
+    lines.push(`${req.id}: ${req.behavior} (${scCount} scenario${scCount !== 1 ? "s" : ""})`);
+    for (const sc of req.scenarios) {
+      const verifiedByLabel = sc.verified_by === "human" ? "Manual" : sc.verified_by === "agent" ? `Agent ${sc.execution_env ? `[${sc.execution_env}]` : ""}`.trim() : sc.verified_by === "machine" ? `Auto ${sc.execution_env ? `[${sc.execution_env}]` : ""}`.trim() : sc.verified_by;
+      const taskLabel = sc.verified_by_task ? ` (${sc.verified_by_task})` : "";
+      lines.push(`  ${sc.id}: ${verifiedByLabel.padEnd(16)} ${sc.status}${taskLabel}`);
+    }
+    lines.push("");
+  }
+  const summaryParts = [];
+  if (passCount > 0) summaryParts.push(`${passCount} pass`);
+  if (failCount > 0) summaryParts.push(`${failCount} fail`);
+  if (pendingCount > 0) summaryParts.push(`${pendingCount} pending`);
+  if (skippedCount > 0) summaryParts.push(`${skippedCount} skipped`);
+  lines.push(`Summary: ${summaryParts.join(", ") || "no scenarios"}`);
+  process.stdout.write(lines.join("\n") + "\n");
+  process.exit(0);
+}
+async function handleSandboxTasks(args) {
+  const parsed = parseArgs(args);
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write("Error: <path> is required\n");
+    process.stderr.write("Usage: hoyeon-cli spec sandbox-tasks <path> [--json]\n");
+    process.exit(1);
+  }
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+  const useJson = parsed.json === true;
+  const sandboxScenarios = [];
+  for (const req of specData.requirements || []) {
+    for (const sc of req.scenarios || []) {
+      if (sc.execution_env === "sandbox") {
+        sandboxScenarios.push({ ...sc, requirement_id: req.id });
+      }
+    }
+  }
+  if (sandboxScenarios.length === 0) {
+    if (useJson) {
+      process.stdout.write(JSON.stringify({ sandbox_scenarios: [], created_tasks: [] }, null, 2) + "\n");
+    } else {
+      process.stdout.write("No sandbox scenarios found. Nothing to do.\n");
+    }
+    process.exit(0);
+  }
+  const existingTasks = specData.tasks || [];
+  const existingTaskIds = new Set(existingTasks.map((t) => t.id));
+  const sandboxScenarioIds = new Set(sandboxScenarios.map((sc) => sc.id));
+  const workTasksReferencingSandbox = existingTasks.filter((t) => {
+    const acScenarios = t.acceptance_criteria?.scenarios || [];
+    return acScenarios.some((sid) => sandboxScenarioIds.has(sid));
+  });
+  const createdTasks = [];
+  if (!existingTaskIds.has("T_SANDBOX")) {
+    const sandboxInfraTask = {
+      id: "T_SANDBOX",
+      action: "Prepare sandbox environment for scenario verification",
+      type: "work",
+      status: "pending",
+      depends_on: workTasksReferencingSandbox.map((t) => t.id)
+    };
+    existingTasks.push(sandboxInfraTask);
+    existingTaskIds.add("T_SANDBOX");
+    createdTasks.push(sandboxInfraTask);
+  }
+  let svCounter = 1;
+  for (const t of existingTasks) {
+    const m = t.id.match(/^T_SV(\d+)$/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n >= svCounter) svCounter = n + 1;
+    }
+  }
+  const newSvTasks = [];
+  for (const sc of sandboxScenarios) {
+    const svId = `T_SV${svCounter++}`;
+    if (!existingTaskIds.has(svId)) {
+      const svTask = {
+        id: svId,
+        action: `Verify ${sc.id}: ${sc.then}`,
+        type: "work",
+        status: "pending",
+        depends_on: ["T_SANDBOX"]
+      };
+      existingTasks.push(svTask);
+      existingTaskIds.add(svId);
+      createdTasks.push(svTask);
+      newSvTasks.push(svTask);
+    }
+  }
+  specData.tasks = existingTasks;
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  if (!specData.history) specData.history = [];
+  specData.history.push({
+    ts: now,
+    type: "tasks_changed",
+    detail: `sandbox-tasks: created ${createdTasks.map((t) => t.id).join(", ")}`
+  });
+  if (specData.meta) specData.meta.updated_at = now;
+  writeState(specPath, specData);
+  if (useJson) {
+    process.stdout.write(JSON.stringify({
+      sandbox_scenarios: sandboxScenarios.map((sc) => sc.id),
+      created_tasks: createdTasks.map((t) => t.id)
+    }, null, 2) + "\n");
+  } else {
+    process.stdout.write(`Created ${createdTasks.length} task(s):
+`);
+    for (const t of createdTasks) {
+      process.stdout.write(`  ${t.id}: ${t.action}
+`);
+    }
+  }
+  process.exit(0);
+}
 async function spec(args) {
   const subcommand = args[0];
   if (!subcommand || subcommand === "--help" || subcommand === "-h") {
@@ -9192,6 +10805,18 @@ async function spec(args) {
     await handleCheck(args.slice(1));
   } else if (subcommand === "amend") {
     await handleAmend(args.slice(1));
+  } else if (subcommand === "guide") {
+    await handleGuide(args.slice(1));
+  } else if (subcommand === "scenario") {
+    await handleScenario(args.slice(1));
+  } else if (subcommand === "derive") {
+    await handleDerive(args.slice(1));
+  } else if (subcommand === "drift") {
+    await handleDrift(args.slice(1));
+  } else if (subcommand === "requirement") {
+    await handleRequirement(args.slice(1));
+  } else if (subcommand === "sandbox-tasks") {
+    await handleSandboxTasks(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown spec subcommand '${subcommand}'
 `);
@@ -10006,7 +11631,7 @@ async function main() {
     process.exit(0);
   }
   if (args[0] === "--version") {
-    const version = true ? "0.11.1" : "dev";
+    const version = true ? "1.0.0" : "dev";
     process.stdout.write(`hoyeon-cli v${version}
 `);
     process.exit(0);

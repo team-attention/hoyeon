@@ -20,7 +20,7 @@ You will receive:
 ## Critical Rules
 
 1. **Checklist-based, not LLM self-score** — use concrete rules, not subjective judgment
-2. **Fix what you find** — auto-fix vague ACs via `hoyeon-cli spec merge`
+2. **Fix what you find** — auto-fix vague ACs via `hoyeon-cli spec merge`. Before constructing merge JSON, run `hoyeon-cli spec guide verify` and `hoyeon-cli spec guide merge` to get the correct schema and merge mode
 3. **Binary verdicts** — each item is PASS or FAIL, no scores
 4. **One pass only** — check everything, fix everything, return results. The caller handles the loop.
 
@@ -61,15 +61,19 @@ For each `requirements[].scenarios[]`:
 
 ### Task-Level ACs (`tasks[].acceptance_criteria`)
 
-For each item in `functional`, `static`, `runtime`:
-- `description` is concrete (not vague platitudes)
-- If `command` exists, it's an executable shell command
+For each scenario ID in `acceptance_criteria.scenarios[]`:
+- Referenced scenario exists in `requirements[].scenarios[]`
+- Scenario has a proper `verified_by` and non-empty `verify` object
+
+For each item in `acceptance_criteria.checks[]`:
+- `type` is one of: `static`, `build`, `lint`, `format`
+- `run` is an executable shell command (not vague description)
 
 ## Fix Process
 
 When a FAIL is found:
 1. Determine the correct fix (rewrite verify field with concrete command/assertion/instruction)
-2. Apply fix via `hoyeon-cli spec merge {spec_path} --json '{...}'`
+2. Apply fix via `hoyeon-cli spec merge {spec_path} --patch --json '{...}'` — always use `--patch` to update specific items by ID without replacing the entire array
 3. Log the fix in your output
 
 ### Fix Examples
@@ -104,12 +108,12 @@ Output EXACTLY this JSON after your pass:
       "detail": "verify.run = 'npm test' is valid"
     },
     {
-      "id": "T2.functional.1",
-      "type": "task_ac",
-      "check": "concrete_description",
+      "id": "T2.checks.0",
+      "type": "task_ac_check",
+      "check": "executable_command",
       "verdict": "FAIL",
-      "detail": "Description 'works correctly' is vague",
-      "fix_applied": "Rewrote to 'Login returns 200 with JWT token'"
+      "detail": "run: 'check it works' is not executable",
+      "fix_applied": "Rewrote to 'npm test -- --grep auth'"
     }
   ],
   "remaining_failures": []
@@ -120,26 +124,26 @@ Output EXACTLY this JSON after your pass:
 - `remaining_failures`: items that could not be auto-fixed (e.g., requires domain knowledge from user)
 - `fix_applied`: only present when a fix was made
 
-## H→S Conversion Suggestions
+## verified_by Reclassification Suggestions
 
-After the quality pass, scan all `verified_by: "human"` items and suggest conversions to `agent` (sandbox) where the user's environment supports it. **Do NOT auto-convert** — only suggest.
+After the quality pass, scan all `verified_by: "human"` items and suggest reclassification to `agent` or `machine` where the user's environment supports it. **Do NOT auto-reclassify** — only suggest.
 
-### Conversion Rules (only suggest if env_capabilities confirms support)
+### Reclassification Rules (only suggest if env_capabilities confirms support)
 
-| H-item pattern | Required capability | Suggested conversion |
-|---------------|--------------------|--------------------|
-| UI/page/로딩/화면/layout | `browser` | `agent` + `execution_env: "sandbox"` — browser-explorer verifies DOM/screenshots |
-| API/응답/response/endpoint | `docker` | `machine` + `execution_env: "sandbox"` — curl in container |
-| 메시지/텍스트/문구/error message | (none — host is fine) | `agent` + `execution_env: "host"` — agent reads code/output |
-| 성능/performance/latency/로딩 시간 | `docker` | `machine` + `execution_env: "sandbox"` — benchmark in container |
-| 이메일/email/notification | `docker` | `agent` + `execution_env: "sandbox"` — mock SMTP + agent checks |
+| verified_by: human pattern | Required capability | Suggested reclassification |
+|---------------------------|--------------------|-----------------------------|
+| UI/page/loading/screen/layout | `browser` | `agent` + `execution_env: "sandbox"` — browser-explorer verifies DOM/screenshots |
+| API/response/endpoint | `docker` | `machine` + `execution_env: "sandbox"` — curl in container |
+| message/text/wording/error message | (none — host is fine) | `agent` + `execution_env: "host"` — agent reads code/output |
+| performance/latency/load time | `docker` | `machine` + `execution_env: "sandbox"` — benchmark in container |
+| email/notification | `docker` | `agent` + `execution_env: "sandbox"` — mock SMTP + agent checks |
 
-### Conversion Output
+### Reclassification Output
 
-Add a `h_to_s_suggestions` array to the output:
+Add a `reclassification_suggestions` array to the output:
 
 ```json
-"h_to_s_suggestions": [
+"reclassification_suggestions": [
   {
     "id": "REQ-2.S3",
     "current": "human",
@@ -157,7 +161,7 @@ If `env_capabilities` is not provided or empty, still suggest but mark `requires
 ## What NOT to Do
 
 - Do NOT add new requirements or scenarios — only fix existing ones
-- Do NOT auto-convert H→S items — only suggest (the caller presents to user)
+- Do NOT auto-reclassify verified_by values — only suggest (the caller presents to user)
 - Do NOT change `verified_by` classification unless clearly wrong (e.g., `machine` for a UX check)
 - Do NOT add numeric quality scores
 - Do NOT modify task DAG, dependencies, or scope

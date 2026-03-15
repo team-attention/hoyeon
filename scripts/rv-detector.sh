@@ -1,6 +1,6 @@
 #!/bin/bash
 # !rv keyword detection -> activate re-validate mode
-# Supports !rv (1회), !rv2 (2회), !rv3 (3회) etc.
+# Supports !rv (1 time), !rv2 (2 times), !rv3 (3 times) etc.
 
 # Read JSON from stdin
 input=$(cat)
