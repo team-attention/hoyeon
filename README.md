@@ -20,6 +20,42 @@ Hoyeon is a Claude Code plugin that takes the tools, agents, and workflows your 
 2. **Dynamic task composition** — your request is decomposed into tasks, matched to the right skills and agents, and assembled on the fly.
 3. **Adaptation flow** — execution is predictable, but when things break, verification-first triage re-routes the plan instead of failing silently.
 
+## When Plans Meet Reality
+
+No spec survives execution perfectly. Tests fail. Reviewers find issues. Integration breaks things that unit tests missed.
+
+Most systems either halt on first failure or silently push through. Hoyeon does neither — it **adapts the plan at runtime** while keeping full traceability.
+
+```
+/execute
+  │
+  T1: Worker → Verify → FAIL (billing calc off by 1)
+  │                       │
+  │                 triage: RETRY
+  │                       │
+  │                 T1.retry-1 created (derived task)
+  │                       │
+  │                 Worker fix → re-verify → PASS ✓
+  │
+  T2: Worker → Verify → PASS ✓
+  │
+  Code Review → NEEDS_FIXES (unused import)
+  │               │
+  │         T2.code_review-1 created
+  │               │
+  │         fix → re-review → SHIP ✓
+  │
+  Final Verify → PASS ✓
+  │
+  Report: planned 2, derived 2, drift ratio 1.0
+```
+
+Every runtime fix is a **derived task** — tracked in spec.json with full provenance (who found it, why, which task it came from). After execution, `spec drift` shows exactly how much reality diverged from the plan.
+
+Three rules keep it safe: **append-only** (never modify existing tasks), **depth-1** (no chains of derived tasks), **circuit breaker** (max 2 retries per path).
+
+See [docs/derived-task-system.md](docs/derived-task-system.md) for the full architecture.
+
 ## See It In Action
 
 ```
