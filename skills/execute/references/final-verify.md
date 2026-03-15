@@ -99,21 +99,68 @@ Agent(
 
 ## Result Handling
 
-The caller handles the result:
+The caller handles the result. Below is the reference recovery pattern used by `/execute`.
 
 ```
 IF result.status == "VERIFIED":
   # proceed (e.g., TaskUpdate, mark complete)
 
 ELIF result.status == "FAILED":
-  print("Final verification FAILED:")
-
+  # 1. Classify: goal_alignment failure = unrecoverable, HALT immediately
   IF result.goal_alignment.status == "FAIL":
-    print("  GOAL MISALIGNMENT: {result.goal_alignment.reason}")
+    print("GOAL MISALIGNMENT — cannot auto-fix. HALT.")
+    print("  Reason: {result.goal_alignment.reason}")
+    HALT
 
-  FOR EACH category in [constraints, acceptance_criteria, requirements, deliverables]:
-    FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
-      print("  [{category}] {failure.description} — {failure.reason}")
+  # 2. All other failures (constraints, AC, requirements, deliverables):
+  #    Create derived fix tasks and re-run Final Verify (max 2 attempts)
+  fv_attempt = 0
+  WHILE fv_attempt < 2:
+    fv_attempt += 1
+    fix_tasks = []
 
-  # Caller decides: HALT, retry, or escalate
+    FOR EACH category in [constraints, acceptance_criteria, requirements, deliverables]:
+      FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
+        parent_task_id = failure.task_id ?? last_planned_task_id
+
+        Bash("""hoyeon-cli spec derive \
+          --parent {parent_task_id} \
+          --source final-verify \
+          --trigger final_verify \
+          --action "FV fix: {failure.description}" \
+          --reason "Final Verify {category} failure: {failure.reason}" \
+          {spec_path}""")
+        fix_tasks.append(derived_task_id)
+
+    # Execute fix tasks WITHOUT per-task verify (no :Verify step for FV-derived tasks)
+    FOR EACH fix_task_id in fix_tasks:
+      Agent(subagent_type="worker", prompt=WORKER_DESCRIPTION(fix_task_id))
+      Bash("hoyeon-cli spec task {fix_task_id} --status done {spec_path}")
+
+    # Commit all FV fixes together
+    Agent(subagent_type="git-master", prompt="Commit Final Verify fixes")
+
+    # Re-dispatch Final Verify
+    result = dispatch_final_verify_worker()
+
+    IF result.status == "VERIFIED":
+      BREAK  # success
+
+    IF result.goal_alignment.status == "FAIL":
+      print("GOAL MISALIGNMENT after FV fix — HALT.")
+      HALT
+
+  IF result.status != "VERIFIED":
+    print("Final Verify failed after {fv_attempt} recovery attempt(s). HALT.")
+    HALT
 ```
+
+### Recovery Constraints
+
+| Constraint | Rule |
+|------------|------|
+| goal_alignment FAIL | Immediate HALT — no recovery attempt |
+| Other failures | Create derived fix tasks via `spec derive --trigger final_verify` |
+| FV-derived fix tasks | Execute WITHOUT per-task verify (lightweight path) |
+| Max FV re-runs | 2 (circuit breaker — HALT after 2 failed attempts) |
+| H-items | SKIP (report only, never HALT) |
