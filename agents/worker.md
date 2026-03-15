@@ -52,16 +52,18 @@ You perform the actual implementation under the Orchestrator's direction.
 
 ### 4. Verify Before Completion (Acceptance Criteria)
 
-**All required categories must pass to complete:**
+**Task AC has two parts (v5 schema):**
 
-| Category | Required | Verification Content |
-|----------|----------|---------------------|
-| *Functional* | ✅ | Does the feature work (EXPECTED OUTCOME met) |
-| *Static* | ✅ | `tsc --noEmit`, `eslint` pass (modified files) |
-| *Runtime* | ✅ | Related tests pass |
-| *Cleanup* | ❌ | Unused import/file cleanup (only if specified) |
+1. `acceptance_criteria.scenarios[]` — scenario IDs referencing `requirements[].scenarios[].id`
+   - Look up each scenario in `requirements[].scenarios[]` to find verify details
+   - Run `verified_by: "machine"` scenarios' `verify.run` command (skip `execution_env: "sandbox"`)
+   - For `verified_by: "agent"` scenarios, assert manually
+   - For `verified_by: "human"` scenarios, skip (report only)
 
-**Completion condition**: `Functional ✅ AND Static ✅ AND Runtime ✅ (AND Cleanup ✅ if specified)`
+2. `acceptance_criteria.checks[]` — automated checks (static/build/lint/format)
+   - Run each check's `run` command and verify exit code 0
+
+**Completion condition**: All `scenarios` (machine/agent) pass AND all `checks` pass
 
 ## Output Format
 
@@ -73,44 +75,37 @@ When work is complete, **always** report in the following JSON format:
     "middleware_path": "src/auth/middleware.ts",
     "exported_name": "authMiddleware"
   },
-  "acceptance_criteria": [
-    {
-      "id": "file_exists",
-      "category": "functional",
-      "description": "File exists: src/auth/middleware.ts",
-      "command": "test -f src/auth/middleware.ts",
-      "status": "PASS"
-    },
-    {
-      "id": "exports_function",
-      "category": "functional",
-      "description": "File exports authMiddleware function",
-      "command": "grep -q 'export.*authMiddleware' src/auth/middleware.ts",
-      "status": "PASS"
-    },
-    {
-      "id": "tsc_check",
-      "category": "static",
-      "description": "tsc --noEmit passes",
-      "command": "tsc --noEmit src/auth/middleware.ts",
-      "status": "PASS"
-    },
-    {
-      "id": "eslint_check",
-      "category": "static",
-      "description": "eslint passes",
-      "command": "eslint src/auth/middleware.ts",
-      "status": "FAIL",
-      "reason": "Unexpected console.log statement (line 42)"
-    },
-    {
-      "id": "test_auth",
-      "category": "runtime",
-      "description": "npm test passes",
-      "command": "npm test -- auth.test.ts",
-      "status": "PASS"
-    }
-  ],
+  "acceptance_criteria": {
+    "scenarios": [
+      {
+        "id": "REQ-1.S1",
+        "description": "Auth middleware rejects unauthenticated requests",
+        "verified_by": "machine",
+        "command": "npm test -- auth.test.ts",
+        "status": "PASS"
+      },
+      {
+        "id": "REQ-1.S2",
+        "description": "Middleware reads JWT from Authorization header",
+        "verified_by": "agent",
+        "status": "PASS",
+        "detail": "src/auth/middleware.ts line 12 reads req.headers.authorization"
+      }
+    ],
+    "checks": [
+      {
+        "type": "static",
+        "run": "tsc --noEmit",
+        "status": "PASS"
+      },
+      {
+        "type": "lint",
+        "run": "eslint src/auth/middleware.ts",
+        "status": "FAIL",
+        "reason": "Unexpected console.log statement (line 42)"
+      }
+    ]
+  },
   "learnings": [
     "This project uses ESM only",
     "Test files use .test.ts extension"
@@ -129,32 +124,32 @@ When work is complete, **always** report in the following JSON format:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `outputs` | ✅ | Values defined in EXPECTED OUTCOME's Outputs |
-| `acceptance_criteria` | ✅ | Verification item array (see below) |
+| `acceptance_criteria` | ✅ | Object with `scenarios` and `checks` arrays (see below) |
 | `learnings` | ❌ | Discovered and **applied** patterns/conventions |
 | `issues` | ❌ | Problems discovered but **not resolved** (out of scope/unresolved) |
 | `decisions` | ❌ | Decisions made and their reasons |
 
-**acceptance_criteria item structure:**
+**acceptance_criteria.scenarios item structure:**
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | ✅ | Unique identifier (e.g., `tsc_check`, `test_auth`) |
-| `category` | ✅ | `functional` / `static` / `runtime` / `cleanup` |
-| `description` | ✅ | Verification content description (human-readable) |
-| `command` | ✅ | Command used for verification (Verify Worker will re-execute) |
+| `id` | ✅ | Scenario ID from `requirements[].scenarios[].id` |
+| `description` | ✅ | Scenario description (human-readable) |
+| `verified_by` | ✅ | `machine` / `agent` / `human` |
+| `command` | ✅ (machine) | Command executed for machine scenarios |
+| `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
+| `detail` | ❌ | Evidence for agent scenarios or reason for FAIL/SKIP |
+
+**acceptance_criteria.checks item structure:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `type` | ✅ | `static` / `build` / `lint` / `format` |
+| `run` | ✅ | Command executed (Verify Worker will re-execute) |
 | `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
 | `reason` | ❌ | Reason for FAIL/SKIP |
 
-**Required status by category:**
-
-| Category | Required | Verification Content |
-|----------|----------|---------------------|
-| `functional` | ✅ | Does the feature work (file exists, export verification, etc.) |
-| `static` | ✅ | `tsc --noEmit`, `eslint` pass |
-| `runtime` | ✅ | Related tests pass (SKIP if none) |
-| `cleanup` | ❌ | Unused import/file cleanup (only if specified) |
-
-**Completion condition**: All required category items are `PASS` or `SKIP`
+**Completion condition**: All `scenarios` (machine/agent) are `PASS` AND all `checks` are `PASS`
 
 **learnings vs issues distinction:**
 ```

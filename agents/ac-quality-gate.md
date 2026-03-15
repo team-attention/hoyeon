@@ -61,9 +61,13 @@ For each `requirements[].scenarios[]`:
 
 ### Task-Level ACs (`tasks[].acceptance_criteria`)
 
-For each item in `functional`, `static`, `runtime`:
-- `description` is concrete (not vague platitudes)
-- If `command` exists, it's an executable shell command
+For each scenario ID in `acceptance_criteria.scenarios[]`:
+- Referenced scenario exists in `requirements[].scenarios[]`
+- Scenario has a proper `verified_by` and non-empty `verify` object
+
+For each item in `acceptance_criteria.checks[]`:
+- `type` is one of: `static`, `build`, `lint`, `format`
+- `run` is an executable shell command (not vague description)
 
 ## Fix Process
 
@@ -104,12 +108,12 @@ Output EXACTLY this JSON after your pass:
       "detail": "verify.run = 'npm test' is valid"
     },
     {
-      "id": "T2.functional.1",
-      "type": "task_ac",
-      "check": "concrete_description",
+      "id": "T2.checks.0",
+      "type": "task_ac_check",
+      "check": "executable_command",
       "verdict": "FAIL",
-      "detail": "Description 'works correctly' is vague",
-      "fix_applied": "Rewrote to 'Login returns 200 with JWT token'"
+      "detail": "run: 'check it works' is not executable",
+      "fix_applied": "Rewrote to 'npm test -- --grep auth'"
     }
   ],
   "remaining_failures": []
