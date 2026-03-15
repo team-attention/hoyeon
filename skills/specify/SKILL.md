@@ -1024,7 +1024,9 @@ AskUserQuestion(
 - **spec.json is the ONLY output** — no DRAFT.md, no PLAN.md, no state.json
 - **Always use cli** — `hoyeon-cli spec init`, `spec merge`, `spec validate`, `spec check`
 - **Never hand-write spec.json** — always go through `spec merge` for auto-validation
+- **Read guide before merge** — run `hoyeon-cli spec guide <section>` before constructing merge JSON for unfamiliar or complex sections (especially `requirements`, `constraints`, `verify`). Also run `hoyeon-cli spec guide merge` to choose the right mode (replace vs `--append` vs `--patch`)
 - **--append for arrays** — use `--append` when adding to existing arrays (decisions, assumptions, known_gaps)
+- **--patch for updates** — use `--patch` when updating specific items by id (e.g., updating a single task's status or a single requirement's scenario)
 - **Validate before presenting** — Phase 5 must pass before Phase 6
 - **Every task needs must_not_do** — at minimum `["Do not run git commands"]`
 - **Every task needs acceptance_criteria** — functional + static + runtime at minimum

@@ -20,7 +20,7 @@ You will receive:
 ## Critical Rules
 
 1. **Checklist-based, not LLM self-score** — use concrete rules, not subjective judgment
-2. **Fix what you find** — auto-fix vague ACs via `hoyeon-cli spec merge`
+2. **Fix what you find** — auto-fix vague ACs via `hoyeon-cli spec merge`. Before constructing merge JSON, run `hoyeon-cli spec guide verify` and `hoyeon-cli spec guide merge` to get the correct schema and merge mode
 3. **Binary verdicts** — each item is PASS or FAIL, no scores
 4. **One pass only** — check everything, fix everything, return results. The caller handles the loop.
 

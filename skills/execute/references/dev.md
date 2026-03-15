@@ -388,6 +388,16 @@ function retry(task_id, verify_result, attempt):
 
   # Build fix prompt from failed criteria
   failed = verify_result.acceptance_criteria.results.filter(r => r.status == "FAIL")
+  failed_summary = failed.map(f => f.description).join(", ")
+
+  # Track retry attempt in spec.json via derive
+  Bash("""hoyeon-cli spec derive \
+    --parent {task_id} \
+    --source verify \
+    --trigger retry \
+    --action "Retry: fix {failed_summary}" \
+    --reason "Attempt {attempt}: {failed_summary}" \
+    {spec_path}""")
 
   Agent(subagent_type="worker", prompt="""
     ## FIX TASK
@@ -427,29 +437,22 @@ function adapt(task_id, verify_result):
   adaptation = verify_result.suggested_adaptation
   # OR build from failed criteria if task_type == "verification"
 
-  # 1. Add new fix task to spec.json
-  fix_task_id = "T{next_id}"
-  Bash("""hoyeon-cli spec merge {spec_path} --json '{
-    "tasks": [{
-      "id": "{fix_task_id}",
-      "action": "{adaptation.suggested_todo.title}",
-      "type": "work",
-      "status": "pending",
-      "depends_on": ["{task_id}"],
-      "steps": {adaptation.suggested_todo.steps as JSON array},
-      "file_scope": {adaptation.suggested_todo.file_scope as JSON array},
-      "must_not_do": ["Do not run git commands"],
-      "acceptance_criteria": {
-        "functional": [{"description": "Fix applied and working"}],
-        "static": [{"description": "Type check passes", "command": "..."}],
-        "runtime": [{"description": "Tests pass", "command": "..."}]
-      }
-    }]
-  }'""")
+  # 1. Add new fix task to spec.json via derive
+  # derive handles: ID generation, origin=derived, derived_from, depends_on, re-plan
+  Bash("""hoyeon-cli spec derive \
+    --parent {task_id} \
+    --source verify \
+    --trigger adapt \
+    --action "{adaptation.suggested_todo.title}" \
+    --reason "{adaptation.blockage_type}: {adaptation.reason}" \
+    {spec_path}""")
+
+  # derive returns the generated fix_task_id (e.g. "T1.adapt-1")
+  fix_task_id = result of above command
 
   log_to_audit("ADAPT: created {fix_task_id} for {task_id} — {adaptation.blockage_type}")
 
-  # 2. Re-plan to get updated DAG
+  # 2. Re-plan to get updated DAG (derive already rebuilds DAG, but re-fetch for orchestrator)
   new_plan = Bash("hoyeon-cli spec plan {spec_path} --format slim")
 
   # 3. Create tracking tasks for the fix (use same self-read pattern)
@@ -560,7 +563,22 @@ Agent(
 ```
 
 **If NEEDS_FIXES:**
-- Create fix tasks via adaptation flow (same as 1b.2)
+
+For each fix identified by the code reviewer, create a fix task via `spec derive`:
+
+```
+FOR EACH fix in code_review_result.fixes:
+  Bash("""hoyeon-cli spec derive \
+    --parent {closest_related_task_id or last_task_id} \
+    --source code-reviewer \
+    --trigger code_review \
+    --action "{fix.title}" \
+    --reason "{fix.reason}" \
+    {spec_path}""")
+  fix_task_id = result of above command
+  log_to_audit("CODE_REVIEW ADAPT: created {fix_task_id} — {fix.reason}")
+```
+
 - Execute fixes → re-review (max 1 round)
 
 **If SHIP:**
@@ -706,7 +724,7 @@ Details: {verify result summary}
 6. **Description = recipe** — TaskCreate description contains the full self-read recipe (CLI commands, context paths, output format). At dispatch time, orchestrator just passes `TaskGet(id).description` as the Agent prompt.
 7. **Per-task commit** — every task gets its own commit via git-master
 8. **Verify is standard-only** — quick mode skips per-task verification
-9. **Adaptation updates spec.json** — new tasks go through `spec merge`, then re-plan
+9. **Adaptation updates spec.json** — new tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on, re-plan automatically)
 10. **Max 2 retries** — after 2 failed retry attempts, HALT
 11. **Background for parallel** — use `run_in_background: true` for round-parallel workers
 

@@ -45,11 +45,44 @@ You:  /execute
 
 ## Quick Start
 
+### Installation
+
+**Option 1: Direct install**
+
 ```bash
 claude plugin add team-attention/hoyeon
 ```
 
-Then type `/specify` in Claude Code to start your first spec-driven workflow.
+**Option 2: Via marketplace**
+
+```bash
+# Add the marketplace first
+claude plugin marketplace add team-attention/hoyeon
+
+# Then install the plugin
+claude plugin install hoyeon
+```
+
+Both methods install the same plugin. After installing, set up the CLI:
+
+```bash
+npm install -g @team-attention/hoyeon-cli
+```
+
+### First Use
+
+```bash
+# Start a spec-driven workflow
+/specify "add dark mode toggle to settings page"
+
+# Or jump straight to task planning
+/quick-plan "refactor auth module and add rate limiting"
+
+# Fix a bug with root cause analysis
+/bugfix "login fails when session expires"
+```
+
+Type `/` in Claude Code to see all available skills.
 
 ## How It Works
 
