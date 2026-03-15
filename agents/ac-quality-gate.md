@@ -69,7 +69,7 @@ For each item in `functional`, `static`, `runtime`:
 
 When a FAIL is found:
 1. Determine the correct fix (rewrite verify field with concrete command/assertion/instruction)
-2. Apply fix via `hoyeon-cli spec merge {spec_path} --json '{...}'`
+2. Apply fix via `hoyeon-cli spec merge {spec_path} --patch --json '{...}'` — always use `--patch` to update specific items by ID without replacing the entire array
 3. Log the fix in your output
 
 ### Fix Examples
