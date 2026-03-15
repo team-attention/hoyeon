@@ -50,12 +50,60 @@ Agent(
   ## Step 3: Acceptance Criteria (all tasks)
   {FOR EACH task in spec.tasks where status == "done":}
   ### {task.id}: {task.action}
-  {FOR EACH category in [functional, static, runtime, cleanup]:}
-    {FOR EACH item in task.acceptance_criteria[category] ?? []:}
-    - [{category}] {item.description}
-      {IF item.command:} Command: `{item.command}`
 
-  ## Step 4: Requirements Scenarios
+  **Scenario checks** (from acceptance_criteria.scenarios[]):
+  {FOR EACH scenario_id in task.acceptance_criteria.scenarios ?? []:}
+    Look up scenario_id in spec.requirements[].scenarios[] to find the full scenario.
+    {IF scenario.verified_by == "machine" AND scenario.execution_env != "sandbox":}
+    - [{scenario_id}] Run: `{scenario.verify.run}` → expect exit {scenario.verify.expect.exit_code}
+    {IF scenario.verified_by == "agent":}
+    - [{scenario_id}] Assert: {scenario.verify.checks}
+    {IF scenario.verified_by == "human":}
+    - [{scenario_id}] [H-ITEM — skip, report only] {scenario.then}
+    {IF scenario.verified_by == "machine" AND scenario.execution_env == "sandbox":}
+    - [{scenario_id}] [SANDBOX — delegate to worker agent — see Step 4]
+
+  **Automated checks** (from acceptance_criteria.checks[]):
+  {FOR EACH check in task.acceptance_criteria.checks ?? []:}
+  - [{check.type}] Run: `{check.run}` → expect exit 0
+
+  ## Step 4: Sandbox Scenario Execution
+  Collect all scenarios where execution_env == "sandbox" from ALL tasks' acceptance_criteria.scenarios[].
+
+  {IF sandbox_scenarios is not empty:}
+  For each sandbox scenario, delegate to a worker agent:
+  ```
+  FOR EACH sandbox_scenario in sandbox_scenarios:
+    result = Agent(
+      subagent_type="worker",
+      description="Run sandbox scenario: {sandbox_scenario.id}",
+      prompt="""
+      You are a sandbox verification worker.
+      Run the following scenario in a sandbox/container environment.
+
+      Scenario ID: {sandbox_scenario.id}
+      Given: {sandbox_scenario.given}
+      When: {sandbox_scenario.when}
+      Then: {sandbox_scenario.then}
+
+      Command to run: `{sandbox_scenario.verify.run}`
+      Expected exit code: {sandbox_scenario.verify.expect.exit_code}
+
+      Execute the command in the appropriate sandbox environment and report:
+      - status: PASS | FAIL
+      - exit_code: (actual exit code)
+      - output: (stdout/stderr summary)
+      - reason: (explanation if FAIL)
+      """
+    )
+    Collect result into sandbox_results[]
+  ```
+  Include sandbox_results in the final output under "requirements" with source noted as "sandbox".
+
+  {IF sandbox_scenarios is empty:}
+  No sandbox scenarios — skip this step.
+
+  ## Step 5: Requirements Scenarios
   {FOR EACH req in spec.requirements ?? []:}
   ### {req.id}: {req.behavior}
   {FOR EACH scenario in req.scenarios:}
@@ -81,7 +129,12 @@ Agent(
     },
     "acceptance_criteria": {
       "pass": 0, "fail": 0, "results": [
-        {"task_id": "T1", "category": "functional", "description": "...", "status": "PASS|FAIL", "reason": "..."}
+        {"task_id": "T1", "scenario_id": "S1.1", "description": "...", "status": "PASS|FAIL", "reason": "..."}
+      ]
+    },
+    "sandbox_scenarios": {
+      "pass": 0, "fail": 0, "skipped": 0, "results": [
+        {"scenario_id": "S1.2", "task_id": "T1", "status": "PASS|FAIL|SKIPPED", "exit_code": 0, "reason": "..."}
       ]
     },
     "requirements": {
