@@ -243,14 +243,14 @@ Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single 
       "verified_by": "machine",
       "verify": {
         "type": "command",
-        "run": "{test command from verification-planner's A-items}",
+        "run": "{test command from verification-planner's Auto items}",
         "expect": {"exit_code": 0}
       }
     }]
   }
   ```
   - Convert debugger's reproduction steps → Given/When/Then
-  - Use verification-planner's A-items as `verify.run` commands
+  - Use verification-planner's Auto items as `verify.run` commands
   - If debugger identified edge cases, add additional scenarios
   - This enables Final Verify to check requirements scenarios, preventing regression
 
@@ -504,7 +504,7 @@ Since spec.json is the standard format, `/specify` can read and enrich the exist
 | Phase | Agent | Status | Condition | Role |
 |-------|-------|--------|-----------|------|
 | 1 | **debugger** | existing | always | Root cause analysis, Bug Type classification, Severity assessment |
-| 1 | **verification-planner** | existing | always | Generate A-items list (verification commands) |
+| 1 | **verification-planner** | existing | always | Generate Auto items list (verification commands) |
 | 1 | **gap-analyzer** | existing | COMPLEX only | Check for missed factors, risk assessment |
 | 3 | **/execute** (Skill) | existing | always | spec.json-based execution (worker, verify, commit, review) |
 
