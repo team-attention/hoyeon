@@ -447,6 +447,178 @@ assert(parsed13.given === 'file exists', 'Found scenario from second requirement
 teardown();
 
 // ============================================================
+// Test 14: spec requirement --status returns correct text output
+// ============================================================
+console.log('\nTest 14: spec requirement --status shows all scenarios with status');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+  requirements: [
+    {
+      id: 'R1', behavior: 'Login error handling', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', execution_env: 'host', status: 'pass', verified_by_task: 'T1', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+        { id: 'R1-S2', given: 'a', when: 'b', then: 'c', verified_by: 'agent', execution_env: 'sandbox', verify: { type: 'assertion', checks: ['ok'] } },
+        { id: 'R1-S3', given: 'a', when: 'b', then: 'c', verified_by: 'human', verify: { type: 'instruction', ask: 'check' } },
+      ],
+    },
+  ],
+  history: [],
+});
+
+const out14 = run(`spec requirement --status ${specPath}`);
+assert(out14.includes('R1'), 'output contains R1');
+assert(out14.includes('R1-S1'), 'output contains R1-S1');
+assert(out14.includes('pass'), 'output contains pass status');
+assert(out14.includes('pending'), 'output contains pending status');
+assert(out14.includes('Summary:'), 'output contains Summary line');
+assert(out14.includes('1 pass'), 'summary shows 1 pass');
+
+teardown();
+
+// ============================================================
+// Test 15: spec requirement --status --json returns valid JSON with summary
+// ============================================================
+console.log('\nTest 15: spec requirement --status --json returns valid JSON with summary');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+  requirements: [
+    {
+      id: 'R1', behavior: 'parsing', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', status: 'pass', verified_by_task: 'T1', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+        { id: 'R1-S2', given: 'a', when: 'b', then: 'c', verified_by: 'agent', verify: { type: 'assertion', checks: ['ok'] } },
+      ],
+    },
+  ],
+  history: [],
+});
+
+const out15 = run(`spec requirement --status ${specPath} --json`);
+const parsed15 = JSON.parse(out15);
+assert(Array.isArray(parsed15.requirements), 'JSON has requirements array');
+assert(parsed15.summary !== undefined, 'JSON has summary object');
+assert(parsed15.summary.pass === 1, 'summary.pass = 1');
+assert(parsed15.summary.pending === 1, 'summary.pending = 1');
+assert(parsed15.requirements[0].id === 'R1', 'first requirement id = R1');
+assert(parsed15.requirements[0].scenarios.length === 2, 'R1 has 2 scenarios');
+assert(parsed15.requirements[0].scenarios[0].status === 'pass', 'R1-S1 status = pass');
+assert(parsed15.requirements[0].scenarios[0].verified_by_task === 'T1', 'R1-S1 verified_by_task = T1');
+
+teardown();
+
+// ============================================================
+// Test 16: spec requirement R1-S1 --status pass --task T1 updates scenario
+// ============================================================
+console.log('\nTest 16: spec requirement <id> --status pass --task T1 updates scenario');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+  requirements: [
+    {
+      id: 'R1', behavior: 'parsing', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+        { id: 'R1-S2', given: 'a', when: 'b', then: 'c', verified_by: 'agent', verify: { type: 'assertion', checks: ['ok'] } },
+      ],
+    },
+  ],
+  history: [],
+});
+
+const out16 = run(`spec requirement R1-S1 --status pass --task T1 ${specPath}`);
+assert(out16.includes("R1-S1"), 'confirmation output mentions R1-S1');
+assert(out16.includes('pass'), 'confirmation output mentions pass');
+
+const result16 = readSpec();
+const sc16 = result16.requirements[0].scenarios[0];
+assert(sc16.status === 'pass', 'scenario status updated to pass');
+assert(sc16.verified_by_task === 'T1', 'verified_by_task set to T1');
+const sc16other = result16.requirements[0].scenarios[1];
+assert(!sc16other.status || sc16other.status !== 'pass', 'R1-S2 not affected');
+
+teardown();
+
+// ============================================================
+// Test 17: spec sandbox-tasks creates T_SANDBOX + T_SV tasks
+// ============================================================
+console.log('\nTest 17: spec sandbox-tasks creates T_SANDBOX + T_SV tasks');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  tasks: [
+    { id: 'T1', action: 'implement feature', type: 'work', status: 'pending', acceptance_criteria: { scenarios: ['R1-S2'], checks: [] } },
+  ],
+  requirements: [
+    {
+      id: 'R1', behavior: 'feature', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'a', when: 'b', then: 'host output', verified_by: 'machine', execution_env: 'host', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+        { id: 'R1-S2', given: 'a', when: 'b', then: 'sandbox output', verified_by: 'agent', execution_env: 'sandbox', verify: { type: 'assertion', checks: ['ok'] } },
+      ],
+    },
+  ],
+  history: [],
+});
+
+const out17 = run(`spec sandbox-tasks ${specPath}`);
+assert(out17.includes('T_SANDBOX'), 'output mentions T_SANDBOX');
+assert(out17.includes('T_SV'), 'output mentions T_SV task');
+
+const result17 = readSpec();
+const taskIds17 = result17.tasks.map(t => t.id);
+assert(taskIds17.includes('T_SANDBOX'), 'T_SANDBOX task created in spec');
+assert(taskIds17.some(id => id.startsWith('T_SV')), 'T_SV task created in spec');
+
+const sandboxInfra = result17.tasks.find(t => t.id === 'T_SANDBOX');
+assert(sandboxInfra !== undefined, 'T_SANDBOX task found');
+assert(Array.isArray(sandboxInfra.depends_on), 'T_SANDBOX has depends_on');
+assert(sandboxInfra.depends_on.includes('T1'), 'T_SANDBOX depends on T1 (work task referencing sandbox scenario)');
+
+const svTask = result17.tasks.find(t => t.id.startsWith('T_SV'));
+assert(svTask !== undefined, 'T_SV task found');
+assert(svTask.depends_on.includes('T_SANDBOX'), 'T_SV depends on T_SANDBOX');
+assert(svTask.action.includes('R1-S2'), 'T_SV action mentions sandbox scenario id');
+
+teardown();
+
+// ============================================================
+// Test 18: spec sandbox-tasks skips if no sandbox scenarios
+// ============================================================
+console.log('\nTest 18: spec sandbox-tasks skips if no sandbox scenarios');
+setup();
+
+writeSpec({
+  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+  requirements: [
+    {
+      id: 'R1', behavior: 'parsing', priority: 1,
+      scenarios: [
+        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', execution_env: 'host', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+      ],
+    },
+  ],
+  history: [],
+});
+
+const out18 = run(`spec sandbox-tasks ${specPath}`);
+assert(out18.includes('No sandbox scenarios'), 'output says no sandbox scenarios');
+
+const result18 = readSpec();
+assert(result18.tasks.length === 1, 'no new tasks added (still 1 task)');
+
+teardown();
+
+// ============================================================
 // Summary
 // ============================================================
 console.log(`\n${'='.repeat(50)}`);
