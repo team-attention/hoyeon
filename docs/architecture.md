@@ -4,7 +4,7 @@
 
 Hoyeon is a Claude Code plugin that implements a **specify-then-execute** development pipeline. The core idea: separate planning from implementation so that each phase can be independently validated, parallelized, and guarded by hooks.
 
-1. **Specify** -- An interview-driven skill generates a `spec.json` (v4 schema) describing tasks, acceptance criteria, requirements, and constraints.
+1. **Specify** -- An interview-driven skill generates a `spec.json` (v5 schema) describing tasks, acceptance criteria, requirements, and constraints.
 2. **Execute** -- A spec-driven orchestrator reads `spec.json`, dispatches worker agents in parallel (DAG-based), and runs verification after each task.
 3. **Hooks** -- Shell scripts registered in `.claude/settings.json` enforce guardrails at every lifecycle event: blocking premature writes, validating outputs, and auto-advancing the pipeline.
 
@@ -20,7 +20,7 @@ The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) th
        v
  +------------+     spec.json      +------------+
  |  /specify   | -----------------> |  /execute   |
- |             |   (v4 schema)      |             |
+ |             |   (v5 schema)      |             |
  | interview   |                    | read spec   |
  | research    |                    | route by    |
  | gap analysis|                    |  meta.type  |
@@ -93,7 +93,7 @@ The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) th
 
 | Skill | Description |
 |-------|-------------|
-| `specify` | Interview-driven spec generator; outputs spec.json v4 via CLI |
+| `specify` | Interview-driven spec generator; outputs spec.json v5 via CLI |
 | `execute` | Spec-driven orchestrator; routes by meta.type, dispatches worker agents |
 | `ultrawork` | Automated end-to-end pipeline chaining specify then execute via Stop hooks |
 | `quick-plan` | Lightweight task planning with DAG output and optional spec.json generation |
@@ -129,7 +129,7 @@ The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) th
 | `code-reviewer` | Multi-model code reviewer (Gemini, Codex, Claude in parallel) |
 | `debugger` | Root cause analysis specialist; traces bugs backward through call stacks |
 | `git-master` | Git commit specialist; enforces atomic commits and detects project style |
-| `plan-reviewer` | Evaluates work plans for clarity, verifiability, completeness, and simplicity |
+| `plan-reviewer` | Evaluates spec.json for goal-task alignment, requirement coverage, scenario quality, and simplicity |
 | `verification-planner` | Builds verification strategy with A-items (Agent), H-items (Human), S-items (Sandbox) |
 | `ac-quality-gate` | Acceptance criteria quality checker for spec.json |
 | `gap-analyzer` | Identifies missing requirements and potential pitfalls before plan generation |

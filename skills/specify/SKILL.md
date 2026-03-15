@@ -1,7 +1,7 @@
 ---
 name: specify
 description: |
-  Full-featured spec generator that outputs unified spec.json v4 via cli.
+  Full-featured spec generator that outputs unified spec.json v5 via cli.
   Interview-driven planning with mode support (quick/standard × interactive/autopilot).
   Incremental spec.json build via cli spec merge.
   Use when: "/specify", "specify", "plan this", "계획 짜줘", "스펙 만들어줘"
@@ -20,7 +20,7 @@ validate_prompt: |
   Output files must be in .dev/specs/{name}/ directory.
 ---
 
-# /specify — Full Spec Generator (spec.json v4)
+# /specify — Full Spec Generator (spec.json v5)
 
 Generate a schema-validated, machine-executable spec.json through interview-driven planning.
 Single file output — no DRAFT.md, no PLAN.md. All data flows through `hoyeon-cli spec` commands.
@@ -728,13 +728,12 @@ Show the output to user.
 
 ```
 Task(subagent_type="plan-reviewer",
-     prompt="Review this spec: .dev/specs/{name}/spec.json
-Read the file and evaluate:
-- Task decomposition: reasonable granularity?
-- Acceptance criteria: verifiable?
-- Dependencies: logical order?
-- Must NOT do: covers actual risks?
-- Risk tags: appropriate levels?")
+     prompt="Review spec: .dev/specs/{name}/spec.json
+Read the file and evaluate all 4 layers:
+1. Meta & Context — goal clarity, decisions, assumptions, gaps
+2. Requirements & Scenarios — behavior coverage, verify quality
+3. Tasks — goal alignment, requirement coverage, granularity, dependencies, AC
+4. Cross-cutting — constraints, simplicity, verification strategy")
 ```
 
 #### Handle reviewer response
