@@ -1,9 +1,9 @@
 ---
 name: bugfix
 description: |
-  Root cause 기반 원샷 버그픽스. debugger 진단 → worker 수정 → verify → commit.
-  /bugfix "에러 설명"
-  Adaptive mode: debugger의 Severity 판정(SIMPLE/COMPLEX)에 따라 자동 분기.
+  Root cause based one-shot bug fix. debugger diagnosis → spec.json generation → /execute.
+  /bugfix "error description"
+  Adaptive mode: auto-routes by debugger's Severity assessment (SIMPLE/COMPLEX).
 allowed_tools:
   - Read
   - Grep
@@ -13,58 +13,62 @@ allowed_tools:
   - Edit
   - Write
   - AskUserQuestion
+  - Skill
 validate_prompt: |
   Must complete with one of:
-  1. Fix committed (git-master output with COMMIT SUMMARY)
-  2. Circuit breaker triggered (3 failed attempts documented)
-  3. Escalated to /specify (with bugfix-attempts.md saved)
+  1. Execute completed successfully (spec.json all tasks done)
+  2. Circuit breaker triggered (max attempts exhausted, report saved)
+  3. Escalated to /specify (with spec.json + debug report saved)
   Must NOT: skip root cause analysis, apply multiple fixes simultaneously.
 ---
 
 # /bugfix Skill
 
-Root cause 기반 원샷 버그픽스. 진단 → 수정 → 검증 → 커밋을 최소 에이전트 호출로 완료한다.
+Root cause based one-shot bug fix. Diagnose → generate spec.json → delegate to /execute for fix, verification, and commit.
 
 ## The Iron Law
 
 ```
 NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
-증거 없는 완료 선언 금지
-3회 실패 시 반드시 멈춤
+No completion claims without evidence
+Must stop after 3 failed attempts
 ```
 
 ## Architecture
 
 ```
-/bugfix "에러 설명"
+/bugfix "error description"
 
 Phase 1: DIAGNOSE ─────────────────────────────────
-  debugger + verification-planner (항상 병렬)
-  + gap-analyzer (COMPLEX일 때만)
-  → User 확인
+  debugger + verification-planner (always parallel)
+  + gap-analyzer (COMPLEX only)
+  → User confirmation
 
-Phase 2: FIX (max 3 attempts) ─────────────────────
-  worker (최소 수정) → Bash 검증 (A-items 실행)
-  → Pass: Phase 3
-  → Fail + attempt < 3: 재시도
-  → Fail + attempt >= 3: CIRCUIT BREAKER
+Phase 2: SPEC GENERATION ──────────────────────────
+  Diagnosis results → spec.json (hoyeon-cli spec init + merge)
 
-Phase 3: REVIEW & COMMIT ──────────────────────────
-  code-reviewer (COMPLEX일 때만) → git-master
+Phase 3: EXECUTE ──────────────────────────────────
+  Skill("execute", args=spec_path)
+  → Success: Phase 5
+  → HALT: Phase 4
+
+Phase 4: RESULT HANDLING (if HALT) ────────────────
+  SIMPLE: retry (max 3) with stagnation detection → Phase 3
+  COMPLEX: escalate immediately (execute already retried)
+  Circuit breaker → .dev/debug/{slug}.md → suggest /specify
+
+Phase 5: CLEANUP & REPORT ─────────────────────────
+  Save .dev/debug/{slug}.md → final summary
 ```
 
 ## Adaptive Mode
 
-모드 선택을 사용자에게 묻지 않는다. debugger의 **Severity** 판정에 따라 자동 분기:
+Mode is never asked from the user. Auto-routes based on debugger's **Severity** assessment:
 
-| Severity | Phase 1 | Phase 2 | Phase 3 |
-|----------|---------|---------|---------|
-| **SIMPLE** | debugger + verification-planner | worker → Bash verify | git-master |
-| **COMPLEX** | debugger + verification-planner + gap-analyzer | worker → Bash verify | code-reviewer → git-master |
-
-에이전트 호출 횟수:
-- SIMPLE: 4회 (debugger, verification-planner, worker, git-master)
-- COMPLEX: 6회 (debugger, verification-planner, gap-analyzer, worker, code-reviewer, git-master)
+| Severity | spec depth | Phase 1 | Phase 3 (execute) | Retry |
+|----------|-----------|---------|-------------------|-------|
+| **SIMPLE** | quick | debugger + verification-planner | worker → commit → final verify | bugfix-managed (max 3) |
+| **COMPLEX** | standard | + gap-analyzer | worker → verify → commit → code review → requirements | execute-internal (max 2), then escalate |
 
 ---
 
@@ -72,52 +76,54 @@ Phase 3: REVIEW & COMMIT ──────────────────�
 
 ### Step 1.1: Parse Input
 
-사용자 입력에서 추출:
-- **Bug description**: 에러 메시지, 증상, 재현 스텝
-- **Error output**: 스택 트레이스, 테스트 실패 로그 (있으면)
-- **Context**: 관련 파일, 최근 변경사항 (있으면)
+Extract from user input:
+- **Bug description**: error message, symptoms, reproduction steps
+- **Error output**: stack trace, test failure logs (if available)
+- **Context**: related files, recent changes (if available)
 
-**Debug State 초기화:**
+**Initialize Debug State:**
 
 ```
 SESSION_ID = [from hook — $CLAUDE_SESSION_ID]
+slug = convert bug description to kebab-case (e.g. "null-pointer-in-auth")
 DEBUG_STATE = "$HOME/.hoyeon/$SESSION_ID/debug-state.md"
 hoyeon-cli session set --sid $SESSION_ID --skill bugfix --debug "$DEBUG_STATE"
 
 Write(DEBUG_STATE):
 # Debug: {bug description}
 status: investigating
-started: {timestamp}
+severity: pending
+attempt: 0
+slug: {slug}
 
 ## Symptoms (IMMUTABLE after Phase 1)
 - expected: {from user input}
 - actual: {from user input}
 - error: {from user input}
 
-## Evidence (APPEND only)
+## Diagnosis
+root_cause: pending
+spec_path: pending
 
-## Eliminated (APPEND only)
-
-## Stagnation
-pattern: none
+## Attempts
 ```
 
 ### Step 1.2: Parallel Investigation
 
-**항상 2개 에이전트 병렬 실행:**
+**Always dispatch 2 agents in parallel:**
 
 ```
 Task(debugger):
-  "Bug Description: {사용자 입력}
-   Error Output: {에러 로그, 있으면}
-   Context: {관련 파일/최근 변경, 있으면}
+  "Bug Description: {user input}
+   Error Output: {error logs, if available}
+   Context: {related files/recent changes, if available}
 
    Investigate this bug following your Investigation Protocol.
    Classify Bug Type, trace backward to root cause, assess Severity."
 
 Task(verification-planner):
   "User's Goal: Fix the bug described below
-   Current Understanding: {사용자 입력}
+   Current Understanding: {user input}
    Work Breakdown:
    - Reproduce bug with test
    - Apply minimal fix at root cause
@@ -126,375 +132,429 @@ Task(verification-planner):
    Focus on A-items only (what commands prove the fix works).
    Keep it minimal — this is a bug fix, not a feature.
 
-   Note: /bugfix는 Tier 1-3 (A-items)만 사용합니다. TESTING.md는 인라인하지 않습니다.
-   Tier 4 (S-items)는 생성하지 않아도 됩니다. S-items 섹션에 'bugfix 모드 — Tier 1-3만 사용' 명시."
+   Note: /bugfix uses Tier 1-3 (A-items) only. Do not inline TESTING.md.
+   Tier 4 (S-items) are not needed. Mark S-items section as 'bugfix mode — Tier 1-3 only'."
 ```
 
-**debugger 결과 수신 후 debug-state.md에 증거 추가:**
+**After receiving debugger results, update debug-state.md:**
 
 ```
-Append to DEBUG_STATE (## Evidence section):
-- [debugger] Root Cause: {debugger의 Root Cause 1줄}
-- [debugger] Bug Type: {분류}
-- [debugger] Severity: {SIMPLE/COMPLEX}
-- [debugger] Proposed Fix: {제안된 수정 1줄}
+Update DEBUG_STATE:
+  severity: {SIMPLE/COMPLEX}
+
+  ## Diagnosis section:
+  root_cause: {debugger's Root Cause — 1 line}
+  bug_type: {classification}
+  proposed_fix: {proposed fix — 1 line}
 ```
 
 ### Step 1.3: Evaluate Severity & Conditional Gap Analysis
 
-debugger 결과에서 **Severity** 확인:
+Check **Severity** from debugger results:
 
-- **SIMPLE** → Step 1.4로 바로 진행
-- **COMPLEX** → gap-analyzer 추가 실행 후 Step 1.4:
+- **SIMPLE** → Proceed directly to Step 1.4
+- **COMPLEX** → Run gap-analyzer, then Step 1.4:
 
 ```
 Task(gap-analyzer):
   "User's Goal: Fix the bug below
-   Current Understanding: {debugger의 Bug Analysis Report 전문}
+   Current Understanding: {debugger's full Bug Analysis Report}
    Intent Type: Bug Fix
 
    Focus on:
-   - Root cause vs symptom 구분이 맞는지
-   - 제안된 수정이 다른 곳을 깨뜨릴 가능성
-   - 같은 패턴의 유사 버그가 더 있는지"
+   - Whether root cause vs symptom distinction is correct
+   - Whether proposed fix could break other areas
+   - Whether similar bugs exist with the same pattern"
 ```
 
 ### Step 1.4: User Confirmation
 
-debugger 결과를 요약하여 사용자에게 확인:
+Present debugger results summary for user confirmation:
 
 ```
 AskUserQuestion:
   header: "Root Cause"
-  question: "debugger가 분석한 Root Cause가 맞습니까?"
+  question: "Is the debugger's Root Cause analysis correct?"
 
-  표시할 정보:
-  - Bug Type: [분류]
-  - Root Cause: [file:line + 1줄 설명]
-  - Proposed Fix: [변경 내용 1줄]
+  Display:
+  - Bug Type: [classification]
+  - Root Cause: [file:line + 1-line description]
+  - Proposed Fix: [change description — 1 line]
   - Severity: [SIMPLE/COMPLEX]
-  - Verification: [검증 커맨드]
-  - Assumptions: [debugger의 Assumptions 섹션 — 불확실한 사항]
-  [COMPLEX일 때] Gap Analysis 핵심 경고사항
+  - Verification: [verification commands from verification-planner]
+  - Assumptions: [debugger's Assumptions section]
+  [COMPLEX only] Key warnings from Gap Analysis
 
   options:
-  - "맞다, 진행해" → Phase 2
-  - "원인이 다르다" → 사용자 추가 정보와 함께 Step 1.2 재실행
-  - "잘 모르겠다" → "/discuss로 먼저 탐색하세요" 안내 후 종료
+  - "Correct, proceed" → Phase 2
+  - "Root cause is different" → Re-run Step 1.2 with user's additional info
+  - "Not sure" → Suggest "/discuss to explore first", then exit
 ```
 
 ---
 
-## Phase 2: FIX
+## Phase 2: SPEC GENERATION
 
-### State: Attempt Counter
+Convert diagnosis results into spec.json v4 format. spec.json is the standard format consumed by `/execute`, and serves as escalation context for `/specify` on failure.
+
+### Step 2.1: Paths
 
 ```
-attempt = 0
+SPEC_DIR = "$HOME/.hoyeon/$SESSION_ID"
+SPEC_PATH = "$SPEC_DIR/spec.json"
+```
+
+### Step 2.2: Initialize spec.json
+
+```bash
+depth = "quick"     # SIMPLE
+depth = "standard"  # COMPLEX
+
+hoyeon-cli spec init fix-{slug} \
+  --goal "Fix: {bug description}" \
+  --type dev \
+  --depth {depth} \
+  --interaction autopilot \
+  ${SPEC_PATH}
+```
+
+### Step 2.3: Merge diagnosis into spec
+
+Single merge call with all fields. The `tasks` array replaces the placeholder T1 created by `spec init`.
+
+```bash
+hoyeon-cli spec merge ${SPEC_PATH} --json '{
+  "meta": {
+    "non_goals": [
+      "Do not refactor surrounding code",
+      "Do not add unrelated features"
+    ],
+    "deliverables": [
+      {"path": ".dev/debug/{slug}.md", "description": "Bugfix report"}
+    ]
+  },
+  "context": {
+    "request": "{original bug description + error output}",
+    "research": "{debugger root cause analysis — 1-2 paragraph summary}",
+    "assumptions": [
+      {FOR EACH assumption from debugger:}
+      {"id": "A{n}", "belief": "{assumption text}", "if_wrong": "{impact if wrong}", "impact": "major"}
+    ],
+    "decisions": [
+      {"id": "D1", "decision": "Root cause at {file:line}: {description}", "rationale": "{debugger rationale}"}
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "{debugger proposed fix — 1 line description}",
+      "type": "work",
+      "status": "pending",
+      "file_scope": ["{affected files from debugger}"],
+      "steps": [
+        "Write regression test that reproduces the bug (RED)",
+        "Apply minimal fix at root cause: {file:line} (GREEN)",
+        "Verify all acceptance criteria pass"
+      ],
+      "must_not_do": [
+        "Change more than necessary (<5% of affected file)",
+        "Refactor surrounding code",
+        "Add features not related to the bug",
+        "Fix at symptom location if root cause is elsewhere",
+        "Do not run git commands"
+      ],
+      "acceptance_criteria": {
+        "functional": [
+          {FOR EACH A-item from verification-planner:}
+          {"description": "{criterion}", "command": "{verification command}"}
+        ],
+        "static": [],
+        "runtime": []
+      }
+    }
+    {IF debugger.similar_issues not empty:}
+    ,{
+      "id": "T2",
+      "action": "Fix similar issues at: {locations list}",
+      "type": "work",
+      "status": "pending",
+      "depends_on": ["T1"],
+      "file_scope": ["{similar issue files}"],
+      "steps": ["Apply same fix pattern to similar locations"],
+      "must_not_do": ["Do not run git commands"],
+      "acceptance_criteria": {
+        "functional": [{"description": "Similar issue locations fixed and verified"}]
+      }
+    }
+  ],
+  "constraints": [
+    {
+      "id": "C1",
+      "type": "must_not_do",
+      "rule": "Changes must be minimal (<5% of affected file)",
+      "verified_by": "agent",
+      "verify": {"type": "assertion", "checks": ["Diff is focused on root cause only, no extraneous changes"]}
+    },
+    {
+      "id": "C2",
+      "type": "must_not_do",
+      "rule": "Fix must target root cause, not symptoms",
+      "verified_by": "agent",
+      "verify": {"type": "assertion", "checks": ["Fix location matches debugger-identified root cause"]}
+    }
+  ]
+}'
+```
+
+**Field mapping:**
+
+| Debugger output | → | spec.json field |
+|---|---|---|
+| Root Cause | → | `context.decisions[0]`, `tasks[0].steps` |
+| Proposed Fix | → | `tasks[0].action` |
+| Bug Type | → | `context.research` |
+| Assumptions | → | `context.assumptions` |
+| Affected Files | → | `tasks[0].file_scope` |
+| Similar Issues | → | `tasks[1]` (optional T2) |
+| Severity | → | `meta.mode.depth` (quick/standard) |
+
+**verification-planner output:**
+
+| Output | → | spec.json field |
+|---|---|---|
+| A-items | → | `tasks[0].acceptance_criteria.functional` |
+
+### Step 2.4: Validate & Register
+
+```bash
+hoyeon-cli spec validate ${SPEC_PATH}
+hoyeon-cli session set --sid $SESSION_ID --spec "$SPEC_PATH"
+```
+
+If validation fails, fix the JSON and retry once.
+
+**Update debug-state.md:**
+
+```
+Update DEBUG_STATE:
+  spec_path: ${SPEC_PATH}
+```
+
+---
+
+## Phase 3: EXECUTE
+
+Hand off spec.json to `/execute`. Execute routes by `meta.type: dev` and follows the dev.md pipeline.
+
+```
+Skill("execute", args="${SPEC_PATH}")
+```
+
+What execute handles:
+- Worker dispatch (self-read pattern)
+- Per-task verify (standard only)
+- Per-task commit (git-master)
+- Retry/Adaptation (standard only, max 2)
+- Code Review (standard only)
+- Requirements Check (standard only) / Final Verify (quick only)
+- Final report
+
+**Result judgment:**
+
+```
+IF execute completed successfully (all tasks done, report output):
+  → Phase 5
+
+IF execute HALTED:
+  → Phase 4
+```
+
+---
+
+## Phase 4: RESULT HANDLING
+
+When execute HALTs. Handling differs by severity.
+
+### Step 4.1: Read Failure Context
+
+```
+# Extract failure reason from execute's HALT output
+# or read from context dir's audit.md, issues.md
+CONTEXT_DIR = ".dev/specs/fix-{slug}/context"
+failure_reason = {execute HALT output or last triage result from audit.md}
+```
+
+### Step 4.2: Route by Severity
+
+```
+IF severity == "COMPLEX":
+  # Execute standard mode already retried internally (max 2)
+  # No further retries — go straight to Circuit Breaker
+  → Step 4.5 (Circuit Breaker)
+
+IF severity == "SIMPLE":
+  → Step 4.3 (Retry)
+```
+
+### Step 4.3: Retry (SIMPLE only)
+
+```
+# Read current attempt from debug-state.md
+attempt = debug_state.attempt + 1
 MAX_ATTEMPTS = 3
+
+IF attempt >= MAX_ATTEMPTS:
+  → Step 4.5 (Circuit Breaker)
 ```
 
-### Step 2.1: Worker Execution
-
-debugger의 분석 결과 + verification-planner의 A-items를 worker에게 전달:
+**Stagnation Detection (attempt >= 2):**
 
 ```
-Task(worker):
-  "## Task: Fix Bug
+# Compare with previous attempt failure info
+previous = debug_state.Attempts[-1]
+current_reason = failure_reason
 
-   ## Debug State
-   Read $DEBUG_STATE for full context (symptoms, evidence, eliminated approaches).
-   After your attempt:
-   - Append your approach and findings to the Evidence section.
-   - If your approach fails, also append to the Eliminated section with reason.
-   DEBUG_STATE path: {DEBUG_STATE}
+SPINNING:    same file/component fails consecutively
+OSCILLATION: A fails → B fails → A fails (circular)
+NO_PROGRESS: different failures each time, previous fixes cause regressions
 
-   ## Root Cause (from debugger)
-   {debugger의 Root Cause 섹션}
-
-   ## Proposed Fix (from debugger)
-   {debugger의 Proposed Fix 섹션}
-
-   ## MUST DO
-   - Write a regression test FIRST that reproduces the bug (RED)
-   - Implement the MINIMAL fix described above (GREEN)
-   - Fix at the ROOT CAUSE location, not at the symptom location
-   - Verify the test passes after the fix
-
-   ## MUST NOT DO
-   - Change more than necessary (<5% of affected file)
-   - Refactor surrounding code ("while I'm here")
-   - Add features not related to the bug
-   - Bundle multiple fixes
-   - Fix at the symptom location if root cause is elsewhere
-
-   ## Verification Commands (from verification-planner)
-   {verification-planner A-items: 커맨드 목록}
-
-   ## Defense in Depth (optional)
-   If the fix involves data validation, consider adding validation at:
-   - Entry point (where data first enters)
-   - Business logic (where data is processed)
-   But ONLY if it's a natural fit. Don't over-engineer.
-
-   ## Assumptions (from debugger)
-   {debugger의 Assumptions 섹션 — 불확실한 사항}
-
-   ## Similar Issues (from debugger)
-   {debugger의 Similar Issues — 같은 패턴이 있으면 함께 수정}
-
-   {attempt > 0일 때:}
-   ## Previous Attempt Failed
-   Attempt {attempt}: {이전 실패 정보}
-   Stagnation Pattern: {패턴 분류 — SPINNING | OSCILLATION | NO_PROGRESS | (없음)}
-   Strategy: {retry_hint}
-   Eliminated Approaches: See ## Eliminated section in $DEBUG_STATE
-
-   ## Output Format (MANDATORY)
-   Your response MUST be a JSON code block matching the worker output schema:
-   ```json
-   {
-     "outputs": { ... },
-     "acceptance_criteria": [
-       {"id": "...", "category": "functional|static|runtime", "description": "...", "command": "...", "status": "PASS|FAIL|SKIP"}
-     ],
-     "learnings": [],
-     "issues": [],
-     "decisions": []
-   }
-   ```
-   Do NOT output prose. The verification step depends on acceptance_criteria[].command."
+Pattern-specific retry_hint:
+  SPINNING    → "Different root cause likely. Consider: previous root cause
+                 was wrong — trace further back from the symptom."
+  OSCILLATION → "Circular dependency. Fix both sides simultaneously."
+  NO_PROGRESS → "Fundamental misunderstanding. Re-read error output.
+                 Consider: multiple independent bugs? Missing dependency?"
+  (no pattern) → "Different approach needed. Do NOT repeat previous attempt."
 ```
 
-### Step 2.2: Verify (Bash 직접 실행)
-
-Worker의 acceptance_criteria에서 커맨드를 추출하고, verification-planner의 A-items 커맨드도 함께 실행:
+### Step 4.4: Update Spec & Re-execute
 
 ```
-For each A-item command:
-  Bash(command) → capture exit code + output
+# 1. Record attempt in debug-state.md
+Append to DEBUG_STATE ## Attempts section:
+  ### Attempt {attempt}
+  result: FAIL
+  reason: {failure_reason}
+  pattern: {detected pattern or "none"}
+  hint: {retry_hint}
 
-결과 집계:
-- ALL pass → Step 2.3 (success)
-- ANY fail → Step 2.3 (failure)
+# 2. Update attempt counter
+Update DEBUG_STATE: attempt: {attempt}
+
+# 3. Add failure context to spec.json
+hoyeon-cli spec merge ${SPEC_PATH} --json '{
+  "context": {
+    "known_gaps": [
+      {"gap": "Attempt {attempt} failed: {failure_reason}", "severity": "high", "mitigation": "{retry_hint}"}
+    ]
+  }
+}'
+
+# 4. Reset task status
+hoyeon-cli spec task T1 --status pending ${SPEC_PATH}
+{IF T2 exists AND T2 not done:}
+hoyeon-cli spec task T2 --status pending ${SPEC_PATH}
+
+# 5. Re-invoke execute
+→ Phase 3
 ```
 
-**검증 규칙:**
-- Worker가 "PASS"라고 주장해도 반드시 독립적으로 재실행
-- `exit code 0`만 신뢰. "should pass" 같은 주장은 무시
-- 실패 시 실제 output을 기록 (다음 attempt에 전달)
+Execute handles resume naturally:
+- Skips done tasks
+- Context files (learnings.md, issues.md) retain previous failure info for the new worker
+- `known_gaps` carry failure context and retry_hint for the worker
 
-### Step 2.3: Result Judgment
+### Step 4.5: Circuit Breaker
 
-```
-if all_pass:
-  → Phase 3
+Max attempts exceeded or COMPLEX mode HALT. Present escalation options to user.
 
-if any_fail AND attempt < MAX_ATTEMPTS:
-  attempt += 1
-
-  실패 정보 기록:
-    attempt_history.append({
-      attempt: attempt,
-      approach: worker가 시도한 방법,
-      result: "FAIL",
-      failed_criteria: [실패한 커맨드 목록],
-      broken_component: 실패한 커맨드에서 식별된 컴포넌트/파일
-    })
-
-  패턴 분류 (attempt >= 2일 때):
-    SPINNING:    attempt_history[-2].broken_component == attempt_history[-1].broken_component
-                 (같은 컴포넌트가 2회 이상 연속 실패)
-    OSCILLATION: attempt_history[-2].broken_component != attempt_history[-1].broken_component
-                 AND attempt >= 3
-                 AND attempt_history[-3].broken_component == attempt_history[-1].broken_component
-                 (A 실패 → B 실패 → A 실패 패턴: 순환 의존)
-    NO_PROGRESS: 매번 다른 커맨드가 실패하고, 이전 attempt에서 통과했던 항목이 다시 실패
-                 (전반적으로 개선 없음)
-
-  패턴별 retry_hint 선택:
-    SPINNING    → "Different root cause likely. Re-run debugger with constraint:
-                   previous root cause was wrong. The error in {broken_component}
-                   is a symptom — trace further back."
-    OSCILLATION → "Circular dependency detected. Architect approach: define interface
-                   contract between {component_A} and {component_B} first, then fix
-                   both sides simultaneously in a single worker call."
-    NO_PROGRESS → "Fundamental misunderstanding. Re-read error output carefully.
-                   Consider: (1) is the bug description itself wrong? (2) are there
-                   multiple independent bugs? (3) is there a missing dependency?"
-    (패턴 없음)  → "Do NOT repeat the same approach. Try a different angle."
-
-  debug-state.md Stagnation 업데이트:
-    Overwrite Stagnation section in DEBUG_STATE:
-    ## Stagnation
-    pattern: {감지된 패턴 or "none"}
-    last_updated: attempt {attempt}
-    hint: {retry_hint}
-
-  → Step 2.1 재실행 (실패 정보 + retry_hint 포함)
-
-if any_fail AND attempt >= MAX_ATTEMPTS:
-  → CIRCUIT BREAKER (Step 2.4)
-```
-
-### Step 2.4: CIRCUIT BREAKER
-
-3회 실패 = 단순 버그가 아닐 가능성. 사용자에게 선택지 제공:
-
-**먼저, 시도 기록을 저장:**
+**First, save attempt records:**
 
 ```
-slug = bug description을 kebab-case로 변환
 Bash: mkdir -p .dev/debug
 
 Write to .dev/debug/{slug}.md:
   # Bugfix Report: {description}
   Date: {timestamp}
   Status: ESCALATED
-  Attempts: {attempt 횟수}
+  Severity: {SIMPLE/COMPLEX}
+  Attempts: {attempt count}
+  Spec: {SPEC_PATH}
 
   ## Debugger Analysis
-  {debugger의 Bug Analysis Report 전문}
+  {debugger's full Bug Analysis Report}
 
-  ## Attempt 1
-  - Approach: {worker가 시도한 방법}
-  - Result: FAIL
-  - Failed verification: {실패한 커맨드와 output}
-
-  ## Attempt 2
-  ...
-
-  ## Attempt 3
-  ...
+  ## Attempt History
+  {full ## Attempts section from debug-state.md}
 
   ## Assessment
-  3회 실패. 아키텍처 수준의 문제일 가능성이 있음.
+  {SIMPLE: "{attempt} attempts failed. Likely not a simple bug."}
+  {COMPLEX: "Execute standard mode failed including internal retries. Architecture-level issue."}
 
 Update DEBUG_STATE:
   status: escalated
-
-# Decision: .dev/bugfix-attempts.md도 함께 작성 (하위 호환성 유지)
-# .dev/debug/{slug}.md가 canonical report, bugfix-attempts.md는 backward compat alias
-
-Bash: mkdir -p .dev
-Write to .dev/bugfix-attempts.md:
-  (동일 내용 — .dev/debug/{slug}.md와 같은 본문으로 작성)
 ```
 
 ```
 AskUserQuestion:
   header: "Circuit Breaker"
-  question: "3회 수정 시도가 모두 실패했습니다. 아키텍처 수준의 문제일 수 있습니다."
+  question: "Fix attempts have failed. This may be an architecture-level issue."
   options:
-  - "/specify로 전환 (정식 계획 수립)"
-    → .dev/bugfix-attempts.md를 컨텍스트로 전달하여 /specify 실행 안내
-  - "한번 더 시도 (attempt 리셋 없이, attempt=4로 진행)"
-  - "중단"
+  - "Switch to /specify (full planning)"
+    → "spec.json and debug report are available:
+       Spec: {SPEC_PATH}
+       Report: .dev/debug/{slug}.md
+       /specify can reference this context for deeper analysis."
+  - "Try once more"
+    → attempt += 1, go to Phase 3 (no circuit breaker reset)
+  - "Stop"
 ```
 
 ---
 
-## Phase 3: REVIEW & COMMIT
+## Phase 5: CLEANUP & REPORT
 
-### State: Review Attempt Counter
+After execute completes successfully.
 
-```
-review_attempt = 0
-MAX_REVIEW_ATTEMPTS = 2
-```
-
-### Step 3.1: Code Review (COMPLEX only)
-
-debugger가 COMPLEX로 판정한 경우에만 실행:
-
-**먼저, 실제 diff를 캡처:**
+### Step 5.1: Save Debug Report
 
 ```
-Bash: git diff HEAD
-→ diff_output에 저장 (실제 unified diff)
-```
-
-```
-Task(code-reviewer):
-  "Review the bug fix changes.
-
-   ## Context
-   Bug: {bug description}
-   Root Cause: {debugger root cause}
-
-   ## Diff
-   {diff_output — git diff HEAD의 실제 출력}
-
-   ## Review Focus
-   - Fix addresses root cause, not symptom
-   - No unintended side effects
-   - Regression test covers the bug
-   - No scope creep (only bug-related changes)"
-```
-
-**결과 처리:**
-- **SHIP** → Step 3.2
-- **NEEDS_FIXES** + review_attempt < MAX_REVIEW_ATTEMPTS:
-  - review_attempt += 1
-  - Phase 2로 복귀 (code-reviewer의 findings를 worker에게 전달)
-- **NEEDS_FIXES** + review_attempt >= MAX_REVIEW_ATTEMPTS:
-  - CIRCUIT BREAKER (Step 2.4와 동일 경로)
-  - "code-reviewer가 2회 연속 NEEDS_FIXES 판정" 기록
-
-### Step 3.2: Commit
-
-```
-Task(git-master):
-  "Commit the bug fix changes.
-   Bug: {bug description}
-   Root Cause: {1줄 요약}
-   Files changed: {변경 파일 목록}"
-```
-
-### Step 3.3: Cleanup & Report
-
-**debug-state.md 최종 업데이트 및 Final Report 작성:**
-
-```
-slug = bug description을 kebab-case로 변환 (e.g. "null-pointer-in-auth" from "null pointer in auth")
 Bash: mkdir -p .dev/debug
 
 Write to .dev/debug/{slug}.md:
   # Bugfix Report: {description}
   Date: {timestamp}
   Status: RESOLVED
-  Attempts: {attempt 횟수}
+  Severity: {SIMPLE/COMPLEX}
+  Attempts: {attempt count + 1}
+  Spec: {SPEC_PATH}
 
   ## Root Cause
-  {debugger의 Root Cause 분석 전문}
+  {debugger's Root Cause analysis}
 
   ## Fix
-  {변경 내용 요약 — 어떤 파일의 어떤 부분을 어떻게 수정}
+  {spec.json T1.action + result summary}
 
   ## Verification
-  {통과한 커맨드 목록과 결과}
+  {verification results from execute's final report}
 
-  ## Commit
-  {git-master가 반환한 commit hash}
-
-Update DEBUG_STATE status field:
+Update DEBUG_STATE:
   status: resolved
 ```
 
+### Step 5.2: Final Summary
+
 ```
-최종 리포트 (콘솔 출력):
-  ## Bugfix Complete
+print("""
+## Bugfix Complete
 
-  **Bug**: {description}
-  **Root Cause**: {file:line — 1줄 설명}
-  **Fix**: {변경 내용 요약}
-  **Verification**: {통과한 커맨드 목록}
-  **Commit**: {commit hash}
-  **Attempts**: {attempt 횟수}
-  **Report**: .dev/debug/{slug}.md
-
-  {Similar Issues가 있었다면:}
-  **Similar Issues Fixed**: {목록}
+**Bug**: {description}
+**Root Cause**: {file:line — 1-line description}
+**Severity**: {SIMPLE/COMPLEX}
+**Attempts**: {count}
+**Spec**: {SPEC_PATH}
+**Report**: .dev/debug/{slug}.md
+""")
 ```
 
 ---
@@ -502,44 +562,44 @@ Update DEBUG_STATE status field:
 ## Escalation Path
 
 ```
-/bugfix (빠른 원샷)
-   ↓ circuit breaker (3회 실패)
-   ↓ .dev/bugfix-attempts.md 저장
-/specify (정식 계획 수립, 시도 기록 참조)
+/bugfix (diagnose + spec.json + execute)
+   ↓ circuit breaker (SIMPLE: 3 failures, COMPLEX: execute HALT)
+   ↓ spec.json + .dev/debug/{slug}.md saved
+/specify (spec.json enrichment, leveraging existing diagnosis context)
    ↓
-/execute (계획 기반 실행)
+/execute (enriched spec execution)
 ```
 
-/bugfix에서 /specify로 전환할 때, `.dev/debug/{slug}.md`가 canonical report로 컨텍스트를 전달한다. `.dev/bugfix-attempts.md`는 하위 호환성을 위해 동일 내용으로 유지된다. specify는 "이미 시도한 것"을 알고 다른 접근을 계획할 수 있다.
+Since spec.json is the standard format, `/specify` can read and enrich the existing spec on escalation. All diagnosis context (`context.research`, `context.assumptions`, `context.known_gaps`) is preserved.
 
 ---
 
 ## Agent Summary
 
-| Phase | Agent | 기존/신규 | 조건 | 역할 |
-|-------|-------|-----------|------|------|
-| 1 | **debugger** | **신규** | 항상 | Root cause 분석, Bug Type 분류, Severity 판정 |
-| 1 | **verification-planner** | 기존 | 항상 | "뭘 검증할지" A-items 목록 생성 |
-| 1 | **gap-analyzer** | 기존 | COMPLEX만 | 놓친 요소, 위험 요소 체크 |
-| 2 | **worker** | 기존 | 항상 | 최소 수정 구현 + 리그레션 테스트 |
-| 3 | **code-reviewer** | 기존 | COMPLEX만 | 멀티모델 코드 리뷰 |
-| 3 | **git-master** | 기존 | 항상 | Atomic commit |
+| Phase | Agent | Status | Condition | Role |
+|-------|-------|--------|-----------|------|
+| 1 | **debugger** | existing | always | Root cause analysis, Bug Type classification, Severity assessment |
+| 1 | **verification-planner** | existing | always | Generate A-items list (verification commands) |
+| 1 | **gap-analyzer** | existing | COMPLEX only | Check for missed factors, risk assessment |
+| 3 | **/execute** (Skill) | existing | always | spec.json-based execution (worker, verify, commit, review) |
+
+Phase 2 (SPEC GENERATION) and Phase 4 (RESULT HANDLING) are handled directly by bugfix without agents (hoyeon-cli calls + judgment logic).
 
 ---
 
 ## Design Principles
 
-이 스킬은 3개의 검증된 오픈소스 프로젝트의 핵심 패턴을 결합:
+This skill combines core patterns from 3 proven open-source projects:
 
-| 원칙 | 출처 | 적용 |
-|------|------|------|
-| Root cause before fix | superpowers (systematic-debugging) | Phase 1 전체 |
-| Backward call stack tracing | superpowers (root-cause-tracing) | debugger의 Step 3 |
-| Defense-in-depth after fix | superpowers (defense-in-depth) | worker MUST DO 옵션 |
-| Anti-pattern rationalizations | superpowers (common rationalizations) | debugger의 체크리스트 |
-| Bug Type → Tool routing | oh-my-opencode (Metis intent classification) | debugger의 도구 테이블 |
-| Adaptive severity | oh-my-opencode (Momus "80% is good enough") | SIMPLE/COMPLEX 자동 분기 |
-| Minimal diff (<5%) | oh-my-claudecode (executor/build-fixer) | worker MUST NOT DO |
-| Circuit breaker (3 attempts) | oh-my-claudecode (debugger) + superpowers | Phase 2 Step 2.4 |
-| Fresh evidence verification | oh-my-claudecode (verifier) | Phase 2 Step 2.2 |
-| Similar issues check | oh-my-claudecode (debugger output) | debugger + worker |
+| Principle | Source | Application |
+|-----------|--------|-------------|
+| Root cause before fix | superpowers (systematic-debugging) | Entire Phase 1 |
+| Backward call stack tracing | superpowers (root-cause-tracing) | debugger's Step 3 |
+| Defense-in-depth after fix | superpowers (defense-in-depth) | Optional worker application |
+| Anti-pattern rationalizations | superpowers (common rationalizations) | debugger's checklist |
+| Bug Type → Tool routing | oh-my-opencode (Metis intent classification) | debugger's tool table |
+| Adaptive severity | oh-my-opencode (Momus "80% is good enough") | SIMPLE/COMPLEX auto-routing |
+| Minimal diff (<5%) | oh-my-claudecode (executor/build-fixer) | spec constraint C1 |
+| Circuit breaker (3 attempts) | oh-my-claudecode (debugger) + superpowers | Phase 4 |
+| spec.json as universal format | internal (specify/execute unification) | Phase 2 |
+| Execute reuse | internal (single execution engine) | Phase 3 |
