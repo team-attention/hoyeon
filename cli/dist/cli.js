@@ -8423,6 +8423,7 @@ Usage:
   hoyeon-cli spec check <path>                      Check internal consistency
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
   hoyeon-cli spec guide [section]                             Show schema guide for a section
+  hoyeon-cli spec scenario <scenario-id> --get <path>              Get scenario details as JSON
   hoyeon-cli spec derive --parent <id> --source <src> --trigger <t> --action <a> --reason <r> <path>  Create a derived task
   hoyeon-cli spec drift <path>                       Show drift ratio (derived vs planned tasks)
 
@@ -9671,6 +9672,44 @@ async function handleDrift(args) {
   process.stdout.write(JSON.stringify(result) + "\n");
   process.exit(0);
 }
+async function handleScenario(args) {
+  const scenarioId = args[0];
+  if (!scenarioId || scenarioId.startsWith("--")) {
+    process.stderr.write("Error: <scenario-id> is required\n");
+    process.stderr.write("Usage: hoyeon-cli spec scenario <scenario-id> --get <path>\n");
+    process.exit(1);
+  }
+  const parsed = parseArgs(args.slice(1));
+  if (parsed.get === void 0) {
+    process.stderr.write("Error: --get <path> is required\n");
+    process.stderr.write("Usage: hoyeon-cli spec scenario <scenario-id> --get <path>\n");
+    process.exit(1);
+  }
+  if (typeof parsed.get !== "string") {
+    process.stderr.write("Error: --get requires <path> argument\n");
+    process.stderr.write("Usage: hoyeon-cli spec scenario <scenario-id> --get <path>\n");
+    process.exit(1);
+  }
+  const filePath = parsed.get;
+  const specData = loadSpec(resolve(filePath));
+  let found = null;
+  for (const req of specData.requirements || []) {
+    for (const scenario of req.scenarios || []) {
+      if (scenario.id === scenarioId) {
+        found = scenario;
+        break;
+      }
+    }
+    if (found) break;
+  }
+  if (!found) {
+    process.stderr.write(`Error: scenario '${scenarioId}' not found in spec
+`);
+    process.exit(1);
+  }
+  process.stdout.write(JSON.stringify(found, null, 2) + "\n");
+  process.exit(0);
+}
 async function spec(args) {
   const subcommand = args[0];
   if (!subcommand || subcommand === "--help" || subcommand === "-h") {
@@ -9697,6 +9736,8 @@ async function spec(args) {
     await handleAmend(args.slice(1));
   } else if (subcommand === "guide") {
     await handleGuide(args.slice(1));
+  } else if (subcommand === "scenario") {
+    await handleScenario(args.slice(1));
   } else if (subcommand === "derive") {
     await handleDerive(args.slice(1));
   } else if (subcommand === "drift") {
