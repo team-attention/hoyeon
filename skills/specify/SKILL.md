@@ -360,9 +360,11 @@ Then merge tech-decision results into spec.json and continue to Phase 2 Transiti
 
 #### Plan Transition Conditions:
 
-- [ ] No `severity: "critical"` gaps remain in `known_gaps`
 - [ ] Key decisions/assumptions recorded
+- [ ] Mirror confirmed (goal_statement agreed by user)
 - [ ] **Standard + Interactive only**: User explicitly says "make it a plan", "generate the plan", "create the work plan", or similar
+
+> Note: `known_gaps` are populated in Phase 3 (after this gate). Critical gap checking happens during Phase 3 analysis — if gap-analyzer finds critical gaps, the agent asks the user before proceeding to Phase 4.
 
 #### If critical gaps remain:
 
@@ -442,7 +444,11 @@ Task(subagent_type="external-researcher",
 
 ```
 Task(subagent_type="codex-strategist",
-     prompt="Synthesize gap, tradeoff, verification results. Find contradictions and blind spots.")
+     prompt="Synthesize gap, tradeoff, verification results. Find contradictions and blind spots.
+Additionally:
+- Evaluate at least 2 implementation approaches for the core task and justify the chosen one
+- For each auto-merged gap (severity: medium), validate that the severity classification is correct
+- Flag any gap whose mitigation conflicts with a proposed task or decision")
 ```
 
 ### Handle HIGH risk decision_points
@@ -963,6 +969,10 @@ Key Decisions
 Auto-merged Gaps (agent-decided — not confirmed by user)
 ────────────────────────────────────────
   - {gap}: {mitigation applied} (severity: medium)
+  {If gap mitigation conflicts with any task or decision:}
+  ⚠ CONFLICT: {gap} mitigation says "{mitigation}" but {task/decision} does the opposite. Resolve before approval.
+  {If no task implements gap mitigation:}
+  ⚠ UNCOVERED: {gap} has mitigation but no task addresses it.
   Note: These gaps were auto-resolved. Review and flag if incorrect.
 ────────────────────────────────────────
 
