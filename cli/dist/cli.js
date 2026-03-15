@@ -8418,6 +8418,7 @@ Usage:
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
   hoyeon-cli spec guide [section]                             Show schema guide for a section
   hoyeon-cli spec derive --parent <id> --source <src> --trigger <t> --action <a> --reason <r> <path>  Create a derived task
+  hoyeon-cli spec drift <path>                       Show drift ratio (derived vs planned tasks)
 
 Options:
   --help, -h    Show this help message
@@ -8893,11 +8894,13 @@ function formatSlim(spec2, rounds, criticalPath) {
       parallel: round.length > 1,
       tasks: round.map((id) => {
         const t = (spec2.tasks || []).find((task) => task.id === id) || {};
+        const isDerived = t.origin === "derived";
         return {
-          id: t.id,
+          id: isDerived ? `[D] ${t.id}` : t.id,
           action: t.action,
           type: t.type,
           status: t.status || "pending",
+          derived: isDerived,
           depends_on: t.depends_on || [],
           ...t.tool ? { tool: t.tool } : {},
           ...t.args ? { args: t.args } : {}
@@ -9580,6 +9583,40 @@ async function handleDerive(args) {
   process.stdout.write(JSON.stringify({ created: newId }) + "\n");
   process.exit(0);
 }
+async function handleDrift(args) {
+  const filePath = args[0];
+  if (!filePath) {
+    process.stderr.write("Error: missing <path> argument\n");
+    process.stderr.write("Usage: hoyeon-cli spec drift <path>\n");
+    process.exit(1);
+  }
+  const specData = loadSpec(resolve(filePath));
+  const tasks = specData.tasks || [];
+  const plannedTasks = tasks.filter((t) => !t.origin || t.origin === "planned");
+  const derivedTasks = tasks.filter((t) => t.origin === "derived");
+  const plannedCount = plannedTasks.length;
+  const derivedCount = derivedTasks.length;
+  const driftRatio = plannedCount === 0 ? 0 : derivedCount / plannedCount;
+  const byTrigger = {};
+  for (const t of derivedTasks) {
+    const trigger = t.derived_from?.trigger || "unknown";
+    byTrigger[trigger] = (byTrigger[trigger] || 0) + 1;
+  }
+  const bySource = {};
+  for (const t of derivedTasks) {
+    const source = t.derived_from?.source || "unknown";
+    bySource[source] = (bySource[source] || 0) + 1;
+  }
+  const result = {
+    planned: plannedCount,
+    derived: derivedCount,
+    drift_ratio: Math.round(driftRatio * 1e3) / 1e3,
+    by_trigger: byTrigger,
+    by_source: bySource
+  };
+  process.stdout.write(JSON.stringify(result) + "\n");
+  process.exit(0);
+}
 async function spec(args) {
   const subcommand = args[0];
   if (!subcommand || subcommand === "--help" || subcommand === "-h") {
@@ -9608,6 +9645,8 @@ async function spec(args) {
     await handleGuide(args.slice(1));
   } else if (subcommand === "derive") {
     await handleDerive(args.slice(1));
+  } else if (subcommand === "drift") {
+    await handleDrift(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown spec subcommand '${subcommand}'
 `);
