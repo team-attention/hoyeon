@@ -57,11 +57,11 @@ SESSION_ID="[session ID from UserPromptSubmit hook]"
 2) IF arg is a feature name (e.g. "auth-login"):
    spec_path = ".dev/specs/{arg}/spec.json"
 
-3) No arg: session state (quick-plan, specify 등이 등록한 경로)
+3) No arg: session state (path registered by quick-plan, specify, etc.)
    hoyeon-cli session get --sid $SESSION_ID
-   → state.spec 필드가 있으면 spec_path = state.spec
+   → if state.spec field exists, spec_path = state.spec
 
-If none found → error: "spec.json을 찾을 수 없습니다. /specify 또는 /quick-plan으로 먼저 생성해주세요."
+If none found → error: "spec.json not found. Please generate one first with /specify or /quick-plan."
 ```
 
 Read spec.json and validate:
