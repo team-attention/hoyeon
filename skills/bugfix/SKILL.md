@@ -237,7 +237,7 @@ Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single 
     "priority": 1,
     "behavior": "{what should work — from debugger's expected behavior}",
     "scenarios": [{
-      "id": "S1",
+      "id": "R1-S1",
       "given": "{precondition from debugger's reproduction steps}",
       "when": "{trigger action that caused the bug}",
       "then": "{expected outcome after fix}",

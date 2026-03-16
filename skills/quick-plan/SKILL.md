@@ -316,7 +316,7 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
       "structure": ["{key directories from discovery}"]
     },
     "assumptions": [
-      {"id": "A1", "belief": "{planning assumption}", "if_wrong": "{consequence}", "impact": "minor|moderate|major"}
+      {"id": "A1", "belief": "{planning assumption}", "if_wrong": "{consequence}", "impact": "minor|major|critical"}
     ]
   }
 }'
@@ -326,7 +326,7 @@ hoyeon-cli spec merge ${SPEC_PATH} --json '{
   "context": {
     "request": "{user original goal/request}",
     "assumptions": [
-      {"id": "A1", "belief": "{planning assumption}", "if_wrong": "{consequence}", "impact": "minor|moderate|major"}
+      {"id": "A1", "belief": "{planning assumption}", "if_wrong": "{consequence}", "impact": "minor|major|critical"}
     ]
   }
 }'
