@@ -12,6 +12,7 @@ allowed_tools:
   - Write
   - AskUserQuestion
   - Skill
+  - Agent
   - TaskCreate
   - TaskUpdate
   - TaskList
@@ -27,6 +28,8 @@ validate_prompt: |
   Must NOT generate spec.json until user explicitly chooses "Execute".
   Must NOT: create teams or spawn agents during planning.
   spec.json must include requirements (one per task) with scenarios before tasks are merged.
+  spec.json must include context.assumptions (at least one assumption about the plan).
+  If any task has type: dev, spec.json must include context.research with commands and structure.
 ---
 
 # /quick-plan — Session Task Planner
@@ -40,6 +43,23 @@ Take user's session goals and produce an optimized execution plan that maximizes
 1. Read CLAUDE.md and recent git log to understand project state
 2. If user's goals are vague, ask up to 2 clarifying questions via AskUserQuestion
 3. If goals are clear, skip straight to Phase 2
+
+### Phase 1.5: Quick Discovery (conditional)
+
+Run a lightweight codebase scan to improve touch zone accuracy and discover verification commands.
+
+```
+IF user's goals involve code changes (likely type: dev tasks):
+  Agent(subagent_type="code-explorer",
+        prompt="Find: project structure, key directories, test/lint/build commands (package.json scripts, Makefile, etc.), and files related to [user's goal areas]. Report as file:line format.")
+
+  → Store results for Phase 5 (tool discovery) and Phase 9 (context.research merge)
+
+IF goals are purely non-code (research, analysis, documentation):
+  → Skip discovery entirely
+```
+
+**Cost**: ~10-15 seconds for 1 agent. **Benefit**: touch zones reference real files, verification commands auto-discovered.
 
 ### Phase 2: Task Decomposition
 
@@ -281,6 +301,44 @@ This ensures:
 - `acceptance_criteria.scenarios` in tasks reference real scenario IDs
 - Final Verify in /execute can check requirement scenarios (not just build checks)
 
+#### 9.2.7 Merge context and assumptions
+
+Merge the context gathered during planning. Content is **type-aware**:
+
+```bash
+# IF any task has type: dev (discovery ran in Phase 1.5):
+hoyeon-cli spec merge ${SPEC_PATH} --json '{
+  "context": {
+    "request": "{user original goal/request}",
+    "research": {
+      "summary": "{1-2 line summary from Phase 1.5 discovery}",
+      "commands": {"test": "{discovered test cmd}", "lint": "{lint cmd}", "build": "{build cmd}"},
+      "structure": ["{key directories from discovery}"]
+    },
+    "assumptions": [
+      {"id": "A1", "belief": "{planning assumption}", "if_wrong": "{consequence}", "impact": "minor|moderate|major"}
+    ]
+  }
+}'
+
+# IF all tasks are type: plain (no discovery):
+hoyeon-cli spec merge ${SPEC_PATH} --json '{
+  "context": {
+    "request": "{user original goal/request}",
+    "assumptions": [
+      {"id": "A1", "belief": "{planning assumption}", "if_wrong": "{consequence}", "impact": "minor|moderate|major"}
+    ]
+  }
+}'
+```
+
+**Assumptions to always capture** (at minimum):
+- Task independence / overlap assumptions (e.g., "T1 and T2 have no file overlap")
+- Tool/skill availability assumptions (e.g., "existing test infra can be reused")
+- Scope assumptions (e.g., "no database migration needed")
+
+These assumptions give /execute triage context when things go wrong.
+
 #### 9.3 Merge tasks
 
 Merge **all tasks in a single call** — this replaces the placeholder T1 from `spec init`.
@@ -288,9 +346,6 @@ Do NOT call merge per task (without `--append`, each call overwrites the previou
 
 ```bash
 hoyeon-cli spec merge ${SPEC_PATH} --json '{
-  "context": {
-    "request": "{user original goal/request}"
-  },
   "tasks": [
     {
       "id": "T1",
