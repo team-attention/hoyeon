@@ -8724,6 +8724,7 @@ var dev_spec_v5_schema_default = {
         },
         source: {
           type: "object",
+          required: ["type"],
           additionalProperties: false,
           description: "Traceability: where this requirement originated from",
           properties: {

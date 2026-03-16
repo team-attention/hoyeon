@@ -375,7 +375,7 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{
 
 Then merge remaining gaps as assumptions, transition to Phase 3.
 
-- **Max 3 interview rounds** (circuit breaker). After round 3, auto-transition to Phase 3 with remaining gaps as assumptions.
+- **Max 3 interview rounds** (circuit breaker). After round 3, auto-transition to Phase 3 with remaining gaps as assumptions. **Before transitioning, still run the Phase 2 requirements merge** — set `source.type: "implicit"` for all requirements inferred so far (since user did not explicitly confirm them).
 
 > **Core Principle**: Mirror first, then iteratively clarify with visibility into what's known vs unknown.
 

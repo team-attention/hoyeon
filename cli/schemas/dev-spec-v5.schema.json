@@ -345,6 +345,7 @@
         },
         "source": {
           "type": "object",
+          "required": ["type"],
           "additionalProperties": false,
           "description": "Traceability: where this requirement originated from",
           "properties": {
