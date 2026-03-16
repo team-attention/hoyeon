@@ -88,6 +88,10 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **`develop`** — integration branch. Feature branches merge here.
 - **Feature branches** — `feat/xxx` from `develop`, merge back to `develop` via `--no-ff`.
 
+### Pre-Release Checklist
+
+- [ ] All content must be written in English (SKILL.md, agent .md, CLAUDE.md, README.md, commit messages, comments)
+
 ### Release Flow
 
 ```

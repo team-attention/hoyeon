@@ -8,6 +8,46 @@ It is loaded when `meta.type == "plain"` after Phase 0 completes.
 
 ---
 
+## Create Tracking Tasks
+
+Create TaskCreate entries for all tasks + finalize steps. **Batch all in one turn.**
+
+```
+# ═══════════════════════════════════════════════════
+# TURN 1: Create ALL tasks in PARALLEL (single message)
+# ═══════════════════════════════════════════════════
+
+FOR EACH task in plan (flattened from rounds, excluding done):
+  t = TaskCreate(subject="{task.id}: {task.action}",
+                 description="Plain task {task.id}. Spec: {spec_path}",
+                 activeForm="{task.id}: Running")
+
+# Finalize tasks
+fv = TaskCreate(subject="Finalize:Final Verify",
+     description="Holistic spec verification (goal, constraints, AC, requirements, deliverables).",
+     activeForm="Running final verification")
+rp = TaskCreate(subject="Finalize:Report",
+     activeForm="Generating report")
+```
+
+```
+# ═══════════════════════════════════════════════════
+# TURN 2: Set up dependencies (single message)
+# ═══════════════════════════════════════════════════
+
+# Chain tasks by round order — each round blocks the next
+FOR EACH consecutive round pair (round_n, round_n+1):
+  last_task_of_round_n blocks first_task_of_round_n+1
+
+# Finalize chain: last task → Final Verify → Report
+TaskUpdate(taskId=last_task, addBlocks=[fv])
+TaskUpdate(taskId=fv, addBlocks=[rp])
+```
+
+**Key rule**: NEVER create tasks one-by-one across multiple turns. All TaskCreate in Turn 1, all TaskUpdate in Turn 2.
+
+---
+
 ## Task Loop
 
 Execute tasks in DAG order from `plan.rounds`.
@@ -20,9 +60,10 @@ FOR EACH round in plan.rounds:
 
   IF len(runnable) == 0: CONTINUE
 
-  # Mark all in_progress
+  # Mark all in_progress (both spec and Claude Code tracking)
   FOR EACH task in runnable:
     Bash("hoyeon-cli spec task {task.id} --status in_progress {spec_path}")
+    TaskUpdate(taskId=task.tracking_id, status="in_progress")
 
   FOR EACH task in runnable (single message, run_in_background=true if len > 1):
     IF task.tool AND task.tool starts with "/":
@@ -42,13 +83,15 @@ FOR EACH round in plan.rounds:
       # If the task is complex enough, delegate to a general-purpose agent.
       Execute task.action directly OR Agent(subagent_type="general-purpose", ...)
 
-  # Collect results
+  # Collect results (update both spec and Claude Code tracking)
   FOR EACH task in runnable:
     result = await task completion
     IF result indicates success:
       Bash("hoyeon-cli spec task {task.id} --status done --summary '{result.summary}' {spec_path}")
+      TaskUpdate(taskId=task.tracking_id, status="completed")
     ELSE:
       print("Task {task.id} FAILED: {result.reason}")
+      TaskUpdate(taskId=task.tracking_id, status="cancelled")
       HALT
 ```
 
@@ -61,11 +104,14 @@ After all tasks complete, run Final Verify then report.
 ### Final Verify
 
 ```
+TaskUpdate(taskId=fv, status="in_progress")
+
 Read: ${baseDir}/references/final-verify.md
 Follow the usage instructions to dispatch the verification worker.
 Provide spec_path and parsed spec JSON.
 
 IF result.status == "VERIFIED":
+  TaskUpdate(taskId=fv, status="completed")
   # proceed to report
 ELSE:
   # On FV failure: generate a partial report with failures noted, THEN halt.
@@ -82,6 +128,7 @@ ELSE:
 ### Report
 
 ```
+TaskUpdate(taskId=rp, status="in_progress")
 spec = Read(spec_path) → parse JSON
 
 print("""
@@ -129,6 +176,8 @@ POST-WORK (human actions after completion)
 ═══════════════════════════════════════════════════
 """)
 
+TaskUpdate(taskId=rp, status="completed")
+
 IF fv_failed:
   HALT
 ```
@@ -148,8 +197,10 @@ IF fv_failed:
 
 ## Checklist
 
+- [ ] All TaskCreate in single turn (Turn 1), all TaskUpdate in single turn (Turn 2)
 - [ ] All tasks dispatched in DAG order from `plan.rounds`
 - [ ] Each task handled flexibly (direct work, Skill, or Agent)
+- [ ] Dual tracking: both spec (via `hoyeon-cli spec task`) and Claude Code (via TaskUpdate)
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
 - [ ] Final verify worker ran holistic spec verification
 - [ ] Manual items listed for human follow-up if present

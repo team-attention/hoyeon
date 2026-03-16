@@ -165,9 +165,10 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 
 1. **spec.json is the ONLY source** — no PLAN.md, no state.json
 2. **Always use cli** — `spec plan`, `spec task`, `spec merge`, `spec check`
-3. **Background for parallel** — use `run_in_background: true` for round-parallel workers
-4. **Context files** — workers append to learnings.md / issues.md; orchestrator appends to audit.md
-5. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli spec plan` to rebuild task state
+3. **TaskCreate for all modes** — create Claude Code tracking tasks before execution begins. Structure differs per mode (see each reference md).
+4. **Background for parallel** — use `run_in_background: true` for round-parallel workers
+5. **Context files (dev only)** — in dev mode, workers append to learnings.md / issues.md; orchestrator appends to audit.md. Plain mode does not use context files.
+6. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli spec plan` to rebuild task state
 
 ## Checklist Before Stopping
 
@@ -177,6 +178,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 - [ ] `meta.type` read (defaulted to "dev" if absent)
 - [ ] Context directory initialized (learnings.md, issues.md, audit.md)
 - [ ] Pre-work status logged explicitly (none/pass/fail)
+- [ ] TaskCreate entries created for all tasks + finalize steps (structure per mode reference)
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
 - [ ] `hoyeon-cli spec check` passes at end
 - [ ] Final report output
