@@ -1,10 +1,6 @@
 ---
 name: browser-work
-description: |
-  Recon-first browser automation. Orchestrator explores the site first via chromux,
-  saves a guide file with insights, then delegates execution to browser-explorer agent.
-  Use when: "/browser-work", "브라우저 작업", "사이트에서 해줘", "웹에서 해줘",
-  "LinkedIn에서", "크롬으로", "browser task", "automate this site".
+description: "Recon-first browser automation. Orchestrator explores the site first via chromux, saves a guide file with insights, then delegates execution to browser-explorer agent. Use when: \"/browser-work\", \"브라우저 작업\", \"사이트에서 해줘\", \"웹에서 해줘\", \"LinkedIn에서\", \"크롬으로\", \"browser task\", \"automate this site\"."
 version: 1.0.0
 ---
 

@@ -1,15 +1,7 @@
 ---
 name: google-search
-description: |
-  Google search via real Chrome browser (chromux). Use when the user asks to
-  "search Google", "구글 검색", "구글에서 찾아줘", "find articles about",
-  "search the web for", or needs web search results with full page content.
-  Also trigger when: searching a specific site ("search dev.to for..."),
-  finding recent articles/posts about a topic, extracting content from
-  search results, or when WebSearch results are insufficient and real
-  browser rendering is needed. Prefer this over WebSearch when the user
-  wants site-specific search, time-filtered results, or full article
-  body/comments extraction.
+description: "Google search via real Chrome browser (chromux). Use when the user asks to \"search Google\", \"구글 검색\", \"구글에서 찾아줘\", \"find articles about\", \"search the web for\", or needs web search results with full page content. Also trigger when: searching a specific site (\"search dev.to for...\"), finding recent articles/posts about a topic, extracting content from search results, or when WebSearch results are insufficient and real browser rendering is needed. Prefer this over WebSearch when the user wants site-specific search, time-filtered results, or full article body/comments extraction."
+
 ---
 
 # Google Search (chromux)

@@ -1,24 +1,7 @@
 ---
 name: execute
-description: |
-  Spec-driven orchestrator that reads spec.json via cli, routes by meta.type,
-  and dispatches agents/skills accordingly.
-  spec.json-native execution (no PLAN.md).
-  Use when: "/execute", "execute", "실행해줘", "스펙 실행"
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Task
-  - Bash
-  - Edit
-  - Write
-  - TaskCreate
-  - TaskUpdate
-  - TaskList
-  - TaskGet
-  - TaskOutput
-  - AskUserQuestion
+description: "Spec-driven orchestrator that reads spec.json via cli, routes by meta.type, and dispatches agents/skills accordingly. spec.json-native execution (no PLAN.md). Use when: \"/execute\", \"execute\", \"실행해줘\", \"스펙 실행\""
+allowed-tools: "Read, Grep, Glob, Task, Bash, Edit, Write, TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, AskUserQuestion"
 validate_prompt: |
   All tasks in spec.json must have status "done" at completion.
   hoyeon-cli spec check must pass (internal consistency).

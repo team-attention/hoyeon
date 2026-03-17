@@ -1,18 +1,7 @@
 ---
 name: specify
-description: |
-  Full-featured spec generator that outputs unified spec.json v5 via cli.
-  Interview-driven planning with mode support (quick/standard × interactive/autopilot).
-  Incremental spec.json build via cli spec merge.
-  Use when: "/specify", "specify", "plan this", "계획 짜줘", "스펙 만들어줘"
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Task
-  - Bash
-  - Write
-  - AskUserQuestion
+description: "Full-featured spec generator that outputs unified spec.json v5 via cli. Interview-driven planning with mode support (quick/standard × interactive/autopilot). Incremental spec.json build via cli spec merge. Use when: \"/specify\", \"specify\", \"plan this\", \"계획 짜줘\", \"스펙 만들어줘\""
+allowed-tools: "Read, Grep, Glob, Task, Bash, Write, AskUserQuestion"
 validate_prompt: |
   Must produce a valid spec.json that passes both cli spec validate and cli spec check.
   spec.json must include: meta.mode, context.research (structured), tasks with acceptance_criteria, requirements with scenarios.

@@ -1,10 +1,6 @@
 ---
 name: reference-seek
-description: |
-  This skill should be used when the user asks to "find references", "참고할 만한 거",
-  "similar implementation", "오픈소스 있나", "how others do this", "레퍼런스 찾아줘",
-  or needs to find existing patterns (internal) and open-source examples (external)
-  for implementing a feature.
+description: "This skill should be used when the user asks to \"find references\", \"참고할 만한 거\", \"similar implementation\", \"오픈소스 있나\", \"how others do this\", \"레퍼런스 찾아줘\", or needs to find existing patterns (internal) and open-source examples (external) for implementing a feature."
 version: 2.0.0
 validate_prompt: |
   Must contain all of these sections:

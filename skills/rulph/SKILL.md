@@ -1,20 +1,7 @@
 ---
 name: rulph
-description: |
-  Iterative rubric-based evaluation and self-improvement loop. Builds a scoring rubric interactively,
-  evaluates an artifact with multiple models in parallel (Codex, Gemini, Claude), then autonomously
-  improves the artifact one criterion at a time until a score threshold is met or circuit breaker fires.
-  "/rulph", "rubric evaluate", "rubric score", "multi-model evaluate",
-  "score and improve", "evaluate and iterate", "grade this",
-  "루브릭 루프", "채점 루프", "자율 개선", "개선 루프", "루브릭 평가"
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
-  - Write
-  - AskUserQuestion
-  - Agent
+description: "Iterative rubric-based evaluation and self-improvement loop. Builds a scoring rubric interactively, evaluates an artifact with multiple models in parallel (Codex, Gemini, Claude), then autonomously improves the artifact one criterion at a time until a score threshold is met or circuit breaker fires. \"/rulph\", \"rubric evaluate\", \"rubric score\", \"multi-model evaluate\", \"score and improve\", \"evaluate and iterate\", \"grade this\", \"루브릭 루프\", \"채점 루프\", \"자율 개선\", \"개선 루프\", \"루브릭 평가\""
+allowed-tools: "Read, Grep, Glob, Bash, Write, AskUserQuestion, Agent"
 validate_prompt: |
   Must contain all 4 Phases (Rubric Building, Evaluation, Improvement Loop, Completion).
   Must include 3-step rubric building interaction with per-criterion floor setting.
