@@ -1,17 +1,7 @@
 ---
 name: deep-interview
-description: |
-  "/deep-interview", "deep interview", "interview me", "clarify requirements",
-  "요구사항 정리", "인터뷰", "딥 인터뷰", "뭘 만들어야 할지 모르겠어",
-  "요구사항이 불명확", "아이디어 구체화"
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Agent
-  - Write
-  - WebSearch
-  - AskUserQuestion
+description: "\"/deep-interview\", \"deep interview\", \"interview me\", \"clarify requirements\", \"요구사항 정리\", \"인터뷰\", \"딥 인터뷰\", \"뭘 만들어야 할지 모르겠어\", \"요구사항이 불명확\", \"아이디어 구체화\""
+allowed-tools: "Read, Grep, Glob, Agent, Write, WebSearch, AskUserQuestion"
 validate_prompt: |
   Must contain all 3 stages: INITIATE, INTERVIEW, SYNTHESIZE.
   Must launch interviewer agent for questioning.

@@ -1,17 +1,7 @@
 ---
 name: compound
-description: |
-  This skill should be used when the user says "/compound", "compound this",
-  "document learnings", "save what we learned", or after completing a PR.
-  Extracts knowledge from PR context and saves to docs/learnings/.
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
-  - Write
-  - Edit
-  - AskUserQuestion
+description: "This skill should be used when the user says \"/compound\", \"compound this\", \"document learnings\", \"save what we learned\", or after completing a PR. Extracts knowledge from PR context and saves to docs/learnings/."
+allowed-tools: "Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion"
 ---
 
 # Compound Skill

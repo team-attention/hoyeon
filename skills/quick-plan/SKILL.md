@@ -1,21 +1,7 @@
 ---
 name: quick-plan
-description: |
-  "/quick-plan", "quick plan", "태스크 플래닝", "작업 계획", "세션 플래닝",
-  "plan tasks", "what should we do", "작업 정리", "DAG 짜줘",
-  "병렬로 돌리자", "팀 모드로 하자", "에이전트 배치"
-allowed_tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
-  - Write
-  - AskUserQuestion
-  - Skill
-  - Agent
-  - TaskCreate
-  - TaskUpdate
-  - TaskList
+description: "\"/quick-plan\", \"quick plan\", \"태스크 플래닝\", \"작업 계획\", \"세션 플래닝\", \"plan tasks\", \"what should we do\", \"작업 정리\", \"DAG 짜줘\", \"병렬로 돌리자\", \"팀 모드로 하자\", \"에이전트 배치\""
+allowed-tools: "Read, Grep, Glob, Bash, Write, AskUserQuestion, Skill, Agent, TaskCreate, TaskUpdate, TaskList"
 validate_prompt: |
   Must contain all of these sections:
   1. "## Task Breakdown" with numbered tasks and touch zones

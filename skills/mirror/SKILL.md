@@ -1,14 +1,7 @@
 ---
 name: mirror
-description: |
-  "/mirror", "mirror back", "echo back", "다시 설명해줘", "이해한 거 맞아?",
-  "내가 뭘 원하는지 말해봐", "확인해줘", "paraphrase this",
-  "너가 이해한 거 설명해봘", "what did I ask?"
-allowed-tools:
-  - AskUserQuestion
-  - Read
-  - Grep
-  - Glob
+description: "\"/mirror\", \"mirror back\", \"echo back\", \"다시 설명해줘\", \"이해한 거 맞아?\", \"내가 뭘 원하는지 말해봐\", \"확인해줘\", \"paraphrase this\", \"너가 이해한 거 설명해봘\", \"what did I ask?\""
+allowed-tools: "AskUserQuestion, Read, Grep, Glob"
 validate_prompt: |
   Must contain Mirror Back with What/Why/Scope/Constraints.
   Must reach CONFIRMED or user-initiated exit.

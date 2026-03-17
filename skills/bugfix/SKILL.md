@@ -1,9 +1,6 @@
 ---
 name: bugfix
-description: |
-  Root cause based one-shot bug fix. debugger diagnosis → spec.json generation → /execute.
-  /bugfix "error description"
-  Adaptive mode: auto-routes by debugger's Severity assessment (SIMPLE/COMPLEX).
+description: "Root cause based one-shot bug fix. debugger diagnosis → spec.json generation → /execute. /bugfix \"error description\" Adaptive mode: auto-routes by debugger's Severity assessment (SIMPLE/COMPLEX)."
 allowed_tools:
   - Read
   - Grep

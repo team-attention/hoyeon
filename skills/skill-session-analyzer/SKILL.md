@@ -1,17 +1,7 @@
 ---
 name: skill-session-analyzer
-description: |
-  This skill should be used when the user asks to "analyze session", "evaluate skill execution",
-  "check session logs", provides a session ID with a skill path,
-  or wants to verify that a skill executed correctly in a past session.
-  Post-hoc analysis of Claude Code sessions to validate skill/agent/hook behavior against SKILL.md specifications.
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
-  - Task
-  - Write
+description: "This skill should be used when the user asks to \"analyze session\", \"evaluate skill execution\", \"check session logs\", provides a session ID with a skill path, or wants to verify that a skill executed correctly in a past session. Post-hoc analysis of Claude Code sessions to validate skill/agent/hook behavior against SKILL.md specifications."
+allowed-tools: "Read, Grep, Glob, Bash, Task, Write"
 ---
 
 # Session Analyzer Skill

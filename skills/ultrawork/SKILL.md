@@ -1,19 +1,7 @@
 ---
 name: ultrawork
-description: |
-  This skill should be used when the user says "/ultrawork", "ultrawork", or wants to run the full
-  specify → execute pipeline automatically with a single command.
-  Automated end-to-end workflow that chains specify and execute skills.
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Task
-  - Write
-  - Bash
-  - Edit
-  - Skill
-  - AskUserQuestion
+description: "This skill should be used when the user says \"/ultrawork\", \"ultrawork\", or wants to run the full specify → execute pipeline automatically with a single command. Automated end-to-end workflow that chains specify and execute skills."
+allowed-tools: "Read, Grep, Glob, Task, Write, Bash, Edit, Skill, AskUserQuestion"
 ---
 
 # /ultrawork Skill - Automated Development Pipeline

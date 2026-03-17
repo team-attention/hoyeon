@@ -1,16 +1,7 @@
 ---
 name: scope
-description: |
-  Fast parallel change-scope analyzer. Launches 5+ agents concurrently to identify
-  what files need changing, what could break, and the recommended approach.
-  Lighter than /specify — no interview, no spec.json, just a quick scoped report.
-  Use this skill whenever the user wants to understand the blast radius of a change
-  before diving into implementation. Also use when the user has a bug or feature
-  request and wants to know where to look and what to touch.
-  Trigger phrases: "/scope", "scope this", "impact analysis", "change scope",
-  "what needs to change", "blast radius", "what would break",
-  Korean: "변경범위", "스코프 분석", "뭘 바꿔야 해", "어디를 고쳐야 해",
-  "영향범위", "어디 건드려야 돼", "뭐가 깨질 수 있어"
+description: "Fast parallel change-scope analyzer. Launches 5+ agents concurrently to identify what files need changing, what could break, and the recommended approach. Lighter than /specify — no interview, no spec.json, just a quick scoped report. Use this skill whenever the user wants to understand the blast radius of a change before diving into implementation. Also use when the user has a bug or feature request and wants to know where to look and what to touch. Trigger phrases: \"/scope\", \"scope this\", \"impact analysis\", \"change scope\", \"what needs to change\", \"blast radius\", \"what would break\", Korean: \"변경범위\", \"스코프 분석\", \"뭘 바꿔야 해\", \"어디를 고쳐야 해\", \"영향범위\", \"어디 건드려야 돼\", \"뭐가 깨질 수 있어\""
+
 ---
 
 # /scope — Parallel Change-Scope Analyzer

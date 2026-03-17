@@ -1,10 +1,6 @@
 ---
 name: issue
-description: |
-  GitHub issue creation skill. Analyzes the entire codebase impact based on user request,
-  then creates a structured issue with AI-verified/human-judgment-needed/caution sections.
-  /issue "issue description"
-  Trigger: "/issue", "이슈 만들어", "issue 만들자", "깃헙 이슈"
+description: "GitHub issue creation skill. Analyzes the entire codebase impact based on user request, then creates a structured issue with AI-verified/human-judgment-needed/caution sections. /issue \"issue description\" Trigger: \"/issue\", \"이슈 만들어\", \"issue 만들자\", \"깃헙 이슈\""
 allowed_tools:
   - Read
   - Grep

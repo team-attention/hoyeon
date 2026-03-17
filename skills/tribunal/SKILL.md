@@ -1,17 +1,7 @@
 ---
 name: tribunal
-description: |
-  This skill should be used when the user says "/tribunal", "tribunal", "review this",
-  "3-way review", "risk-value-feasibility check", or wants multi-perspective adversarial review.
-  Also triggered by: "트리뷰널", "리뷰 해줘", "3관점 리뷰", "위험성 검토".
-  Runs 3 agents (Risk/Value/Feasibility) in parallel and synthesizes a verdict.
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Task
-  - Bash
-  - AskUserQuestion
+description: "This skill should be used when the user says \"/tribunal\", \"tribunal\", \"review this\", \"3-way review\", \"risk-value-feasibility check\", or wants multi-perspective adversarial review. Also triggered by: \"트리뷰널\", \"리뷰 해줘\", \"3관점 리뷰\", \"위험성 검토\". Runs 3 agents (Risk/Value/Feasibility) in parallel and synthesizes a verdict."
+allowed-tools: "Read, Grep, Glob, Task, Bash, AskUserQuestion"
 validate_prompt: |
   Must contain:
   1. Three parallel agent launches (codex-risk-analyst, value-assessor, feasibility-checker)

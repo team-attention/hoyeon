@@ -1,22 +1,7 @@
 ---
 name: ralph
-description: |
-  Iterative task completion loop with Definition of Done verification.
-  Combines the Ralph Wiggum technique (prompt re-injection via Stop hook) with
-  DoD-based independent verification. Claude proposes DoD criteria, user confirms,
-  then Claude works autonomously. Stop hook re-injects the original prompt and
-  blocks exit until all DoD items are independently verified.
-  "/ralph", "ralph loop", "ralph 루프", "반복 작업", "DoD 루프",
-  "완료 검증 루프", "task loop", "keep going until done"
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
-  - Write
-  - Edit
-  - Agent
-  - AskUserQuestion
+description: "Iterative task completion loop with Definition of Done verification. Combines the Ralph Wiggum technique (prompt re-injection via Stop hook) with DoD-based independent verification. Claude proposes DoD criteria, user confirms, then Claude works autonomously. Stop hook re-injects the original prompt and blocks exit until all DoD items are independently verified. \"/ralph\", \"ralph loop\", \"ralph 루프\", \"반복 작업\", \"DoD 루프\", \"완료 검증 루프\", \"task loop\", \"keep going until done\""
+allowed-tools: "Read, Grep, Glob, Bash, Write, Edit, Agent, AskUserQuestion"
 validate_prompt: |
   Must contain Phase 1 (DoD Collection) and Phase 2 (Work Execution).
   Must use AskUserQuestion for DoD confirmation.

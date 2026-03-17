@@ -1,26 +1,7 @@
 ---
 name: council
-description: |
-  This skill should be used when the user says "/council", "council", "deliberate",
-  "multi-perspective decision", "트레이드오프 분석", "위원회 소집", "여러 관점으로 검토",
-  or wants deep multi-perspective deliberation with tradeoff mapping.
-  Combines tribunal (structured adversarial review), agent-council (external LLM opinions),
-  dev-scan (community sentiment), and step-back (meta-level review) into a unified
-  decision-making committee. Uses Agent Teams for real peer-to-peer debate with
-  iterative step-back moderation loop.
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Agent
-  - Bash
-  - AskUserQuestion
-  - TeamCreate
-  - TeamDelete
-  - SendMessage
-  - TaskCreate
-  - TaskUpdate
-  - TaskList
+description: "This skill should be used when the user says \"/council\", \"council\", \"deliberate\", \"multi-perspective decision\", \"트레이드오프 분석\", \"위원회 소집\", \"여러 관점으로 검토\", or wants deep multi-perspective deliberation with tradeoff mapping. Combines tribunal (structured adversarial review), agent-council (external LLM opinions), dev-scan (community sentiment), and step-back (meta-level review) into a unified decision-making committee. Uses Agent Teams for real peer-to-peer debate with iterative step-back moderation loop."
+allowed-tools: "Read, Grep, Glob, Agent, Bash, AskUserQuestion, TeamCreate, TeamDelete, SendMessage, TaskCreate, TaskUpdate, TaskList"
 validate_prompt: |
   Must contain:
   1. Dynamic panelist design (not fixed 3)

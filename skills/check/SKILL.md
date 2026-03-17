@@ -1,17 +1,8 @@
 ---
 name: check
 context: fork
-description: |
-  This skill should be used when the user wants to verify their changes
-  before pushing, or update the project's rule checklists.
-  Phase 1: validate changed files against .dev/rules/ checklists and report
-  PASS/WARN. Phase 2 (conditional): propose rule additions when unmatched
-  patterns are detected. Essential before git push.
-  Trigger phrases: "check", "checklist", "verify changes", "what did I miss",
-  "pre-push check", "cascading changes", "any more changes needed",
-  "update checklist", "update rules", "rules update",
-  "체크", "체크리스트", "변경 확인", "빠뜨린 거 없나", "push 전 확인",
-  "뭐 더 건드려야 해?", "연쇄 변경 확인", "규칙 갱신".
+description: "This skill should be used when the user wants to verify their changes before pushing, or update the project's rule checklists. Phase 1: validate changed files against .dev/rules/ checklists and report PASS/WARN. Phase 2 (conditional): propose rule additions when unmatched patterns are detected. Essential before git push. Trigger phrases: \"check\", \"checklist\", \"verify changes\", \"what did I miss\", \"pre-push check\", \"cascading changes\", \"any more changes needed\", \"update checklist\", \"update rules\", \"rules update\", \"체크\", \"체크리스트\", \"변경 확인\", \"빠뜨린 거 없나\", \"push 전 확인\", \"뭐 더 건드려야 해?\", \"연쇄 변경 확인\", \"규칙 갱신\"."
+
 ---
 
 # Check — Change Verification + Rule Evolution

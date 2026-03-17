@@ -1,18 +1,7 @@
 ---
 name: discuss
-description: |
-  "/discuss", "discuss this", "think with me", "is this a good idea?",
-  "what do you think about", "problem definition", "explore this idea",
-  Korean triggers: "같이 생각해보자", "이거 어떻게 생각해?", "문제 정의",
-  "이게 좋은 아이디어야?", "이거 맞아?"
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Task
-  - Write
-  - WebSearch
-  - AskUserQuestion
+description: "\"/discuss\", \"discuss this\", \"think with me\", \"is this a good idea?\", \"what do you think about\", \"problem definition\", \"explore this idea\", Korean triggers: \"같이 생각해보자\", \"이거 어떻게 생각해?\", \"문제 정의\", \"이게 좋은 아이디어야?\", \"이거 맞아?\""
+allowed-tools: "Read, Grep, Glob, Task, Write, WebSearch, AskUserQuestion"
 validate_prompt: |
   Must contain all 3 stages: DIAGNOSE, PROBE, SYNTHESIZE.
   Must apply at least 1 Socratic probe (unless user opted to skip to /specify).

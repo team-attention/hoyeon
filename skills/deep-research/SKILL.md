@@ -1,11 +1,6 @@
 ---
 name: deep-research
-description: >
-  Deep web research skill using parallel subagents + chromux browser-explorer + Gemini. Spawns
-  multiple WebSearch research agents AND browser-explorer agents (via chromux for JS-heavy/dynamic
-  sites), plus a Gemini CLI deep research source, then synthesizes everything into a cited report.
-  Uses WebSearch, WebFetch, chromux browser-explorer, and Gemini CLI. Invoke with /deep-research
-  <topic>.
+description: "Deep web research skill using parallel subagents + chromux browser-explorer + Gemini. Spawns multiple WebSearch research agents AND browser-explorer agents (via chromux for JS-heavy/dynamic sites), plus a Gemini CLI deep research source, then synthesizes everything into a cited report. Uses WebSearch, WebFetch, chromux browser-explorer, and Gemini CLI. Invoke with /deep-research [topic]."
 disable-model-invocation: true
 ---
 
