@@ -402,11 +402,11 @@ var require_codegen = __commonJS({
         const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
         return `${varKind} ${this.name}${rhs};` + _n;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         if (!names[this.name.str])
           return;
         if (this.rhs)
-          this.rhs = optimizeExpr(this.rhs, names, constants);
+          this.rhs = optimizeExpr(this.rhs, names, constants2);
         return this;
       }
       get names() {
@@ -423,10 +423,10 @@ var require_codegen = __commonJS({
       render({ _n }) {
         return `${this.lhs} = ${this.rhs};` + _n;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects)
           return;
-        this.rhs = optimizeExpr(this.rhs, names, constants);
+        this.rhs = optimizeExpr(this.rhs, names, constants2);
         return this;
       }
       get names() {
@@ -487,8 +487,8 @@ var require_codegen = __commonJS({
       optimizeNodes() {
         return `${this.code}` ? this : void 0;
       }
-      optimizeNames(names, constants) {
-        this.code = optimizeExpr(this.code, names, constants);
+      optimizeNames(names, constants2) {
+        this.code = optimizeExpr(this.code, names, constants2);
         return this;
       }
       get names() {
@@ -517,12 +517,12 @@ var require_codegen = __commonJS({
         }
         return nodes.length > 0 ? this : void 0;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         const { nodes } = this;
         let i = nodes.length;
         while (i--) {
           const n = nodes[i];
-          if (n.optimizeNames(names, constants))
+          if (n.optimizeNames(names, constants2))
             continue;
           subtractNames(names, n.names);
           nodes.splice(i, 1);
@@ -575,12 +575,12 @@ var require_codegen = __commonJS({
           return void 0;
         return this;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         var _a;
-        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants);
-        if (!(super.optimizeNames(names, constants) || this.else))
+        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants2);
+        if (!(super.optimizeNames(names, constants2) || this.else))
           return;
-        this.condition = optimizeExpr(this.condition, names, constants);
+        this.condition = optimizeExpr(this.condition, names, constants2);
         return this;
       }
       get names() {
@@ -603,10 +603,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.iteration})` + super.render(opts);
       }
-      optimizeNames(names, constants) {
-        if (!super.optimizeNames(names, constants))
+      optimizeNames(names, constants2) {
+        if (!super.optimizeNames(names, constants2))
           return;
-        this.iteration = optimizeExpr(this.iteration, names, constants);
+        this.iteration = optimizeExpr(this.iteration, names, constants2);
         return this;
       }
       get names() {
@@ -642,10 +642,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
       }
-      optimizeNames(names, constants) {
-        if (!super.optimizeNames(names, constants))
+      optimizeNames(names, constants2) {
+        if (!super.optimizeNames(names, constants2))
           return;
-        this.iterable = optimizeExpr(this.iterable, names, constants);
+        this.iterable = optimizeExpr(this.iterable, names, constants2);
         return this;
       }
       get names() {
@@ -687,11 +687,11 @@ var require_codegen = __commonJS({
         (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNodes();
         return this;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         var _a, _b;
-        super.optimizeNames(names, constants);
-        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants);
-        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants);
+        super.optimizeNames(names, constants2);
+        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants2);
+        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants2);
         return this;
       }
       get names() {
@@ -992,7 +992,7 @@ var require_codegen = __commonJS({
     function addExprNames(names, from) {
       return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
     }
-    function optimizeExpr(expr, names, constants) {
+    function optimizeExpr(expr, names, constants2) {
       if (expr instanceof code_1.Name)
         return replaceName(expr);
       if (!canOptimize(expr))
@@ -1007,14 +1007,14 @@ var require_codegen = __commonJS({
         return items;
       }, []));
       function replaceName(n) {
-        const c = constants[n.str];
+        const c = constants2[n.str];
         if (c === void 0 || names[n.str] !== 1)
           return n;
         delete names[n.str];
         return c;
       }
       function canOptimize(e) {
-        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants[c.str] !== void 0);
+        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants2[c.str] !== void 0);
       }
     }
     function subtractNames(names, from) {
@@ -2976,7 +2976,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve4.call(this, root, ref);
+      let _sch = resolve5.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3003,7 +3003,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve4(root, ref) {
+    function resolve5(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3578,7 +3578,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve4(baseURI, relativeURI, options) {
+    function resolve5(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3805,7 +3805,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve4,
+      resolve: resolve5,
       resolveComponent,
       equal,
       serialize,
@@ -11613,6 +11613,197 @@ async function feedback(args) {
   }
 }
 
+// src/handlers/settings-validate.js
+import { readFileSync as readFileSync4, existsSync as existsSync2, accessSync, constants } from "fs";
+import { resolve as resolve4, dirname as dirname4, join as join2 } from "path";
+var SETTINGS_HELP = `
+Usage:
+  hoyeon-cli settings validate   Validate .claude/settings.json hook configuration
+
+Options:
+  --help, -h    Show this help message
+
+Examples:
+  hoyeon-cli settings validate
+`;
+var VALID_EVENT_TYPES = /* @__PURE__ */ new Set([
+  "SessionStart",
+  "SessionEnd",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "Stop"
+]);
+function findSettingsJson(startDir) {
+  let dir = startDir;
+  while (true) {
+    const candidate = join2(dir, ".claude", "settings.json");
+    if (existsSync2(candidate)) {
+      return candidate;
+    }
+    const parent = dirname4(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+function collectHookCommands(hooks) {
+  const entries = [];
+  for (const [eventType, matchers] of Object.entries(hooks)) {
+    if (!Array.isArray(matchers)) continue;
+    for (const matcherObj of matchers) {
+      const matcher = matcherObj.matcher ?? "";
+      const hookList = matcherObj.hooks ?? [];
+      for (const hook of hookList) {
+        if (hook.type === "command" && typeof hook.command === "string") {
+          entries.push({ eventType, matcher, command: hook.command });
+        }
+      }
+    }
+  }
+  return entries;
+}
+async function handleValidate2() {
+  const startDir = process.cwd();
+  const settingsPath = findSettingsJson(startDir);
+  if (!settingsPath) {
+    process.stderr.write("Error: .claude/settings.json not found (searched from cwd upward)\n");
+    process.exit(1);
+  }
+  const projectRoot = dirname4(dirname4(settingsPath));
+  let settings2;
+  try {
+    settings2 = JSON.parse(readFileSync4(settingsPath, "utf8"));
+  } catch (err) {
+    process.stderr.write(`Error: failed to parse settings.json: ${err.message}
+`);
+    process.exit(1);
+  }
+  const hooks = settings2.hooks ?? {};
+  const hookEntries = collectHookCommands(hooks);
+  process.stdout.write(`Settings: ${settingsPath}
+`);
+  process.stdout.write(`Project root: ${projectRoot}
+
+`);
+  let hasFailure = false;
+  process.stdout.write("Check 1: Hook script path existence\n");
+  const missingPaths = [];
+  for (const { eventType, matcher, command } of hookEntries) {
+    const absPath = resolve4(projectRoot, command);
+    if (!existsSync2(absPath)) {
+      missingPaths.push({ eventType, matcher, command, absPath });
+    }
+  }
+  if (missingPaths.length === 0) {
+    process.stdout.write("  PASS: All hook script paths exist\n");
+  } else {
+    hasFailure = true;
+    process.stdout.write(`  FAIL: ${missingPaths.length} missing path(s)
+`);
+    for (const { eventType, command, absPath } of missingPaths) {
+      process.stdout.write(`    [${eventType}] ${command}
+`);
+      process.stdout.write(`      -> ${absPath} (not found)
+`);
+    }
+  }
+  process.stdout.write("\nCheck 2: Hook script executable bit\n");
+  const nonExecutable = [];
+  for (const { eventType, matcher, command } of hookEntries) {
+    const absPath = resolve4(projectRoot, command);
+    if (!existsSync2(absPath)) continue;
+    try {
+      accessSync(absPath, constants.X_OK);
+    } catch {
+      nonExecutable.push({ eventType, command, absPath });
+    }
+  }
+  if (nonExecutable.length === 0) {
+    process.stdout.write("  PASS: All hook scripts are executable\n");
+  } else {
+    hasFailure = true;
+    process.stdout.write(`  FAIL: ${nonExecutable.length} non-executable script(s)
+`);
+    for (const { eventType, command } of nonExecutable) {
+      process.stdout.write(`    [${eventType}] ${command} (not executable)
+`);
+    }
+  }
+  process.stdout.write("\nCheck 3: Valid event types\n");
+  const invalidEventTypes = [];
+  for (const eventType of Object.keys(hooks)) {
+    if (!VALID_EVENT_TYPES.has(eventType)) {
+      invalidEventTypes.push(eventType);
+    }
+  }
+  if (invalidEventTypes.length === 0) {
+    process.stdout.write("  PASS: All event types are valid\n");
+  } else {
+    hasFailure = true;
+    process.stdout.write(`  FAIL: ${invalidEventTypes.length} invalid event type(s)
+`);
+    for (const et of invalidEventTypes) {
+      process.stdout.write(`    '${et}' is not a valid event type
+`);
+    }
+    process.stdout.write(`  Valid event types: ${[...VALID_EVENT_TYPES].join(", ")}
+`);
+  }
+  process.stdout.write("\nCheck 4: Duplicate scripts in same event+matcher\n");
+  const seen = /* @__PURE__ */ new Map();
+  const duplicates = [];
+  for (const { eventType, matcher, command } of hookEntries) {
+    const key = `${eventType}::${matcher}`;
+    if (!seen.has(key)) {
+      seen.set(key, /* @__PURE__ */ new Set());
+    }
+    const commandSet = seen.get(key);
+    if (commandSet.has(command)) {
+      duplicates.push({ eventType, matcher, command });
+    } else {
+      commandSet.add(command);
+    }
+  }
+  if (duplicates.length === 0) {
+    process.stdout.write("  PASS: No duplicate scripts in same event+matcher\n");
+  } else {
+    hasFailure = true;
+    process.stdout.write(`  FAIL: ${duplicates.length} duplicate(s) found
+`);
+    for (const { eventType, matcher, command } of duplicates) {
+      const matcherLabel = matcher ? `matcher="${matcher}"` : 'matcher=""';
+      process.stdout.write(`    [${eventType}][${matcherLabel}] ${command}
+`);
+    }
+  }
+  process.stdout.write("\n");
+  if (hasFailure) {
+    process.stdout.write("Result: FAIL\n");
+    process.exit(1);
+  } else {
+    process.stdout.write("Result: PASS\n");
+    process.exit(0);
+  }
+}
+async function settings(args) {
+  const subcommand = args[0];
+  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
+    process.stdout.write(SETTINGS_HELP);
+    process.exit(0);
+  }
+  if (subcommand === "validate") {
+    await handleValidate2();
+  } else {
+    process.stderr.write(`Error: unknown settings subcommand '${subcommand}'
+`);
+    process.stderr.write(`Run 'hoyeon-cli settings --help' for usage.
+`);
+    process.exit(1);
+  }
+}
+
 // bin/dev-cli.js
 var USAGE = `
 hoyeon-cli \u2014 Developer workflow CLI
@@ -11639,7 +11830,8 @@ var SUBCOMMANDS = {
   spec,
   state,
   session,
-  feedback
+  feedback,
+  settings
 };
 async function main() {
   const args = process.argv.slice(2);

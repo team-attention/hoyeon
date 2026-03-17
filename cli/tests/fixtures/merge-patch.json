@@ -1,0 +1,9 @@
+{
+  "tasks": [
+    {
+      "id": "T1",
+      "status": "done",
+      "summary": "Task completed via merge-patch"
+    }
+  ]
+}

@@ -98,6 +98,15 @@
             "command": ".claude/scripts/validate-output.sh"
           }
         ]
+      },
+      {
+        "matcher": "Grep|Glob|WebFetch|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/tool-output-truncator.sh"
+          }
+        ]
       }
     ],
     "Stop": [

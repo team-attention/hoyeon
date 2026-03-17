@@ -2,6 +2,7 @@ import specHandler from '../src/handlers/spec.js';
 import stateHandler from '../src/handlers/state.js';
 import sessionHandler from '../src/handlers/session.js';
 import feedbackHandler from '../src/handlers/feedback.js';
+import settingsHandler from '../src/handlers/settings-validate.js';
 
 const USAGE = `
 hoyeon-cli — Developer workflow CLI
@@ -30,6 +31,7 @@ const SUBCOMMANDS = {
   state: stateHandler,
   session: sessionHandler,
   feedback: feedbackHandler,
+  settings: settingsHandler,
 };
 
 async function main() {
