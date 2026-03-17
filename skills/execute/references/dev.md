@@ -48,6 +48,44 @@ Throughout this document, `{depth}` refers to the resolved mode value:
 | Code Review | code-reviewer agent (SHIP/NEEDS_FIXES) | Skipped |
 | Final Verify | Holistic spec verification (after Code Review) | Holistic spec verification |
 
+### Phase Gate Auto-Pass
+
+Certain verification steps can be auto-skipped when the change is small enough to not warrant them.
+The orchestrator evaluates auto-pass conditions **before dispatching** each gate step.
+
+| Gate | Auto-Pass Condition | What Gets Skipped |
+|------|---------------------|-------------------|
+| **Verify (per-task)** | `git diff --stat` shows ≤ 50 lines changed AND no new files created AND task.risk == "low" | `:Verify` worker — go straight to `:Commit` |
+| **Code Review** | Total `git diff --stat` shows ≤ 200 lines AND no new dependencies added (`package.json`, `Cargo.toml`, etc. unchanged) AND all tasks are risk "low" | `:Code Review` step |
+| **Final Verify** | Never auto-passed | — (always runs) |
+
+**How to evaluate:**
+
+```
+function should_auto_pass_verify(task_id) → bool:
+  IF depth == "quick": return true  # quick mode already skips verify
+  diff_stat = Bash("git diff --stat HEAD~1")
+  lines_changed = parse_total_lines(diff_stat)
+  new_files = Bash("git diff --diff-filter=A --name-only HEAD~1")
+  task_risk = plan_data[task_id].risk
+  return lines_changed <= 50 AND new_files is empty AND task_risk == "low"
+
+function should_auto_pass_code_review() → bool:
+  IF depth == "quick": return true  # quick mode already skips code review
+  diff_stat = Bash("git diff --stat main...HEAD")
+  total_lines = parse_total_lines(diff_stat)
+  dep_files_changed = Bash("git diff --name-only main...HEAD | grep -E '(package\\.json|Cargo\\.toml|go\\.mod|requirements\\.txt|pyproject\\.toml)'")
+  all_low_risk = plan.tasks.every(t => t.risk == "low")
+  return total_lines <= 200 AND dep_files_changed is empty AND all_low_risk
+```
+
+**When auto-pass fires:**
+- Log to audit: `"AUTO_PASS: {gate} skipped — {reason}"`
+- Mark the TaskCreate entry as completed immediately
+- Continue to next step
+
+**User override**: If the user explicitly requests `--no-auto-pass` or the spec contains `meta.force_review: true`, all gates run regardless.
+
 ---
 
 ## Phase 0.5: Create Tracking Tasks
@@ -404,6 +442,9 @@ ELIF result.status == "FAILED":
 ### 1b. :Verify — Verify Worker (Standard Only)
 
 > **Mode Gate**: Quick mode SKIPS this entirely. `:Verify` tasks are not created.
+>
+> **Auto-Pass Gate**: If `should_auto_pass_verify(task_id)` returns true, skip verification
+> and mark as completed. Log: `"AUTO_PASS: Verify {task_id} skipped — {lines} lines, low risk, no new files"`
 
 Dispatch a verify worker. The description was already set at TaskCreate time via `VERIFY_DESCRIPTION(task_id)`.
 
@@ -593,7 +634,11 @@ TaskUpdate(taskId=rc, status="completed")
 
 > **Mode Gate**: Quick mode SKIPS this entirely.
 >
-> **MUST delegate** — Even if git diff is empty (e.g. git-ignored deliverables),
+> **Auto-Pass Gate**: If `should_auto_pass_code_review()` returns true, skip code review.
+> Log: `"AUTO_PASS: Code Review skipped — {lines} total lines, no new deps, all low risk"`
+> Mark `TaskUpdate(taskId=cr, status="completed")` and proceed to Final Verify.
+>
+> **MUST delegate** (when not auto-passed) — Even if git diff is empty (e.g. git-ignored deliverables),
 > always dispatch `code-reviewer`. The orchestrator MUST NOT judge SHIP/NEEDS_FIXES itself.
 > Pass the deliverable file paths so the reviewer can read them directly.
 

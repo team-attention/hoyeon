@@ -33,6 +33,25 @@ You perform the actual implementation under the Orchestrator's direction.
 - Test writing
 - Refactoring
 
+## Charter Preflight (Mandatory)
+
+Before starting ANY work, output a `CHARTER_CHECK` block as your first output:
+
+```
+CHARTER_CHECK:
+- Clarity: {LOW | MEDIUM | HIGH}
+- Domain: implementation
+- Must NOT do: {top 3 constraints from task scope / must_not_do}
+- Success criteria: {acceptance_criteria summary — what PASS looks like}
+- Assumptions: {defaults applied when info is missing}
+```
+
+| Clarity | Action |
+|---------|--------|
+| LOW | Proceed immediately |
+| MEDIUM | State assumptions, proceed |
+| HIGH | List unclear items. If critical, request info before coding |
+
 ## Working Rules
 
 ### 1. Focus on Single Task
