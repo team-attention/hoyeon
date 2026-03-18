@@ -55,7 +55,7 @@ Phase 2: Committee Deliberation (Iterative Debate Loop)
    │  ├─ 2.3: Repeat cycle (max 3 cycles)
    │  └─ 2.4: Collect external results + shutdown all teammates
    │
-Phase 3: Tradeoff Map + Verdict
+Phase 3: Report (Executive Summary → Analysis → Conclusion)
 ```
 
 ```
@@ -114,7 +114,7 @@ Input ───┤        ↕ debate ↕                              ├──�
 |-------|-------|-----------------|-------------|
 | Phase 1 | User args + topic | `committee_config` (panelist list, mode, topic) | Phase 2 |
 | Phase 2 | `committee_config` | `debate_log[]` + `final_positions[]` + `stepback_reviews[]` + `community_sentiment` | Phase 3 |
-| Phase 3 | All above | **Tradeoff Map** (final output to user) | User |
+| Phase 3 | All above | **Report** (Executive Summary → Analysis → Conclusion & Action Items) | User |
 
 ---
 
@@ -566,19 +566,106 @@ hoyeon-cli session set --sid $SESSION_ID --json '{"council": {"phase": 2, "statu
 
 ---
 
-## Phase 3: Tradeoff Map + Verdict
+## Phase 3: Report Generation (Executive Summary → Analysis → Conclusion)
 
 The main agent (lead) synthesizes everything. No more teammates needed.
 
 **Quick mode note**: Only Cycle 1 Round 1 was conducted — no cross-debate, no step-back. Lead extracts contention points directly from initial positions.
 
-### 3.1 Build Tradeoff Map
+### 3.1 Executive Summary (Top)
+
+Start the report with a scannable verdict so the reader knows the outcome in 5 seconds.
 
 ```markdown
 ## Council Deliberation Report
 
 ### Topic
 [deliberation topic]
+
+> **Verdict: [Option A / Option B / Conditional / No clear winner]** · Confidence [N]% · [N] panelists, [N] cycles
+>
+> [1-sentence synthesis: the single most important takeaway from the entire deliberation]
+```
+
+### 3.2 Tradeoff Map (Core Analysis)
+
+```markdown
+---
+
+### Tradeoff Map
+
+| Dimension | Option A | Option B | Community | Weight |
+|-----------|----------|----------|-----------|--------|
+| [dim 1] | [pro/con] | [pro/con] | [sentiment] | HIGH/MED/LOW |
+| [dim 2] | [pro/con] | [pro/con] | [sentiment] | HIGH/MED/LOW |
+| [dim 3] | [pro/con] | [pro/con] | [sentiment] | HIGH/MED/LOW |
+
+**Weight** = how many panelists flagged this dimension as important.
+```
+
+### 3.3 Contention Points
+
+```markdown
+### Contention Points
+
+| Point | Side A | Side B | Outcome |
+|-------|--------|--------|---------|
+| [disagreement] | [panelist]: [argument] | [panelist]: [counter] | [resolved/shifted/unresolved] |
+```
+
+### 3.4 Conclusion & Action Items (Bottom — the payoff)
+
+This is the section the reader came for. Visually separate it from the analysis above.
+
+```markdown
+---
+
+## Conclusion & Next Steps
+
+### Recommendation
+
+**Lean: [Option A / Option B / No clear winner]**
+
+[2-3 sentence synthesis explaining WHY this is the recommendation, referencing the strongest evidence from the debate]
+
+### Decision Guide
+
+| Condition | Recommended Path |
+|-----------|-----------------|
+| [condition 1, e.g., "If latency is the top priority"] | Option A |
+| [condition 2, e.g., "If team expertise is limited"] | Option B |
+| [condition 3, e.g., "If step-back identified Option C"] | Revisit the question |
+
+### Action Items
+
+What you need to do next, in priority order:
+
+1. **[Action verb] [specific task]** — [why this matters, 1 clause]
+2. **[Action verb] [specific task]** — [why this matters, 1 clause]
+3. **[Action verb] [specific task]** — [why this matters, 1 clause]
+
+### Decision Confidence: [N]%
+
+| Signal | Value |
+|--------|-------|
+| Panelist consensus | [N]/[total] lean same way |
+| Confidence spread | [min]%–[max]% |
+| Cycles to converge | [N] of 3 |
+| Position shifts | [N] ([stable/healthy/unstable]) |
+| Step-back verdict | [CONVERGED / max cycles] |
+
+> Interpretation: >80% = strong consensus · 50-80% = moderate · <50% = highly contested
+```
+
+### 3.5 Appendix (Collapsible Details)
+
+All supporting detail goes here — readers expand only what they need.
+
+```markdown
+---
+
+<details>
+<summary>Committee & Debate Summary</summary>
 
 ### Committee
 | Panelist | Lens | Final Position | Confidence | Shifted? | Status |
@@ -594,47 +681,10 @@ The main agent (lead) synthesizes everything. No more teammates needed.
 **Step-back interventions**: [list of PARTIAL/FULL verdicts and their impact]
 **Key debate moments**: [brief summary of most impactful exchanges]
 
-### Tradeoff Map
+</details>
 
-| Dimension | Option A | Option B | Community | Weight |
-|-----------|----------|----------|-----------|--------|
-| [dim 1] | [pro/con] | [pro/con] | [sentiment] | HIGH/MED/LOW |
-| [dim 2] | [pro/con] | [pro/con] | [sentiment] | HIGH/MED/LOW |
-| [dim 3] | [pro/con] | [pro/con] | [sentiment] | HIGH/MED/LOW |
-
-**Weight** = how many panelists flagged this dimension as important.
-```
-
-### 3.2 Contention Points
-
-```markdown
-### Contention Points
-
-| Point | Side A | Side B | Debate Outcome | Step-back Comment |
-|-------|--------|--------|----------------|-------------------|
-| [disagreement] | [panelist]: [argument] | [panelist]: [counter] | [resolved/shifted/unresolved] | [step-back insight if any] |
-```
-
-### 3.3 Step-back Insight (Aggregated)
-
-Aggregate ALL step-back verdicts across cycles:
-
-```markdown
-### Step-back Insight
-
-**Total cycles**: [N] (verdicts: [FULL, PARTIAL, CONVERGED])
-**Framing issues raised**: [aggregated from all verdicts]
-**Hidden assumptions found**: [aggregated]
-**Blind spots surfaced**: [aggregated]
-**Option C**: [if identified in any cycle]
-**Debate quality trajectory**: [did quality improve across cycles? entrenchment vs convergence?]
-**Final meta-recommendation**: [from last step-back verdict]
-```
-
-### 3.4 Preference Tally
-
-```markdown
-### Preference Tally
+<details>
+<summary>Preference Tally</summary>
 
 | Source | Preference | Rationale | Position History |
 |--------|-----------|-----------|-----------------|
@@ -645,30 +695,21 @@ Aggregate ALL step-back verdicts across cycles:
 | Community | Option B | [top sentiment] | - |
 
 **Tally**: Option A: N votes · Option B: M votes · Conditional: K
-```
 
-### 3.5 Final Recommendation
+</details>
 
-```markdown
-### Council Recommendation
+<details>
+<summary>Step-back Insight (Aggregated)</summary>
 
-**Lean**: [Option A / Option B / No clear winner]
+**Total cycles**: [N] (verdicts: [FULL, PARTIAL, CONVERGED])
+**Framing issues raised**: [aggregated from all verdicts]
+**Hidden assumptions found**: [aggregated]
+**Blind spots surfaced**: [aggregated]
+**Option C**: [if identified in any cycle]
+**Debate quality trajectory**: [did quality improve across cycles? entrenchment vs convergence?]
+**Final meta-recommendation**: [from last step-back verdict]
 
-**Decision Confidence**: [N]%
-- Average panelist confidence: [X]%
-- Max contention gap: [Y] points
-- Cycles to convergence: [N] (fewer = stronger consensus)
-- Position shifts: [N] (some shifts = healthy debate, many shifts = unstable)
-- Step-back final verdict: [CONVERGED / max cycles reached]
-- Interpretation: >80% = strong consensus · 50-80% = moderate · <50% = highly contested
-
-[2-3 sentence synthesis explaining the recommendation]
-
-**Choose Option A if**: [conditions]
-**Choose Option B if**: [conditions]
-**Revisit the question if**: [step-back identified Option C or framing issues]
-
----
+</details>
 
 <details>
 <summary>Full Debate Log</summary>
@@ -691,13 +732,6 @@ Aggregate ALL step-back verdicts across cycles:
 [Verdict + reasoning]
 
 ### Cycle N...
-
-</details>
-
-<details>
-<summary>Step-back Review History</summary>
-
-[All step-back verdicts with full analysis]
 
 </details>
 
@@ -790,8 +824,8 @@ Teammates **CANNOT**:
 - [ ] Max 3 cycles enforced (circuit breaker)
 - [ ] External LLM results collected (if launched)
 - [ ] All teammates shut down + TeamDelete called
-- [ ] Tradeoff Map generated as primary output
-- [ ] Contention Points with debate outcomes + step-back comments
-- [ ] Step-back Insight aggregated across all cycles
-- [ ] Full debate log in collapsible details
+- [ ] Executive Summary at top (1-line verdict + confidence + synthesis)
+- [ ] Tradeoff Map + Contention Points in analysis body
+- [ ] Conclusion & Action Items at bottom (Decision Guide table + numbered actions)
+- [ ] Supporting details (Committee, Preference Tally, Step-back, Debate Log) in collapsible sections
 - [ ] State updated at each phase transition

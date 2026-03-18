@@ -402,11 +402,11 @@ var require_codegen = __commonJS({
         const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
         return `${varKind} ${this.name}${rhs};` + _n;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         if (!names[this.name.str])
           return;
         if (this.rhs)
-          this.rhs = optimizeExpr(this.rhs, names, constants);
+          this.rhs = optimizeExpr(this.rhs, names, constants2);
         return this;
       }
       get names() {
@@ -423,10 +423,10 @@ var require_codegen = __commonJS({
       render({ _n }) {
         return `${this.lhs} = ${this.rhs};` + _n;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects)
           return;
-        this.rhs = optimizeExpr(this.rhs, names, constants);
+        this.rhs = optimizeExpr(this.rhs, names, constants2);
         return this;
       }
       get names() {
@@ -487,8 +487,8 @@ var require_codegen = __commonJS({
       optimizeNodes() {
         return `${this.code}` ? this : void 0;
       }
-      optimizeNames(names, constants) {
-        this.code = optimizeExpr(this.code, names, constants);
+      optimizeNames(names, constants2) {
+        this.code = optimizeExpr(this.code, names, constants2);
         return this;
       }
       get names() {
@@ -517,12 +517,12 @@ var require_codegen = __commonJS({
         }
         return nodes.length > 0 ? this : void 0;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         const { nodes } = this;
         let i = nodes.length;
         while (i--) {
           const n = nodes[i];
-          if (n.optimizeNames(names, constants))
+          if (n.optimizeNames(names, constants2))
             continue;
           subtractNames(names, n.names);
           nodes.splice(i, 1);
@@ -575,12 +575,12 @@ var require_codegen = __commonJS({
           return void 0;
         return this;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         var _a;
-        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants);
-        if (!(super.optimizeNames(names, constants) || this.else))
+        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants2);
+        if (!(super.optimizeNames(names, constants2) || this.else))
           return;
-        this.condition = optimizeExpr(this.condition, names, constants);
+        this.condition = optimizeExpr(this.condition, names, constants2);
         return this;
       }
       get names() {
@@ -603,10 +603,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.iteration})` + super.render(opts);
       }
-      optimizeNames(names, constants) {
-        if (!super.optimizeNames(names, constants))
+      optimizeNames(names, constants2) {
+        if (!super.optimizeNames(names, constants2))
           return;
-        this.iteration = optimizeExpr(this.iteration, names, constants);
+        this.iteration = optimizeExpr(this.iteration, names, constants2);
         return this;
       }
       get names() {
@@ -642,10 +642,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
       }
-      optimizeNames(names, constants) {
-        if (!super.optimizeNames(names, constants))
+      optimizeNames(names, constants2) {
+        if (!super.optimizeNames(names, constants2))
           return;
-        this.iterable = optimizeExpr(this.iterable, names, constants);
+        this.iterable = optimizeExpr(this.iterable, names, constants2);
         return this;
       }
       get names() {
@@ -687,11 +687,11 @@ var require_codegen = __commonJS({
         (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNodes();
         return this;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names, constants2) {
         var _a, _b;
-        super.optimizeNames(names, constants);
-        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants);
-        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants);
+        super.optimizeNames(names, constants2);
+        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants2);
+        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants2);
         return this;
       }
       get names() {
@@ -992,7 +992,7 @@ var require_codegen = __commonJS({
     function addExprNames(names, from) {
       return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
     }
-    function optimizeExpr(expr, names, constants) {
+    function optimizeExpr(expr, names, constants2) {
       if (expr instanceof code_1.Name)
         return replaceName(expr);
       if (!canOptimize(expr))
@@ -1007,14 +1007,14 @@ var require_codegen = __commonJS({
         return items;
       }, []));
       function replaceName(n) {
-        const c = constants[n.str];
+        const c = constants2[n.str];
         if (c === void 0 || names[n.str] !== 1)
           return n;
         delete names[n.str];
         return c;
       }
       function canOptimize(e) {
-        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants[c.str] !== void 0);
+        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants2[c.str] !== void 0);
       }
     }
     function subtractNames(names, from) {
@@ -2976,7 +2976,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve4.call(this, root, ref);
+      let _sch = resolve5.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3003,7 +3003,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve4(root, ref) {
+    function resolve5(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3578,7 +3578,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve4(baseURI, relativeURI, options) {
+    function resolve5(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3805,7 +3805,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve4,
+      resolve: resolve5,
       resolveComponent,
       equal,
       serialize,
@@ -8495,6 +8495,11 @@ var dev_spec_v5_schema_default = {
       additionalProperties: false,
       properties: {
         id: { type: "string" },
+        category: {
+          type: "string",
+          enum: ["HP", "EP", "BC", "NI", "IT"],
+          description: "Scenario coverage category: HP=Happy Path, EP=Edge/Error Path, BC=Boundary Condition, NI=Non-functional/Infrastructure, IT=Integration"
+        },
         given: { type: "string" },
         when: { type: "string" },
         then: { type: "string" },
@@ -9217,6 +9222,7 @@ Usage:
   hoyeon-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
   hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
   hoyeon-cli spec check <path>                      Check internal consistency
+  hoyeon-cli spec coverage <path> [--layer decisions|requirements|scenarios|tasks] [--json]  Check spec coverage (source.ref, decision coverage, scenario min count, orphan scenarios)
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
   hoyeon-cli spec guide [section]                             Show schema guide for a section
   hoyeon-cli spec scenario <scenario-id> --get <path>              Get scenario details as JSON
@@ -10001,6 +10007,142 @@ async function handleMeta(args) {
   process.stdout.write(JSON.stringify(meta, null, 2) + "\n");
   process.exit(0);
 }
+function collectScenarioSets(specData) {
+  const allScenarioIds = /* @__PURE__ */ new Set();
+  for (const req of specData.requirements || []) {
+    for (const sc of req.scenarios || []) {
+      if (sc.id) allScenarioIds.add(sc.id);
+    }
+  }
+  const referencedScenarioIds = /* @__PURE__ */ new Set();
+  for (const task of specData.tasks || []) {
+    for (const scenarioRef of task.acceptance_criteria?.scenarios || []) {
+      if (scenarioRef) referencedScenarioIds.add(scenarioRef);
+    }
+  }
+  return { allScenarioIds, referencedScenarioIds };
+}
+var VALID_COVERAGE_LAYERS = ["decisions", "requirements", "scenarios", "tasks"];
+async function handleCoverage(args) {
+  const parsed = parseArgs(args);
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write("Error: missing <path> argument\n");
+    process.stderr.write("Usage: hoyeon-cli spec coverage <path> [--layer decisions|requirements|scenarios|tasks] [--json]\n");
+    process.exit(1);
+  }
+  const layer = parsed.layer;
+  if (layer !== void 0 && !VALID_COVERAGE_LAYERS.includes(layer)) {
+    process.stderr.write(`Error: invalid --layer '${layer}'. Valid values: ${VALID_COVERAGE_LAYERS.join(", ")}
+`);
+    process.exit(1);
+  }
+  const useJson = parsed.json === true;
+  const specData = loadSpec(resolve(filePath));
+  const gaps = [];
+  const decisions = specData.context?.decisions || specData.decisions || [];
+  const requirements = specData.requirements || [];
+  const decisionIds = new Set(decisions.map((d) => d.id).filter(Boolean));
+  const runDecisions = !layer || layer === "decisions";
+  const runRequirements = !layer || layer === "requirements";
+  const runScenarios = !layer || layer === "scenarios";
+  const runTasks = !layer || layer === "tasks";
+  if (runDecisions && decisionIds.size > 0) {
+    for (const req of requirements) {
+      const ref = req.source?.ref;
+      if (ref === void 0 || ref === null) {
+        gaps.push({
+          layer: "decisions",
+          check: "source.ref-integrity",
+          message: `requirement '${req.id}' has no source.ref (decisions exist \u2014 link required)`
+        });
+      } else if (!decisionIds.has(ref)) {
+        gaps.push({
+          layer: "decisions",
+          check: "source.ref-integrity",
+          message: `requirement '${req.id}' source.ref '${ref}' does not match any decision ID`
+        });
+      }
+    }
+  }
+  if (runDecisions && decisionIds.size > 0 && requirements.length > 0) {
+    const coveredDecisionIds = /* @__PURE__ */ new Set();
+    for (const req of requirements) {
+      const ref = req.source?.ref;
+      if (ref) coveredDecisionIds.add(ref);
+    }
+    for (const decId of decisionIds) {
+      if (!coveredDecisionIds.has(decId)) {
+        gaps.push({
+          layer: "decisions",
+          check: "decision-coverage",
+          message: `decision '${decId}' is not referenced by any requirement source.ref`
+        });
+      }
+    }
+  }
+  if (runRequirements) {
+    for (const req of requirements) {
+      const scenarios = req.scenarios || [];
+      const anyHasCategory = scenarios.some((sc) => sc.category !== void 0);
+      if (anyHasCategory) {
+        const categories = new Set(scenarios.map((sc) => sc.category).filter(Boolean));
+        const missing = [];
+        if (!categories.has("HP")) missing.push("HP");
+        if (!categories.has("EP")) missing.push("EP");
+        if (!categories.has("BC")) missing.push("BC");
+        if (missing.length > 0) {
+          gaps.push({
+            layer: "requirements",
+            check: "scenario-min-count",
+            message: `requirement '${req.id}' is missing scenario categories: ${missing.join(", ")}`
+          });
+        }
+      } else {
+        if (scenarios.length < 3) {
+          gaps.push({
+            layer: "requirements",
+            check: "scenario-min-count",
+            message: `requirement '${req.id}' has ${scenarios.length} scenario(s) but needs at least 3 (count-only mode \u2014 no category field present)`
+          });
+        }
+      }
+    }
+  }
+  if (runScenarios && runTasks) {
+    const { allScenarioIds, referencedScenarioIds } = collectScenarioSets(specData);
+    const tasksWithAC = (specData.tasks || []).filter((t) => t.acceptance_criteria?.scenarios);
+    if (allScenarioIds.size > 0 && tasksWithAC.length > 0) {
+      for (const scenarioId of allScenarioIds) {
+        if (!referencedScenarioIds.has(scenarioId)) {
+          gaps.push({
+            layer: "scenarios",
+            check: "orphan-scenario",
+            message: `scenario '${scenarioId}' is defined but not referenced by any task acceptance_criteria`
+          });
+        }
+      }
+    }
+  }
+  if (useJson) {
+    const result = {
+      coverage: gaps.length === 0 ? "pass" : "fail",
+      gaps
+    };
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    process.exit(gaps.length === 0 ? 0 : 1);
+  }
+  if (gaps.length > 0) {
+    process.stderr.write("Coverage gaps found:\n");
+    for (const gap of gaps) {
+      process.stderr.write(`  [${gap.layer}/${gap.check}] ${gap.message}
+`);
+    }
+    process.exit(1);
+  }
+  process.stdout.write("Coverage passed: all coverage checks OK\n");
+  process.exit(0);
+}
 async function handleCheck(args) {
   const filePath = args[0];
   if (!filePath) {
@@ -10045,12 +10187,7 @@ async function handleCheck(args) {
       }
     }
   }
-  const allScenarioIds = /* @__PURE__ */ new Set();
-  for (const req of specData.requirements || []) {
-    for (const sc of req.scenarios || []) {
-      if (sc.id) allScenarioIds.add(sc.id);
-    }
-  }
+  const { allScenarioIds, referencedScenarioIds } = collectScenarioSets(specData);
   for (const task of specData.tasks) {
     for (const scenarioRef of task.acceptance_criteria?.scenarios || []) {
       if (!allScenarioIds.has(scenarioRef)) {
@@ -10058,7 +10195,36 @@ async function handleCheck(args) {
       }
     }
   }
+  const decisionIds = new Set((specData.context?.decisions || specData.decisions || []).map((d) => d.id).filter(Boolean));
+  for (const req of specData.requirements || []) {
+    const ref = req.source?.ref;
+    if (ref !== void 0 && ref !== null) {
+      if (!decisionIds.has(ref)) {
+        issues.push(`requirement '${req.id}' source.ref '${ref}' does not match any decision ID`);
+      }
+    }
+  }
+  const tasksWithAC = (specData.tasks || []).filter((t) => t.acceptance_criteria?.scenarios);
+  if (allScenarioIds.size > 0 && tasksWithAC.length > 0) {
+    for (const scenarioId of allScenarioIds) {
+      if (!referencedScenarioIds.has(scenarioId)) {
+        issues.push(`scenario '${scenarioId}' is defined but not referenced by any task acceptance_criteria`);
+      }
+    }
+  }
   const warnings = [];
+  if ((specData.context?.decisions || specData.decisions || []).length > 0 && (specData.requirements || []).length > 0) {
+    const coveredDecisionIds = /* @__PURE__ */ new Set();
+    for (const req of specData.requirements || []) {
+      const ref = req.source?.ref;
+      if (ref) coveredDecisionIds.add(ref);
+    }
+    for (const decId of decisionIds) {
+      if (!coveredDecisionIds.has(decId)) {
+        warnings.push(`decision '${decId}' is not referenced by any requirement source.ref`);
+      }
+    }
+  }
   const fileScopeMap = /* @__PURE__ */ new Map();
   for (const task of specData.tasks) {
     for (const file of task.file_scope || []) {
@@ -10818,6 +10984,8 @@ async function spec(args) {
     await handleStatus(args.slice(1));
   } else if (subcommand === "meta") {
     await handleMeta(args.slice(1));
+  } else if (subcommand === "coverage") {
+    await handleCoverage(args.slice(1));
   } else if (subcommand === "check") {
     await handleCheck(args.slice(1));
   } else if (subcommand === "amend") {
@@ -11613,6 +11781,197 @@ async function feedback(args) {
   }
 }
 
+// src/handlers/settings-validate.js
+import { readFileSync as readFileSync4, existsSync as existsSync2, accessSync, constants } from "fs";
+import { resolve as resolve4, dirname as dirname4, join as join2 } from "path";
+var SETTINGS_HELP = `
+Usage:
+  hoyeon-cli settings validate   Validate .claude/settings.json hook configuration
+
+Options:
+  --help, -h    Show this help message
+
+Examples:
+  hoyeon-cli settings validate
+`;
+var VALID_EVENT_TYPES = /* @__PURE__ */ new Set([
+  "SessionStart",
+  "SessionEnd",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "Stop"
+]);
+function findSettingsJson(startDir) {
+  let dir = startDir;
+  while (true) {
+    const candidate = join2(dir, ".claude", "settings.json");
+    if (existsSync2(candidate)) {
+      return candidate;
+    }
+    const parent = dirname4(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+function collectHookCommands(hooks) {
+  const entries = [];
+  for (const [eventType, matchers] of Object.entries(hooks)) {
+    if (!Array.isArray(matchers)) continue;
+    for (const matcherObj of matchers) {
+      const matcher = matcherObj.matcher ?? "";
+      const hookList = matcherObj.hooks ?? [];
+      for (const hook of hookList) {
+        if (hook.type === "command" && typeof hook.command === "string") {
+          entries.push({ eventType, matcher, command: hook.command });
+        }
+      }
+    }
+  }
+  return entries;
+}
+async function handleValidate2() {
+  const startDir = process.cwd();
+  const settingsPath = findSettingsJson(startDir);
+  if (!settingsPath) {
+    process.stderr.write("Error: .claude/settings.json not found (searched from cwd upward)\n");
+    process.exit(1);
+  }
+  const projectRoot = dirname4(dirname4(settingsPath));
+  let settings2;
+  try {
+    settings2 = JSON.parse(readFileSync4(settingsPath, "utf8"));
+  } catch (err) {
+    process.stderr.write(`Error: failed to parse settings.json: ${err.message}
+`);
+    process.exit(1);
+  }
+  const hooks = settings2.hooks ?? {};
+  const hookEntries = collectHookCommands(hooks);
+  process.stdout.write(`Settings: ${settingsPath}
+`);
+  process.stdout.write(`Project root: ${projectRoot}
+
+`);
+  let hasFailure = false;
+  process.stdout.write("Check 1: Hook script path existence\n");
+  const missingPaths = [];
+  for (const { eventType, matcher, command } of hookEntries) {
+    const absPath = resolve4(projectRoot, command);
+    if (!existsSync2(absPath)) {
+      missingPaths.push({ eventType, matcher, command, absPath });
+    }
+  }
+  if (missingPaths.length === 0) {
+    process.stdout.write("  PASS: All hook script paths exist\n");
+  } else {
+    hasFailure = true;
+    process.stdout.write(`  FAIL: ${missingPaths.length} missing path(s)
+`);
+    for (const { eventType, command, absPath } of missingPaths) {
+      process.stdout.write(`    [${eventType}] ${command}
+`);
+      process.stdout.write(`      -> ${absPath} (not found)
+`);
+    }
+  }
+  process.stdout.write("\nCheck 2: Hook script executable bit\n");
+  const nonExecutable = [];
+  for (const { eventType, matcher, command } of hookEntries) {
+    const absPath = resolve4(projectRoot, command);
+    if (!existsSync2(absPath)) continue;
+    try {
+      accessSync(absPath, constants.X_OK);
+    } catch {
+      nonExecutable.push({ eventType, command, absPath });
+    }
+  }
+  if (nonExecutable.length === 0) {
+    process.stdout.write("  PASS: All hook scripts are executable\n");
+  } else {
+    hasFailure = true;
+    process.stdout.write(`  FAIL: ${nonExecutable.length} non-executable script(s)
+`);
+    for (const { eventType, command } of nonExecutable) {
+      process.stdout.write(`    [${eventType}] ${command} (not executable)
+`);
+    }
+  }
+  process.stdout.write("\nCheck 3: Valid event types\n");
+  const invalidEventTypes = [];
+  for (const eventType of Object.keys(hooks)) {
+    if (!VALID_EVENT_TYPES.has(eventType)) {
+      invalidEventTypes.push(eventType);
+    }
+  }
+  if (invalidEventTypes.length === 0) {
+    process.stdout.write("  PASS: All event types are valid\n");
+  } else {
+    hasFailure = true;
+    process.stdout.write(`  FAIL: ${invalidEventTypes.length} invalid event type(s)
+`);
+    for (const et of invalidEventTypes) {
+      process.stdout.write(`    '${et}' is not a valid event type
+`);
+    }
+    process.stdout.write(`  Valid event types: ${[...VALID_EVENT_TYPES].join(", ")}
+`);
+  }
+  process.stdout.write("\nCheck 4: Duplicate scripts in same event+matcher\n");
+  const seen = /* @__PURE__ */ new Map();
+  const duplicates = [];
+  for (const { eventType, matcher, command } of hookEntries) {
+    const key = `${eventType}::${matcher}`;
+    if (!seen.has(key)) {
+      seen.set(key, /* @__PURE__ */ new Set());
+    }
+    const commandSet = seen.get(key);
+    if (commandSet.has(command)) {
+      duplicates.push({ eventType, matcher, command });
+    } else {
+      commandSet.add(command);
+    }
+  }
+  if (duplicates.length === 0) {
+    process.stdout.write("  PASS: No duplicate scripts in same event+matcher\n");
+  } else {
+    hasFailure = true;
+    process.stdout.write(`  FAIL: ${duplicates.length} duplicate(s) found
+`);
+    for (const { eventType, matcher, command } of duplicates) {
+      const matcherLabel = matcher ? `matcher="${matcher}"` : 'matcher=""';
+      process.stdout.write(`    [${eventType}][${matcherLabel}] ${command}
+`);
+    }
+  }
+  process.stdout.write("\n");
+  if (hasFailure) {
+    process.stdout.write("Result: FAIL\n");
+    process.exit(1);
+  } else {
+    process.stdout.write("Result: PASS\n");
+    process.exit(0);
+  }
+}
+async function settings(args) {
+  const subcommand = args[0];
+  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
+    process.stdout.write(SETTINGS_HELP);
+    process.exit(0);
+  }
+  if (subcommand === "validate") {
+    await handleValidate2();
+  } else {
+    process.stderr.write(`Error: unknown settings subcommand '${subcommand}'
+`);
+    process.stderr.write(`Run 'hoyeon-cli settings --help' for usage.
+`);
+    process.exit(1);
+  }
+}
+
 // bin/dev-cli.js
 var USAGE = `
 hoyeon-cli \u2014 Developer workflow CLI
@@ -11639,7 +11998,8 @@ var SUBCOMMANDS = {
   spec,
   state,
   session,
-  feedback
+  feedback,
+  settings
 };
 async function main() {
   const args = process.argv.slice(2);
@@ -11648,7 +12008,7 @@ async function main() {
     process.exit(0);
   }
   if (args[0] === "--version") {
-    const version = true ? "1.0.1" : "dev";
+    const version = true ? "1.1.0" : "dev";
     process.stdout.write(`hoyeon-cli v${version}
 `);
     process.exit(0);

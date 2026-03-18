@@ -1,0 +1,151 @@
+{
+  "meta": {
+    "name": "coverage-missing-decision",
+    "goal": "Test coverage failure when requirement references non-existent decision",
+    "type": "dev",
+    "schema_version": "v5",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  "context": {
+    "confirmed_goal": "Build a CLI with full spec derivation chain",
+    "decisions": [
+      {
+        "id": "D1",
+        "decision": "Use Node.js for the CLI runtime",
+        "rationale": "Team has Node.js expertise and existing tooling"
+      },
+      {
+        "id": "D2",
+        "decision": "Use JSON for spec storage",
+        "rationale": "Human-readable and easily diffable"
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI initializes a spec from the project goal",
+      "priority": 1,
+      "source": { "type": "goal" },
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "A new project directory",
+          "when": "spec init is run with a goal",
+          "then": "A valid spec.json is created",
+          "category": "HP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec init test-proj --goal 'Test' /tmp/test/spec.json",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R1-S2",
+          "given": "A directory where spec.json already exists",
+          "when": "spec init is run again",
+          "then": "An error is returned and no overwrite occurs",
+          "category": "EP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec init test-proj --goal 'Test' /tmp/existing/spec.json",
+            "expect": { "exit_code": 1 }
+          }
+        },
+        {
+          "id": "R1-S3",
+          "given": "A valid spec.json exists",
+          "when": "spec validate is run",
+          "then": "Validation passes with exit code 0",
+          "category": "BC",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec validate /tmp/test/spec.json",
+            "expect": { "exit_code": 0 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "behavior": "CLI uses a decision-driven feature",
+      "priority": 2,
+      "source": { "type": "decision", "ref": "D3" },
+      "scenarios": [
+        {
+          "id": "R2-S1",
+          "given": "The CLI binary is invoked",
+          "when": "node is available on the system",
+          "then": "CLI executes successfully using Node.js",
+          "category": "HP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node --version",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R2-S2",
+          "given": "An incompatible Node.js version",
+          "when": "CLI is invoked",
+          "then": "A version error is printed",
+          "category": "EP",
+          "verified_by": "agent",
+          "verify": {
+            "type": "assertion",
+            "checks": ["Error message references Node.js version requirement"]
+          }
+        },
+        {
+          "id": "R2-S3",
+          "given": "The CLI is installed globally",
+          "when": "hoyeon-cli is called without arguments",
+          "then": "Help text is printed",
+          "category": "BC",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli --help",
+            "expect": { "exit_code": 0 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Implement spec init command",
+      "type": "work",
+      "status": "pending",
+      "acceptance_criteria": {
+        "scenarios": ["R1-S1", "R1-S2", "R1-S3"],
+        "checks": [
+          { "type": "build", "run": "npm run build" }
+        ]
+      }
+    },
+    {
+      "id": "T2",
+      "action": "Verify decision-driven feature",
+      "type": "work",
+      "status": "pending",
+      "depends_on": ["T1"],
+      "acceptance_criteria": {
+        "scenarios": ["R2-S1", "R2-S2", "R2-S3"],
+        "checks": [
+          { "type": "static", "run": "npx tsc --noEmit" }
+        ]
+      }
+    }
+  ]
+}

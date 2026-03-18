@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "name": "v4-spec-test",
+    "goal": "Test that new checks skip gracefully on v4 specs without source or decisions",
+    "schema_version": "v4"
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI handles v4 specs gracefully",
+      "priority": 1,
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "A v4 spec without source or decisions",
+          "when": "spec check is run",
+          "then": "Exits 0 — new checks skip gracefully",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec check test/fixtures/v4-spec.json",
+            "expect": { "exit_code": 0 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Legacy v4 task without AC",
+      "type": "work",
+      "status": "pending"
+    }
+  ]
+}

@@ -269,32 +269,25 @@ Rules:
 - If a task has no runnable verification (e.g., "review document"), use `verified_by: "human"` with `verify: {"type": "instruction", "ask": "..."}`
 - Keep it minimal — no gap analysis, no multi-scenario requirements
 
+> **⚠️ Merge Convention**: All `spec merge --json '...'` examples below show JSON inline for readability. In practice:
+> 1. **Always run `hoyeon-cli spec guide <section>` before constructing merge JSON** to verify field names and types
+> 2. **Always use file-based passing**: write JSON to `/tmp/spec-merge.json` via `<< 'EOF'` heredoc, then pass via `--json "$(cat /tmp/spec-merge.json)"`, then `rm /tmp/spec-merge.json`
+> 3. **On merge failure**: run `spec guide <failed-section>`, fix JSON to match schema, retry once
+
 ```bash
-# Read guide first if unfamiliar with requirements schema
+# 1. Check field structure
 hoyeon-cli spec guide requirements
 
-hoyeon-cli spec merge ${SPEC_PATH} --json '{
-  "requirements": [
-    {
-      "id": "R1",
-      "behavior": "{what task 1 should achieve — from Done when}",
-      "priority": 1,
-      "scenarios": [{
-        "id": "R1-S1",
-        "given": "{precondition}",
-        "when": "{action}",
-        "then": "{expected outcome from Done when}",
-        "verified_by": "machine",
-        "execution_env": "host",
-        "verify": {
-          "type": "command",
-          "run": "{verification command from Done when}",
-          "expect": {"exit_code": 0}
-        }
-      }]
-    }
-  ]
-}'
+# 2. Construct JSON with requirements.id, requirements.behavior, requirements.priority, requirements.scenarios
+#    Each scenario needs: id, given, when, then, verified_by, execution_env, verify
+#    For machine-verified: verify.type="command", verify.run="{cmd}", verify.expect.exit_code=0
+#    For human-verified: verify.type="instruction", verify.ask="..."
+
+# 3. Merge via file-based passing
+cat > /tmp/spec-merge.json << 'EOF'
+{ "requirements": [ ... ] }
+EOF
+hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
 ```
 
 This ensures:
@@ -306,30 +299,18 @@ This ensures:
 Merge the context gathered during planning. Content is **type-aware**:
 
 ```bash
-# IF any task has type: dev (discovery ran in Phase 1.5):
-hoyeon-cli spec merge ${SPEC_PATH} --json '{
-  "context": {
-    "request": "{user original goal/request}",
-    "research": {
-      "summary": "{1-2 line summary from Phase 1.5 discovery}",
-      "commands": {"test": "{discovered test cmd}", "lint": "{lint cmd}", "build": "{build cmd}"},
-      "structure": ["{key directories from discovery}"]
-    },
-    "assumptions": [
-      {"id": "A1", "belief": "{planning assumption}", "if_wrong": "{consequence}", "impact": "minor|major|critical"}
-    ]
-  }
-}'
+# 1. Check field structure
+hoyeon-cli spec guide context
 
-# IF all tasks are type: plain (no discovery):
-hoyeon-cli spec merge ${SPEC_PATH} --json '{
-  "context": {
-    "request": "{user original goal/request}",
-    "assumptions": [
-      {"id": "A1", "belief": "{planning assumption}", "if_wrong": "{consequence}", "impact": "minor|major|critical"}
-    ]
-  }
-}'
+# 2. Construct JSON with context.request, context.assumptions (always required)
+#    IF any task has type: dev → also include context.research (summary, commands, structure)
+#    assumptions: at least one with id, belief, if_wrong, impact
+
+# 3. Merge via file-based passing
+cat > /tmp/spec-merge.json << 'EOF'
+{ "context": { "request": "...", "assumptions": [...], "research": {...} } }
+EOF
+hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
 ```
 
 **Assumptions to always capture** (at minimum):
@@ -345,46 +326,18 @@ Merge **all tasks in a single call** — this replaces the placeholder T1 from `
 Do NOT call merge per task (without `--append`, each call overwrites the previous tasks array).
 
 ```bash
-hoyeon-cli spec merge ${SPEC_PATH} --json '{
-  "tasks": [
-    {
-      "id": "T1",
-      "action": "{task 1 description}",
-      "type": "work",
-      "status": "pending",
-      "file_scope": ["{touch zone files}"],
-      "depends_on": [],
-      "tool": "{tool from Phase 5, e.g. worker or /skill-name}",
-      "steps": ["{step 1}", "{step 2}"],
-      "must_not_do": ["Do not run git commands"],
-      "acceptance_criteria": {
-        "scenarios": ["{requirement-scenario-id-from-R1}"],
-        "checks": [
-          {"type": "build", "run": "{done-when verification command}"}
-        ]
-      },
-      "risk": "low"
-    },
-    {
-      "id": "T2",
-      "action": "{task 2 description}",
-      "type": "work",
-      "status": "pending",
-      "file_scope": ["{touch zone files}"],
-      "depends_on": ["T1"],
-      "tool": "{tool from Phase 5}",
-      "steps": ["{step 1}", "{step 2}"],
-      "must_not_do": ["Do not run git commands"],
-      "acceptance_criteria": {
-        "scenarios": ["{requirement-scenario-id-from-R2}"],
-        "checks": [
-          {"type": "build", "run": "{done-when verification command}"}
-        ]
-      },
-      "risk": "low"
-    }
-  ]
-}'
+# 1. Check field structure
+hoyeon-cli spec guide tasks
+
+# 2. Construct JSON with all tasks in a single array
+#    Each task needs: id, action, type, status, file_scope, depends_on, tool, steps, must_not_do, acceptance_criteria, risk
+#    acceptance_criteria needs: scenarios (referencing requirement scenario IDs), checks (type + run)
+
+# 3. Merge ALL tasks in one call via file-based passing
+cat > /tmp/spec-merge.json << 'EOF'
+{ "tasks": [ { "id": "T1", ... }, { "id": "T2", ... } ] }
+EOF
+hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
 ```
 
 Map from plan:

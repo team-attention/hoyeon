@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "name": "orphan-scenario-test",
+    "goal": "Test orphan scenario detection when a scenario is not in any task AC",
+    "schema_version": "v5"
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI detects orphan scenarios",
+      "priority": 1,
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "A valid scenario referenced in a task",
+          "when": "spec check is run",
+          "then": "No error for this scenario",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec check test/fixtures/orphan-scenario.json",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R1-S2",
+          "given": "An orphan scenario not referenced in any task",
+          "when": "spec check is run",
+          "then": "Exits 1 naming the orphan scenario",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec check test/fixtures/orphan-scenario.json",
+            "expect": { "exit_code": 1 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Implement orphan detection",
+      "type": "work",
+      "status": "pending",
+      "acceptance_criteria": {
+        "scenarios": ["R1-S1"],
+        "checks": []
+      }
+    }
+  ]
+}

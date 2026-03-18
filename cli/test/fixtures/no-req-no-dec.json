@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "no-req-no-dec-test",
+    "goal": "Test that new checks pass trivially when no requirements and no decisions exist",
+    "schema_version": "v5"
+  },
+  "requirements": [],
+  "decisions": [],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Placeholder task",
+      "type": "work",
+      "status": "pending"
+    }
+  ]
+}

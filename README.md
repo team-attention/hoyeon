@@ -5,9 +5,9 @@ Without structure, your agent:
 - Skips verification — ships broken code
 - Forgets what it decided 3 turns ago — starts over
 
-**Don't teach your agent new tricks. Harness the ones it already has.**
+**All you need is requirements. Agents handle everything else.**
 
-Hoyeon is a Claude Code plugin that takes the tools, agents, and workflows your agent already has — and makes sure they fire at the right moment, in the right order, with verification at every step.
+Hoyeon is a Claude Code plugin that derives requirements from your intent, generates verification scenarios, plans tasks, and executes them with parallel agents — all through a single `spec.json` contract.
 
 [![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli)](https://www.npmjs.com/package/@team-attention/hoyeon-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -16,49 +16,17 @@ Hoyeon is a Claude Code plugin that takes the tools, agents, and workflows your 
 
 ## Principles
 
-1. **Spec-driven** — Every action traces back to a spec. No spec, no work. No matter how long or complex the workflow gets, spec.json keeps it consistent and traceable.
+> Four ideas that shape every decision in the system.
 
-2. **Self-improving** — No spec is perfect on day one. Gaps emerge mid-execution — that's expected. Derived tasks patch the plan at runtime, append-only, fully tracked. The spec gets better *because* it ran, not *before* it ran.
+**Spec-driven** — Every action traces back to a spec. No spec, no work. No matter how long or complex the workflow gets, `spec.json` keeps it consistent and traceable.
 
-3. **Verification-first** — Every step is verified before moving on. The goal: minimize human review by letting agents catch what agents can catch. AC Quality Gate, independent verifiers, multi-model code review — all pushing toward autonomous verification.
+**Self-improving** — No spec is perfect on day one. Gaps emerge mid-execution — that's expected. The spec gets better *because* it ran, not *before* it ran. Blockers are detected, fix tasks are derived at runtime, append-only, fully tracked.
 
-4. **Dynamic composition** — No fixed pipeline. Skills and agents assemble on-the-fly based on what you asked. A bug fix routes differently than a feature request. The same worker agent serves different specs in different combinations.
+**Verification-first** — Every step is verified before moving on. AC Quality Gate, independent verifiers, multi-model code review — all pushing toward minimizing human review by letting agents catch what agents can catch.
 
-## When Plans Meet Reality
+**Dynamic composition** — No fixed pipeline. Skills and agents assemble on-the-fly based on what you asked. A bug fix routes differently than a feature request. The same worker agent serves different specs in different combinations.
 
-No spec survives execution perfectly. Tests fail. Reviewers find issues. Integration breaks things that unit tests missed.
-
-Most systems either halt on first failure or silently push through. Hoyeon does neither — it **adapts the plan at runtime** while keeping full traceability.
-
-```
-/execute
-  │
-  T1: Worker → Verify → FAIL (billing calc off by 1)
-  │                       │
-  │                 triage: RETRY
-  │                       │
-  │                 T1.retry-1 created (derived task)
-  │                       │
-  │                 Worker fix → re-verify → PASS ✓
-  │
-  T2: Worker → Verify → PASS ✓
-  │
-  Code Review → NEEDS_FIXES (unused import)
-  │               │
-  │         T2.code_review-1 created
-  │               │
-  │         fix → re-review → SHIP ✓
-  │
-  Final Verify → PASS ✓
-  │
-  Report: planned 2, derived 2, drift ratio 1.0
-```
-
-Every runtime fix is a **derived task** — tracked in spec.json with full provenance (who found it, why, which task it came from). After execution, `spec drift` shows exactly how much reality diverged from the plan.
-
-Three rules keep it safe: **append-only** (never modify existing tasks), **depth-1** (no chains of derived tasks), **circuit breaker** (max 2 retries per path).
-
-See [docs/derived-task-system.md](docs/derived-task-system.md) for the full architecture.
+---
 
 ## See It In Action
 
@@ -70,68 +38,95 @@ You:  /specify "add dark mode toggle to settings page"
   ├─ "Which components need dark variants?"
   └─ "Any accessibility requirements?"
 
-  → spec.json generated (requirements, acceptance criteria, tasks)
+  → spec.json generated (requirements, scenarios, verify commands, tasks)
 
 You:  /execute
 
   Hoyeon orchestrates:
-  ├─ Research agents analyze codebase in parallel
-  ├─ Worker agents implement each task
-  ├─ Quality gates auto-validate before each write
-  └─ Verification confirms acceptance criteria
+  ├─ Worker agents implement each task in parallel
+  ├─ Quality gates auto-validate before each commit
+  ├─ Multi-model code review (Codex + Gemini + Claude)
+  └─ Final Verify checks goal + constraints + AC holistically
 
-  → Done. Every file change traced back to a spec.
+  → Done. Every file change traced back to a requirement.
 ```
-
-## Quick Start
-
-### Installation
-
-```bash
-# Add the marketplace first
-claude plugin marketplace add team-attention/hoyeon
-
-# Then install the plugin
-claude plugin install hoyeon
-```
-
-Both methods install the same plugin. After installing, set up the CLI:
-
-```bash
-npm install -g @team-attention/hoyeon-cli
-```
-
-### First Use
-
-```bash
-# Start a spec-driven workflow
-/specify "add dark mode toggle to settings page"
-
-# Or jump straight to task planning
-/quick-plan "refactor auth module and add rate limiting"
-
-# Fix a bug with root cause analysis
-/bugfix "login fails when session expires"
-```
-
-Type `/` in Claude Code to see all available skills.
 
 ## How It Works
 
+### 1. Requirements Derivation (`/specify`)
+
+A layer-based derivation chain turns your intent into a structured spec:
+
 ```
-/specify (interview) ──→ spec.json ──→ /execute (orchestrate) ──→ verified result
-   auto-validates ↗      guards writes ↗      verifies before exit ↗
+L0: Goal          "add dark mode toggle"
+ ↓
+L1: Context       codebase analysis, UX review, docs research
+ ↓
+L2: Decisions     "manual toggle, CSS variables, persist in localStorage"
+ ↓
+L3: Requirements  R1: "Toggle switches theme" → scenarios with verify commands
+ ↓
+L4: Tasks         T1: "Add toggle component" → file_scope, AC, steps
+ ↓
+L5: Review        AC quality gate, plan approval
 ```
 
-You describe what you want. Hoyeon interviews you to clarify intent, generates a structured spec, then executes it with parallel agents — auto-validating at every step. No work happens without a spec. No code ships without verification.
+Each layer has a **merge checkpoint** (validated by CLI) and a **gate-keeper** (step-back review via agent team). Nothing advances without passing both.
 
-## What Makes Hoyeon Different
+### 2. Agent Execution (`/execute`)
 
-| Approach | How it works | Tradeoff |
-|----------|-------------|----------|
-| Rigid specs | Write a full plan upfront, then execute | Breaks when requirements are ambiguous |
-| Vibes coding | Just ask the AI and hope for the best | No verification, no traceability |
-| **Dynamic assembly** | Skills assemble specs on-demand, quality gates enforce at every step | Claude Code only (for now) |
+The orchestrator reads `spec.json` and dispatches parallel worker agents:
+
+```
+Worker T1 ──→ Commit T1
+Worker T2 ──→ Commit T2    (parallel if disjoint files)
+Worker T3 ──→ Commit T3
+         ↓
+    Code Review (multi-model: Codex + Gemini + Claude)
+         ↓
+    Final Verify (holistic: goal + constraints + AC + requirements)
+         ↓
+    Report
+```
+
+Workers self-read their task spec, run verification commands, and report results. If a scope blocker is hit, the system derives a fix task and re-runs — append-only, fully tracked.
+
+### 3. The Spec Contract
+
+`spec.json` is the single source of truth. Everything reads from it, everything writes to it.
+
+```json
+{
+  "meta": { "goal": "...", "mode": { "depth": "standard" } },
+  "context": { "research": {}, "decisions": [], "assumptions": [] },
+  "constraints": [{ "rule": "...", "verified_by": "machine" }],
+  "requirements": [{
+    "behavior": "Toggle switches between light and dark theme",
+    "scenarios": [{
+      "given": "user is on settings page",
+      "when": "user clicks dark mode toggle",
+      "then": "theme switches to dark mode",
+      "verified_by": "machine",
+      "verify": { "type": "command", "run": "npm test -- --grep 'dark mode'" }
+    }]
+  }],
+  "tasks": [{ "id": "T1", "action": "...", "acceptance_criteria": {} }]
+}
+```
+
+The chain: **requirement → scenario → verify command → pass/fail**. Full traceability from intent to committed code.
+
+## Quick Start
+
+```bash
+# Install the plugin
+claude plugin add team-attention/hoyeon
+npm install -g @team-attention/hoyeon-cli
+
+# Start
+/specify "add dark mode toggle to settings page"
+/execute
+```
 
 ## Skills at a Glance
 
@@ -139,31 +134,43 @@ You describe what you want. Hoyeon interviews you to clarify intent, generates a
 |----------|------------------|--------|
 | **Understand** | Gather requirements, generate specs | `/specify` `/quick-plan` `/discuss` `/deep-interview` `/mirror` |
 | **Research** | Analyze codebase, find references, scan communities | `/deep-research` `/dev-scan` `/reference-seek` `/google-search` `/browser-work` |
-| **Decide** | Evaluate tradeoffs, get multi-perspective analysis | `/council` `/tribunal` `/tech-decision` `/stepback` |
-| **Build** | Execute specs, fix bugs, iterate on tasks | `/execute` `/ralph` `/rulph` `/bugfix` |
-| **Reflect** | Verify changes, extract learnings, create issues | `/check` `/compound` `/scope` `/issue` `/skill-session-analyzer` |
+| **Decide** | Evaluate tradeoffs, multi-perspective review | `/council` `/tribunal` `/tech-decision` `/stepback` |
+| **Build** | Execute specs, fix bugs, iterate | `/execute` `/ralph` `/rulph` `/bugfix` |
+| **Reflect** | Verify changes, extract learnings | `/check` `/compound` `/scope` `/issue` |
 
-24 skills backed by 20 specialized agents that you never interact with directly.
-
-## CLI
-
-`hoyeon-cli` manages spec.json validation and session state. Install globally:
-
-```bash
-npm install -g @team-attention/hoyeon-cli
-```
-
-See [docs/cli.md](docs/cli.md) for the full command reference.
+24 skills. 20 specialized agents. You interact with skills — agents work behind the scenes.
 
 ## Architecture
 
-The plugin runs on a specify-execute pipeline with hook-driven automation:
+```
+/specify (derive)  ──→  spec.json  ──→  /execute (orchestrate)  ──→  verified result
+  L0→L1→L2→L3→L4→L5      │              Worker → Commit (×N)         │
+  gate-keeper at each     │              Code Review                   │
+  layer transition        │              Final Verify                  │
+                          │                                            │
+                    requirements +                              traceability:
+                    scenarios +                                 every file change
+                    verify commands                             → task → requirement
+```
 
-- **24 skills** — slash commands you invoke directly
-- **20 agents** — specialized workers (researcher, reviewer, debugger, verifier) orchestrated behind the scenes
-- **18 hooks** — scripts that automate pipeline transitions, guard writes, enforce quality gates, and manage session lifecycle
+- **24 skills** — slash commands you invoke
+- **20 agents** — workers, reviewers, debuggers, verifiers orchestrated behind the scenes
+- **18 hooks** — automate pipeline transitions, guard writes, enforce quality gates
 
-See [docs/architecture.md](docs/architecture.md) for the full pipeline diagram, agent patterns, and hook lifecycle.
+See [docs/architecture.md](docs/architecture.md) for the full pipeline diagram.
+
+## CLI
+
+`hoyeon-cli` manages spec.json validation and session state:
+
+```bash
+hoyeon-cli spec init "project-name"        # Create new spec
+hoyeon-cli spec merge spec.json --json ...  # Validated merge
+hoyeon-cli spec check spec.json             # Verify completeness
+hoyeon-cli spec guide <section>             # Show field structure
+```
+
+See [docs/cli.md](docs/cli.md) for the full command reference.
 
 ## Contributing
 

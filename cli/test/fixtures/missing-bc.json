@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "name": "missing-bc-test",
+    "goal": "Test that a requirement with HP+EP but no BC category fails coverage",
+    "schema_version": "v5"
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Use JSON schema validation",
+      "rationale": "Provides structured validation"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI validates BC category presence",
+      "priority": 1,
+      "source": {
+        "type": "decision",
+        "ref": "D1"
+      },
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "A valid happy path",
+          "when": "spec coverage is run",
+          "then": "Exits 1 due to missing BC",
+          "category": "HP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec coverage test/fixtures/missing-bc.json",
+            "expect": { "exit_code": 1 }
+          }
+        },
+        {
+          "id": "R1-S2",
+          "given": "An error path scenario",
+          "when": "spec coverage is run",
+          "then": "Exits 1 due to missing BC",
+          "category": "EP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec coverage test/fixtures/missing-bc.json",
+            "expect": { "exit_code": 1 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Implement BC category check",
+      "type": "work",
+      "status": "pending",
+      "acceptance_criteria": {
+        "scenarios": ["R1-S1", "R1-S2"],
+        "checks": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: cd cli && npm ci
+      - run: cd cli && npm test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: cd cli && npm ci && npm run build
+      - run: test -f cli/dist/cli.js
+
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version consistency across 3 files
+        run: |
+          V1=$(jq -r .version .claude-plugin/plugin.json)
+          V2=$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)
+          V3=$(jq -r .version cli/package.json)
+          echo "plugin=$V1 marketplace=$V2 cli=$V3"
+          if [ "$V1" != "$V2" ] || [ "$V1" != "$V3" ]; then
+            echo "::error::Version mismatch: plugin=$V1 marketplace=$V2 cli=$V3"
+            exit 1
+          fi
+          echo "All versions match: $V1"
+
+  hooks-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify all hook script paths exist
+        run: |
+          # Extract all command paths from settings.json hooks
+          COMMANDS=$(jq -r '.. | objects | .command? // empty' .claude/settings.json)
+          FAILED=0
+          for cmd in $COMMANDS; do
+            # Extract script path (remove leading .claude/ if it's a symlink)
+            if [ ! -f "$cmd" ]; then
+              echo "::error::Missing hook script: $cmd"
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" -eq 1 ]; then exit 1; fi
+          echo "All hook scripts exist"

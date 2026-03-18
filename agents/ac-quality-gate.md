@@ -4,7 +4,7 @@ description: |
   AC quality checker for spec.json. Runs a single pass over all acceptance criteria
   and requirement scenarios, checking classification completeness and semantic quality.
   Auto-fixes vague/missing verify fields via spec merge. Returns structured PASS/FAIL.
-  Standard mode only. Called iteratively by /specify Phase 5d (max 5 rounds).
+  Standard mode only. Called iteratively by /specify L5 review (max 5 rounds).
 ---
 
 # AC Quality Gate Agent

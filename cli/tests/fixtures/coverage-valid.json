@@ -1,0 +1,151 @@
+{
+  "meta": {
+    "name": "coverage-valid",
+    "goal": "Test full coverage derivation chain with decisions, requirements, and tasks",
+    "type": "dev",
+    "schema_version": "v5",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  "context": {
+    "confirmed_goal": "Build a CLI with full spec derivation chain",
+    "decisions": [
+      {
+        "id": "D1",
+        "decision": "Use Node.js for the CLI runtime",
+        "rationale": "Team has Node.js expertise and existing tooling"
+      },
+      {
+        "id": "D2",
+        "decision": "Use JSON for spec storage",
+        "rationale": "Human-readable and easily diffable"
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI initializes a spec from the project goal using D1 runtime",
+      "priority": 1,
+      "source": { "type": "decision", "ref": "D1" },
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "A new project directory",
+          "when": "spec init is run with a goal",
+          "then": "A valid spec.json is created",
+          "category": "HP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec init test-proj --goal 'Test' /tmp/test/spec.json",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R1-S2",
+          "given": "A directory where spec.json already exists",
+          "when": "spec init is run again",
+          "then": "An error is returned and no overwrite occurs",
+          "category": "EP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec init test-proj --goal 'Test' /tmp/existing/spec.json",
+            "expect": { "exit_code": 1 }
+          }
+        },
+        {
+          "id": "R1-S3",
+          "given": "A valid spec.json exists",
+          "when": "spec validate is run",
+          "then": "Validation passes with exit code 0",
+          "category": "BC",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec validate /tmp/test/spec.json",
+            "expect": { "exit_code": 0 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "behavior": "CLI stores spec data as JSON files per decision D2",
+      "priority": 2,
+      "source": { "type": "decision", "ref": "D2" },
+      "scenarios": [
+        {
+          "id": "R2-S1",
+          "given": "The spec init command succeeds",
+          "when": "the output path is inspected",
+          "then": "A valid JSON file exists at the given path",
+          "category": "HP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node -e \"JSON.parse(require('fs').readFileSync('/tmp/test/spec.json'))\"",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R2-S2",
+          "given": "An invalid JSON file is passed to spec validate",
+          "when": "spec validate is run",
+          "then": "A descriptive error is printed",
+          "category": "EP",
+          "verified_by": "agent",
+          "verify": {
+            "type": "assertion",
+            "checks": ["stderr contains 'invalid JSON'"]
+          }
+        },
+        {
+          "id": "R2-S3",
+          "given": "A spec.json is merged with a JSON fragment",
+          "when": "spec merge is run",
+          "then": "The resulting file is still valid JSON",
+          "category": "BC",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec merge /tmp/test/spec.json --json '{\"meta\":{\"updated_at\":\"2026-01-02T00:00:00.000Z\"}}'",
+            "expect": { "exit_code": 0 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Implement spec init command",
+      "type": "work",
+      "status": "pending",
+      "acceptance_criteria": {
+        "scenarios": ["R1-S1", "R1-S2", "R1-S3"],
+        "checks": [
+          { "type": "build", "run": "npm run build" }
+        ]
+      }
+    },
+    {
+      "id": "T2",
+      "action": "Verify JSON storage behavior",
+      "type": "work",
+      "status": "pending",
+      "depends_on": ["T1"],
+      "acceptance_criteria": {
+        "scenarios": ["R2-S1", "R2-S2", "R2-S3"],
+        "checks": [
+          { "type": "static", "run": "npx tsc --noEmit" }
+        ]
+      }
+    }
+  ]
+}

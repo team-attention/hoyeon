@@ -21,6 +21,7 @@ Usage:
   hoyeon-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
   hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
   hoyeon-cli spec check <path>                      Check internal consistency
+  hoyeon-cli spec coverage <path> [--layer decisions|requirements|scenarios|tasks] [--json]  Check spec coverage (source.ref, decision coverage, scenario min count, orphan scenarios)
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
   hoyeon-cli spec guide [section]                             Show schema guide for a section
   hoyeon-cli spec scenario <scenario-id> --get <path>              Get scenario details as JSON
@@ -928,6 +929,188 @@ async function handleMeta(args) {
   process.exit(0);
 }
 
+/**
+ * Collect all scenario IDs defined in requirements and the set of scenario IDs
+ * referenced by at least one task's acceptance_criteria.scenarios array.
+ *
+ * Shared helper used by handleCheck and handleCoverage (C2).
+ *
+ * @param {object} specData - parsed spec JSON
+ * @returns {{ allScenarioIds: Set<string>, referencedScenarioIds: Set<string> }}
+ */
+function collectScenarioSets(specData) {
+  const allScenarioIds = new Set();
+  for (const req of (specData.requirements || [])) {
+    for (const sc of (req.scenarios || [])) {
+      if (sc.id) allScenarioIds.add(sc.id);
+    }
+  }
+
+  const referencedScenarioIds = new Set();
+  for (const task of (specData.tasks || [])) {
+    for (const scenarioRef of (task.acceptance_criteria?.scenarios || [])) {
+      if (scenarioRef) referencedScenarioIds.add(scenarioRef);
+    }
+  }
+
+  return { allScenarioIds, referencedScenarioIds };
+}
+
+const VALID_COVERAGE_LAYERS = ['decisions', 'requirements', 'scenarios', 'tasks'];
+
+/**
+ * Implement spec coverage checks.
+ * Checks: source.ref integrity, decision coverage, scenario min count (HP+EP+BC), orphan scenarios.
+ * Reuses collectScenarioSets() helper (C2).
+ *
+ * @param {string[]} args
+ */
+async function handleCoverage(args) {
+  const parsed = parseArgs(args);
+  const filePath = parsed._[0];
+
+  if (!filePath) {
+    process.stderr.write('Error: missing <path> argument\n');
+    process.stderr.write('Usage: hoyeon-cli spec coverage <path> [--layer decisions|requirements|scenarios|tasks] [--json]\n');
+    process.exit(1);
+  }
+
+  const layer = parsed.layer;
+  if (layer !== undefined && !VALID_COVERAGE_LAYERS.includes(layer)) {
+    process.stderr.write(`Error: invalid --layer '${layer}'. Valid values: ${VALID_COVERAGE_LAYERS.join(', ')}\n`);
+    process.exit(1);
+  }
+
+  const useJson = parsed.json === true;
+  const specData = loadSpec(resolve(filePath));
+  const gaps = [];
+
+  const decisions = specData.context?.decisions || specData.decisions || [];
+  const requirements = specData.requirements || [];
+  const decisionIds = new Set(decisions.map(d => d.id).filter(Boolean));
+
+  const runDecisions = !layer || layer === 'decisions';
+  const runRequirements = !layer || layer === 'requirements';
+  const runScenarios = !layer || layer === 'scenarios';
+  const runTasks = !layer || layer === 'tasks';
+
+  // --- Check 1: source.ref integrity (decisions layer) ---
+  // When decisions exist, each requirement's source.ref must point to a real decision ID.
+  // When decisions exist, requirements without source.ref are also flagged.
+  if (runDecisions && decisionIds.size > 0) {
+    for (const req of requirements) {
+      const ref = req.source?.ref;
+      if (ref === undefined || ref === null) {
+        gaps.push({
+          layer: 'decisions',
+          check: 'source.ref-integrity',
+          message: `requirement '${req.id}' has no source.ref (decisions exist — link required)`,
+        });
+      } else if (!decisionIds.has(ref)) {
+        gaps.push({
+          layer: 'decisions',
+          check: 'source.ref-integrity',
+          message: `requirement '${req.id}' source.ref '${ref}' does not match any decision ID`,
+        });
+      }
+    }
+  }
+
+  // --- Check 2: decision coverage (decisions layer) ---
+  // Every decision must be referenced by at least one requirement source.ref.
+  if (runDecisions && decisionIds.size > 0 && requirements.length > 0) {
+    const coveredDecisionIds = new Set();
+    for (const req of requirements) {
+      const ref = req.source?.ref;
+      if (ref) coveredDecisionIds.add(ref);
+    }
+    for (const decId of decisionIds) {
+      if (!coveredDecisionIds.has(decId)) {
+        gaps.push({
+          layer: 'decisions',
+          check: 'decision-coverage',
+          message: `decision '${decId}' is not referenced by any requirement source.ref`,
+        });
+      }
+    }
+  }
+
+  // --- Check 3: scenario min count (requirements layer) ---
+  // Each requirement needs HP+EP+BC (when category field present) or ≥3 scenarios (count-only).
+  if (runRequirements) {
+    for (const req of requirements) {
+      const scenarios = req.scenarios || [];
+      // Check if any scenario has a category field
+      const anyHasCategory = scenarios.some(sc => sc.category !== undefined);
+
+      if (anyHasCategory) {
+        // Category-aware mode: check for HP, EP, BC presence
+        const categories = new Set(scenarios.map(sc => sc.category).filter(Boolean));
+        const missing = [];
+        if (!categories.has('HP')) missing.push('HP');
+        if (!categories.has('EP')) missing.push('EP');
+        if (!categories.has('BC')) missing.push('BC');
+        if (missing.length > 0) {
+          gaps.push({
+            layer: 'requirements',
+            check: 'scenario-min-count',
+            message: `requirement '${req.id}' is missing scenario categories: ${missing.join(', ')}`,
+          });
+        }
+      } else {
+        // Count-only mode (no category field on any scenario): enforce minimum of 3 scenarios.
+        if (scenarios.length < 3) {
+          gaps.push({
+            layer: 'requirements',
+            check: 'scenario-min-count',
+            message: `requirement '${req.id}' has ${scenarios.length} scenario(s) but needs at least 3 (count-only mode — no category field present)`,
+          });
+        }
+      }
+    }
+  }
+
+  // --- Check 4: orphan scenario detection (scenarios layer) ---
+  // Reuses collectScenarioSets() helper (C2).
+  // Only runs when runTasks is true — orphan detection requires tasks to exist.
+  if (runScenarios && runTasks) {
+    const { allScenarioIds, referencedScenarioIds } = collectScenarioSets(specData);
+    const tasksWithAC = (specData.tasks || []).filter(t => t.acceptance_criteria?.scenarios);
+    if (allScenarioIds.size > 0 && tasksWithAC.length > 0) {
+      for (const scenarioId of allScenarioIds) {
+        if (!referencedScenarioIds.has(scenarioId)) {
+          gaps.push({
+            layer: 'scenarios',
+            check: 'orphan-scenario',
+            message: `scenario '${scenarioId}' is defined but not referenced by any task acceptance_criteria`,
+          });
+        }
+      }
+    }
+  }
+
+  // --- Output ---
+  if (useJson) {
+    const result = {
+      coverage: gaps.length === 0 ? 'pass' : 'fail',
+      gaps,
+    };
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    process.exit(gaps.length === 0 ? 0 : 1);
+  }
+
+  if (gaps.length > 0) {
+    process.stderr.write('Coverage gaps found:\n');
+    for (const gap of gaps) {
+      process.stderr.write(`  [${gap.layer}/${gap.check}] ${gap.message}\n`);
+    }
+    process.exit(1);
+  }
+
+  process.stdout.write('Coverage passed: all coverage checks OK\n');
+  process.exit(0);
+}
+
 async function handleCheck(args) {
   const filePath = args[0];
 
@@ -987,12 +1170,7 @@ async function handleCheck(args) {
   }
 
   // Referential integrity: AC.scenarios[] must reference valid requirements[].scenarios[].id
-  const allScenarioIds = new Set();
-  for (const req of (specData.requirements || [])) {
-    for (const sc of (req.scenarios || [])) {
-      if (sc.id) allScenarioIds.add(sc.id);
-    }
-  }
+  const { allScenarioIds, referencedScenarioIds } = collectScenarioSets(specData);
   for (const task of specData.tasks) {
     for (const scenarioRef of (task.acceptance_criteria?.scenarios || [])) {
       if (!allScenarioIds.has(scenarioRef)) {
@@ -1001,8 +1179,46 @@ async function handleCheck(args) {
     }
   }
 
+  // source.ref referential integrity: requirement.source.ref must match an existing decision ID
+  // (skip gracefully when decisions array or source.ref are absent — v4 compat)
+  const decisionIds = new Set((specData.context?.decisions || specData.decisions || []).map(d => d.id).filter(Boolean));
+  for (const req of (specData.requirements || [])) {
+    const ref = req.source?.ref;
+    if (ref !== undefined && ref !== null) {
+      if (!decisionIds.has(ref)) {
+        issues.push(`requirement '${req.id}' source.ref '${ref}' does not match any decision ID`);
+      }
+    }
+  }
+
+  // Orphan scenario detection: scenarios defined but not referenced by any task AC
+  // (skip gracefully when no task defines acceptance_criteria — v4 compat)
+  const tasksWithAC = (specData.tasks || []).filter(t => t.acceptance_criteria?.scenarios);
+  if (allScenarioIds.size > 0 && tasksWithAC.length > 0) {
+    for (const scenarioId of allScenarioIds) {
+      if (!referencedScenarioIds.has(scenarioId)) {
+        issues.push(`scenario '${scenarioId}' is defined but not referenced by any task acceptance_criteria`);
+      }
+    }
+  }
+
   // Check file_scope overlap across tasks (warning only)
   const warnings = [];
+
+  // Decision coverage: every decision ID must appear in at least one requirement source.ref
+  // (skip gracefully when decisions or requirements are absent — v4 compat)
+  if ((specData.context?.decisions || specData.decisions || []).length > 0 && (specData.requirements || []).length > 0) {
+    const coveredDecisionIds = new Set();
+    for (const req of (specData.requirements || [])) {
+      const ref = req.source?.ref;
+      if (ref) coveredDecisionIds.add(ref);
+    }
+    for (const decId of decisionIds) {
+      if (!coveredDecisionIds.has(decId)) {
+        warnings.push(`decision '${decId}' is not referenced by any requirement source.ref`);
+      }
+    }
+  }
   const fileScopeMap = new Map();
   for (const task of specData.tasks) {
     for (const file of (task.file_scope || [])) {
@@ -1936,6 +2152,8 @@ export default async function spec(args) {
     await handleStatus(args.slice(1));
   } else if (subcommand === 'meta') {
     await handleMeta(args.slice(1));
+  } else if (subcommand === 'coverage') {
+    await handleCoverage(args.slice(1));
   } else if (subcommand === 'check') {
     await handleCheck(args.slice(1));
   } else if (subcommand === 'amend') {

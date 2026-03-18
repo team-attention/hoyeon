@@ -215,6 +215,11 @@ hoyeon-cli spec init fix-{slug} \
 
 ### Step 2.2: Merge diagnosis into spec
 
+> **⚠️ Merge Convention**: When calling `spec merge`:
+> 1. **Always run `hoyeon-cli spec guide <section>` before constructing merge JSON** to verify field names and types
+> 2. **Always use file-based passing**: write JSON to `/tmp/spec-merge.json` via `<< 'EOF'` heredoc, then pass via `--json "$(cat /tmp/spec-merge.json)"`, then `rm /tmp/spec-merge.json`
+> 3. **On merge failure**: run `spec guide <failed-section>`, fix JSON to match schema, retry once
+
 Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single merge call.
 
 **What to include:**
@@ -231,28 +236,13 @@ Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single 
   - If debugger found **similar issues**: add T2 (`depends_on: [T1]`) to fix those locations — T2 must include all required task fields: `type: "work"`, `status: "pending"`, `must_not_do`, and `acceptance_criteria`
 - **constraints**: minimal diff rule, root cause targeting rule (both `verified_by: agent`)
 - **requirements**: Generate from debugger diagnosis. Each requirement describes a behavior that was broken:
-  ```json
-  {
-    "id": "R1",
-    "priority": 1,
-    "behavior": "{what should work — from debugger's expected behavior}",
-    "scenarios": [{
-      "id": "R1-S1",
-      "given": "{precondition from debugger's reproduction steps}",
-      "when": "{trigger action that caused the bug}",
-      "then": "{expected outcome after fix}",
-      "verified_by": "machine",
-      "verify": {
-        "type": "command",
-        "run": "{test command from verification-planner's Auto items}",
-        "expect": {"exit_code": 0}
-      }
-    }]
-  }
-  ```
-  - Convert debugger's reproduction steps → Given/When/Then
-  - Use verification-planner's Auto items as `verify.run` commands
-  - If debugger identified edge cases, add additional scenarios
+  1. Run `hoyeon-cli spec guide requirements` to check field structure
+  2. Construct JSON with `requirements[]` (id, priority, behavior, scenarios)
+     - Convert debugger's reproduction steps → Given/When/Then for each scenario
+     - Use verification-planner's Auto items as `verify.run` commands
+     - Run `hoyeon-cli spec guide verify` to check verify object structure (must be `{type, run}` object, not string)
+     - If debugger identified edge cases, add additional scenarios
+  3. Merge via `hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)"`
   - This enables Final Verify to check requirements scenarios, preventing regression
 
 ### Step 2.3: Validate & Register
@@ -368,13 +358,10 @@ Append to DEBUG_STATE ## Attempts section:
 Update DEBUG_STATE: attempt: {attempt}
 
 # 3. Add failure context to spec.json
-hoyeon-cli spec merge ${SPEC_PATH} --json '{
-  "context": {
-    "known_gaps": [
-      {"gap": "Attempt {attempt} failed: {failure_reason}", "severity": "high", "mitigation": "{retry_hint}"}
-    ]
-  }
-}'
+#    Run `hoyeon-cli spec guide context` to check known_gaps structure
+#    Construct JSON with `context.known_gaps[]` (gap, severity, mitigation)
+#    Merge via:
+hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)"
 
 # 4. Reset task status
 hoyeon-cli spec task T1 --status pending ${SPEC_PATH}

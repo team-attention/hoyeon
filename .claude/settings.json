@@ -44,10 +44,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/scripts/skill-hint-hook.sh"
-          },
-          {
-            "type": "command",
             "command": ".claude/scripts/ultrawork-init-hook.sh"
           },
           {
@@ -96,6 +92,44 @@
           {
             "type": "command",
             "command": ".claude/scripts/validate-output.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep|Glob|WebFetch|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/tool-output-truncator.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/edit-error-recovery.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/large-file-recovery.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/tool-failure-tracker.sh"
           }
         ]
       }
