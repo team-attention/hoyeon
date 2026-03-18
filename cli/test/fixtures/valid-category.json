@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "name": "valid-category-test",
+    "goal": "Test scenario category field validation",
+    "schema_version": "v5"
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI validates spec with category field",
+      "priority": 1,
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "category": "HP",
+          "given": "A valid v5 spec with category HP",
+          "when": "spec validate is run",
+          "then": "Validation passes",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec validate ./spec.json",
+            "expect": { "exit_code": 0 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Test category field",
+      "type": "work"
+    }
+  ]
+}

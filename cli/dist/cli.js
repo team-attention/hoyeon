@@ -8495,6 +8495,11 @@ var dev_spec_v5_schema_default = {
       additionalProperties: false,
       properties: {
         id: { type: "string" },
+        category: {
+          type: "string",
+          enum: ["HP", "EP", "BC", "NI", "IT"],
+          description: "Scenario coverage category: HP=Happy Path, EP=Edge/Error Path, BC=Boundary Condition, NI=Non-functional/Infrastructure, IT=Integration"
+        },
         given: { type: "string" },
         when: { type: "string" },
         then: { type: "string" },

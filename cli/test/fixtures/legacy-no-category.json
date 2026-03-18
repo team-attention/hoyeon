@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "name": "legacy-no-category-test",
+    "goal": "Test backward compatibility for scenarios without category field",
+    "schema_version": "v5"
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI accepts scenarios without category (backward compat)",
+      "priority": 1,
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "An existing v5 spec where scenarios have no category",
+          "when": "spec validate is run",
+          "then": "Validation passes (category is optional)",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec validate ./spec.json",
+            "expect": { "exit_code": 0 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Test legacy spec without category",
+      "type": "work"
+    }
+  ]
+}
