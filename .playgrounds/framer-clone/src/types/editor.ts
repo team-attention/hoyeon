@@ -2,6 +2,13 @@
 
 export type ElementKind = 'frame' | 'text' | 'image' | 'rectangle' | 'ellipse'
 
+export interface Shadow {
+  offsetX: number
+  offsetY: number
+  blur: number
+  color: string
+}
+
 export interface BaseElement {
   id: string
   kind: ElementKind
@@ -16,6 +23,7 @@ export interface BaseElement {
   name: string
   parentId: string | null
   childIds: string[]
+  shadow?: Shadow
 }
 
 export interface FrameElement extends BaseElement {
@@ -34,6 +42,7 @@ export interface TextElement extends BaseElement {
   color: string
   textAlign: 'left' | 'center' | 'right' | 'justify'
   lineHeight: number
+  letterSpacing?: number
 }
 
 export interface ImageElement extends BaseElement {
