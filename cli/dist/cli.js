@@ -8116,9 +8116,11 @@ var dev_spec_v4_schema_default = {
         ts: { type: "string" },
         type: {
           type: "string",
-          enum: ["spec_created", "task_start", "task_done", "tasks_changed", "spec_updated"]
+          enum: ["spec_created", "task_start", "task_done", "tasks_changed", "spec_updated", "scenario_verified"]
         },
         task: { type: "string" },
+        scenario: { type: "string" },
+        status: { type: "string" },
         summary: { type: "string" },
         detail: { type: "string" }
       }
@@ -8962,9 +8964,11 @@ var dev_spec_v5_schema_default = {
         ts: { type: "string" },
         type: {
           type: "string",
-          enum: ["spec_created", "task_start", "task_done", "tasks_changed", "spec_updated"]
+          enum: ["spec_created", "task_start", "task_done", "tasks_changed", "spec_updated", "scenario_verified"]
         },
         task: { type: "string" },
+        scenario: { type: "string" },
+        status: { type: "string" },
         summary: { type: "string" },
         detail: { type: "string" }
       }
