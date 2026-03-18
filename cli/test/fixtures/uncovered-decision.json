@@ -1,0 +1,57 @@
+{
+  "meta": {
+    "name": "uncovered-decision-test",
+    "goal": "Test decision coverage check detects decisions not referenced by any requirement",
+    "schema_version": "v5"
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Use JSON schema validation",
+      "rationale": "Provides structured validation"
+    },
+    {
+      "id": "D2",
+      "title": "Use async processing",
+      "rationale": "Improves performance — but no requirement references this decision"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI validates spec",
+      "priority": 1,
+      "source": {
+        "type": "decision",
+        "ref": "D1"
+      },
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "A spec with D2 uncovered",
+          "when": "spec check is run",
+          "then": "Exits 1 naming uncovered decision D2",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec check test/fixtures/uncovered-decision.json",
+            "expect": { "exit_code": 1 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Implement decision coverage check",
+      "type": "work",
+      "status": "pending",
+      "acceptance_criteria": {
+        "scenarios": ["R1-S1"],
+        "checks": []
+      }
+    }
+  ]
+}

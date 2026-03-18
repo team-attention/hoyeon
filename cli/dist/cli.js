@@ -10006,6 +10006,21 @@ async function handleMeta(args) {
   process.stdout.write(JSON.stringify(meta, null, 2) + "\n");
   process.exit(0);
 }
+function collectScenarioSets(specData) {
+  const allScenarioIds = /* @__PURE__ */ new Set();
+  for (const req of specData.requirements || []) {
+    for (const sc of req.scenarios || []) {
+      if (sc.id) allScenarioIds.add(sc.id);
+    }
+  }
+  const referencedScenarioIds = /* @__PURE__ */ new Set();
+  for (const task of specData.tasks || []) {
+    for (const scenarioRef of task.acceptance_criteria?.scenarios || []) {
+      referencedScenarioIds.add(scenarioRef);
+    }
+  }
+  return { allScenarioIds, referencedScenarioIds };
+}
 async function handleCheck(args) {
   const filePath = args[0];
   if (!filePath) {
@@ -10050,16 +10065,40 @@ async function handleCheck(args) {
       }
     }
   }
-  const allScenarioIds = /* @__PURE__ */ new Set();
-  for (const req of specData.requirements || []) {
-    for (const sc of req.scenarios || []) {
-      if (sc.id) allScenarioIds.add(sc.id);
-    }
-  }
+  const { allScenarioIds, referencedScenarioIds } = collectScenarioSets(specData);
   for (const task of specData.tasks) {
     for (const scenarioRef of task.acceptance_criteria?.scenarios || []) {
       if (!allScenarioIds.has(scenarioRef)) {
         issues.push(`task '${task.id}' acceptance_criteria.scenarios references unknown scenario '${scenarioRef}'`);
+      }
+    }
+  }
+  const decisionIds = new Set((specData.decisions || []).map((d) => d.id).filter(Boolean));
+  for (const req of specData.requirements || []) {
+    const ref = req.source?.ref;
+    if (ref !== void 0 && ref !== null) {
+      if (!decisionIds.has(ref)) {
+        issues.push(`requirement '${req.id}' source.ref '${ref}' does not match any decision ID`);
+      }
+    }
+  }
+  const tasksWithAC = (specData.tasks || []).filter((t) => t.acceptance_criteria?.scenarios);
+  if (allScenarioIds.size > 0 && tasksWithAC.length > 0) {
+    for (const scenarioId of allScenarioIds) {
+      if (!referencedScenarioIds.has(scenarioId)) {
+        issues.push(`scenario '${scenarioId}' is defined but not referenced by any task acceptance_criteria`);
+      }
+    }
+  }
+  if ((specData.decisions || []).length > 0 && (specData.requirements || []).length > 0) {
+    const coveredDecisionIds = /* @__PURE__ */ new Set();
+    for (const req of specData.requirements || []) {
+      const ref = req.source?.ref;
+      if (ref) coveredDecisionIds.add(ref);
+    }
+    for (const decId of decisionIds) {
+      if (!coveredDecisionIds.has(decId)) {
+        issues.push(`decision '${decId}' is not referenced by any requirement source.ref`);
       }
     }
   }

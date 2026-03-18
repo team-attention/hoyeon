@@ -928,6 +928,33 @@ async function handleMeta(args) {
   process.exit(0);
 }
 
+/**
+ * Collect all scenario IDs defined in requirements and the set of scenario IDs
+ * referenced by at least one task's acceptance_criteria.scenarios array.
+ *
+ * Shared helper used by handleCheck and handleCoverage (C2).
+ *
+ * @param {object} specData - parsed spec JSON
+ * @returns {{ allScenarioIds: Set<string>, referencedScenarioIds: Set<string> }}
+ */
+function collectScenarioSets(specData) {
+  const allScenarioIds = new Set();
+  for (const req of (specData.requirements || [])) {
+    for (const sc of (req.scenarios || [])) {
+      if (sc.id) allScenarioIds.add(sc.id);
+    }
+  }
+
+  const referencedScenarioIds = new Set();
+  for (const task of (specData.tasks || [])) {
+    for (const scenarioRef of (task.acceptance_criteria?.scenarios || [])) {
+      referencedScenarioIds.add(scenarioRef);
+    }
+  }
+
+  return { allScenarioIds, referencedScenarioIds };
+}
+
 async function handleCheck(args) {
   const filePath = args[0];
 
@@ -987,16 +1014,49 @@ async function handleCheck(args) {
   }
 
   // Referential integrity: AC.scenarios[] must reference valid requirements[].scenarios[].id
-  const allScenarioIds = new Set();
-  for (const req of (specData.requirements || [])) {
-    for (const sc of (req.scenarios || [])) {
-      if (sc.id) allScenarioIds.add(sc.id);
-    }
-  }
+  const { allScenarioIds, referencedScenarioIds } = collectScenarioSets(specData);
   for (const task of specData.tasks) {
     for (const scenarioRef of (task.acceptance_criteria?.scenarios || [])) {
       if (!allScenarioIds.has(scenarioRef)) {
         issues.push(`task '${task.id}' acceptance_criteria.scenarios references unknown scenario '${scenarioRef}'`);
+      }
+    }
+  }
+
+  // source.ref referential integrity: requirement.source.ref must match an existing decision ID
+  // (skip gracefully when decisions array or source.ref are absent — v4 compat)
+  const decisionIds = new Set((specData.decisions || []).map(d => d.id).filter(Boolean));
+  for (const req of (specData.requirements || [])) {
+    const ref = req.source?.ref;
+    if (ref !== undefined && ref !== null) {
+      if (!decisionIds.has(ref)) {
+        issues.push(`requirement '${req.id}' source.ref '${ref}' does not match any decision ID`);
+      }
+    }
+  }
+
+  // Orphan scenario detection: scenarios defined but not referenced by any task AC
+  // (skip gracefully when no task defines acceptance_criteria — v4 compat)
+  const tasksWithAC = (specData.tasks || []).filter(t => t.acceptance_criteria?.scenarios);
+  if (allScenarioIds.size > 0 && tasksWithAC.length > 0) {
+    for (const scenarioId of allScenarioIds) {
+      if (!referencedScenarioIds.has(scenarioId)) {
+        issues.push(`scenario '${scenarioId}' is defined but not referenced by any task acceptance_criteria`);
+      }
+    }
+  }
+
+  // Decision coverage: every decision ID must appear in at least one requirement source.ref
+  // (skip gracefully when decisions or requirements are absent — v4 compat)
+  if ((specData.decisions || []).length > 0 && (specData.requirements || []).length > 0) {
+    const coveredDecisionIds = new Set();
+    for (const req of (specData.requirements || [])) {
+      const ref = req.source?.ref;
+      if (ref) coveredDecisionIds.add(ref);
+    }
+    for (const decId of decisionIds) {
+      if (!coveredDecisionIds.has(decId)) {
+        issues.push(`decision '${decId}' is not referenced by any requirement source.ref`);
       }
     }
   }
