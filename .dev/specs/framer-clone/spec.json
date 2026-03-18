@@ -543,7 +543,7 @@
       "type": "work",
       "origin": "planned",
       "risk": "low",
-      "status": "pending",
+      "status": "done",
       "file_scope": [
         ".playground/framer-clone/src/components/RightPanel/AnimationPanel.tsx"
       ],
@@ -587,7 +587,9 @@
             "run": "cd .playground/framer-clone && npm run build"
           }
         ]
-      }
+      },
+      "completed_at": "2026-03-18T14:51:53.373Z",
+      "summary": "Implemented animation configuration panel (hover effects + CSS transitions)"
     },
     {
       "id": "T11",
@@ -912,7 +914,7 @@
       "type": "work",
       "origin": "planned",
       "risk": "low",
-      "status": "pending",
+      "status": "done",
       "file_scope": [
         ".playground/framer-clone/src/components/RightPanel/StylePresets.tsx",
         ".playground/framer-clone/src/data/presets.ts"
@@ -957,7 +959,8 @@
             "run": "cd .playground/framer-clone && npm run build"
           }
         ]
-      }
+      },
+      "summary": "Implemented style presets (color palette, font presets, spacing presets)"
     }
   ],
   "history": [
@@ -1142,6 +1145,24 @@
       "type": "task_done",
       "task": "T12",
       "summary": "Grouping and custom components complete"
+    },
+    {
+      "ts": "2026-03-18T15:50:00.000Z",
+      "type": "task_done",
+      "task": "T15",
+      "summary": "Style presets complete"
+    },
+    {
+      "ts": "2026-03-18T14:51:53.373Z",
+      "type": "task_done",
+      "task": "T10",
+      "summary": "AnimationPanel created with hover effect + transition config; store extended with animationConfigs; all 13 tests pass; build passes"
+    },
+    {
+      "ts": "2026-03-18T15:55:00.000Z",
+      "type": "task_done",
+      "task": "T10",
+      "summary": "Animation panel complete"
     }
   ],
   "context": {

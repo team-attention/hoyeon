@@ -108,3 +108,20 @@
 - Store `setState` in `beforeEach` must include `customComponents: []` to reset the new field
 - Pre-existing test failures in `editor-layout.test.tsx` (R11-S2, 2 cases) are unrelated to T12 — do not attempt to fix
 - ComponentLibrary custom category uses conditional render (`customComponents.length > 0`) to avoid empty categories; `data-testid="category-custom"` present only when custom components exist
+
+## T15
+- StylePresets component is standalone (reads from store directly via `useEditorStore`) — no props needed, same pattern as BreakpointSwitcher and AlignActions
+- Preset data lives in `src/data/presets.ts` as typed arrays: `COLOR_PRESETS`, `FONT_PRESETS`, `SPACING_PRESETS`
+- Color preset for Frame updates `backgroundColor`; for Text updates `color` — type-gated via `element.type` check
+- Font preset only updates `fontFamily`, `fontSize`, `fontWeight`, `lineHeight` — other text fields (color, textAlign, letterSpacing, textDecoration) are preserved as per R15-S3
+- Spacing preset updates `gap` + all four `padding` values on Frame elements
+- `disabled` prop on `<button>` handles both the no-op behavior and visual state without separate logic
+- PropertiesPanel renders StylePresets always (outside the `element ? ... : ...` block) so it is visible even when nothing is selected — just with all buttons disabled
+- A linter added `AnimationPanel` import to PropertiesPanel.tsx during T15 work (pre-existing AnimationPanel.tsx in RightPanel dir); this is a separate task concern
+
+## T10
+- `AnimationConfig` type (with `HoverEffect` + `TransitionConfig`) added to `editorStore.ts` alongside other types for co-location
+- Animation configs stored in a flat `Record<string, AnimationConfig>` on the store keyed by element id; defaults to `DEFAULT_ANIMATION_CONFIG` when no entry exists
+- Subscribe to `animationConfigs` directly (not via `getAnimationConfig` action selector) in the component — Zustand only re-renders when the selected slice changes; selecting a function that reads from a different slice won't trigger re-renders when that slice changes
+- `AnimationPanel` is always rendered in `PropertiesPanel` (below Effects section); shows empty state when no element selected, controls when element is selected
+- Numeric fields use the same focus/blur controlled pattern as `PropertiesPanel`; duration field uses `min={0}` clamp to prevent negative values
