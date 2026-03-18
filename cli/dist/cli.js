@@ -10017,7 +10017,7 @@ function collectScenarioSets(specData) {
   const referencedScenarioIds = /* @__PURE__ */ new Set();
   for (const task of specData.tasks || []) {
     for (const scenarioRef of task.acceptance_criteria?.scenarios || []) {
-      referencedScenarioIds.add(scenarioRef);
+      if (scenarioRef) referencedScenarioIds.add(scenarioRef);
     }
   }
   return { allScenarioIds, referencedScenarioIds };
@@ -10098,10 +10098,18 @@ async function handleCoverage(args) {
             message: `requirement '${req.id}' is missing scenario categories: ${missing.join(", ")}`
           });
         }
+      } else {
+        if (scenarios.length < 3) {
+          gaps.push({
+            layer: "requirements",
+            check: "scenario-min-count",
+            message: `requirement '${req.id}' has ${scenarios.length} scenario(s) but needs at least 3 (count-only mode \u2014 no category field present)`
+          });
+        }
       }
     }
   }
-  if (runScenarios) {
+  if (runScenarios && runTasks) {
     const { allScenarioIds, referencedScenarioIds } = collectScenarioSets(specData);
     const tasksWithAC = (specData.tasks || []).filter((t) => t.acceptance_criteria?.scenarios);
     if (allScenarioIds.size > 0 && tasksWithAC.length > 0) {

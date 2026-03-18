@@ -135,12 +135,14 @@ Then add the gate-keeper as a teammate by invoking the phase2-stepback agent as 
 **Gate-keeper configuration:**
 - Agent: reuse existing `phase2-stepback` agent (do NOT create a new agent file)
 - Role: layer-transition reviewer — checks for DRIFT, GAP, CONFLICT, BACKTRACK
-- Tools allowed: Read, Grep, Glob, AskUserQuestion — do NOT include Task or Skill
-- disallowed-tools: Task, Skill (enforced per C3)
+- Tools allowed: Read, Grep, Glob — read-only analysis only
+- disallowed-tools: Write, Edit, Task, Skill, Bash (enforced per C3 + read-only contract)
 
 The gate-keeper is called once per layer transition with the current layer artifacts as context. It returns:
 - `PASS` — layer transition proceeds
-- `FAIL` + failure type: `DRIFT` | `GAP` | `CONFLICT` | `BACKTRACK` + reason + suggested fix
+- `REVIEW_NEEDED` + items for user confirmation (drift findings, blind spots, simplification suggestions)
+
+> **Return contract**: phase2-stepback returns `PASS` or `REVIEW_NEEDED` with numbered items. The orchestrator classifies each item as DRIFT/GAP/CONFLICT/BACKTRACK and routes accordingly. The agent does NOT return these types directly.
 
 ### Intent Classification (internal, not merged)
 
@@ -169,7 +171,7 @@ Each layer ends with a gate before advancing to the next layer.
 1. Run `hoyeon-cli spec coverage .dev/specs/{name}/spec.json --layer {layer}` (if applicable)
 2. Check exit code — non-zero blocks advancement
 3. Send layer artifacts to gate-keeper via SendMessage
-4. Gate-keeper returns PASS or FAIL
+4. Gate-keeper returns PASS or REVIEW_NEEDED (with items for user confirmation)
 
 ### Gate Failure Handling
 
@@ -179,8 +181,8 @@ When a gate fails:
 
 ```
 AskUserQuestion(
-  question: "Layer gate failed: {failure_type} — {reason}. Suggested fix: {suggested_fix}. How should we proceed?",
-  header: "Gate Failure at L{n}",
+  question: "Step-back review found items to confirm before advancing:",
+  header: "Gate Review at L{n}",
   options: [
     { label: "Apply suggested fix", description: "{suggested_fix}" },
     { label: "Provide correction", description: "I'll describe the correction needed" },
@@ -275,7 +277,7 @@ Gate-keeper is called with: goal statement, confirmed_goal, non_goals.
 **Who**: Orchestrator (Glob/Grep/Read), optionally code-explorer agent for large codebases
 **Output**: `context.research`
 **Merge**: `spec merge context`
-**Gate**: `spec coverage --layer decisions` (if decisions layer applicable) + step-back via SendMessage
+**Gate**: Step-back via SendMessage only (no spec coverage — L1 produces context.research, not decisions)
 
 ### Execution
 
@@ -334,7 +336,7 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.
 ### L1 Gate
 
 - **Quick**: Auto-advance. No gate.
-- **Standard**: Send research summary to gate-keeper via SendMessage. Gate-keeper checks coverage of goal context. PASS → advance to L2. FAIL → handle per Gate Protocol.
+- **Standard**: Send research summary to gate-keeper via SendMessage (step-back only — no spec coverage call at L1). Gate-keeper checks whether research is relevant to the goal. PASS → advance to L2. FAIL → handle per Gate Protocol.
 
 ---
 
@@ -569,6 +571,12 @@ AskUserQuestion(
 
 If user selects "Yes, go back to L2" → merge additional decisions, then re-run L3 from Step A.
 
+**L3→L2 backtracking — state cleanup (mandatory):**
+1. Clear `provisional_requirements` from session state before returning to L2:
+   `hoyeon-cli session set --sid $SESSION_ID --json '{"provisional_requirements": []}'`
+2. When L3 re-runs after backtracking: start fresh — do NOT reuse scenarios or requirements from the previous L3 run.
+3. Requirements merged in the previous L3 run must be **replaced** (not appended) on re-run — the new merge overwrites the existing `requirements[]` array entirely (no `--append`, no `--patch`).
+
 ### Step B: Scenario generation (verification-planner agent)
 
 ```
@@ -640,6 +648,10 @@ IF verification_planner.suggested_additions is non-empty:
 ```
 
 ### Merge requirements (atomic, with scenarios)
+
+> **Merge flag**: Use NO flag (default deep-merge) on the first-time write — this replaces the placeholder `requirements[]`.
+> On backtrack re-run (L3 re-runs after L3→L2 backtracking), still use NO flag — the new merge replaces the entire `requirements[]` array.
+> Do NOT use `--append` (would duplicate) or `--patch` (ID-based update — not appropriate for full requirement replacement).
 
 ```bash
 cat > /tmp/spec-merge.json << 'EOF'
@@ -769,6 +781,10 @@ hoyeon-cli spec sandbox-tasks .dev/specs/{name}/spec.json
 ```
 
 ### Merge tasks
+
+> **Merge flag**: Use NO flag (default deep-merge) on first-time write — this replaces the placeholder `tasks[]`.
+> On backtrack re-run (L4 re-runs after rejection), use `--patch` to update existing tasks by ID without duplicating.
+> First-time merge replaces the placeholder task array. On backtrack re-run, use --patch to update by ID.
 
 ```bash
 cat > /tmp/spec-merge.json << 'EOF'
@@ -1051,6 +1067,13 @@ EOF
 hoyeon-cli spec merge .dev/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
 ```
 
+Then shut down the Team (gate-keeper and any spawned team members) before proceeding:
+
+```
+SendMessage(to="gate-keeper", message={type: "shutdown_request", reason: "Specify session complete"})
+TeamDelete()
+```
+
 Then if user selected `/execute`:
 ```
 Skill("execute", args="{name}")
@@ -1072,6 +1095,8 @@ Quick mode compresses the layer sequence: L0 → L2 → L3 → L5.
 | L5 | spec validate + spec check only, no plan-reviewer, no AC gate |
 
 No TeamCreate, no SendMessage gates in quick mode. Max 1 plan-reviewer round if run.
+
+**Quick mode L1**: Orchestrator performs a minimal codebase scan (Glob/Grep, 2-3 key directories) and merges `context.research` with an abbreviated summary. No agent spawns (no Task calls). Merge directly after scan.
 
 ---
 
