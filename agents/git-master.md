@@ -232,6 +232,7 @@ Working directory: clean
 3. **Separating test and implementation** - Include in same commit
 4. **Grouping by file type** - Group by feature/module
 5. **Dirty working directory** - Commit all changes
+6. **Force-adding gitignored files** - Never use `git add -f` on gitignored files. If a file is in `.gitignore`, it is excluded intentionally. Skip it and warn the orchestrator.
 
 ---
 
