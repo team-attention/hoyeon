@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "name": "valid-coverage-test",
+    "goal": "Test that a fully compliant spec passes all coverage checks",
+    "schema_version": "v5"
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Use JSON schema validation",
+      "rationale": "Provides structured validation"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI validates coverage",
+      "priority": 1,
+      "source": {
+        "type": "decision",
+        "ref": "D1"
+      },
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "A valid spec",
+          "when": "spec coverage is run",
+          "then": "Exits 0",
+          "category": "HP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec coverage test/fixtures/valid-coverage.json",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R1-S2",
+          "given": "A spec with a gap",
+          "when": "spec coverage is run",
+          "then": "Exits 1",
+          "category": "EP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec coverage test/fixtures/broken-source-ref.json",
+            "expect": { "exit_code": 1 }
+          }
+        },
+        {
+          "id": "R1-S3",
+          "given": "A spec with uncovered decision",
+          "when": "spec coverage is run",
+          "then": "Exits 1",
+          "category": "BC",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec coverage test/fixtures/uncovered-decision.json",
+            "expect": { "exit_code": 1 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Implement coverage command",
+      "type": "work",
+      "status": "pending",
+      "acceptance_criteria": {
+        "scenarios": ["R1-S1", "R1-S2", "R1-S3"],
+        "checks": []
+      }
+    }
+  ]
+}

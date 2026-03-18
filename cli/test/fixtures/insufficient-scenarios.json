@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "name": "insufficient-scenarios-test",
+    "goal": "Test that a requirement with only 1 HP scenario fails coverage",
+    "schema_version": "v5"
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Use JSON schema validation",
+      "rationale": "Provides structured validation"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI validates scenario min count",
+      "priority": 1,
+      "source": {
+        "type": "decision",
+        "ref": "D1"
+      },
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "A valid spec",
+          "when": "spec coverage is run",
+          "then": "Exits 0",
+          "category": "HP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec coverage test/fixtures/insufficient-scenarios.json",
+            "expect": { "exit_code": 1 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Implement scenario min count check",
+      "type": "work",
+      "status": "pending",
+      "acceptance_criteria": {
+        "scenarios": ["R1-S1"],
+        "checks": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "name": "no-decisions-test",
+    "goal": "Test that a spec with no decisions trivially passes decision coverage",
+    "schema_version": "v5"
+  },
+  "decisions": [],
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI handles empty decisions gracefully",
+      "priority": 1,
+      "scenarios": [
+        {
+          "id": "R1-S1",
+          "given": "A spec with no decisions",
+          "when": "spec coverage is run",
+          "then": "Exits 0",
+          "category": "HP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec coverage test/fixtures/no-decisions.json",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R1-S2",
+          "given": "A spec with no decisions but invalid coverage",
+          "when": "spec coverage is run",
+          "then": "Exits 0 trivially",
+          "category": "EP",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec coverage test/fixtures/no-decisions.json",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R1-S3",
+          "given": "A spec with no decisions",
+          "when": "spec coverage --layer decisions is run",
+          "then": "Exits 0",
+          "category": "BC",
+          "verified_by": "machine",
+          "execution_env": "host",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec coverage test/fixtures/no-decisions.json --layer decisions",
+            "expect": { "exit_code": 0 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Implement graceful no-decisions handling",
+      "type": "work",
+      "status": "pending",
+      "acceptance_criteria": {
+        "scenarios": ["R1-S1", "R1-S2", "R1-S3"],
+        "checks": []
+      }
+    }
+  ]
+}
