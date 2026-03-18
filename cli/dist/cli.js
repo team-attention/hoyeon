@@ -8685,6 +8685,21 @@ var dev_spec_v5_schema_default = {
                     reason: { type: "string" }
                   }
                 }
+              },
+              implications: {
+                type: "array",
+                description: "Downstream behaviors/constraints this decision creates. Populated post-decision by orchestrator or L2.5 derivation step.",
+                items: {
+                  type: "object",
+                  required: ["implication", "type"],
+                  additionalProperties: false,
+                  properties: {
+                    implication: { type: "string", description: "Concrete downstream behavior or constraint" },
+                    type: { type: "string", enum: ["deterministic", "context-dependent", "intent-dependent"], description: "deterministic: always true given decision. context-dependent: true given decision + project context. intent-dependent: depends on user preference (requires confirmation)." },
+                    status: { type: "string", enum: ["confirmed", "pending", "rejected"], default: "pending", description: "confirmed: user verified. pending: agent-derived, awaiting confirmation. rejected: user overrode." },
+                    conditional_on: { type: "string", description: "Other decision ID this implication depends on (e.g., 'D2'). Omit if unconditional." }
+                  }
+                }
               }
             }
           }

@@ -303,18 +303,22 @@ Task(subagent_type="ux-reviewer",
 ## L2: Decisions
 
 **Who**: Orchestrator (AskUserQuestion), iterative interview loop
-**Output**: `context.decisions[]`, `context.assumptions[]`
+**Output**: `context.decisions[]` (with `implications[]`), `context.assumptions[]`
 **Also**: Provisional requirements in session state only (NOT spec.json) — D7/D13
 **Merge**: `spec merge decisions`, `spec merge assumptions`
 **Gate**: `spec coverage --layer decisions` + gate-keeper via SendMessage
 **User trigger**: "proceed to planning" required (interactive mode)
 
+### Core Principle: "뭘 쓸래?" → "뭘 하고 싶어?"
+
+L2 questions ask about **desired behavior**, not technology choices. Concrete scenarios force concrete answers. Technology follows from behavior — the agent derives technical implications post-decision.
+
 ### Execution
 
 > **Mode Gate**:
-> - **Quick**: SKIP entirely → merge assumptions only
-> - **Autopilot**: Auto-decide → merge assumptions
-> - **Interactive**: AskUserQuestion → merge decisions
+> - **Quick**: SKIP interview → L2.5 derivation only (derive implications from L0 goal + L1 research)
+> - **Autopilot**: Auto-decide → merge assumptions → L2.5 derivation
+> - **Interactive**: Scenario interview → post-decision implications → L2.5 derivation → merge decisions
 
 #### Quick / Autopilot → Assumptions
 
@@ -323,65 +327,113 @@ Apply Autopilot Decision Rules, then:
 1. Run `hoyeon-cli spec guide context` to check `assumptions` field structure
 2. Construct JSON with `context.assumptions[]` (id, belief, if_wrong, impact)
 3. Merge via `hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json "$(cat /tmp/spec-merge.json)"`
+4. Proceed to L2.5 Derivation Step
 
-#### Interactive → Interview + Decisions
+#### Interactive → Scenario Interview + Decisions
 
-##### Step 1: Structured Questions (iterative)
+##### Step 1: Scenario-Based Questions (iterative)
 
-Ask only what you cannot discover. Evaluate internally: scope boundaries? dependencies? constraints? success criteria? technology choices? — then surface gaps as questions.
+Ask about **behavior**, not technology. Frame every question as a concrete situation the user can picture.
 
 **Question rules:**
-- **Minimum 2 questions, max 5 per round**, prioritized by importance
-- Each question includes a **recommended answer** based on L1 research
-- Technology/framework choices deferred from mirror MUST appear here
-- User can **skip** any question ("leave it to the agent's judgment")
-- Propose based on research; don't ask what you can discover
+- **2-3 questions per round** (fewer but richer than abstract questions), prioritized by importance
+- **Scenario format**: Present a concrete situation → ask what should happen
+- **Adaptive framing**: Match vocabulary to user's expertise (detected from L1 context and prior answers)
+- User can **skip** any question ("Agent decides") — but track skip rate as friction signal
+- **Internal completeness checklist** (invisible to user): scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior. Ensure coverage across rounds.
 
+**Question format — WRONG (abstract):**
 ```
 AskUserQuestion(
-  question: "[specific question about boundary/trade-off]",
+  question: "How should authentication be handled?",
   options: [
-    { label: "[Option A] (Recommended)", description: "[why, based on research]" },
-    { label: "[Option B]", description: "[trade-off]" },
-    { label: "Agent decides", description: "Use your best judgment" }
+    { label: "JWT (Recommended)", description: "Stateless, scalable" },
+    { label: "Session-based", description: "Simpler, server-side state" },
+    { label: "Agent decides" }
   ]
 )
 ```
 
-After each round, immediately merge decisions:
-
-1. Run `hoyeon-cli spec guide context` to check `decisions` field structure
-2. Construct JSON with `context.decisions[]` (id, decision, rationale, alternatives_rejected)
-3. Merge via `hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json "$(cat /tmp/spec-merge.json)"`
-
-##### Step 2: Mini-Mirror Progress Check (iterative loop)
-
-After each question round, show mini-mirror with provisional requirements visible:
-
-```markdown
-## Interview Progress
-
-### Understanding
-Goal: [confirmed goal from L0]
-Scope: [what's included] / Excluded: [what's excluded]
-Done when: [success criteria]
-
-### Decisions
-- D1: [decision] (confirmed)
-- D2: [decision] (confirmed)
-
-### Provisional Requirements (not yet in spec.json — will be finalized in L3)
-- [behavior statement] ← goal
-- [behavior statement] ← D1
-- ??? (anything missing?)
-
-### Open Items
-- [remaining gap — e.g., "error handling strategy not discussed"]
-- [or "None — all major areas covered"]
+**Question format — RIGHT (scenario-based):**
+```
+AskUserQuestion(
+  question: "A user's access token expires while they're filling out a long form. When they click Submit, what should happen?",
+  options: [
+    { label: "Silent refresh + retry (Recommended)", description: "Use refresh token to get new access token, resubmit transparently. Requires refresh token storage." },
+    { label: "Redirect to login, preserve form", description: "Show login page, restore form data after re-auth. Simpler but interrupts flow." },
+    { label: "Redirect to login, lose form", description: "Simplest. Acceptable if forms are short." },
+    { label: "Agent decides" }
+  ]
+)
 ```
 
-> Provisional requirements are shown here for UX feedback but are NOT merged into spec.json yet (D7).
-> They are saved to session state via: `hoyeon-cli session set --sid $SESSION_ID --json '{"provisional_requirements": [...]}'` (D13)
+> A single scenario question can extract 2-3 decisions (auth method + refresh strategy + UX behavior) that abstract questions would need separately.
+
+##### Step 2: Post-Decision Implication Derivation
+
+After user answers each round, the orchestrator derives implications from the decision + L1 research context.
+
+**Three implication types:**
+1. **Deterministic** — always true given the decision. E.g., "JWT → tokens have expiry." Auto-set `status: "confirmed"`.
+2. **Context-dependent** — true given decision + project context. E.g., "JWT + SPA → client-side token storage needed." Auto-set `status: "confirmed"`.
+3. **Intent-dependent** — depends on user preference, agent cannot determine. E.g., "Refresh token storage: httpOnly cookie or localStorage?" Set `status: "pending"`.
+
+**Rules:**
+- Deterministic and context-dependent implications are auto-confirmed (no extra questions)
+- Intent-dependent implications become **the next round's scenario questions** (auto-trigger)
+- When uncertain whether an implication is deterministic or intent-dependent, default to `pending` (ask, don't assume)
+
+After derivation, merge decisions WITH implications:
+
+1. Run `hoyeon-cli spec guide context` to check `decisions` field structure
+2. Construct JSON with `context.decisions[]` including `implications[]` field:
+   ```json
+   {
+     "id": "D1",
+     "decision": "Silent refresh + retry on token expiry",
+     "rationale": "Preserves form data, seamless UX. User explicitly chose this over redirect.",
+     "alternatives_rejected": [
+       { "option": "Redirect to login", "reason": "Interrupts user flow, may lose form data" }
+     ],
+     "implications": [
+       { "implication": "Refresh token storage mechanism required", "type": "deterministic", "status": "confirmed" },
+       { "implication": "Need silent token refresh before API calls", "type": "deterministic", "status": "confirmed" },
+       { "implication": "Store refresh token in httpOnly cookie", "type": "context-dependent", "status": "pending", "conditional_on": "D2" }
+     ]
+   }
+   ```
+3. Merge via `hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json "$(cat /tmp/spec-merge.json)"`
+
+##### Step 3: Mini-Mirror Progress Check (iterative loop)
+
+After each round, show mini-mirror with **all decisions and implications visible**. Nothing is hidden.
+
+```markdown
+## Interview Progress — Round N
+
+### Confirmed Decisions
+- D1: Silent refresh on token expiry ✓ (user)
+  → Refresh token storage required ✓ (deterministic)
+  → Silent refresh before API calls ✓ (deterministic)
+  → httpOnly cookie storage ⏳ (pending — needs confirmation)
+- D2: PostgreSQL for primary data ✓ (user)
+  → Single-server deployment sufficient ✓ (context: <1k users from L1)
+
+### Agent-Derived (awaiting confirmation)
+- D1+D2 → "Token rotation on refresh" ⏳
+  ← Rationale: security best practice for long-lived refresh tokens
+  [Confirm] [Different approach]
+
+### Unresolved (???)
+- Error handling strategy? (no scenario asked yet)
+- Concurrent editing behavior? (not discussed)
+
+### Completeness
+[████████░░] 4/6 categories covered (scope ✓, auth ✓, data ✓, perf ✓, errors ✗, UX ✗)
+```
+
+> **Key principle**: Every agent-derived implication is shown. Nothing is silently decided.
+> Provisional requirements are saved to session state via: `hoyeon-cli session set --sid $SESSION_ID --json '{"provisional_requirements": [...]}'` (D13)
 
 Then ask:
 
@@ -390,17 +442,38 @@ AskUserQuestion(
   question: "How should we proceed?",
   header: "Interview Progress",
   options: [
-    { label: "Continue interviewing", description: "Clarify the open items above" },
+    { label: "Continue interviewing", description: "Cover the unresolved items above" },
     { label: "Enough, proceed to planning", description: "Use agent judgment for remaining gaps" }
   ]
 )
 ```
 
-- **"Continue interviewing"** → refresh mini-mirror, add new provisional requirements, generate 2-5 new questions targeting open items, loop back to Step 2
-- **"Enough, proceed to planning"** → advance to L2 gate
-- **Max 5 interview rounds** (circuit breaker). After round 5, auto-transition to L2 gate. Set `source.type: "implicit"` for requirements inferred without explicit user confirmation.
+**Loop logic:**
+- **Pending implications exist** → auto-generate scenario questions for them (next round)
+- **"Continue interviewing"** → generate scenario questions for `???` items, loop back to Step 1
+- **"Enough, proceed to planning"** → auto-confirm all `pending` implications, advance to L2.5
+- **Max 5 interview rounds** (circuit breaker). After round 5, auto-transition to L2.5.
+- **All `???` resolved + no `pending` implications** → auto-suggest "proceed to planning"
 
 > No separate step-back check here — the gate-keeper handles goal alignment review as part of the L2 gate.
+
+#### L2.5: Implication Derivation Step (non-interactive)
+
+After the interview completes, run a single agent pass that sees ALL decisions together and derives **cross-decision implications** invisible during the interview.
+
+**Why L2.5 exists**: During the interview, decisions arrive one at a time. Cross-decision implications ("JWT + microservices → token forwarding between services") only become visible when all decisions are present.
+
+**Execution:**
+1. Read all `context.decisions[]` from spec.json
+2. Read L1 research context and provisional requirements from session state
+3. For each pair/group of decisions, derive cross-decision implications:
+   - Type 1+2 (deterministic, context-dependent): auto-add to relevant decision's `implications[]`
+   - Type 3 (intent-dependent): flag for user confirmation in mini-mirror
+4. Merge via `hoyeon-cli spec merge .dev/specs/{name}/spec.json --patch --json "$(cat /tmp/spec-merge.json)"`
+5. If any `intent-dependent` implications found → show mini-mirror one final time for user confirmation
+6. Otherwise → advance to L2 gate
+
+> **Quick mode**: L2.5 runs on autopilot-derived decisions/assumptions. All implications auto-confirmed.
 
 ### L2 Gate
 
@@ -410,8 +483,8 @@ hoyeon-cli spec coverage .dev/specs/{name}/spec.json --layer decisions
 
 If exit code non-zero → gate failure. Handle per Gate Protocol.
 
-**Quick**: No gate. Auto-advance after assumptions merged.
-**Standard**: Run coverage check + send decisions to gate-keeper via SendMessage. PASS → advance to L3.
+**Quick**: No gate. Auto-advance after L2.5 completes.
+**Standard**: Run coverage check + send decisions (with implications) to gate-keeper via SendMessage. PASS → advance to L3.
 
 ---
 
@@ -450,12 +523,18 @@ The orchestrator mediates a structured conversation between L3-drafter and L3-re
 
 ```
 SendMessage(to="L3-drafter", message="
-Derive requirements and scenarios from goal and decisions.
+Derive requirements and scenarios from goal, decisions, and their implications.
 
 Goal: {confirmed_goal}
 
-Decisions:
-{FOR EACH d in context.decisions: D{d.id}: {d.decision} — {d.rationale}}
+Decisions with implications:
+{FOR EACH d in context.decisions:
+  D{d.id}: {d.decision} — {d.rationale}
+  Implications:
+  {FOR EACH impl in d.implications (where status=confirmed):
+    - [{impl.type}] {impl.implication} {impl.conditional_on ? '(depends on '+impl.conditional_on+')' : ''}
+  }
+}
 
 Provisional requirements (from interview — use as seed, validate and complete):
 {FOR EACH r in provisional_requirements: {r.behavior} ← {r.source}}
@@ -466,7 +545,10 @@ For EACH requirement, output:
 - id: R1, R2, ... (sequential)
 - behavior: observable behavior statement (not implementation detail)
 - priority: 1 (critical) | 2 (important) | 3 (nice-to-have)
-- source: {type: 'goal'|'decision'|'implicit', ref: 'D{id}' (when type=decision)}
+- source: {type: 'goal'|'decision'|'implication', ref: 'D{id}' (when type=decision or implication)}
+
+IMPORTANT: Convert each confirmed implication into at least one requirement.
+Implications are pre-derived — your job is to CONVERT them to formal requirements, not INFER from scratch.
 
 If you find missing decisions required to define a requirement clearly,
 output them as 'decision_gaps' — the orchestrator will handle backtracking.
