@@ -120,6 +120,15 @@
         ]
       },
       {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/large-file-recovery.sh"
+          }
+        ]
+      },
+      {
         "matcher": "",
         "hooks": [
           {
