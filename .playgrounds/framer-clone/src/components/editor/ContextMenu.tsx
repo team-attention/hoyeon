@@ -50,46 +50,44 @@ export function ContextMenu({ menu, onClose }: ContextMenuProps) {
     onClose()
   }
 
-  const currentStore = useEditorStore.getState()
-
   const items: MenuItem[] = hasSelection
     ? [
         {
           label: 'Copy',
-          action: () => act(() => currentStore.copyElements([...selectedIds])),
+          action: () => act(() => useEditorStore.getState().copyElements([...selectedIds])),
         },
         {
           label: 'Cut',
-          action: () => act(() => currentStore.cutElements([...selectedIds])),
+          action: () => act(() => useEditorStore.getState().cutElements([...selectedIds])),
         },
         {
           label: 'Paste',
           disabled: !hasClipboard,
-          action: () => act(() => currentStore.pasteElements()),
+          action: () => act(() => useEditorStore.getState().pasteElements()),
         },
         {
           label: 'Duplicate',
-          action: () => act(() => currentStore.duplicateElements([...selectedIds])),
+          action: () => act(() => useEditorStore.getState().duplicateElements([...selectedIds])),
           divider: true,
         },
         {
           label: 'Delete',
-          action: () => act(() => currentStore.deleteElements([...selectedIds])),
+          action: () => act(() => useEditorStore.getState().deleteElements([...selectedIds])),
           divider: true,
         },
         {
           label: 'Group',
           disabled: selectedIds.length < 2,
-          action: () => act(() => currentStore.groupElements([...selectedIds])),
+          action: () => act(() => useEditorStore.getState().groupElements([...selectedIds])),
         },
         {
           label: 'Ungroup',
-          disabled:
-            !targetId ||
-            !currentStore.elements[targetId] ||
-            currentStore.elements[targetId].kind !== 'frame',
+          disabled: (() => {
+            const s = useEditorStore.getState()
+            return !targetId || !s.elements[targetId] || s.elements[targetId].kind !== 'frame'
+          })(),
           action: () => {
-            if (targetId) act(() => currentStore.ungroupElement(targetId))
+            if (targetId) act(() => useEditorStore.getState().ungroupElement(targetId))
           },
           divider: true,
         },
@@ -97,14 +95,14 @@ export function ContextMenu({ menu, onClose }: ContextMenuProps) {
           label: 'Bring Forward',
           disabled: !targetId,
           action: () => {
-            if (targetId) act(() => currentStore.bringForward(targetId))
+            if (targetId) act(() => useEditorStore.getState().bringForward(targetId))
           },
         },
         {
           label: 'Send Backward',
           disabled: !targetId,
           action: () => {
-            if (targetId) act(() => currentStore.sendBackward(targetId))
+            if (targetId) act(() => useEditorStore.getState().sendBackward(targetId))
           },
           divider: true,
         },
@@ -113,7 +111,7 @@ export function ContextMenu({ menu, onClose }: ContextMenuProps) {
           disabled: selectedIds.length !== 1 || !targetId,
           action: () => {
             if (!targetId) return
-            const el = currentStore.elements[targetId]
+            const el = useEditorStore.getState().elements[targetId]
             if (!el) return
             act(() => useComponentStore.getState().createMaster(el))
           },
@@ -123,7 +121,7 @@ export function ContextMenu({ menu, onClose }: ContextMenuProps) {
         {
           label: 'Paste',
           disabled: !hasClipboard,
-          action: () => act(() => currentStore.pasteElements()),
+          action: () => act(() => useEditorStore.getState().pasteElements()),
         },
       ]
 

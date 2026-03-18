@@ -150,6 +150,23 @@ const initialState: EditorState = {
   breakpointWidthError: null,
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Recursively collect all descendant IDs of `id` by walking `childIds`.
+ * Returns a flat array of all descendant IDs (does NOT include `id` itself).
+ */
+function collectDescendants(id: string, elements: ElementTree): string[] {
+  const el = elements[id]
+  if (!el || el.kind !== 'frame' || !el.childIds?.length) return []
+  const result: string[] = []
+  for (const childId of el.childIds) {
+    result.push(childId)
+    result.push(...collectDescendants(childId, elements))
+  }
+  return result
+}
+
 // ─── Store creation ───────────────────────────────────────────────────────────
 
 /**
@@ -185,31 +202,92 @@ export const useEditorStore = create<EditorStore>()(
 
       deleteElement: (id) => {
         set((state: WritableDraft<EditorStore>) => {
-          delete state.elements[id]
-          state.rootIds = state.rootIds.filter((rid) => rid !== id)
+          const descendants = collectDescendants(id, state.elements as ElementTree)
+          const allIds = [id, ...descendants]
+
+          // Remove the element from its parent's childIds
+          const el = state.elements[id]
+          if (el?.parentId) {
+            const parent = state.elements[el.parentId]
+            if (parent?.kind === 'frame' && parent.childIds) {
+              parent.childIds = (parent.childIds as string[]).filter((cid) => cid !== id)
+            }
+          }
+
+          // Delete all elements (target + descendants)
+          for (const did of allIds) {
+            delete state.elements[did]
+          }
+
+          // Clean up rootIds
+          state.rootIds = state.rootIds.filter((rid) => !allIds.includes(rid))
+
+          // Clean up selection
           state.selection.selectedIds = state.selection.selectedIds.filter(
-            (sid) => sid !== id,
+            (sid) => !allIds.includes(sid),
           )
-          if (state.selection.hoveredId === id) {
+          if (
+            state.selection.hoveredId !== null &&
+            allIds.includes(state.selection.hoveredId)
+          ) {
             state.selection.hoveredId = null
+          }
+
+          // Purge breakpoint overrides for all deleted IDs (CR-007)
+          for (const bp of Object.keys(state.breakpointOverrides) as BreakpointId[]) {
+            for (const did of allIds) {
+              delete state.breakpointOverrides[bp][did]
+            }
           }
         })
       },
 
       deleteElements: (ids) => {
         set((state: WritableDraft<EditorStore>) => {
+          // Collect all descendants for each id and deduplicate
+          const allIdsSet = new Set<string>(ids)
           for (const id of ids) {
+            for (const did of collectDescendants(id, state.elements as ElementTree)) {
+              allIdsSet.add(did)
+            }
+          }
+          const allIds = Array.from(allIdsSet)
+
+          // Remove each top-level deleted element from its parent's childIds
+          for (const id of ids) {
+            const el = state.elements[id]
+            if (el?.parentId && !allIdsSet.has(el.parentId)) {
+              const parent = state.elements[el.parentId]
+              if (parent?.kind === 'frame' && parent.childIds) {
+                parent.childIds = (parent.childIds as string[]).filter((cid) => cid !== id)
+              }
+            }
+          }
+
+          // Delete all elements (targets + their descendants)
+          for (const id of allIds) {
             delete state.elements[id]
           }
-          state.rootIds = state.rootIds.filter((rid) => !ids.includes(rid))
+
+          // Clean up rootIds
+          state.rootIds = state.rootIds.filter((rid) => !allIdsSet.has(rid))
+
+          // Clean up selection
           state.selection.selectedIds = state.selection.selectedIds.filter(
-            (sid) => !ids.includes(sid),
+            (sid) => !allIdsSet.has(sid),
           )
           if (
             state.selection.hoveredId !== null &&
-            ids.includes(state.selection.hoveredId)
+            allIdsSet.has(state.selection.hoveredId)
           ) {
             state.selection.hoveredId = null
+          }
+
+          // Purge breakpoint overrides for all deleted IDs (CR-007)
+          for (const bp of Object.keys(state.breakpointOverrides) as BreakpointId[]) {
+            for (const did of allIds) {
+              delete state.breakpointOverrides[bp][did]
+            }
           }
         })
       },
@@ -529,7 +607,7 @@ export const useEditorStore = create<EditorStore>()(
           if (frameParentId === null) {
             // Frame is a root element — promote children to root
             const groupIdx = state.rootIds.indexOf(id)
-            state.rootIds = state.rootIds.filter((rid) => rid !== id)
+            state.rootIds.splice(groupIdx, 1)
             state.rootIds.splice(groupIdx, 0, ...childIds)
           } else {
             // Frame is nested — promote children into the parent frame's childIds

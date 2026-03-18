@@ -8,6 +8,7 @@
  */
 
 import { useEditorStore } from './editorStore'
+import { useComponentStore } from './components'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -35,8 +36,11 @@ export interface ToastMessage {
   message: string
 }
 
+/** Monotonic counter for toast IDs — avoids duplicate IDs on fast successive calls */
+let _toastCounter = 0
+
 function pushToast(type: ToastMessage['type'], message: string) {
-  const msg: ToastMessage = { id: Date.now().toString(), type, message }
+  const msg: ToastMessage = { id: `toast-${Date.now()}-${++_toastCounter}`, type, message }
   if (typeof window !== 'undefined') {
     window.__toastQueue = window.__toastQueue ?? []
     window.__toastQueue.push(msg)
@@ -51,15 +55,28 @@ export interface PersistedState {
   elements: unknown
   rootIds: unknown
   camera: unknown
+  /** Per-breakpoint style overrides (optional — absent in older saves) */
+  breakpointOverrides?: unknown
+  /** Breakpoint width configuration (optional — absent in older saves) */
+  breakpointWidths?: unknown
+  /** Master component definitions (optional — absent in older saves) */
+  components?: unknown
+  /** Component instances (optional — absent in older saves) */
+  instances?: unknown
 }
 
 function serializeState(): PersistedState {
   const state = useEditorStore.getState()
+  const componentState = useComponentStore.getState()
   return {
     schemaVersion: SCHEMA_VERSION,
     elements: state.elements,
     rootIds: state.rootIds,
     camera: state.camera,
+    breakpointOverrides: state.breakpointOverrides,
+    breakpointWidths: state.breakpointWidths,
+    components: componentState.components,
+    instances: componentState.instances,
   }
 }
 
@@ -84,11 +101,46 @@ function applyPersistedState(parsed: PersistedState) {
     camera: (parsed.camera ?? { x: 0, y: 0, zoom: 1 }) as ReturnType<
       typeof useEditorStore.getState
     >['camera'],
+    // Restore breakpoint data if present (fall back to store defaults for legacy saves)
+    ...(parsed.breakpointOverrides !== undefined
+      ? {
+          breakpointOverrides: parsed.breakpointOverrides as ReturnType<
+            typeof useEditorStore.getState
+          >['breakpointOverrides'],
+        }
+      : {}),
+    ...(parsed.breakpointWidths !== undefined
+      ? {
+          breakpointWidths: parsed.breakpointWidths as ReturnType<
+            typeof useEditorStore.getState
+          >['breakpointWidths'],
+        }
+      : {}),
     // Reset selection/tool on restore
     selection: store.selection,
     activeTool: store.activeTool,
     isPreviewMode: store.isPreviewMode,
   })
+
+  // Restore component system data if present
+  if (parsed.components !== undefined || parsed.instances !== undefined) {
+    useComponentStore.setState({
+      ...(parsed.components !== undefined
+        ? {
+            components: parsed.components as ReturnType<
+              typeof useComponentStore.getState
+            >['components'],
+          }
+        : {}),
+      ...(parsed.instances !== undefined
+        ? {
+            instances: parsed.instances as ReturnType<
+              typeof useComponentStore.getState
+            >['instances'],
+          }
+        : {}),
+    })
+  }
 }
 
 // ─── Auto-save ────────────────────────────────────────────────────────────────
@@ -199,9 +251,18 @@ export function createPersistence() {
   restoreFromLocalStorage()
 
   // Subscribe to store changes and schedule debounced saves
-  const unsubscribe = useEditorStore.subscribe(() => {
+  const unsubscribeEditor = useEditorStore.subscribe(() => {
     scheduleSave()
   })
 
-  return { unsubscribe }
+  const unsubscribeComponents = useComponentStore.subscribe(() => {
+    scheduleSave()
+  })
+
+  return {
+    unsubscribe: () => {
+      unsubscribeEditor()
+      unsubscribeComponents()
+    },
+  }
 }

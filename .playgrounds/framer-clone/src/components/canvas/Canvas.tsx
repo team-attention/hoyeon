@@ -107,7 +107,7 @@ function ImageNode({ el }: { el: ImageElement }) {
         overflow: 'hidden',
       }}
     >
-      {el.src && (
+      {el.src && /^(data:image\/|https?:\/\/)/.test(el.src) && (
         <img
           src={el.src}
           alt=""
@@ -338,6 +338,7 @@ export function Canvas() {
   const revertToSelect = useEditorStore((s) => s.revertToSelect)
   const camera = useEditorStore((s) => s.camera)
   const elements = useEditorStore((s) => s.elements)
+  const rootIds = useEditorStore((s) => s.rootIds)
   const isModalOpen = useEditorStore((s) => s.isModalOpen)
   const isPreviewMode = useEditorStore((s) => s.isPreviewMode)
   const zoomAt = useEditorStore((s) => s.zoomAt)
@@ -846,7 +847,7 @@ export function Canvas() {
             boxSizing: 'border-box',
           }}
         >
-          {Object.values(elements).map((el) => {
+          {rootIds.map((id) => elements[id]).filter((el): el is EditorElement => el != null).map((el) => {
             const resolvedEl = resolveElementForBreakpoint(
               el as EditorElement & Record<string, unknown>,
               activeBreakpoint,
@@ -871,7 +872,7 @@ export function Canvas() {
                   }
                 }}
               >
-                <AnimatedWrapper el={el} isPreviewMode={isPreviewMode}>
+                <AnimatedWrapper el={resolvedEl} isPreviewMode={isPreviewMode}>
                   <ElementNode el={resolvedEl} elements={elements} />
                 </AnimatedWrapper>
               </div>

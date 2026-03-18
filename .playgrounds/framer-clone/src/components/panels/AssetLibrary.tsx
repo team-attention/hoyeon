@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useComponentStore } from '../../store/components'
 import { useEditorStore } from '../../store/editorStore'
+import { screenToCanvas } from '../../store/editorStore'
 
 function PackageIcon() {
   return (
@@ -51,14 +52,19 @@ export function AssetLibrary() {
       const masterId = e.dataTransfer.getData('application/framer-component')
       if (!masterId) return
 
-      // Canvas drop coordinates (screen space relative to canvas container)
-      const canvasEl = document.querySelector('[data-testid="canvas-viewport"]') as HTMLElement | null
+      // Use the untransformed canvas root (not viewport) to measure screen-space position
+      const canvasEl = document.querySelector('[data-testid="canvas"]') as HTMLElement | null
       let dropX = 100
       let dropY = 100
       if (canvasEl) {
         const rect = canvasEl.getBoundingClientRect()
-        dropX = e.clientX - rect.left
-        dropY = e.clientY - rect.top
+        const screenX = e.clientX - rect.left
+        const screenY = e.clientY - rect.top
+        // Convert screen coords to canvas coords using camera state
+        const camera = useEditorStore.getState().camera
+        const canvasPos = screenToCanvas(screenX, screenY, camera)
+        dropX = canvasPos.x
+        dropY = canvasPos.y
       }
 
       const instance = createInstance(masterId, { x: dropX, y: dropY, parentId: null })
