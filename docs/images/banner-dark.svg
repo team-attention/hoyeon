@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400">
+  <defs>
+    <linearGradient id="chainLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="50%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#0d1117" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="400" rx="16" fill="#0d1117"/>
+
+  <!-- Subtle top glow -->
+  <rect width="900" height="160" rx="16" fill="url(#glowGrad)"/>
+
+  <!-- ═══ Derivation Chain ═══ -->
+  <g transform="translate(0, 95)">
+    <!-- Connection line (gradient) -->
+    <line x1="175" y1="0" x2="725" y2="0" stroke="url(#chainLine)" stroke-width="2" opacity="0.5"/>
+
+    <!-- Gate markers (diamonds between nodes) -->
+    <g fill="none" stroke="#30363d" stroke-width="1" opacity="0.6">
+      <rect x="221" y="-4" width="8" height="8" rx="1" transform="rotate(45,225,0)"/>
+      <rect x="331" y="-4" width="8" height="8" rx="1" transform="rotate(45,335,0)"/>
+      <rect x="441" y="-4" width="8" height="8" rx="1" transform="rotate(45,445,0)"/>
+      <rect x="551" y="-4" width="8" height="8" rx="1" transform="rotate(45,555,0)"/>
+      <rect x="661" y="-4" width="8" height="8" rx="1" transform="rotate(45,665,0)"/>
+    </g>
+
+    <!-- L0: Goal -->
+    <circle cx="175" cy="0" r="7" fill="#7c3aed" filter="url(#glow)"/>
+    <text x="175" y="28" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="10" text-anchor="middle">L0</text>
+    <text x="175" y="42" fill="#6e7681" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="9" text-anchor="middle">Goal</text>
+
+    <!-- L1: Context -->
+    <circle cx="285" cy="0" r="7" fill="#6d5aed" filter="url(#glow)"/>
+    <text x="285" y="28" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="10" text-anchor="middle">L1</text>
+    <text x="285" y="42" fill="#6e7681" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="9" text-anchor="middle">Context</text>
+
+    <!-- L2: Decisions -->
+    <circle cx="395" cy="0" r="7" fill="#4e7aed" filter="url(#glow)"/>
+    <text x="395" y="28" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="10" text-anchor="middle">L2</text>
+    <text x="395" y="42" fill="#6e7681" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="9" text-anchor="middle">Decide</text>
+
+    <!-- L3: Requirements -->
+    <circle cx="505" cy="0" r="7" fill="#3b82f6" filter="url(#glow)"/>
+    <text x="505" y="28" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="10" text-anchor="middle">L3</text>
+    <text x="505" y="42" fill="#6e7681" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="9" text-anchor="middle">Require</text>
+
+    <!-- L4: Tasks -->
+    <circle cx="615" cy="0" r="7" fill="#1ea5cc" filter="url(#glow)"/>
+    <text x="615" y="28" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="10" text-anchor="middle">L4</text>
+    <text x="615" y="42" fill="#6e7681" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="9" text-anchor="middle">Task</text>
+
+    <!-- L5: Verify -->
+    <circle cx="725" cy="0" r="7" fill="#06b6d4" filter="url(#glow)"/>
+    <text x="725" y="28" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="10" text-anchor="middle">L5</text>
+    <text x="725" y="42" fill="#6e7681" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="9" text-anchor="middle">Verify</text>
+  </g>
+
+  <!-- ═══ Main Title ═══ -->
+  <text x="450" y="220" fill="#e6edf3" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="64" font-weight="200" text-anchor="middle" letter-spacing="28" filter="url(#softGlow)">HOYEON</text>
+
+  <!-- ═══ Decorative separator ═══ -->
+  <line x1="350" y1="250" x2="550" y2="250" stroke="#30363d" stroke-width="1"/>
+
+  <!-- ═══ Tagline ═══ -->
+  <text x="450" y="285" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13" text-anchor="middle" letter-spacing="6">derive · verify · deliver</text>
+
+  <!-- ═══ Subtitle ═══ -->
+  <text x="450" y="340" fill="#484f58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle">All you need is requirements</text>
+
+  <!-- Corner accents -->
+  <line x1="30" y1="30" x2="30" y2="55" stroke="#30363d" stroke-width="1"/>
+  <line x1="30" y1="30" x2="55" y2="30" stroke="#30363d" stroke-width="1"/>
+  <line x1="870" y1="30" x2="870" y2="55" stroke="#30363d" stroke-width="1"/>
+  <line x1="870" y1="30" x2="845" y2="30" stroke="#30363d" stroke-width="1"/>
+  <line x1="30" y1="370" x2="30" y2="345" stroke="#30363d" stroke-width="1"/>
+  <line x1="30" y1="370" x2="55" y2="370" stroke="#30363d" stroke-width="1"/>
+  <line x1="870" y1="370" x2="870" y2="345" stroke="#30363d" stroke-width="1"/>
+  <line x1="870" y1="370" x2="845" y2="370" stroke="#30363d" stroke-width="1"/>
+</svg>

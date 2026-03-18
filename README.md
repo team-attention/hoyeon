@@ -1,8 +1,4 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/banner-light.svg">
-  <img alt="hoyeon" src="docs/images/banner-dark.svg">
-</picture>
+# hoyeon
 
 **All you need is requirements.**
 A Claude Code plugin that derives requirements from your intent, verifies every derivation, and delivers traced code — without you writing a plan.
