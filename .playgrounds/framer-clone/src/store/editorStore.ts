@@ -67,6 +67,12 @@ export interface EditorActions {
   setPreviewMode: (active: boolean) => void
   revertToSelect: () => void
 
+  // Layer ordering
+  reorderElement: (id: string, newIndex: number) => void
+
+  // Rename element
+  renameElement: (id: string, name: string) => void
+
   // Modal
   setModalOpen: (open: boolean) => void
 }
@@ -246,6 +252,24 @@ export const useEditorStore = create<EditorStore>()(
       revertToSelect: () => {
         set((state: WritableDraft<EditorStore>) => {
           state.activeTool = 'select'
+        })
+      },
+
+      reorderElement: (id, newIndex) => {
+        set((state: WritableDraft<EditorStore>) => {
+          const currentIndex = state.rootIds.indexOf(id)
+          if (currentIndex === -1) return
+          state.rootIds.splice(currentIndex, 1)
+          const clampedIndex = Math.max(0, Math.min(newIndex, state.rootIds.length))
+          state.rootIds.splice(clampedIndex, 0, id)
+        })
+      },
+
+      renameElement: (id, name) => {
+        set((state: WritableDraft<EditorStore>) => {
+          if (state.elements[id] && name.trim() !== '') {
+            state.elements[id].name = name.trim()
+          }
         })
       },
 
