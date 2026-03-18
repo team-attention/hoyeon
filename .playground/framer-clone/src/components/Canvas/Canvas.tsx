@@ -1,7 +1,10 @@
-import { useEffect, useRef } from 'react'
-import { useEditorStore } from '../../store'
+import { useEffect, useRef, useCallback } from 'react'
+import { useEditorStore, BREAKPOINT_WIDTHS } from '../../store'
 import { useCanvasNavigation } from './useCanvasNavigation'
 import { CanvasElement } from './CanvasElement'
+import { SelectionOverlay } from './SelectionOverlay'
+import { DRAG_DATA_KEY } from '../library/ComponentLibrary'
+import { createDefaultElement } from '../library/createDefaultElement'
 
 interface CanvasProps {
   /** Optional callback when zoom changes (for toolbar display) */
@@ -23,7 +26,8 @@ export function Canvas({ onZoomChange }: CanvasProps) {
     zoomLevelPercent,
   } = useCanvasNavigation(containerRef)
 
-  const { elements, rootIds, selectedIds, selectElement, deselectAll } = useEditorStore()
+  const { elements, rootIds, selectedIds, selectElement, multiSelect, deselectAll, addElement, breakpoint } = useEditorStore()
+  const viewportWidth = BREAKPOINT_WIDTHS[breakpoint]
 
   // Notify parent of zoom changes
   useEffect(() => {
@@ -69,8 +73,13 @@ export function Canvas({ onZoomChange }: CanvasProps) {
 
   const handleElementClick = (id: string, e: React.MouseEvent) => {
     if (e.shiftKey) {
-      // Multi-select handled elsewhere; for now just select
-      selectElement(id)
+      // Add to / remove from selection
+      if (selectedIds.includes(id)) {
+        const newIds = selectedIds.filter((sid) => sid !== id)
+        multiSelect(newIds)
+      } else {
+        multiSelect([...selectedIds, id])
+      }
     } else {
       selectElement(id)
     }
@@ -79,6 +88,37 @@ export function Canvas({ onZoomChange }: CanvasProps) {
   const handleCanvasClick = () => {
     deselectAll()
   }
+
+  // ── Drag-drop from component library ──────────────────────────────────
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    // Only accept drops that carry a library component id
+    if (e.dataTransfer.types.includes(DRAG_DATA_KEY) ||
+        e.dataTransfer.types.includes('text/plain')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const componentId = e.dataTransfer.getData(DRAG_DATA_KEY) ||
+                        e.dataTransfer.getData('text/plain')
+    if (!componentId) return
+
+    // Convert client coordinates to canvas-surface coordinates
+    const container = containerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    // Adjust for transform (pan + zoom)
+    const canvasX = (e.clientX - rect.left - transform.x) / transform.zoom
+    const canvasY = (e.clientY - rect.top - transform.y) / transform.zoom
+
+    const element = createDefaultElement(componentId, Math.round(canvasX), Math.round(canvasY))
+    if (!element) return
+
+    addElement(element)
+    selectElement(element.id)
+  }, [transform, addElement, selectElement])
 
   return (
     <div
@@ -94,6 +134,8 @@ export function Canvas({ onZoomChange }: CanvasProps) {
         userSelect: isPanning ? 'none' : 'auto',
       }}
       onClick={handleCanvasClick}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
       {/* Transform container: pan + zoom applied here */}
       <div
@@ -116,19 +158,38 @@ export function Canvas({ onZoomChange }: CanvasProps) {
             height: 5000,
           }}
         >
-          {rootIds.map((id) => {
-            const el = elements[id]
-            if (!el || !el.visible) return null
-            return (
-              <CanvasElement
-                key={id}
-                element={el}
-                isSelected={selectedIds.includes(id)}
-                zoom={transform.zoom}
-                onClick={handleElementClick}
-              />
-            )
-          })}
+          {/* Responsive viewport frame: clips to current breakpoint width */}
+          <div
+            data-testid="canvas-viewport"
+            data-breakpoint={breakpoint}
+            data-viewport-width={viewportWidth}
+            style={{
+              position: 'absolute',
+              top: 100,
+              left: 200,
+              width: viewportWidth,
+              height: 900,
+              background: '#ffffff08',
+              border: '1px solid #444',
+              borderRadius: 4,
+              overflow: 'hidden',
+            }}
+          >
+            {rootIds.map((id) => {
+              const el = elements[id]
+              if (!el || !el.visible) return null
+              return (
+                <CanvasElement
+                  key={id}
+                  element={el}
+                  isSelected={selectedIds.includes(id)}
+                  zoom={transform.zoom}
+                  onClick={handleElementClick}
+                />
+              )
+            })}
+          </div>
+          <SelectionOverlay zoom={transform.zoom} />
         </div>
       </div>
 
