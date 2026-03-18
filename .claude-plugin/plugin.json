@@ -4,5 +4,6 @@
   "description": "Development workflow automation plugin: specify → open → execute pipeline with parallel research agents, hook-based guards, and PR state management",
   "author": {
     "name": "team-attention"
-  }
+  },
+  "hooks": "./hooks/hooks.json"
 }

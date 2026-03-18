@@ -83,9 +83,10 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 ### Hook Development Notes
 
 - Hook scripts live in `.claude/scripts/` (symlink to `scripts/`) and must be executable (`chmod +x`)
-- **When adding a new hook script, you MUST update both:**
-  1. `.claude/settings.json` — register under `hooks.<EventType>` with appropriate matcher
-  2. `CLAUDE.md` — add entry to the Active Hooks table above
+- **When adding a new hook script, you MUST update all three:**
+  1. `hooks/hooks.json` — plugin-level registration (uses `${CLAUDE_PLUGIN_ROOT}/scripts/...`)
+  2. `.claude/settings.json` — project-level registration (uses `.claude/scripts/...`)
+  3. `CLAUDE.md` — add entry to the Active Hooks table above
 - A hook script that is not registered in settings will **not fire** — creating the file alone is not enough
 - Run `hoyeon-cli settings validate` to verify all hook paths are correct after changes
 - See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for additional hook behavior gotchas
