@@ -1,4 +1,6 @@
+import { useRef } from 'react'
 import { useEditorStore, type Tool } from '../../store/editorStore'
+import { exportProjectJSON, importProjectJSON } from '../../store/persistence'
 
 interface ToolItem {
   id: Tool
@@ -22,6 +24,7 @@ interface ToolbarProps {
 
 export function Toolbar({ onPreviewClick }: ToolbarProps) {
   const { activeTool, isPreviewMode, setActiveTool, setPreviewMode } = useEditorStore()
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, toolId: Tool) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -32,6 +35,16 @@ export function Toolbar({ onPreviewClick }: ToolbarProps) {
   const handlePreview = () => {
     setPreviewMode(!isPreviewMode)
     onPreviewClick?.()
+  }
+
+  const handleImportChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    importProjectJSON(file).catch(() => {
+      // Error toast already pushed inside importProjectJSON
+    })
+    // Reset input so the same file can be re-selected
+    e.target.value = ''
   }
 
   return (
@@ -70,14 +83,44 @@ export function Toolbar({ onPreviewClick }: ToolbarProps) {
         ))}
       </div>
 
-      {/* Right: Preview button */}
-      <button
-        data-testid="preview-button"
-        onClick={handlePreview}
-        className="px-3 h-7 rounded text-xs font-medium bg-[rgb(0,153,255)] text-white hover:bg-[rgba(0,153,255,0.8)] transition-colors"
-      >
-        Preview
-      </button>
+      {/* Right: Import / Export / Preview buttons */}
+      <div className="flex items-center gap-2">
+        {/* Hidden file input for import */}
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".json,application/json"
+          data-testid="import-file-input"
+          style={{ display: 'none' }}
+          onChange={handleImportChange}
+        />
+
+        <button
+          data-testid="import-button"
+          onClick={() => importInputRef.current?.click()}
+          className="px-3 h-7 rounded text-xs font-medium text-[#9ca3af] hover:text-white hover:bg-[#2a2a2a] transition-colors"
+          title="Import project JSON"
+        >
+          Import
+        </button>
+
+        <button
+          data-testid="export-button"
+          onClick={exportProjectJSON}
+          className="px-3 h-7 rounded text-xs font-medium text-[#9ca3af] hover:text-white hover:bg-[#2a2a2a] transition-colors"
+          title="Export project JSON"
+        >
+          Export
+        </button>
+
+        <button
+          data-testid="preview-button"
+          onClick={handlePreview}
+          className="px-3 h-7 rounded text-xs font-medium bg-[rgb(0,153,255)] text-white hover:bg-[rgba(0,153,255,0.8)] transition-colors"
+        >
+          Preview
+        </button>
+      </div>
     </header>
   )
 }

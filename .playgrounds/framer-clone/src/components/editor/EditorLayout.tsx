@@ -1,6 +1,7 @@
 import { Toolbar } from './Toolbar'
 import { LeftPanel } from './LeftPanel'
 import { RightPanel } from './RightPanel'
+import { ToastNotifications } from './ToastNotifications'
 import { Canvas } from '../canvas/Canvas'
 import { useEditorStore } from '../../store/editorStore'
 
@@ -22,6 +23,9 @@ export function EditorLayout() {
         <Canvas />
         {!isPreviewMode && <RightPanel />}
       </div>
+
+      {/* Toast notifications */}
+      <ToastNotifications />
     </div>
   )
 }
