@@ -428,7 +428,7 @@
       "type": "work",
       "origin": "planned",
       "risk": "medium",
-      "status": "pending",
+      "status": "done",
       "file_scope": [
         ".playground/framer-clone/src/components/RightPanel/"
       ],
@@ -481,7 +481,8 @@
             "run": "cd .playground/framer-clone && npm run build"
           }
         ]
-      }
+      },
+      "summary": "Implemented PropertiesPanel with Layout, Style, and Effects sections"
     },
     {
       "id": "T9",
@@ -651,7 +652,7 @@
       "type": "work",
       "origin": "planned",
       "risk": "medium",
-      "status": "pending",
+      "status": "done",
       "file_scope": [
         ".playground/framer-clone/src/store/",
         ".playground/framer-clone/src/components/"
@@ -708,7 +709,8 @@
             "run": "cd .playground/framer-clone && npm run build"
           }
         ]
-      }
+      },
+      "summary": "Implemented element grouping and custom component creation"
     },
     {
       "id": "TF",
@@ -793,7 +795,7 @@
       "type": "work",
       "origin": "planned",
       "risk": "low",
-      "status": "pending",
+      "status": "done",
       "file_scope": [
         ".playground/framer-clone/src/hooks/useKeyboardShortcuts.ts"
       ],
@@ -845,7 +847,8 @@
             "run": "cd .playground/framer-clone && npm run build"
           }
         ]
-      }
+      },
+      "summary": "Implemented keyboard shortcuts (Delete, Copy, Paste, Cut, Duplicate, Select All, Deselect)"
     },
     {
       "id": "T14",
@@ -853,7 +856,7 @@
       "type": "work",
       "origin": "planned",
       "risk": "medium",
-      "status": "pending",
+      "status": "done",
       "file_scope": [
         ".playground/framer-clone/src/components/Canvas/SnapGuides.tsx",
         ".playground/framer-clone/src/components/Toolbar/AlignActions.tsx"
@@ -900,7 +903,8 @@
             "run": "cd .playground/framer-clone && npm run build"
           }
         ]
-      }
+      },
+      "summary": "Implemented snap guides and align/distribute actions"
     },
     {
       "id": "T15",
@@ -1114,6 +1118,30 @@
       "type": "task_done",
       "task": "T6",
       "summary": "Component library drag-to-canvas complete"
+    },
+    {
+      "ts": "2026-03-18T15:25:00.000Z",
+      "type": "task_done",
+      "task": "T13",
+      "summary": "Keyboard shortcuts complete"
+    },
+    {
+      "ts": "2026-03-18T15:30:00.000Z",
+      "type": "task_done",
+      "task": "T8",
+      "summary": "Properties panel complete"
+    },
+    {
+      "ts": "2026-03-18T15:35:00.000Z",
+      "type": "task_done",
+      "task": "T14",
+      "summary": "Snap guides and alignment complete"
+    },
+    {
+      "ts": "2026-03-18T15:40:00.000Z",
+      "type": "task_done",
+      "task": "T12",
+      "summary": "Grouping and custom components complete"
     }
   ],
   "context": {

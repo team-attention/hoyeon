@@ -25,5 +25,17 @@
 ## T5
 - No new issues
 
+## T13
+- No new issues
+
 ## T6
+- No new issues
+
+## T8
+- No new issues
+
+## T14
+- No new issues
+
+## T12
 - No new issues

@@ -65,6 +65,14 @@
 - Store's `useEditorStore.setState()` in `beforeEach` must include `breakpoint: 'desktop'` when resetting (already noted in T9 learnings — confirmed again here)
 - Drag-drop coordinate calculation: `canvasX = (clientX - rect.left - transform.x) / transform.zoom` handles pan and zoom offset; jsdom has no layout so rect is (0,0) in tests
 
+## T13
+- `useKeyboardShortcuts` hook registers `document.addEventListener('keydown', ...)` inside `useEffect`; the store is accessed via `useEditorStore.getState()` at event time (not captured at mount) to always read fresh state
+- Suppress shortcuts during text editing by checking `e.target` for `input`, `textarea`, `select` tags or `isContentEditable === true` — test by firing `keyDown` on the input element itself (not document)
+- Internal clipboard is a `useRef<Element[]>` — never stored in Zustand so it doesn't pollute undo history
+- Stale TypeScript build cache (`.tsbuildinfo`) can cause false "module has no exported member" errors even when the type is present; delete `tsconfig.app.tsbuildinfo` to clear
+- Paste/duplicate use a `cloneElementTree` helper that remaps all descendant ids to avoid id collisions; only root-level clipboard items are iterated (children are included via subtree traversal)
+- When destructuring store state for use across multiple `set()` calls, only take values actually used in the outer scope — values used only inside `set()` callbacks should be accessed via `state.*` not outer destructuring (avoids `noUnusedLocals` TS errors)
+
 ## T9
 - `Breakpoint` type and `BREAKPOINT_WIDTHS` constant added to `editorStore.ts`; exported from `store/index.ts`
 - `BreakpointSwitcher` is a standalone component using `useEditorStore` directly — no props needed; lives at `src/components/Toolbar/BreakpointSwitcher.tsx`
@@ -72,3 +80,31 @@
 - Canvas viewport frame uses `overflow: hidden` to clip overflowing elements at the breakpoint boundary (satisfies R5-S3 graceful handling)
 - `data-breakpoint` and `data-viewport-width` attributes on the viewport div enable test assertions without computed style access (jsdom doesn't compute inline styles reliably)
 - Store `setState` in `beforeEach` must include `breakpoint: 'desktop'` to reset the new field between tests
+
+## T8
+- `PropertiesPanel` lives in `src/components/RightPanel/PropertiesPanel.tsx`; `src/components/editor/RightPanel.tsx` is a thin wrapper that delegates to it
+- Numeric inputs use controlled local state with focus/blur pattern: `localValue` tracks in-flight edits; on blur, parse and validate before calling store update
+- Non-numeric rejection: `parseNumeric()` returns `null` for empty, whitespace-only, or non-finite strings — on `null`, restore `localValue` to previous valid value without calling store
+- Dimension clamping: `isDimension=true` prop on `NumericField` applies `Math.max(1, value)` on blur — x/y/rotation are not dimensions and can be negative
+- Color fields use two inputs: `type="color"` (picker) + `type="text"` (hex string); text input testid is `{testId}-text` so tests can assert and change string values directly
+- `Effects` section keeps box-shadow and blur as local component state (not persisted in element schema) — basic implementation as the Element type does not include shadow fields
+- Pre-existing TS errors in `ComponentLibrary.tsx` (unused `useEditorStore`/`CustomComponent` imports) and `store/index.ts` (re-exporting non-existent `CustomComponent`) were blocking build; fixed as collateral cleanup
+
+## T14
+- `SnapGuides.tsx` is a pure utility + display module: `getSnapPoints()` and `computeSnap()` are pure functions (easy to test), `SnapGuides` renders the visual lines
+- Snap logic checks three edges of the moving element (left/center/right for x, top/middle/bottom for y) against all snap points from non-selected elements; picks closest within 5px threshold
+- For multi-select drag, snap is applied to the primary (first) selected element — the delta difference is then applied uniformly to all selected elements to preserve relative positions
+- `AlignActions.tsx` exports both pure helper functions (alignLeft, alignRight, etc.) and the `AlignActions` component — pure functions make unit testing trivial without DOM rendering
+- Align buttons disabled via HTML `disabled` attribute (not just style) — enables native `:disabled` CSS and `toBeDisabled()` assertion in tests
+- Distribute functions require 3+ elements: return empty `{}` for fewer (no-op); the component uses `canDistribute = selectedElements.length >= 3`
+- `AlignActions` is wired into `Toolbar.tsx` between the tool buttons separator and the flex spacer — no new props on Toolbar needed since AlignActions reads from store directly
+- `setActiveGuides([])` must be called in `handleMovePointerUp` to clear guides after drag ends
+
+## T12
+- `CustomComponent` interface added to editorStore.ts (not a separate file) for co-location with store actions
+- Linter (likely ESLint + Prettier on save) auto-reverts Edit tool changes — use Bash heredoc writes for file creation/overwrite to avoid linter revert loops
+- Group bounding box uses `(el as { width?: number }).width ?? 0` cast to safely read `width`/`height` from Element union type without explicit FrameElement cast
+- `saveAsCustomComponent` deep-clones the subtree via `JSON.parse(JSON.stringify(...))` so stored snapshots are isolated from live state mutations
+- Store `setState` in `beforeEach` must include `customComponents: []` to reset the new field
+- Pre-existing test failures in `editor-layout.test.tsx` (R11-S2, 2 cases) are unrelated to T12 — do not attempt to fix
+- ComponentLibrary custom category uses conditional render (`customComponents.length > 0`) to avoid empty categories; `data-testid="category-custom"` present only when custom components exist
