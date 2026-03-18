@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { useEditorStore } from '../../store'
 import { ResizeHandles } from './ResizeHandles'
+import { SnapGuides, getSnapPoints, computeSnap } from './SnapGuides'
+import type { SnapPoint } from './SnapGuides'
 
 interface SelectionOverlayProps {
   zoom: number
@@ -23,6 +25,9 @@ export function SelectionOverlay({ zoom }: SelectionOverlayProps) {
     origPositions: Record<string, { x: number; y: number }>
     isDragging: boolean
   } | null>(null)
+
+  // Snap guides state
+  const [activeGuides, setActiveGuides] = useState<SnapPoint[]>([])
 
   // Marquee selection state
   const [marquee, setMarquee] = useState<{
@@ -71,14 +76,33 @@ export function SelectionOverlay({ zoom }: SelectionOverlayProps) {
 
     if (!moveState.current.isDragging) return
 
+    // For snap: use the primary (first) selected element as reference
+    const primaryId = selectedIds[0]
+    const primaryOrig = moveState.current.origPositions[primaryId]
+    const primaryEl = elements[primaryId]
+
+    let finalDx = dx
+    let finalDy = dy
+
+    if (primaryEl && primaryOrig) {
+      const rawX = primaryOrig.x + dx
+      const rawY = primaryOrig.y + dy
+      const snapPoints = getSnapPoints(elements, selectedIds)
+      const snapResult = computeSnap(rawX, rawY, primaryEl.width, primaryEl.height, snapPoints)
+      finalDx = snapResult.x - primaryOrig.x
+      finalDy = snapResult.y - primaryOrig.y
+      setActiveGuides(snapResult.guides)
+    }
+
     // Move all selected elements maintaining relative positions
     for (const [id, orig] of Object.entries(moveState.current.origPositions)) {
-      updateElement(id, { x: orig.x + dx, y: orig.y + dy })
+      updateElement(id, { x: orig.x + finalDx, y: orig.y + finalDy })
     }
   }
 
   const handleMovePointerUp = () => {
     moveState.current = null
+    setActiveGuides([])
   }
 
   // Marquee selection on canvas surface (empty area)
@@ -220,6 +244,9 @@ export function SelectionOverlay({ zoom }: SelectionOverlayProps) {
           }}
         />
       )}
+
+      {/* Snap guides */}
+      <SnapGuides guides={activeGuides} />
     </div>
   )
 }

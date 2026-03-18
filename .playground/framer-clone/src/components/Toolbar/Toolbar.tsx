@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BreakpointSwitcher } from './BreakpointSwitcher'
+import { AlignActions } from './AlignActions'
 
 type ToolType = 'select' | 'frame' | 'text' | 'image' | 'hand'
 
@@ -88,6 +89,10 @@ export function Toolbar({
           </button>
         ))}
       </div>
+
+      {/* Align / Distribute Actions */}
+      <div style={{ width: 1, height: 20, background: '#333', margin: '0 4px' }} />
+      <AlignActions />
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
