@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useEditorStore } from '../../store'
 import type { Element, FrameElement, TextElement } from '../../types'
+import { StylePresets } from './StylePresets'
+import { AnimationPanel } from './AnimationPanel'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles (inline, dark theme consistent with rest of editor)
@@ -543,6 +545,12 @@ export function PropertiesPanel() {
           <EffectsSection element={element} onUpdate={handleUpdate} />
         </div>
       )}
+      {/* Animation Panel — always rendered; shows disabled state when no element selected */}
+      <AnimationPanel />
+      {/* Style Presets — always visible; disabled when no element selected */}
+      <div style={{ borderTop: '1px solid #333', marginTop: 4 }}>
+        <StylePresets />
+      </div>
     </div>
   )
 }

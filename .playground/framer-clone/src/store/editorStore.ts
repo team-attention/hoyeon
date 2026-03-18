@@ -14,6 +14,34 @@ export const BREAKPOINT_WIDTHS: Record<Breakpoint, number> = {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Animation configuration per element (hover effects + CSS transitions)
+// ───────────────────────────────────────────────────────────────────────────
+export type EasingType = 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring'
+
+export interface HoverEffect {
+  scale: number
+  opacity: number
+  x: number
+  y: number
+  rotation: number
+}
+
+export interface TransitionConfig {
+  duration: number // ms
+  easing: EasingType
+}
+
+export interface AnimationConfig {
+  hover: HoverEffect
+  transition: TransitionConfig
+}
+
+export const DEFAULT_ANIMATION_CONFIG: AnimationConfig = {
+  hover: { scale: 1, opacity: 1, x: 0, y: 0, rotation: 0 },
+  transition: { duration: 300, easing: 'ease' },
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Custom component (saved group)
 // ───────────────────────────────────────────────────────────────────────────
 export interface CustomComponent {
@@ -54,6 +82,9 @@ export interface EditorState {
   // Custom components (saved groups)
   customComponents: CustomComponent[]
 
+  // Animation configs per element id
+  animationConfigs: Record<string, AnimationConfig>
+
   // ── Computed helpers ──────────────────────────────────────────────────
   canUndo: () => boolean
   canRedo: () => boolean
@@ -90,6 +121,12 @@ export interface EditorState {
   ungroupElements: () => void
   /** Save selected group element as a reusable custom component. */
   saveAsCustomComponent: (name: string) => void
+
+  // ── Animation ─────────────────────────────────────────────────────────
+  /** Get animation config for an element (falls back to default). */
+  getAnimationConfig: (id: string) => AnimationConfig
+  /** Set animation config for an element. */
+  setAnimationConfig: (id: string, config: AnimationConfig) => void
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -119,6 +156,7 @@ export const useEditorStore = create<EditorState>()(
     future: [],
     breakpoint: 'desktop' as Breakpoint,
     customComponents: [],
+    animationConfigs: {},
 
     // ── Computed ────────────────────────────────────────────────────────
     canUndo: () => get().past.length > 0,
@@ -444,6 +482,17 @@ export const useEditorStore = create<EditorState>()(
 
       set((state) => {
         state.customComponents.push(customComponent)
+      })
+    },
+
+    // ── Animation ────────────────────────────────────────────────────────
+    getAnimationConfig: (id) => {
+      return get().animationConfigs[id] ?? DEFAULT_ANIMATION_CONFIG
+    },
+
+    setAnimationConfig: (id, config) => {
+      set((state) => {
+        state.animationConfigs[id] = config
       })
     },
 
