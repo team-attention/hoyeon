@@ -591,9 +591,12 @@ FOR round IN 1..3:
   - Agent: verify.checks is falsifiable (can be proven wrong)
   - Human: verify.ask is actionable (step-by-step instructions)
 
-  **Sandbox rules:**
+  **Sandbox/execution_env diversity:**
   - Tier 4 items have execution_env: 'sandbox'
   - UI changes have screenshot-based sandbox scenarios
+  - IF sandbox capability is available (docker/browser) AND all scenarios are execution_env: 'host':
+    → Flag as gap (category: 'sandbox_underuse') — sandbox-capable projects MUST use sandbox for at least some UI/integration scenarios
+  - Count execution_env distribution: if 100% host when sandbox is available → GAPS
 
   **Human minimization:**
   - Every verified_by: 'human' scenario MUST have a 'conversion_rejected' justification
@@ -1115,6 +1118,7 @@ No TeamCreate, no SendMessage gates in quick mode. Max 1 plan-reviewer round if 
 - [ ] Human minimization applied (every `verified_by: human` has `conversion_rejected` justification)
 - [ ] Human scenario ratio < 30% (or justified exception)
 - [ ] Sandbox Capability Check completed (if sandbox scenarios exist and `context.sandbox_capability` was not set)
+- [ ] L3-reviewer checked execution_env diversity (sandbox_underuse gap if applicable)
 - [ ] plan-reviewer returned OKAY
 - [ ] `spec coverage` passes (full chain + per-layer at each transition)
 
