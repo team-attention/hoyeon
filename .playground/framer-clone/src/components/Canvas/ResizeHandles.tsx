@@ -49,6 +49,7 @@ const ALL_HANDLES: HandlePosition[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w
 
 export function ResizeHandles({ element, zoom }: ResizeHandlesProps) {
   const updateElement = useEditorStore((s) => s.updateElement)
+  const updateElementPreview = useEditorStore((s) => s.updateElementPreview)
 
   // Track drag state in refs to avoid stale closure issues
   const dragState = useRef<{
@@ -59,6 +60,7 @@ export function ResizeHandles({ element, zoom }: ResizeHandlesProps) {
     origY: number
     origW: number
     origH: number
+    lastPatch: { x: number; y: number; width: number; height: number } | null
   } | null>(null)
 
   const handlePointerDown = (handle: HandlePosition, e: React.PointerEvent) => {
@@ -74,6 +76,7 @@ export function ResizeHandles({ element, zoom }: ResizeHandlesProps) {
       origY: element.y,
       origW: element.width,
       origH: element.height,
+      lastPatch: null,
     }
   }
 
@@ -109,10 +112,16 @@ export function ResizeHandles({ element, zoom }: ResizeHandlesProps) {
       newH = Math.max(MIN_SIZE, origH - delta)
     }
 
-    updateElement(element.id, { x: newX, y: newY, width: newW, height: newH })
+    const patch = { x: newX, y: newY, width: newW, height: newH }
+    dragState.current.lastPatch = patch
+    updateElementPreview(element.id, patch)
   }
 
   const handlePointerUp = () => {
+    if (dragState.current?.lastPatch) {
+      // Commit the final resize to history with a single updateElement call
+      updateElement(element.id, dragState.current.lastPatch)
+    }
     dragState.current = null
   }
 

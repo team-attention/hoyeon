@@ -16,7 +16,7 @@ interface SelectionOverlayProps {
  * - Support marquee selection (drag on empty canvas area)
  */
 export function SelectionOverlay({ zoom }: SelectionOverlayProps) {
-  const { elements, selectedIds, multiSelect, deselectAll, updateElement } = useEditorStore()
+  const { elements, selectedIds, multiSelect, deselectAll, updateElement, updateElementPreview } = useEditorStore()
 
   // Drag-to-move state
   const moveState = useRef<{
@@ -24,6 +24,7 @@ export function SelectionOverlay({ zoom }: SelectionOverlayProps) {
     startY: number
     origPositions: Record<string, { x: number; y: number }>
     isDragging: boolean
+    lastPositions: Record<string, { x: number; y: number }>
   } | null>(null)
 
   // Snap guides state
@@ -60,6 +61,7 @@ export function SelectionOverlay({ zoom }: SelectionOverlayProps) {
       startY: e.clientY,
       origPositions,
       isDragging: false,
+      lastPositions: {},
     }
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
   }
@@ -94,13 +96,22 @@ export function SelectionOverlay({ zoom }: SelectionOverlayProps) {
       setActiveGuides(snapResult.guides)
     }
 
-    // Move all selected elements maintaining relative positions
+    // Preview-move all selected elements maintaining relative positions (no undo history)
     for (const [id, orig] of Object.entries(moveState.current.origPositions)) {
-      updateElement(id, { x: orig.x + finalDx, y: orig.y + finalDy })
+      const newX = orig.x + finalDx
+      const newY = orig.y + finalDy
+      moveState.current.lastPositions[id] = { x: newX, y: newY }
+      updateElementPreview(id, { x: newX, y: newY })
     }
   }
 
   const handleMovePointerUp = () => {
+    if (moveState.current?.isDragging) {
+      // Commit final positions to history with a single updateElement call per element
+      for (const [id, pos] of Object.entries(moveState.current.lastPositions)) {
+        updateElement(id, { x: pos.x, y: pos.y })
+      }
+    }
     moveState.current = null
     setActiveGuides([])
   }

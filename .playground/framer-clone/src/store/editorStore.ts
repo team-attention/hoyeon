@@ -93,6 +93,8 @@ export interface EditorState {
   addElement: (element: Element) => void
   removeElement: (id: string) => void
   updateElement: (id: string, patch: Partial<Element>) => void
+  /** Update element in-place WITHOUT recording a history snapshot (use during drag). */
+  updateElementPreview: (id: string, patch: Partial<Element>) => void
   moveElement: (id: string, x: number, y: number) => void
 
   // ── Selection ─────────────────────────────────────────────────────────
@@ -230,6 +232,14 @@ export const useEditorStore = create<EditorState>()(
         state.future = []
 
         Object.assign(state.elements[id], patch)
+      })
+    },
+
+    updateElementPreview: (id, patch) => {
+      set((state) => {
+        if (!state.elements[id]) return
+        // No history snapshot — used during drag to avoid undo pollution
+        state.elements[id] = { ...state.elements[id], ...patch }
       })
     },
 
