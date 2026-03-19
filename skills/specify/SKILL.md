@@ -124,26 +124,40 @@ hoyeon-cli session set --sid $SESSION_ID --spec ".dev/specs/{name}/spec.json"
 
 > **Mode Gate**: Quick mode — SKIP team mode entirely. No TeamCreate, no SendMessage gates.
 
-After spec init, spawn the full team with 3 teammates:
+After spec init, spawn the full team with 4 teammates:
 
 ```
 TeamCreate("specify-session")
 ```
 
-**Teammates (3):**
+**Teammates (4):**
 
 | Name | Role | Active During | Spawn Prompt Focus |
 |------|------|---------------|-------------------|
-| **gate-keeper** | Layer-transition reviewer | L0~L4 gate | Check for DRIFT, GAP, CONFLICT, BACKTRACK. Return PASS or REVIEW_NEEDED with numbered items. Read-only: use Read, Grep, Glob only. Do NOT write files, run Bash, or create Tasks. |
-| **L3-drafter** | Requirements + scenarios author | L3 pingpong | Derive requirements from goal+decisions. Generate Given-When-Then scenarios per requirement. Output structured JSON with requirements[] and scenarios[]. |
-| **L3-reviewer** | Gap and quality reviewer | L3 pingpong | Review drafter output for: missing requirements, scenario coverage gaps (HP/EP/BC minimum), verify field quality, requirement-decision traceability. Return gap list or PASS. |
+| **gate-keeper** | Layer-transition reviewer | L0~L4 gate | Check for DRIFT, GAP, CONFLICT, BACKTRACK + information sufficiency (EXTERNAL_REF_UNVERIFIED, CODEBASE_CLAIM_UNVERIFIED, ASSUMPTION_LOAD). Return PASS or REVIEW_NEEDED with numbered items. Read-only: use Read, Grep, Glob only. Do NOT write files, run Bash, or create Tasks. |
+| **user-advocate** | User journey mapper + priority judge | L3 | From decisions, derive user personas and their journeys. For every screen/feature, enumerate ALL reachability paths (navigation, deep link, URL direct access, back button, redirect). Judge gap severity from user perspective. |
+| **requirement-writer** | Requirements + scenarios author | L3 | Receive user journeys from user-advocate. Structure into formal Requirements + Given-When-Then Scenarios. Ensure every journey path becomes a requirement or scenario. Output structured JSON with requirements[] and scenarios[]. |
+| **devil's-advocate** | Adversarial completeness tester | L3 | Attack requirements: find missing paths, contradictions, impossible assumptions. When uncertain about external API/library constraints or codebase state, request research from orchestrator. Return PASS (no more gaps) or GAPS (with specific issues). |
 
 > All teammates are general-purpose agents. Specialization is defined entirely through spawn prompts.
-> L3-drafter and L3-reviewer are idle during L0~L2 and L4~L5. They are pre-spawned because TeamCreate can only be called once per session.
+> L3 agents (user-advocate, requirement-writer, devil's-advocate) are idle during L0~L2 and L4~L5. They are pre-spawned because TeamCreate can only be called once per session.
+
+**Teammate lifecycle:**
+- L0~L2: gate-keeper active, L3 agents idle
+- L3: all 4 active
+- L3 complete → **shutdown L3 agents** via `SendMessage(to="user-advocate", message={type: "shutdown_request"})` (repeat for requirement-writer and devil's-advocate). Gate-keeper excluded.
+- L4~L5: gate-keeper only
 
 **gate-keeper return contract:**
 - `PASS` — layer transition proceeds
 - `REVIEW_NEEDED` + numbered items — orchestrator classifies each as DRIFT/GAP/CONFLICT/BACKTRACK and routes accordingly. The gate-keeper does NOT return these types directly.
+
+**gate-keeper information sufficiency checks** (in addition to structural checks):
+- `EXTERNAL_REF_UNVERIFIED` — spec references an external API, library, or service by name with specific behavioral claims, but no verification evidence exists. Example: "Stripe webhook retries 3 times" without citing docs.
+- `CODEBASE_CLAIM_UNVERIFIED` — spec references existing code patterns, classes, or methods without evidence from L1 research. Example: "reuse the existing RateLimiter class" but L1 research didn't mention it.
+- `ASSUMPTION_LOAD` — 3 or more unverified assumptions about external systems or codebase state accumulated in the current layer. Triggers a research recommendation.
+
+When gate-keeper flags these, orchestrator treats them as a special GAP subtype — see Gate Protocol for research dispatch.
 
 ### Intent Classification (internal, not merged)
 
@@ -199,9 +213,32 @@ After user provides correction → re-run gate (both coverage check and step-bac
 **Failure type routing:**
 - `STRUCTURAL` — auto-fix via spec merge (no user prompt needed), re-run gate
 - `DRIFT` — escalate to user (scope has drifted from goal)
-- `GAP` — escalate to user (missing requirements or decisions)
+- `GAP` — classify further (see below)
 - `CONFLICT` — escalate to user (contradictory decisions or requirements)
 - `BACKTRACK` — escalate to user (decision gap found in L3 → must go back to L2)
+
+**GAP sub-classification and research dispatch:**
+
+When gate-keeper returns GAP items, orchestrator classifies each:
+
+| GAP Subtype | Signal | Action |
+|-------------|--------|--------|
+| **Decision gap** | Missing user decision or preference | Escalate to user |
+| **Research-resolvable (internal)** | GAP mentions codebase patterns, classes, file structure, or CODEBASE_CLAIM_UNVERIFIED flagged | Dispatch `code-explorer` Task subagent with specific query |
+| **Research-resolvable (external)** | GAP mentions external API, library, version constraints, or EXTERNAL_REF_UNVERIFIED flagged | Dispatch `external-researcher` Task subagent with specific query |
+| **Unresolvable** | Ambiguous requirement, scope question | Escalate to user |
+
+**Research dispatch protocol:**
+1. Orchestrator extracts the specific question from the GAP item
+2. Dispatch Task subagent: `Task(subagent_type="code-explorer"|"external-researcher", prompt="Verify: {specific question}. Report findings with source file:line or URL.")`
+3. On result: append findings to the current layer's context (do NOT rewrite layer output)
+4. Re-run gate with enriched context
+5. If re-gate still fails → escalate to user (do NOT dispatch another researcher for the same GAP)
+
+**Circuit breaker:** Max **4 researcher dispatches per entire specify run**. After 4, all subsequent research-resolvable GAPs escalate to user. Track in session state:
+```bash
+hoyeon-cli session set --sid $SESSION_ID --json '{"research_dispatch_count": N}'
+```
 
 ---
 
@@ -534,7 +571,7 @@ If exit code non-zero → gate failure. Handle per Gate Protocol.
 
 ## L3: Requirements + Scenarios
 
-**Who**: L3-drafter (teammate) + L3-reviewer (teammate) — Draft-Review pingpong
+**Who**: user-advocate + requirement-writer + devil's-advocate (teammates) — 3-Agent Requirements Workshop
 **Input**: goal + decisions + provisional requirements (as seed)
 **Output**: `requirements[]` with source fields + `scenarios[]` with category/verified_by/verify
 **Merge**: `spec merge requirements` (atomic, with scenarios)
@@ -543,7 +580,7 @@ If exit code non-zero → gate failure. Handle per Gate Protocol.
 
 ### Pre-read: VERIFICATION.md
 
-Before starting the pingpong, read VERIFICATION.md to inline into L3-drafter's prompt:
+Before starting the workshop, read VERIFICATION.md to inline into requirement-writer's prompt:
 
 ```bash
 # ${baseDir} is provided as header context to the main agent.
@@ -553,9 +590,9 @@ TESTING_MD_CONTENT = Read("${baseDir}/references/VERIFICATION_GUIDE.md")
 
 > Why inline? Teammates cannot resolve `${baseDir}`. The orchestrator reads the file and passes content directly into the SendMessage prompt.
 
-### Sandbox Capability Check (before pingpong)
+### Sandbox Capability Check (before workshop)
 
-Run **before** the draft-review pingpong so L3-drafter knows whether to generate sandbox scenarios.
+Run **before** the 3-agent workshop so requirement-writer knows whether to generate sandbox scenarios.
 
 ```
 IF context.sandbox_capability is NOT set:
@@ -582,41 +619,91 @@ IF context.sandbox_capability is NOT set:
   Setting capability based on general assumptions (e.g., "Docker is available") is FORBIDDEN.
 ```
 
-Pass the resolved `context.sandbox_capability` into L3-drafter's SendMessage prompt so it knows what sandbox environments are available.
+Pass the resolved `context.sandbox_capability` into requirement-writer's SendMessage prompt so it knows what sandbox environments are available.
 
 ### Quick Mode Shortcut
 
-> **Mode Gate**: Quick → orchestrator derives requirements + scenarios directly (no pingpong, no teammates). Merge and auto-advance.
+> **Mode Gate**: Quick → orchestrator derives requirements + scenarios directly (no workshop, no teammates). Merge and auto-advance.
 
-### Draft-Review Pingpong (standard mode) — Direct Communication
+### 3-Agent Requirements Workshop (standard mode) — Collaborative Communication
 
-L3-drafter and L3-reviewer communicate **directly via SendMessage** — the orchestrator does NOT relay messages between them. This prevents context loss and allows natural micro-conversations (e.g., reviewer asks "what did you mean by saves boost?" → drafter clarifies → reviewer accepts).
+Three L3 teammates (user-advocate, requirement-writer, devil's-advocate) are **activated simultaneously** and collaborate freely via SendMessage. The orchestrator sends all 3 initial prompts **in a single message**, then monitors for convergence.
 
-**Communication flow:**
-1. Orchestrator sends initial prompt to L3-drafter (with goal, decisions, constraints, VERIFICATION.md)
-2. L3-drafter produces draft and sends directly to L3-reviewer via `SendMessage(to="L3-reviewer")`
-3. L3-reviewer reviews and either sends `PASS` to orchestrator or sends `GAPS` directly to L3-drafter
-4. L3-drafter revises and sends back to L3-reviewer
-5. Repeat until convergence or max 3 rounds
+**Key principle**: This is a **workshop, not a pipeline**. All 3 agents are alive and can message each other at any time. The orchestrator does NOT sequence their work — they self-organize.
 
-**Convergence condition**: L3-reviewer sends `PASS` to orchestrator (gap count = 0).
-**Circuit breaker**: Orchestrator monitors round count. After 3 drafter→reviewer exchanges without PASS, orchestrator intervenes and escalates remaining gaps to user.
+**Expected natural flow** (not enforced):
+1. User-advocate starts by deriving journeys (fastest to produce initial output)
+2. Requirement-writer begins structuring as journeys arrive
+3. Devil's-advocate attacks requirements as they form
+4. Devil's-advocate asks user-advocate about gap severity
+5. Requirement-writer revises based on devil's-advocate feedback
+6. Cross-talk continues until devil's-advocate sends PASS
 
-> **Key difference from previous design**: Drafter and reviewer can have micro-conversations within a round. Reviewer might ask a clarifying question before sending a formal gap list. This is natural and should NOT be counted as a round.
+**Convergence condition**: devil's-advocate sends `PASS` to orchestrator (no more gaps found).
+**Circuit breaker**: After 3 writer→devil's-advocate exchanges without PASS, orchestrator escalates remaining gaps to user.
 
-#### Round 1: Initial Draft
+> All agents can have micro-conversations freely (e.g., devil's-advocate asks user-advocate "is this path critical?", user-advocate asks requirement-writer "did you cover the search→profile journey?"). These do NOT count as cycles. A 'cycle' is: devil's-advocate sends GAPS → writer revises → devil's-advocate reviews again.
 
-The orchestrator sends the initial prompt to L3-drafter. The drafter's output goes **directly to L3-reviewer**, not back to orchestrator.
+#### Initial Prompts (sent simultaneously)
 
+The orchestrator sends all 3 prompts **in one message** to activate the workshop. User-advocate starts first naturally (journeys are the input), but all agents are alive and can interact immediately.
+
+**Prompt 1 — user-advocate:**
 ```
-SendMessage(to="L3-drafter", message="
-Derive requirements and scenarios from goal, decisions, constraints, and their implications.
+SendMessage(to="user-advocate", message="
+You are in a 3-agent requirements workshop with requirement-writer and devil's-advocate.
+Derive user journeys from the confirmed goal, decisions, and their implications.
 
-IMPORTANT: When you finish your draft, send it DIRECTLY to L3-reviewer via SendMessage(to='L3-reviewer').
-Do NOT send your output back to the orchestrator. The reviewer will review and either:
-- Send GAPS back to you (fix and re-send to reviewer)
-- Send PASS to the orchestrator (you're done)
-You and the reviewer can have micro-conversations (clarifying questions, etc.) — these are natural and expected.
+Send your journeys to requirement-writer via SendMessage(to='requirement-writer').
+Stay alive throughout the workshop — devil's-advocate will ask you to judge gap severity,
+and requirement-writer may ask about journey coverage. You can also proactively flag
+issues you notice in requirements as they develop.
+
+Goal: {confirmed_goal}
+
+Decisions with implications:
+{FOR EACH d in context.decisions:
+  D{d.id}: {d.decision} — {d.rationale}
+  Implications:
+  {FOR EACH impl in d.implications (where status=confirmed):
+    - [{impl.type}] {impl.implication}
+  }
+}
+
+## Your Task
+
+1. **Identify user personas** — who uses this system? (e.g., new user, content consumer, admin)
+2. **For each persona, list their key journeys** — what do they want to accomplish?
+3. **For EVERY screen/feature/endpoint mentioned in decisions:**
+   - List ALL reachability paths: navigation click, deep link, URL direct access, back button, redirect, search result
+   - This is CRITICAL — missing reachability paths cause 404s and broken routing in implementation
+4. **Flag any decisions that seem to imply features without clear user-facing behavior**
+
+## Output Format
+
+For each persona:
+- Persona: {name} — {description}
+- Journeys:
+  1. {journey name}: {step} → {step} → {step} → {outcome}
+     Reachability: {how the user reaches the starting point}
+  2. ...
+
+Also output:
+- decision_gaps[]: decisions that need user clarification to define journeys
+- reachability_map[]: {screen/feature} → [{path1}, {path2}, ...]
+")
+```
+
+**Prompt 2 — requirement-writer** (sent simultaneously with Prompt 1 and 3):
+```
+SendMessage(to="requirement-writer", message="
+You are in a 3-agent requirements workshop with user-advocate and devil's-advocate.
+You will receive user journeys from user-advocate. Structure them into formal Requirements + Scenarios.
+
+Send your requirements to devil's-advocate via SendMessage(to='devil\'s-advocate').
+If devil's-advocate sends GAPS back, revise and re-send to devil's-advocate.
+You can also ask user-advocate for clarification on journey coverage at any time.
+When devil's-advocate sends PASS, it goes to the orchestrator — you're done.
 
 Goal: {confirmed_goal}
 
@@ -628,32 +715,27 @@ Constraints (from L2.7):
 Decisions with implications:
 {FOR EACH d in context.decisions:
   D{d.id}: {d.decision} — {d.rationale}
-  Implications:
-  {FOR EACH impl in d.implications (where status=confirmed):
-    - [{impl.type}] {impl.implication} {impl.conditional_on ? '(depends on '+impl.conditional_on+')' : ''}
-  }
 }
 
 Provisional requirements (from interview — use as seed, validate and complete):
 {FOR EACH r in provisional_requirements: {r.behavior} ← {r.source}}
 
+## Structuring Rules
+
+- Every user journey path MUST produce at least one requirement or scenario
+- Group related journey paths into single requirements (e.g., 'Profile accessible via feed avatar click, search result click, and URL direct access' = ONE requirement with multiple scenarios)
+- Convert each confirmed implication into at least one requirement
+- If you find missing decisions, output as 'decision_gaps' — orchestrator will handle backtracking
+
 ## Output: Requirements
 
-For EACH requirement, output:
+For EACH requirement:
 - id: R1, R2, ... (sequential)
 - behavior: observable behavior statement (not implementation detail)
 - priority: 1 (critical) | 2 (important) | 3 (nice-to-have)
-- source: {type: 'goal'|'decision'|'implication', ref: 'D{id}' (when type=decision or implication)}
-
-IMPORTANT: Convert each confirmed implication into at least one requirement.
-Implications are pre-derived — your job is to CONVERT them to formal requirements, not INFER from scratch.
-
-If you find missing decisions required to define a requirement clearly,
-output them as 'decision_gaps' — the orchestrator will handle backtracking.
+- source: {type: 'goal'|'decision'|'implication', ref: 'D{id}'}
 
 ## Output: Scenarios (per requirement)
-
-For EACH requirement, generate Given-When-Then scenarios:
 
 ### Scenario Coverage Categories (MANDATORY)
 
@@ -666,10 +748,6 @@ For EACH requirement, generate Given-When-Then scenarios:
 | Integration | IT | External system | Dependency unavailable |
 
 **Minimum: HP + EP + BC per requirement (3 scenarios minimum).**
-NI: required if requirement involves user input, authentication, or authorization.
-IT: required if requirement touches external systems, APIs, or databases.
-If a category does not apply, skip with a 1-line justification.
-
 **Self-check before output**: count scenarios per requirement. If any has < 3, add missing categories.
 
 ### Scenario Fields (ALL required)
@@ -678,16 +756,14 @@ Each scenario MUST include:
 - id: {req_id}-S{n} (e.g., R1-S1, R1-S2)
 - category: HP | EP | BC | NI | IT
 - given / when / then: concrete, testable statements
-- verified_by: 'machine' (automated command), 'agent' (AI assertion), or 'human' (manual inspection)
-- execution_env: 'host' (local), 'sandbox' (docker/container), or 'ci' (CI pipeline) — default 'host'
-- verify: object matching verified_by type (command for machine, assertion for agent, instruction for human)
+- verified_by: 'machine' | 'agent' | 'human'
+- execution_env: 'host' | 'sandbox' | 'ci'
+- verify: object matching verified_by type
 
 ## Sandbox Capability
 {IF sandbox_capability is set:
   Available: {sandbox_capability.tools} (docker: {sandbox_capability.docker}, browser: {sandbox_capability.browser})
   → USE execution_env: 'sandbox' for scenarios where these tools apply
-  → Browser sandbox: E2E flows, visual regression, real DOM interactions (drag-drop, CSS transforms, layout)
-  → Docker sandbox: DB integration, API contract tests, service dependency tests
 ELSE:
   No sandbox available — use execution_env: 'host' for all scenarios
 }
@@ -695,35 +771,24 @@ ELSE:
 ## Testing Strategy (from VERIFICATION.md)
 {TESTING_MD_CONTENT}
 
-Use the 4-Tier testing model above:
-- Tier 1-3 items → verified_by: 'machine', execution_env: 'host'
-- Tier 4 items → verified_by: 'machine', execution_env: 'sandbox'
-- AI-checkable items → verified_by: 'agent'
-- Subjective/UX items → verified_by: 'human' (LAST RESORT — see conversion rules below)
-
 ## Human Minimization (MANDATORY)
 
-Before marking ANY scenario as verified_by: 'human', you MUST attempt conversion in this order:
-1. Can an agent verify via screenshot comparison? → verified_by: 'agent', execution_env: 'sandbox' (browser)
-2. Can an agent verify via DOM/accessibility assertion? → verified_by: 'agent', execution_env: 'host'
-3. Can a machine verify via output pattern matching? → verified_by: 'machine', execution_env: 'host'
-4. Can a machine verify via docker-based integration test? → verified_by: 'machine', execution_env: 'sandbox'
-5. ONLY if none of the above → verified_by: 'human' with a 'conversion_rejected' field explaining WHY agent/machine cannot replace it
+Before marking ANY scenario as verified_by: 'human', attempt conversion:
+1. Agent via screenshot comparison? → 'agent', execution_env: 'sandbox'
+2. Agent via DOM/accessibility assertion? → 'agent', execution_env: 'host'
+3. Machine via output pattern matching? → 'machine', execution_env: 'host'
+4. Machine via docker-based integration test? → 'machine', execution_env: 'sandbox'
+5. ONLY if none → 'human' with 'conversion_rejected' justification
 
-Example sandbox conversions:
-- 'UI looks correct' → agent + sandbox (browser-explorer screenshot diff)
-- 'API returns expected response' → machine + sandbox (docker-compose mock server + curl)
-- 'User flow feels intuitive' → human (subjective judgment, no mechanical proxy)
-
-Target: human scenarios should be < 30% of total scenarios.
+Target: human scenarios < 30% of total.
 ")
 ```
 
-**If drafter reports decision_gaps** → L3 backtracking:
+**If requirement-writer reports decision_gaps** → L3 backtracking:
 
 ```
 AskUserQuestion(
-  question: "L3-drafter found missing decisions needed to finalize requirements. Shall we return to L2?",
+  question: "L3 requirement-writer found missing decisions needed to finalize requirements. Shall we return to L2?",
   header: "Decision Gap Found",
   options: [
     { label: "Yes, go back to L2", description: "I'll answer the missing decision questions" },
@@ -740,90 +805,78 @@ If user selects "Yes, go back to L2" → merge additional decisions, then re-run
 2. On re-run: start fresh — do NOT reuse previous L3 output.
 3. Requirements merge overwrites entirely (no `--append`, no `--patch`).
 
-#### Review Loop
-
-After Round 1, the orchestrator waits for the reviewer to send either:
-- `PASS` (to team-lead) — convergence, orchestrator proceeds to merge
-- `GAPS` (to L3-drafter, directly) — drafter revises and re-sends to reviewer
-
-The orchestrator does NOT relay messages. It monitors for the PASS signal.
-
-**Circuit breaker**: The reviewer MUST include a round counter in each gap message
-(e.g., "Round 2/3 gaps:"). After sending round 3 gaps without receiving a satisfactory
-revision, the reviewer sends `ESCALATE` to team-lead instead of another gap list.
-The orchestrator then presents remaining gaps to the user.
-
+**Prompt 3 — devil's-advocate** (sent simultaneously with Prompt 1 and 2):
 ```
-# Orchestrator sends initial prompt to L3-reviewer with the review checklist.
-# The reviewer will receive the draft directly from the drafter (per Round 1 instructions).
-SendMessage(to="L3-reviewer", message="
-  Review the following requirements and scenarios for completeness and quality.
+SendMessage(to="devil's-advocate", message="
+You are in a 3-agent requirements workshop with user-advocate and requirement-writer.
+You will receive requirements+scenarios from requirement-writer. Your job is to BREAK them — find missing paths, contradictions, impossible assumptions, and untested edge cases.
 
-  IMPORTANT: Communication protocol:
-  - If you find GAPS: send them DIRECTLY to L3-drafter via SendMessage(to='L3-drafter'). Do NOT go through orchestrator.
-  - If you need clarification from drafter: ask directly via SendMessage(to='L3-drafter').
-  - If PASS (gap count = 0): send the final converged requirements to orchestrator via SendMessage(to='team-lead').
-  - Include the complete, final requirements JSON in your PASS message so the orchestrator can merge.
+IMPORTANT: Communication protocol:
+- If you find GAPS: send them DIRECTLY to requirement-writer via SendMessage(to='requirement-writer'). Include cycle counter.
+- If you need user perspective on a gap's severity: ask user-advocate via SendMessage(to='user-advocate').
+- If you need research to verify a claim: send RESEARCH_REQUEST to orchestrator via SendMessage(to='team-lead') with format: {type: 'research', query: '...', target: 'internal'|'external'}. Orchestrator will dispatch a Task subagent and send findings back to you.
+- If PASS (no more gaps): send the final converged requirements JSON to orchestrator via SendMessage(to='team-lead').
 
-  {draft}
+## Attack Checklist
 
-  ## Review Checklist
+**Reachability completeness:**
+- For every screen/feature in requirements: can the user reach it from ALL expected paths?
+- Check: navigation click, URL direct access, deep link, back button, redirect, search result
+- Missing reachability → GAPS (this is the #1 source of 404s in implementation)
 
-  **Requirement completeness:**
-  - Every decision has at least one requirement tracing back to it
-  - No requirement is an implementation detail (must be observable behavior)
-  - Source tracing is correct (goal/decision/implicit with correct ref)
+**Requirement completeness:**
+- Every decision has at least one requirement tracing back to it
+- No requirement is an implementation detail (must be observable behavior)
+- Source tracing is correct (goal/decision/implicit with correct ref)
 
-  **Scenario coverage:**
-  - Every requirement has HP + EP + BC minimum (3 scenarios)
-  - NI scenarios present for user-input/auth requirements
-  - IT scenarios present for external-system requirements
+**Scenario coverage:**
+- Every requirement has HP + EP + BC minimum (3 scenarios)
+- NI scenarios present for user-input/auth requirements
+- IT scenarios present for external-system requirements
 
-  **Scenario quality:**
-  - Machine: verify.run is executable shell command, verify.expect has concrete value
-  - Agent: verify.checks is falsifiable (can be proven wrong)
-  - Human: verify.ask is actionable (step-by-step instructions)
+**Scenario quality:**
+- Machine: verify.run is executable shell command, verify.expect has concrete value
+- Agent: verify.checks is falsifiable (can be proven wrong)
+- Human: verify.ask is actionable (step-by-step instructions)
 
-  **Sandbox/execution_env diversity:**
-  - Tier 4 items have execution_env: 'sandbox'
-  - UI changes have screenshot-based sandbox scenarios
-  - IF sandbox capability is available (docker/browser) AND all scenarios are execution_env: 'host':
-    → Flag as gap (category: 'sandbox_underuse') — sandbox-capable projects MUST use sandbox for at least some UI/integration scenarios
-  - Count execution_env distribution: if 100% host when sandbox is available → GAPS
-  - IF `context.sandbox_capability` is NOT set:
-    → Flag as **BLOCKING** gap (category: 'sandbox_capability_unknown') — MUST be resolved before pingpong can pass
-    → Safety net: orchestrator must run Sandbox Capability Check (references/sandbox-guide.md) before next round
-  - IF `sandbox_capability.browser == false` AND project has UI signals (*.tsx, *.jsx, *.vue, **/components/**, **/pages/**):
-    → Flag as gap (category: 'browser_sandbox_skipped_for_ui_project')
-    → Require evidence: either Phase A found no browser infra, OR user explicitly declined in Phase B AskUserQuestion
-    → If no evidence of user decision → BLOCKING gap: orchestrator must re-run Phase B of sandbox-guide.md
+**Sandbox/execution_env diversity:**
+- Tier 4 items have execution_env: 'sandbox'
+- UI changes have screenshot-based sandbox scenarios
+- IF sandbox capability is available AND all scenarios are execution_env: 'host':
+  → Flag as gap (category: 'sandbox_underuse')
+- IF `context.sandbox_capability` is NOT set:
+  → Flag as **BLOCKING** gap (category: 'sandbox_capability_unknown')
+- IF `sandbox_capability.browser == false` AND project has UI signals:
+  → Flag as gap (category: 'browser_sandbox_skipped_for_ui_project')
 
-  **Human minimization:**
-  - Every verified_by: 'human' scenario MUST have a 'conversion_rejected' justification
-  - If human_ratio > 30% of total scenarios → flag as gap (category: 'human_overuse')
-  - Challenge each human scenario: could browser-explorer (screenshot diff), DOM assertion, or docker-based test replace it?
-  - Suggest specific H→A/M conversions with concrete verify objects
+**Human minimization:**
+- Every verified_by: 'human' scenario MUST have 'conversion_rejected' justification
+- If human_ratio > 30% → flag as gap (category: 'human_overuse')
 
-  ## Output Protocol (direct communication)
+**External/codebase claim verification:**
+- If a requirement assumes external API behavior → flag for research if unverified
+- If a requirement references existing code → flag for research if not confirmed by L1
 
-  - **PASS** (gap count = 0): Send the final converged requirements JSON to **team-lead** via SendMessage(to='team-lead'). Include the complete requirements[] array.
-  - **GAPS** (round N/3): Send gap list DIRECTLY to **L3-drafter** via SendMessage(to='L3-drafter'). Include round counter. Drafter will revise and re-send to you.
-  - **ESCALATE** (round 3 exhausted, still gaps): Send remaining gaps to **team-lead** via SendMessage(to='team-lead'). Orchestrator will present to user.
-  - **SUGGESTED_ADDITIONS**: Include in gap message to drafter, or in PASS message to team-lead.
+## Output Protocol
 
-  You may ask the drafter clarifying questions directly — these micro-conversations do NOT count as rounds.
-  A 'round' is: you send GAPS → drafter sends revised draft → you review again.
-  ")
+- **PASS** (no more gaps): Send final converged requirements JSON to **team-lead**. Include complete requirements[] array.
+- **GAPS** (cycle N/3): Send gap list to **requirement-writer**. Include cycle counter. Writer will revise and re-send.
+- **ESCALATE** (cycle 3 exhausted): Send remaining gaps to **team-lead**. Orchestrator presents to user.
+- **RESEARCH_REQUEST**: Send to **team-lead** with {type: 'research', query: '...', target: 'internal'|'external'}. Wait for response before continuing review.
+
+A 'cycle' is: you send GAPS → writer revises → you review again.
+Micro-conversations (asking user-advocate about severity, clarifications) do NOT count.
+")
 ```
 
-**Orchestrator waits** for a message from L3-reviewer addressed to team-lead:
+**Orchestrator handles messages from devil's-advocate:**
 - `PASS` + requirements JSON → proceed to merge
+- `RESEARCH_REQUEST` → dispatch Task subagent (code-explorer or external-researcher), send findings back to devil's-advocate
 - `ESCALATE` + remaining gaps → present to user:
 
 ```
-# On ESCALATE from reviewer:
 AskUserQuestion(
-  question: "L3 pingpong did not fully converge after 3 rounds. Remaining gaps:\n{gaps}",
+  question: "L3 workshop did not fully converge after 3 cycles. Remaining gaps:\n{gaps}",
   header: "L3 Convergence",
   options: [
     { label: "Accept current draft", description: "Proceed with remaining gaps noted" },
@@ -833,11 +886,22 @@ AskUserQuestion(
 )
 ```
 
-**Safety net**: If reviewer reports a BLOCKING gap (`sandbox_capability_unknown` or `browser_sandbox_skipped_for_ui_project`),
-orchestrator MUST intervene before next round:
+**Safety net**: If devil's-advocate reports a BLOCKING gap (`sandbox_capability_unknown` or `browser_sandbox_skipped_for_ui_project`),
+orchestrator MUST intervene before next cycle:
 - `sandbox_capability_unknown`: read `references/sandbox-guide.md`, execute Phase A → B → C inline
-- `browser_sandbox_skipped_for_ui_project`: re-run Phase B of sandbox-guide.md (AskUserQuestion with browser option)
-Send resolved capability to both drafter and reviewer. This intervention does not count as a round.
+- `browser_sandbox_skipped_for_ui_project`: re-run Phase B of sandbox-guide.md
+
+#### L3 Agent Shutdown
+
+After L3 merge completes (requirements merged into spec.json):
+
+```
+SendMessage(to="user-advocate", message={type: "shutdown_request", reason: "L3 complete"})
+SendMessage(to="requirement-writer", message={type: "shutdown_request", reason: "L3 complete"})
+SendMessage(to="devil's-advocate", message={type: "shutdown_request", reason: "L3 complete"})
+```
+
+Gate-keeper remains active for L4.
 
 #### Handle suggested_additions
 
@@ -853,15 +917,15 @@ IF review.suggested_additions is non-empty:
 #### Sandbox Scenario Fallback (before merge)
 
 ```
-# sandbox_capability was resolved before pingpong (see "Sandbox Capability Check" above).
-# This section handles the fallback: if L3-drafter generated sandbox scenarios
+# sandbox_capability was resolved before workshop (see "Sandbox Capability Check" above).
+# This section handles the fallback: if requirement-writer generated sandbox scenarios
 # but the capability doesn't support them, convert to agent+host.
 
 sandbox_scenarios = [s for r in draft.requirements for s in r.scenarios if s.execution_env == "sandbox"]
 
 IF sandbox_scenarios is non-empty:
   # Check if capability already recorded in spec.json context
-  # NOTE: In normal flow, capability is always set by the before-pingpong check.
+  # NOTE: In normal flow, capability is always set by the before-workshop check.
   # This branch is a defensive fallback — should not fire in happy path.
   existing_capability = spec.context.sandbox_capability
 
@@ -1011,7 +1075,7 @@ hoyeon-cli spec sandbox-tasks .dev/specs/{name}/spec.json
 3. Include TF (full verification) task with `depends_on` referencing all work tasks
 4. Merge via `hoyeon-cli spec merge .dev/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.json)"`
 
-> Requirements were confirmed in L2 (with source fields) and scenarios were generated in L3 by the L3-drafter/L3-reviewer pingpong. Do NOT merge requirements again here.
+> Requirements were confirmed in L2 (with source fields) and scenarios were generated in L3 by the 3-agent workshop (user-advocate / requirement-writer / devil's-advocate). Do NOT merge requirements again here.
 
 ### L4.5: External Dependencies Derivation (non-interactive)
 
@@ -1177,7 +1241,7 @@ AskUserQuestion(
 ### Step 5: AC Quality Gate (standard mode only — DO NOT SKIP)
 
 > **Mode Gate**: Quick → skip. Proceed directly to Step 6.
-> **⚠️ MANDATORY**: This step MUST run in standard mode. Do NOT skip even if L3 pingpong covered scenarios — L3 checks drafter output quality, L5 checks the MERGED spec.json (which may have drifted during L4 task mapping and coverage fixes). These are different validation scopes.
+> **⚠️ MANDATORY**: This step MUST run in standard mode. Do NOT skip even if L3 workshop covered scenarios — L3 checks requirement quality, L5 checks the MERGED spec.json (which may have drifted during L4 task mapping and coverage fixes). These are different validation scopes.
 
 Run the full AC quality check (max 3 rounds in L3 was L3-scoped; L5 does a final pass with max 5 rounds):
 
@@ -1367,8 +1431,9 @@ No TeamCreate, no SendMessage gates in quick mode. Max 1 plan-reviewer round if 
 - **Incremental merge** — merge after every layer and every user response; do not batch
 - **confirmed_goal in context** — NEVER move `confirmed_goal` to `meta` (C4)
 - **gate-keeper** — teammate spawned via TeamCreate, role defined by spawn prompt (not a custom agent file)
-- **L3-drafter** — teammate for requirements + scenarios drafting (spawned at session start, active during L3)
-- **L3-reviewer** — teammate for gap/quality review of drafter output (spawned at session start, active during L3)
+- **user-advocate** — teammate for user journey mapping + gap severity judgment (spawned at session start, active during L3, shutdown after L3)
+- **requirement-writer** — teammate for requirements + scenarios structuring from journeys (spawned at session start, active during L3, shutdown after L3)
+- **devil's-advocate** — teammate for adversarial completeness testing + research requests (spawned at session start, active during L3, shutdown after L3)
 - **Team mode members** — disallowed-tools MUST include Task and Skill (C3)
 
 ## Checklist Before Stopping
@@ -1391,7 +1456,7 @@ No TeamCreate, no SendMessage gates in quick mode. Max 1 plan-reviewer round if 
 
 ### Standard mode (additional)
 - [ ] TeamCreate called at session start
-- [ ] TeamCreate called with 3 teammates: gate-keeper, L3-drafter, L3-reviewer
+- [ ] TeamCreate called with 4 teammates: gate-keeper, user-advocate, requirement-writer, devil's-advocate
 - [ ] Gate-keeper defined via spawn prompt (DRIFT/GAP/CONFLICT/BACKTRACK review, read-only)
 - [ ] SendMessage called at each layer gate (L0, L1, L2, L3, L4)
 - [ ] `context.research` is structured object (not string)
@@ -1399,13 +1464,14 @@ No TeamCreate, no SendMessage gates in quick mode. Max 1 plan-reviewer round if 
 - [ ] `context.decisions[]` populated from interview
 - [ ] `constraints` populated (L2.7 — merge empty array explicitly if none apply)
 - [ ] `external_dependencies` populated (L4.5 — merge empty pre_work/post_work explicitly if none apply)
-- [ ] L3 pingpong ran (L3-drafter + L3-reviewer, max 3 rounds)
-- [ ] VERIFICATION.md pre-read and inlined into L3-drafter SendMessage prompt
+- [ ] L3 workshop ran (user-advocate → requirement-writer → devil's-advocate, max 3 cycles)
+- [ ] VERIFICATION.md pre-read and inlined into requirement-writer SendMessage prompt
+- [ ] L3 agents shutdown after L3 merge (gate-keeper excluded)
 - [ ] Sandbox Scenario Fallback Rules applied
 - [ ] Human minimization applied (every `verified_by: human` has `conversion_rejected` justification)
 - [ ] Human scenario ratio < 30% (or justified exception)
 - [ ] Sandbox Capability Check completed (auto-detect → scaffold if needed → re-run L3 with capability set)
-- [ ] L3-reviewer checked execution_env diversity (sandbox_underuse / sandbox_capability_unknown / browser_sandbox_skipped_for_ui_project gaps)
+- [ ] devil's-advocate checked execution_env diversity (sandbox_underuse / sandbox_capability_unknown / browser_sandbox_skipped_for_ui_project gaps)
 - [ ] If no sandbox infra and project benefits from it: T-sandbox-* scaffold task(s) added to spec
 - [ ] plan-reviewer returned OKAY
 - [ ] `spec coverage` passes (full chain + per-layer at each transition)
