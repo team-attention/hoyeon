@@ -19,6 +19,8 @@ allowed-tools:
   - TaskGet
   - TaskOutput
   - AskUserQuestion
+  - EnterWorktree
+  - ExitWorktree
 validate_prompt: |
   All tasks in spec.json must have status "done" at completion.
   hoyeon-cli spec check must pass (internal consistency).
@@ -154,26 +156,27 @@ work_mode = AskUserQuestion(
 ```
 IF work_mode == "Worktree":
   spec_name = basename(dirname(spec_path))  # e.g. "auth-login"
-  branch_name = "feat/{spec_name}"
-  worktree_path = ".worktrees/{spec_name}"
 
-  Bash("mkdir -p .worktrees")
-  Bash("git worktree add {worktree_path} -b {branch_name}")
-
-  # Convert spec_path to absolute so it works from any directory
+  # Convert paths to absolute BEFORE entering worktree (CWD will change)
   spec_path = Bash("realpath {spec_path}").trim()
+  CONTEXT_DIR = Bash("realpath {CONTEXT_DIR}").trim()
 
-  # All subsequent work happens in worktree_path
-  WORK_DIR = Bash("realpath {worktree_path}").trim()
-  print("Worktree created: {WORK_DIR} (branch: {branch_name})")
+  # Use EnterWorktree to switch session CWD into the worktree
+  EnterWorktree(name=spec_name)
+  # Session CWD is now inside the worktree — all tools (Read, Edit, Write, Bash, Glob, Grep)
+  # automatically operate in the worktree. No per-worker "cd" needed.
+
+  print("Entered worktree: {spec_name}")
   print("spec_path (absolute): {spec_path}")
+  print("CONTEXT_DIR (absolute): {CONTEXT_DIR}")
 ELSE:
-  WORK_DIR = "."  # current directory
+  # No worktree — work in current directory
 ```
 
 **Variables forwarded to dev.md / plain.md:**
 - `work_mode`: `"worktree"` | `"branch-commit"` | `"no-commit"`
-- `WORK_DIR`: absolute path to working directory
+- `spec_path`: absolute path (always — worktree mode converts it)
+- `CONTEXT_DIR`: absolute path (always — worktree mode converts it)
 
 ---
 
