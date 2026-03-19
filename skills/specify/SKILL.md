@@ -20,7 +20,7 @@ validate_prompt: |
   Must produce a valid spec.json that passes both hoyeon-cli spec validate and hoyeon-cli spec check.
   spec.json must include: meta.mode, context.research (structured), tasks with acceptance_criteria,
   requirements with scenarios, context.confirmed_goal.
-  Standard mode must include: constraints, meta.non_goals.
+  Standard mode must include: constraints, external_dependencies, meta.non_goals.
   SKILL.md must have exactly 6 sections starting with "## L0:" through "## L5:".
   Output files must be in .dev/specs/{name}/ directory.
 ---
@@ -156,7 +156,8 @@ After `spec init`, classify the task intent internally to guide layer execution:
 | **Bug Fix** | "bug", "error", "broken", "fix" | Reproduce → Root cause → Fix |
 | **Architecture** | "design", "structure", "architecture" | Trade-off analysis |
 | **Research** | "investigate", "analyze", "understand" | Investigation only, NO implementation |
-| **Migration** | "migration", "upgrade", "transition" | Phased approach, rollback plan |
+| **Migration** | "migration", "upgrade", "transition" | Phased approach, rollback plan, infra interview |
+| **Infrastructure** | "infra", "database", "deploy", "server" | Infra interview, pre/post-work, constraints |
 | **Performance** | "performance", "optimize", "slow" | Measure first, profile → optimize |
 
 Do NOT merge intent_classification into spec.json (not in schema).
@@ -341,6 +342,14 @@ Ask about **behavior**, not technology. Frame every question as a concrete situa
 - **Adaptive framing**: Match vocabulary to user's expertise (detected from L1 context and prior answers)
 - User can **skip** any question ("Agent decides") — but track skip rate as friction signal
 - **Internal completeness checklist** (invisible to user): scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior. Ensure coverage across rounds.
+- **Infra-aware questions** (when Intent = Migration | Infrastructure): The standard checklist MUST also cover the items below. These are often missed in behavior-focused interviews but are critical for DB/infra changes:
+  - Downtime tolerance: "서비스 중단 없이 배포 가능해야 하나요?" → constraint seed
+  - Backward compatibility: "기존 API/스키마와 호환성 유지해야 하나요?" → constraint seed
+  - Environment variables / secrets: "새로 필요한 환경변수나 시크릿이 있나요?" → external_dependencies seed
+  - Rollback strategy: "문제 생기면 어떻게 되돌리나요?" → constraint seed + task step
+  - Pre-deployment manual steps: "코드 배포 전에 수동으로 해야 할 게 있나요?" (e.g., DB extension activation, infra provisioning) → external_dependencies.pre_work seed
+  - Post-deployment actions: "배포 후 실행해야 할 스크립트나 확인 사항이 있나요?" → external_dependencies.post_work seed
+  These answers feed into L2.7 (Constraints) and L4.5 (External Dependencies) — capture them as provisional constraints/external_deps in session state.
 
 **Question format — WRONG (abstract):**
 ```
@@ -475,6 +484,41 @@ After the interview completes, run a single agent pass that sees ALL decisions t
 
 > **Quick mode**: L2.5 runs on autopilot-derived decisions/assumptions. All implications auto-confirmed.
 
+#### L2.7: Constraints Derivation (non-interactive)
+
+> **Mode Gate**: Quick — SKIP. No constraints derived.
+
+After L2.5 cross-decision implications, derive constraints from decisions, user statements, and L1 research context.
+
+**Constraints are non-functional guardrails** — things that must NOT be violated during implementation. Unlike requirements (what the system does), constraints define boundaries (what the system must not break).
+
+**Derivation sources:**
+1. **User statements** — explicit constraints from interview (e.g., "기존 로직에 영향가면 안되고" → backward compatibility constraint)
+2. **Decision implications** — each decision may have constraint implications (e.g., "fire-and-forget embedding" → "pipeline must not block on embedding failure")
+3. **L1 research** — infrastructure limits discovered during context scan (e.g., connection pool size, API rate limits, read-only filesystem)
+4. **Intent-based** — Migration/Infrastructure intents auto-derive:
+   - Migration: "migration must be idempotent", "migration must be reversible (down migration path)"
+   - Infrastructure: "no service downtime during deployment", "backward compatible with existing clients"
+5. **Infra interview seeds** — provisional constraints captured during L2 infra-aware interview questions
+
+**Constraint fields** (run `hoyeon-cli spec guide constraints` first):
+```json
+{
+  "id": "C1",
+  "type": "operational|security|compatibility|performance",
+  "rule": "Embedding generation must not block the summarization pipeline",
+  "verified_by": "machine|agent|human",
+  "verify": {"type": "assertion|command", "run|checks": "..."}
+}
+```
+
+**Merge:**
+```bash
+hoyeon-cli spec merge .dev/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.json)"
+```
+
+> If no constraints are derivable (rare for standard mode), merge `"constraints": []` explicitly and note in the L5 summary. An empty constraints section is better than a missing one.
+
 ### L2 Gate
 
 ```bash
@@ -484,7 +528,7 @@ hoyeon-cli spec coverage .dev/specs/{name}/spec.json --layer decisions
 If exit code non-zero → gate failure. Handle per Gate Protocol.
 
 **Quick**: No gate. Auto-advance after L2.5 completes.
-**Standard**: Run coverage check + send decisions (with implications) to gate-keeper via SendMessage. PASS → advance to L3.
+**Standard**: Run coverage check + send decisions (with implications and constraints) to gate-keeper via SendMessage. PASS → advance to L3.
 
 ---
 
@@ -528,19 +572,42 @@ Pass the resolved `context.sandbox_capability` into L3-drafter's SendMessage pro
 
 > **Mode Gate**: Quick → orchestrator derives requirements + scenarios directly (no pingpong, no teammates). Merge and auto-advance.
 
-### Draft-Review Pingpong (standard mode)
+### Draft-Review Pingpong (standard mode) — Direct Communication
 
-The orchestrator mediates a structured conversation between L3-drafter and L3-reviewer.
-**Convergence condition**: L3-reviewer returns `PASS` (gap count = 0).
-**Circuit breaker**: Max 3 rounds. If not converged after 3 rounds, orchestrator escalates remaining gaps to user.
+L3-drafter and L3-reviewer communicate **directly via SendMessage** — the orchestrator does NOT relay messages between them. This prevents context loss and allows natural micro-conversations (e.g., reviewer asks "what did you mean by saves boost?" → drafter clarifies → reviewer accepts).
+
+**Communication flow:**
+1. Orchestrator sends initial prompt to L3-drafter (with goal, decisions, constraints, VERIFICATION.md)
+2. L3-drafter produces draft and sends directly to L3-reviewer via `SendMessage(to="L3-reviewer")`
+3. L3-reviewer reviews and either sends `PASS` to orchestrator or sends `GAPS` directly to L3-drafter
+4. L3-drafter revises and sends back to L3-reviewer
+5. Repeat until convergence or max 3 rounds
+
+**Convergence condition**: L3-reviewer sends `PASS` to orchestrator (gap count = 0).
+**Circuit breaker**: Orchestrator monitors round count. After 3 drafter→reviewer exchanges without PASS, orchestrator intervenes and escalates remaining gaps to user.
+
+> **Key difference from previous design**: Drafter and reviewer can have micro-conversations within a round. Reviewer might ask a clarifying question before sending a formal gap list. This is natural and should NOT be counted as a round.
 
 #### Round 1: Initial Draft
 
+The orchestrator sends the initial prompt to L3-drafter. The drafter's output goes **directly to L3-reviewer**, not back to orchestrator.
+
 ```
 SendMessage(to="L3-drafter", message="
-Derive requirements and scenarios from goal, decisions, and their implications.
+Derive requirements and scenarios from goal, decisions, constraints, and their implications.
+
+IMPORTANT: When you finish your draft, send it DIRECTLY to L3-reviewer via SendMessage(to='L3-reviewer').
+Do NOT send your output back to the orchestrator. The reviewer will review and either:
+- Send GAPS back to you (fix and re-send to reviewer)
+- Send PASS to the orchestrator (you're done)
+You and the reviewer can have micro-conversations (clarifying questions, etc.) — these are natural and expected.
 
 Goal: {confirmed_goal}
+
+Constraints (from L2.7):
+{FOR EACH c in constraints:
+  C{c.id}: [{c.type}] {c.rule}
+}
 
 Decisions with implications:
 {FOR EACH d in context.decisions:
@@ -659,25 +726,28 @@ If user selects "Yes, go back to L2" → merge additional decisions, then re-run
 
 #### Review Loop
 
+After Round 1, the orchestrator waits for the reviewer to send either:
+- `PASS` (to team-lead) — convergence, orchestrator proceeds to merge
+- `GAPS` (to L3-drafter, directly) — drafter revises and re-sends to reviewer
+
+The orchestrator does NOT relay messages. It monitors for the PASS signal.
+
+**Circuit breaker**: The reviewer MUST include a round counter in each gap message
+(e.g., "Round 2/3 gaps:"). After sending round 3 gaps without receiving a satisfactory
+revision, the reviewer sends `ESCALATE` to team-lead instead of another gap list.
+The orchestrator then presents remaining gaps to the user.
+
 ```
-FOR round IN 1..3:
-  IF round == 1:
-    draft = [drafter output from Round 1 above]
-  ELSE:
-    # Send reviewer's gaps back to drafter for revision
-    SendMessage(to="L3-drafter", message="
-    L3-reviewer found these gaps in your draft. Please revise:
-
-    {FOR EACH gap in review.gaps: - {gap.id}: {gap.description} ({gap.category})}
-
-    Revise the affected requirements and scenarios. Output the FULL updated
-    requirements[] array (not just the changed items).")
-
-    draft = [drafter revised output]
-
-  # Send draft to reviewer
-  SendMessage(to="L3-reviewer", message="
+# Orchestrator sends initial prompt to L3-reviewer with the review checklist.
+# The reviewer will receive the draft directly from the drafter (per Round 1 instructions).
+SendMessage(to="L3-reviewer", message="
   Review the following requirements and scenarios for completeness and quality.
+
+  IMPORTANT: Communication protocol:
+  - If you find GAPS: send them DIRECTLY to L3-drafter via SendMessage(to='L3-drafter'). Do NOT go through orchestrator.
+  - If you need clarification from drafter: ask directly via SendMessage(to='L3-drafter').
+  - If PASS (gap count = 0): send the final converged requirements to orchestrator via SendMessage(to='team-lead').
+  - Include the complete, final requirements JSON in your PASS message so the orchestrator can merge.
 
   {draft}
 
@@ -714,41 +784,38 @@ FOR round IN 1..3:
   - Challenge each human scenario: could browser-explorer (screenshot diff), DOM assertion, or docker-based test replace it?
   - Suggest specific H→A/M conversions with concrete verify objects
 
-  ## Output
+  ## Output Protocol (direct communication)
 
-  Return one of:
-  - PASS — all checks satisfied, gap count = 0
-  - GAPS — list of gaps with {id, description, category, affected_requirement}
-  - SUGGESTED_ADDITIONS — behaviors not covered by any requirement (new requirements needed)
+  - **PASS** (gap count = 0): Send the final converged requirements JSON to **team-lead** via SendMessage(to='team-lead'). Include the complete requirements[] array.
+  - **GAPS** (round N/3): Send gap list DIRECTLY to **L3-drafter** via SendMessage(to='L3-drafter'). Include round counter. Drafter will revise and re-send to you.
+  - **ESCALATE** (round 3 exhausted, still gaps): Send remaining gaps to **team-lead** via SendMessage(to='team-lead'). Orchestrator will present to user.
+  - **SUGGESTED_ADDITIONS**: Include in gap message to drafter, or in PASS message to team-lead.
+
+  You may ask the drafter clarifying questions directly — these micro-conversations do NOT count as rounds.
+  A 'round' is: you send GAPS → drafter sends revised draft → you review again.
   ")
-
-  review = [reviewer output]
-
-  IF review.status == "PASS":
-    print("L3 Draft-Review converged in {round} round(s)")
-    BREAK
-
-  # Safety net: if sandbox_capability_unknown gap detected, resolve it before next round
-  IF ANY gap.category == "sandbox_capability_unknown" in review.gaps:
-    Read references/sandbox-guide.md and execute Phase A → B → C inline.
-    Re-inject resolved sandbox_capability into next SendMessage to L3-drafter.
-    round -= 1  # This is a setup step, not a revision round — don't count it
-
-  IF round == 3 AND review.status != "PASS":
-    # Circuit breaker: escalate remaining gaps to user
-    print("L3 Draft-Review did not converge after 3 rounds. Remaining gaps:")
-    FOR EACH gap in review.gaps:
-      print("  - {gap.id}: {gap.description}")
-    AskUserQuestion(
-      question: "L3 pingpong did not fully converge. How should we proceed?",
-      header: "L3 Convergence",
-      options: [
-        { label: "Accept current draft", description: "Proceed with remaining gaps noted" },
-        { label: "I'll fix manually", description: "I'll provide corrections for the gaps" },
-        { label: "Abort", description: "Stop specification process" }
-      ]
-    )
 ```
+
+**Orchestrator waits** for a message from L3-reviewer addressed to team-lead:
+- `PASS` + requirements JSON → proceed to merge
+- `ESCALATE` + remaining gaps → present to user:
+
+```
+# On ESCALATE from reviewer:
+AskUserQuestion(
+  question: "L3 pingpong did not fully converge after 3 rounds. Remaining gaps:\n{gaps}",
+  header: "L3 Convergence",
+  options: [
+    { label: "Accept current draft", description: "Proceed with remaining gaps noted" },
+    { label: "I'll fix manually", description: "I'll provide corrections for the gaps" },
+    { label: "Abort", description: "Stop specification process" }
+  ]
+)
+```
+
+**Safety net**: If reviewer reports `sandbox_capability_unknown` gap, orchestrator intervenes:
+read `references/sandbox-guide.md`, execute Phase A → B → C inline, then send resolved
+capability to both drafter and reviewer. This intervention does not count as a round.
 
 #### Handle suggested_additions
 
@@ -860,6 +927,11 @@ Then call gate-keeper via SendMessage with requirements + scenario summary.
 - Every task: `acceptance_criteria` with `scenarios` (scenario ID refs) + `checks` (runnable commands)
 - Every task: `inputs` listing dependencies from previous tasks (use task output IDs)
 - HIGH risk tasks: include rollback steps in `steps`
+- **Migration/Infrastructure intent tasks**: DB migration tasks MUST include:
+  - Idempotency check (`IF NOT EXISTS`, `IF EXISTS` patterns)
+  - Rollback steps (e.g., "Rollback: DROP COLUMN IF EXISTS embedding")
+  - `risk: "medium"` or `"high"` (never "low" for schema changes)
+  - Corresponding rollback constraint from L2.7 must be referenced
 - Map `research.patterns` → `tasks[].references`
 - Map `research.commands` → `TF.acceptance_criteria.checks` (type: build/lint/static)
 - TF checks MUST always include at minimum: `{type: "build", run: "<build command>"}`. Typecheck and lint are also expected when available.
@@ -919,13 +991,58 @@ hoyeon-cli spec sandbox-tasks .dev/specs/{name}/spec.json
 
 > Requirements were confirmed in L2 (with source fields) and scenarios were generated in L3 by the L3-drafter/L3-reviewer pingpong. Do NOT merge requirements again here.
 
+### L4.5: External Dependencies Derivation (non-interactive)
+
+> **Mode Gate**: Quick — SKIP. No external dependencies derived.
+
+After tasks are merged, scan tasks and decisions for actions that happen **outside of code** — things a human or separate process must do before or after `/execute`.
+
+**Detection heuristics** (scan `tasks[].action`, `tasks[].steps`, `context.decisions[]`):
+
+| Signal | Category | Example |
+|--------|----------|---------|
+| DB extension, migration on managed DB | pre_work | "Enable pgvector on Supabase dashboard" |
+| New environment variable, secret, API key | pre_work | "Add GEMINI_API_KEY to Cloud Run env (Terraform)" |
+| Infrastructure provisioning | pre_work | "Create S3 bucket", "Enable Cloud Run service" |
+| One-time scripts (backfill, data migration) | post_work | "Run backfill-embeddings.ts on production DB" |
+| CLI/tool deprecation | post_work | "Mark tools/content-search as deprecated" |
+| DNS, CDN, or routing changes | pre_work | "Update CDN origin to new endpoint" |
+| Monitoring/alerting setup | post_work | "Add search latency alert to Grafana" |
+
+**Also check:** infra interview seeds from L2 (provisional external_deps in session state).
+
+**External dependencies fields** (run `hoyeon-cli spec guide external` first):
+```json
+{
+  "external_dependencies": {
+    "pre_work": [
+      {"action": "Enable pgvector extension on Supabase", "owner": "human", "blocking": true}
+    ],
+    "post_work": [
+      {"action": "Run backfill script: npx ts-node scripts/backfill-embeddings.ts", "owner": "human", "blocking": false}
+    ]
+  }
+}
+```
+
+**Merge:**
+```bash
+hoyeon-cli spec merge .dev/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.json)"
+```
+
+> If no external dependencies detected, merge `"external_dependencies": {"pre_work": [], "post_work": []}` explicitly. An empty section is better than a missing one.
+
+**Migration/Infrastructure intent auto-derive:**
+- Migration intent → at minimum: pre_work "backup database" (if destructive), post_work "verify migration in production"
+- Infrastructure intent → at minimum: pre_work "verify infrastructure prerequisites"
+
 ### L4 Gate
 
 ```bash
 hoyeon-cli spec coverage .dev/specs/{name}/spec.json --layer tasks
 ```
 
-Then call gate-keeper via SendMessage with tasks + scenario coverage summary + **L4-specific review checklist**:
+Then call gate-keeper via SendMessage with tasks + scenario coverage summary + external dependencies + **L4-specific review checklist**:
 
 ```
 SendMessage(to="gate-keeper", message="
@@ -1040,7 +1157,7 @@ AskUserQuestion(
 > **Mode Gate**: Quick → skip. Proceed directly to Step 6.
 > **⚠️ MANDATORY**: This step MUST run in standard mode. Do NOT skip even if L3 pingpong covered scenarios — L3 checks drafter output quality, L5 checks the MERGED spec.json (which may have drifted during L4 task mapping and coverage fixes). These are different validation scopes.
 
-Run the full AC quality check (max 2 rounds in L3 was L3-scoped; L5 does a final pass with max 5 rounds):
+Run the full AC quality check (max 3 rounds in L3 was L3-scoped; L5 does a final pass with max 5 rounds):
 
 ```
 FOR iteration IN 1..5:
@@ -1159,7 +1276,7 @@ Then ask (interactive only):
 
 ```
 AskUserQuestion(
-  question: "Plan approved. Select the next step.",
+  question: "Review the plan above. Select the next step.",
   options: [
     { label: "/execute", description: "Start implementation immediately" },
     { label: "Revise requirements (L3)", description: "Go back to refine requirements and scenarios" },
@@ -1169,7 +1286,7 @@ AskUserQuestion(
 ```
 
 **On user rejection or selecting revision:**
-- "Revise requirements (L3)" → route back to L3 Step A (with current decisions preserved)
+- "Revise requirements (L3)" → route back to L3 Round 1 (with current decisions preserved)
 - "Revise tasks (L4)" → route back to L4 with reason
 
 **On approval or `/execute`:**
@@ -1194,7 +1311,7 @@ Skill("execute", args="{name}")
 
 ## Quick Mode Flow
 
-Quick mode compresses the layer sequence: L0 → L2 → L3 → L5.
+Quick mode compresses the layer sequence: L0 → L1(minimal) → L2(assumptions) → L2.5(auto) → L3 → L4 → L5(validate only).
 
 | Layer | Quick Behavior |
 |-------|---------------|
@@ -1256,9 +1373,10 @@ No TeamCreate, no SendMessage gates in quick mode. Max 1 plan-reviewer round if 
 - [ ] Gate-keeper defined via spawn prompt (DRIFT/GAP/CONFLICT/BACKTRACK review, read-only)
 - [ ] SendMessage called at each layer gate (L0, L1, L2, L3, L4)
 - [ ] `context.research` is structured object (not string)
-- [ ] AC Quality Gate passed (L3 + L5)
+- [ ] AC Quality Gate passed (L5 Step 5)
 - [ ] `context.decisions[]` populated from interview
-- [ ] `constraints` populated (if applicable)
+- [ ] `constraints` populated (L2.7 — merge empty array explicitly if none apply)
+- [ ] `external_dependencies` populated (L4.5 — merge empty pre_work/post_work explicitly if none apply)
 - [ ] L3 pingpong ran (L3-drafter + L3-reviewer, max 3 rounds)
 - [ ] VERIFICATION.md pre-read and inlined into L3-drafter SendMessage prompt
 - [ ] Sandbox Scenario Fallback Rules applied
@@ -1278,7 +1396,7 @@ No TeamCreate, no SendMessage gates in quick mode. Max 1 plan-reviewer round if 
 
 ### Interactive mode (additional)
 - [ ] User explicitly triggered plan generation ("proceed to planning") — not auto-transitioned
-- [ ] Verification Summary Confirmation presented (L5 Step 6)
+- [ ] Plan Approval Summary presented (L5 Step 6)
 - [ ] All HIGH risk decision_points resolved with user
 
 ### Autopilot mode (overrides)
