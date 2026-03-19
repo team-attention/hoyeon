@@ -559,11 +559,27 @@ Run **before** the draft-review pingpong so L3-drafter knows whether to generate
 
 ```
 IF context.sandbox_capability is NOT set:
-  Read references/sandbox-guide.md and execute Phase A → B → C inline.
-  - Phase A: auto-detect existing infra (silent, no user prompt)
-  - Phase B: no infra → classify project signals → ask user (scaffold requires approval)
-  - Phase C: add T-sandbox-* scaffold tasks → record capability in spec.json
-  After: capability is set — L3-drafter can use it to decide execution_env per scenario.
+  ⚠️ MANDATORY: Read references/sandbox-guide.md — DO NOT skip, approximate, or infer capability.
+  Execute all 3 phases in strict order:
+
+  Phase A — Auto-detect existing infra:
+    Glob for: playwright.config.*, cypress.config.*, docker-compose.*, Dockerfile,
+              *.xcodeproj, *.xcworkspace, electron-builder.yml, tauri.conf.json
+    Check package.json for: @vitest/browser, testcontainers, playwright, cypress
+    IF any detected → record capability from detection evidence → DONE
+
+  Phase B — No infra detected → MUST ask user:
+    Classify project signals: has_ui, has_api, has_db, has_cli, has_native_app, has_desktop_app
+    Build dynamic options based on signals (see sandbox-guide.md for option mapping)
+    MUST call AskUserQuestion — NEVER set capability without user response or Phase A evidence
+
+  Phase C — User approved scaffold:
+    Add T-sandbox-* scaffold tasks → record capability in spec.json
+
+  ⚠️ NEVER set sandbox_capability without EITHER:
+     (a) Phase A detection evidence (specific file paths found), OR
+     (b) Phase B user response (AskUserQuestion result)
+  Setting capability based on general assumptions (e.g., "Docker is available") is FORBIDDEN.
 ```
 
 Pass the resolved `context.sandbox_capability` into L3-drafter's SendMessage prompt so it knows what sandbox environments are available.
@@ -775,8 +791,12 @@ SendMessage(to="L3-reviewer", message="
     → Flag as gap (category: 'sandbox_underuse') — sandbox-capable projects MUST use sandbox for at least some UI/integration scenarios
   - Count execution_env distribution: if 100% host when sandbox is available → GAPS
   - IF `context.sandbox_capability` is NOT set:
-    → Flag as gap (category: 'sandbox_capability_unknown') — should have been resolved before pingpong
+    → Flag as **BLOCKING** gap (category: 'sandbox_capability_unknown') — MUST be resolved before pingpong can pass
     → Safety net: orchestrator must run Sandbox Capability Check (references/sandbox-guide.md) before next round
+  - IF `sandbox_capability.browser == false` AND project has UI signals (*.tsx, *.jsx, *.vue, **/components/**, **/pages/**):
+    → Flag as gap (category: 'browser_sandbox_skipped_for_ui_project')
+    → Require evidence: either Phase A found no browser infra, OR user explicitly declined in Phase B AskUserQuestion
+    → If no evidence of user decision → BLOCKING gap: orchestrator must re-run Phase B of sandbox-guide.md
 
   **Human minimization:**
   - Every verified_by: 'human' scenario MUST have a 'conversion_rejected' justification
@@ -813,9 +833,11 @@ AskUserQuestion(
 )
 ```
 
-**Safety net**: If reviewer reports `sandbox_capability_unknown` gap, orchestrator intervenes:
-read `references/sandbox-guide.md`, execute Phase A → B → C inline, then send resolved
-capability to both drafter and reviewer. This intervention does not count as a round.
+**Safety net**: If reviewer reports a BLOCKING gap (`sandbox_capability_unknown` or `browser_sandbox_skipped_for_ui_project`),
+orchestrator MUST intervene before next round:
+- `sandbox_capability_unknown`: read `references/sandbox-guide.md`, execute Phase A → B → C inline
+- `browser_sandbox_skipped_for_ui_project`: re-run Phase B of sandbox-guide.md (AskUserQuestion with browser option)
+Send resolved capability to both drafter and reviewer. This intervention does not count as a round.
 
 #### Handle suggested_additions
 
@@ -1383,7 +1405,7 @@ No TeamCreate, no SendMessage gates in quick mode. Max 1 plan-reviewer round if 
 - [ ] Human minimization applied (every `verified_by: human` has `conversion_rejected` justification)
 - [ ] Human scenario ratio < 30% (or justified exception)
 - [ ] Sandbox Capability Check completed (auto-detect → scaffold if needed → re-run L3 with capability set)
-- [ ] L3-reviewer checked execution_env diversity (sandbox_underuse / sandbox_capability_unknown gaps)
+- [ ] L3-reviewer checked execution_env diversity (sandbox_underuse / sandbox_capability_unknown / browser_sandbox_skipped_for_ui_project gaps)
 - [ ] If no sandbox infra and project benefits from it: T-sandbox-* scaffold task(s) added to spec
 - [ ] plan-reviewer returned OKAY
 - [ ] `spec coverage` passes (full chain + per-layer at each transition)
