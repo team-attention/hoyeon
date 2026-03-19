@@ -18,6 +18,15 @@
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/cli-version-sync.sh"
+          }
+        ]
+      },
+      {
         "matcher": "compact",
         "hooks": [
           {
