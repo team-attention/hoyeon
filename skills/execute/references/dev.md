@@ -3,8 +3,8 @@
 This file contains all dev-specific execution logic for the `/execute` skill.
 It is loaded when `meta.type == "dev"` (or absent) after Phase 0 completes.
 
-**Prerequisite**: Phase 0 (Find Spec, Get Plan, Init Context, Confirm Pre-work) is already done.
-`spec_path`, `plan`, `CONTEXT_DIR`, and `meta_type` are all established.
+**Prerequisite**: Phase 0 (Find Spec, Get Plan, Init Context, Confirm Pre-work, Work Mode Selection) is already done.
+`spec_path`, `plan`, `CONTEXT_DIR`, `meta_type`, `work_mode`, and `WORK_DIR` are all established.
 
 ---
 
@@ -82,6 +82,12 @@ function should_auto_pass_code_review() → bool:
 
 Create TaskCreate entries for all tasks. **Batch all in one turn.**
 
+### Worktree Note
+
+When `work_mode == "worktree"`, the orchestrator has already called `EnterWorktree` in Phase 0.5.
+Session CWD is inside the worktree — all tools (Read, Edit, Write, Bash, Glob, Grep) automatically
+operate there. No per-worker `cd` is needed. `spec_path` and `CONTEXT_DIR` are absolute paths.
+
 ### Task Creation (Both Modes)
 
 ```
@@ -93,12 +99,16 @@ FOR EACH task in plan (flattened from rounds, excluding done):
   w  = TaskCreate(subject="{task.id}.1:Worker — {task.action}",
                   description=WORKER_DESCRIPTION(task.id),
                   activeForm="{task.id}.1: Running Worker")
-  cm = TaskCreate(subject="{task.id}.2:Commit",
-                  description="Commit {task.id} changes.",
-                  activeForm="{task.id}.2: Committing")
 
-# Finalize tasks
-rc = TaskCreate(subject="Finalize:Residual Commit", ...)
+  # Commit tasks only for worktree and branch-commit modes
+  IF work_mode != "no-commit":
+    cm = TaskCreate(subject="{task.id}.2:Commit",
+                    description="Commit {task.id} changes.",
+                    activeForm="{task.id}.2: Committing")
+
+# Finalize tasks — commit-related steps only when commits are enabled
+IF work_mode != "no-commit":
+  rc = TaskCreate(subject="Finalize:Residual Commit", ...)
 
 # Standard only: Code Review
 IF depth == "standard":
@@ -125,6 +135,7 @@ rp = TaskCreate(subject="Finalize:Report",
 ```
 WORKER_DESCRIPTION(task_id) = """
 You are a Worker agent. Implement task {task_id}.
+Work in the current directory (session CWD — already set to worktree if applicable).
 
 ## Step 1: Read your task spec
 Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
@@ -199,31 +210,54 @@ Only append with ## {task_id} header — do NOT overwrite existing content.
 # TURN 2: Set ALL dependencies in PARALLEL (single message)
 # ═══════════════════════════════════════════════════
 
-# Worker → Commit chain (both modes)
-FOR EACH task:
-  TaskUpdate(taskId=w, addBlocks=[cm])
+IF work_mode != "no-commit":
+  # Worker → Commit chain
+  FOR EACH task:
+    TaskUpdate(taskId=w, addBlocks=[cm])
 
-# Cross-task dependencies (from spec.json depends_on)
-FOR EACH task WHERE task.depends_on is not empty:
-  FOR EACH dep_id in task.depends_on:
-    producer_last = task_ids[dep_id].commit
-    consumer_first = task_ids[task.id].worker
-    TaskUpdate(taskId=producer_last, addBlocks=[consumer_first])
+  # Cross-task dependencies (from spec.json depends_on)
+  FOR EACH task WHERE task.depends_on is not empty:
+    FOR EACH dep_id in task.depends_on:
+      producer_last = task_ids[dep_id].commit
+      consumer_first = task_ids[task.id].worker
+      TaskUpdate(taskId=producer_last, addBlocks=[consumer_first])
 
-# All last steps → Residual Commit
-all_last = [task_ids[T].commit for each T]
-FOR EACH last in all_last:
-  TaskUpdate(taskId=last, addBlocks=[rc])
+  # All last steps → Residual Commit
+  all_last = [task_ids[T].commit for each T]
+  FOR EACH last in all_last:
+    TaskUpdate(taskId=last, addBlocks=[rc])
 
-# Standard finalize chain: Residual Commit → Code Review → Final Verify → Report
-IF depth == "standard":
-  TaskUpdate(taskId=rc, addBlocks=[cr])
-  TaskUpdate(taskId=cr, addBlocks=[fv])
-  TaskUpdate(taskId=fv, addBlocks=[rp])
+  # Standard finalize chain: Residual Commit → Code Review → Final Verify → Report
+  IF depth == "standard":
+    TaskUpdate(taskId=rc, addBlocks=[cr])
+    TaskUpdate(taskId=cr, addBlocks=[fv])
+    TaskUpdate(taskId=fv, addBlocks=[rp])
 
-# Quick finalize chain: Residual Commit → Final Verify → Report
-IF depth == "quick":
-  TaskUpdate(taskId=rc, addBlocks=[fv])
+  # Quick finalize chain: Residual Commit → Final Verify → Report
+  IF depth == "quick":
+    TaskUpdate(taskId=rc, addBlocks=[fv])
+    TaskUpdate(taskId=fv, addBlocks=[rp])
+
+ELSE:  # no-commit mode
+  # Cross-task dependencies: Worker → Worker (no commit in between)
+  FOR EACH task WHERE task.depends_on is not empty:
+    FOR EACH dep_id in task.depends_on:
+      producer_last = task_ids[dep_id].worker
+      consumer_first = task_ids[task.id].worker
+      TaskUpdate(taskId=producer_last, addBlocks=[consumer_first])
+
+  all_last = [task_ids[T].worker for each T]
+
+  IF depth == "standard":
+    # Workers → Code Review → Final Verify → Report
+    FOR EACH last in all_last:
+      TaskUpdate(taskId=last, addBlocks=[cr])
+    TaskUpdate(taskId=cr, addBlocks=[fv])
+  ELSE:
+    # Workers → Final Verify → Report (quick, no code review)
+    FOR EACH last in all_last:
+      TaskUpdate(taskId=last, addBlocks=[fv])
+
   TaskUpdate(taskId=fv, addBlocks=[rp])
 ```
 
@@ -236,6 +270,31 @@ IF depth == "quick":
 > **Compaction recovery**: `session-compact-hook.sh` re-injects skill name + state.json path.
 > Read state.json to get spec_path, then use `hoyeon-cli spec plan` to rebuild task state.
 > Workers self-read task details via `hoyeon-cli spec task <id> --get` and context files.
+
+### Sandbox Task Dispatch
+
+**T_SANDBOX and T_SV* tasks are regular tasks — dispatch them as normal workers.**
+Do NOT defer, skip, or mark them done without execution. The worker description already
+contains instructions for handling sandbox scenarios (T_SV prefix check).
+
+Before dispatching T_SANDBOX, verify sandbox capability:
+
+```
+IF plan contains tasks with ID starting with "T_SANDBOX" or "T_SV":
+  capability = spec.context.sandbox_capability
+  IF capability is null or capability.detected != true:
+    print("WARNING: Sandbox tasks exist but no sandbox_capability detected. Skipping sandbox tasks.")
+    FOR EACH sandbox_task in plan WHERE id starts with "T_SANDBOX" or "T_SV":
+      Bash("hoyeon-cli spec task {sandbox_task.id} --status done --summary 'Skipped — no sandbox capability' {spec_path}")
+      TaskUpdate(taskId=sandbox_task.tracking_id, status="completed")
+  ELSE:
+    # Sandbox capability confirmed — T_SANDBOX and T_SV tasks will be dispatched
+    # normally through the execute loop below. Dependencies handle ordering:
+    # T_SV* depends_on T_SANDBOX, so T_SANDBOX runs first automatically.
+    print("Sandbox capability confirmed: tools={capability.tools}")
+```
+
+### Execute Loop
 
 ```
 WHILE TaskList() has pending tasks:
@@ -395,10 +454,13 @@ ELIF result.status == "FAILED":
 
 ### 1b. :Commit — Per-Task Commit
 
+> **Skipped entirely when `work_mode == "no-commit"`** — no :Commit tasks exist in the DAG.
+
 ```
 # task_action comes from TaskGet(task.id).subject (e.g., "T1.2:Commit" → parent "T1.1:Worker — Project init")
 # Or parse from the Worker TaskCreate subject which includes the action text.
 
+# git-master operates in session CWD (already in worktree if applicable)
 Agent(
   subagent_type="git-master",
   description="Commit: {task_id}",
@@ -425,11 +487,16 @@ After all task rounds complete, run finalize steps in order.
 
 ### 2a. :Residual Commit
 
+> **Skipped entirely when `work_mode == "no-commit"`** — no `rc` task exists in the DAG.
+
 ```bash
-git_status = Bash("git status --porcelain")
-IF git_status is not empty:
-  Agent(subagent_type="git-master", prompt="Commit remaining changes from spec: {spec.meta.goal}")
-TaskUpdate(taskId=rc, status="completed")
+IF work_mode == "no-commit":
+  # Skip — no residual commit task exists
+ELSE:
+  git_status = Bash("git status --porcelain")
+  IF git_status is not empty:
+    Agent(subagent_type="git-master", prompt="Commit remaining changes from spec: {spec.meta.goal}")
+  TaskUpdate(taskId=rc, status="completed")
 ```
 
 ### 2b. :Code Review (Standard Only)
@@ -591,6 +658,7 @@ print("""
 SPEC: {spec_path}
 GOAL: {spec.meta.goal}
 MODE: {depth}
+WORK: {work_mode}{IF work_mode == "worktree": " ({WORK_DIR}, branch: {branch_name})"}
 
 ───────────────────────────────────────────────────
 TASKS
@@ -694,6 +762,9 @@ Details: {summary}
 10. **must_not_do checked at FV only** — Workers self-certify must_not_do compliance. Final Verify is the sole independent check for must_not_do violations (no per-task independent verification)
 11. **Adaptation updates spec.json** — new tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on, re-plan automatically)
 12. **Background for parallel** — use `run_in_background: true` for round-parallel workers
+13. **work_mode governs git behavior** — `worktree`: uses `EnterWorktree` to switch session CWD into an isolated worktree (all tools automatically operate there); `branch-commit`: current branch with per-task commits; `no-commit`: current branch, no commits at all (no :Commit tasks, no Residual Commit)
+14. **Worktree = session CWD switch** — `EnterWorktree` changes the session's working directory. All tools (Read, Edit, Write, Bash, Glob, Grep) automatically operate in the worktree. No per-worker `cd` needed. `spec_path` and `CONTEXT_DIR` are converted to absolute paths before entering.
+15. **Sandbox tasks are regular tasks** — T_SANDBOX and T_SV* tasks MUST be dispatched as normal workers when `sandbox_capability.detected == true`. Never defer or skip them without checking capability. Dependencies handle execution order (T_SV* depends_on T_SANDBOX).
 
 ---
 

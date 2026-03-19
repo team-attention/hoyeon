@@ -8725,6 +8725,25 @@ var dev_spec_v5_schema_default = {
               }
             }
           }
+        },
+        sandbox_capability: {
+          type: "object",
+          description: "Available sandbox environments for testing. Set by L3 Sandbox Capability Check.",
+          additionalProperties: false,
+          properties: {
+            docker: { type: "boolean", description: "Docker/containers available for DB/API integration tests" },
+            browser: { type: "boolean", description: "Browser automation (Playwright/Cypress/chromux) available" },
+            simulator: { type: "boolean", description: "iOS Simulator or Android Emulator available" },
+            desktop: { type: "boolean", description: "Desktop app automation (macos-automator-mcp) available" },
+            tools: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of detected tool names (e.g., 'playwright', 'docker', 'xcrun simctl')"
+            },
+            confirmed_at: { type: "string", description: "ISO date when capability was confirmed" },
+            detected: { type: "boolean", description: "True if auto-detected from project files" },
+            scaffold_required: { type: "boolean", description: "True if T-sandbox-* scaffold tasks are needed" }
+          }
         }
       }
     },

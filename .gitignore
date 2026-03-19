@@ -1,3 +1,4 @@
 .playground*
 .references
 .dev/*
+.worktrees

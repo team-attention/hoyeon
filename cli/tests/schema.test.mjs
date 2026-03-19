@@ -229,8 +229,69 @@ test('nested scenario missing required given/when/then fields fails validation',
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test 10: requirement.source.ref must be a string (type validation)
+// Test 10: sandbox_capability in context passes validation
 // ─────────────────────────────────────────────────────────────────────────────
+test('context.sandbox_capability with all fields passes validation', () => {
+  const spec = makeV5({
+    context: {
+      request: 'Build iOS app',
+      sandbox_capability: {
+        docker: false,
+        browser: false,
+        simulator: true,
+        desktop: true,
+        tools: ['xcrun simctl', 'macos-automator-mcp'],
+        confirmed_at: '2026-03-19',
+        detected: true,
+        scaffold_required: false,
+      },
+    },
+  });
+  const validate = buildValidator(v5Schema);
+  const valid = validate(spec);
+  assert.equal(valid, true, `Validation errors: ${JSON.stringify(validate.errors)}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 11: sandbox_capability with only partial fields passes (all optional)
+// ─────────────────────────────────────────────────────────────────────────────
+test('context.sandbox_capability with partial fields passes validation', () => {
+  const spec = makeV5({
+    context: {
+      sandbox_capability: {
+        docker: true,
+        browser: true,
+        confirmed_at: '2026-03-19',
+      },
+    },
+  });
+  const validate = buildValidator(v5Schema);
+  const valid = validate(spec);
+  assert.equal(valid, true, `Validation errors: ${JSON.stringify(validate.errors)}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 12: sandbox_capability rejects unknown fields (additionalProperties: false)
+// ─────────────────────────────────────────────────────────────────────────────
+test('context.sandbox_capability rejects unknown fields', () => {
+  const spec = makeV5({
+    context: {
+      sandbox_capability: {
+        docker: true,
+        unknown_sandbox_field: 'oops',
+      },
+    },
+  });
+  const validate = buildValidator(v5Schema);
+  const valid = validate(spec);
+  assert.equal(valid, false, 'Expected validation to reject unknown sandbox_capability field');
+  assert.ok(validate.errors.some((e) => e.keyword === 'additionalProperties'));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 13: requirement.source.ref must be a string (type validation)
+// ─────────────────────────────────────────────────────────────────────────────
+// (renumbered from Test 10)
 test('requirement.source.ref must be a string (integer rejected)', () => {
   const spec = makeV5({
     requirements: [
