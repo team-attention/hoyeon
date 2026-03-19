@@ -556,6 +556,28 @@ hoyeon-cli spec merge .dev/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.
 
 > If no constraints are derivable (rare for standard mode), merge `"constraints": []` explicitly and note in the L5 summary. An empty constraints section is better than a missing one.
 
+### L2 User Approval (mandatory before gate)
+
+Before running the gate, present ALL decisions to the user for explicit approval:
+
+```
+AskUserQuestion(
+  question: "L2 decisions are ready. Please review and approve before proceeding:\n\n{FOR EACH d in decisions: D{d.id}: {d.decision}\n}{FOR EACH c in constraints: C{c.id}: [{c.type}] {c.rule}\n}",
+  header: "L2 Decision Approval",
+  options: [
+    { label: "Approve all", description: "Decisions look good — proceed to L3" },
+    { label: "Revise", description: "I want to change or add decisions" },
+    { label: "Abort", description: "Stop specification process" }
+  ]
+)
+```
+
+- **Approve all** → proceed to L2 Gate
+- **Revise** → user provides corrections, orchestrator merges changes, re-present for approval (loop until approved)
+- **Abort** → stop
+
+> This approval is **mandatory** — even in autopilot mode, L2 decisions MUST be user-approved before gate-keeper runs. Decisions are the foundation for all downstream layers.
+
 ### L2 Gate
 
 ```bash
@@ -981,6 +1003,28 @@ IF sandbox_scenarios is non-empty:
 2. Construct JSON with `requirements[]` — each requirement has: id, behavior, priority, source, scenarios[]
 3. Each scenario has: id, category, given, when, then, verified_by, execution_env, verify (type-specific object)
 4. Merge via `hoyeon-cli spec merge .dev/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.json)"`
+
+### L3 User Approval (mandatory before gate)
+
+Before running the gate, present ALL requirements to the user for explicit approval:
+
+```
+AskUserQuestion(
+  question: "L3 requirements are ready. Please review:\n\n{FOR EACH r in requirements: R{r.id} [{r.priority}]: {r.behavior} (scenarios: {r.scenarios.length})\n}",
+  header: "L3 Requirements Approval",
+  options: [
+    { label: "Approve all", description: "Requirements look good — proceed to L4" },
+    { label: "Revise", description: "I want to change, add, or remove requirements" },
+    { label: "Abort", description: "Stop specification process" }
+  ]
+)
+```
+
+- **Approve all** → proceed to L3 Gate
+- **Revise** → user provides corrections, orchestrator re-runs workshop (or merges changes directly), re-present for approval (loop until approved)
+- **Abort** → stop
+
+> This approval is **mandatory** — even in autopilot mode, L3 requirements MUST be user-approved before gate-keeper runs. Requirements are what gets built — wrong requirements = wrong implementation.
 
 ### L3 Gate
 
