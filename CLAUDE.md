@@ -61,6 +61,7 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 
 | Script | Type | Purpose |
 |--------|------|---------|
+| `cli-version-sync.sh` | SessionStart | Auto-sync hoyeon-cli npm version with plugin version |
 | `session-compact-hook.sh` | SessionStart | Unified compact recovery — outputs skill name + state.json path |
 | `ultrawork-init-hook.sh` | UserPromptSubmit | Initialize ultrawork pipeline state when `/ultrawork` is typed |
 | `skill-session-init.sh` | UserPromptSubmit + PreToolUse[Skill] | Initialize session state for specify/execute skills |

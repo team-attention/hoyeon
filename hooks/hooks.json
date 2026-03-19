@@ -2,6 +2,15 @@
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/cli-version-sync.sh"
+          }
+        ]
+      },
+      {
         "matcher": "compact",
         "hooks": [
           {
