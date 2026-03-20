@@ -295,33 +295,48 @@ AskUserQuestion(
 
 #### Decision Completeness Audit (triggered by "Challenge")
 
-When the user selects "Challenge", the orchestrator self-audits the current decision set against these lenses:
+When the user selects "Challenge", the orchestrator self-audits the current decision set across **two axes**:
 
-1. **Completeness checklist gap scan** — compare decisions against the internal completeness checklist (scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior). Flag uncovered categories.
-2. **Implication chain walk** — for each existing decision, ask: "What else does this force us to decide?" Look for downstream decisions that were implicitly assumed but never explicitly made.
-3. **Failure mode scan** — for each decision, ask: "What happens when this goes wrong?" If the failure behavior was never decided, surface it.
-4. **Cross-decision tension check** — look for pairs of decisions that could conflict or create ambiguity when combined. Surface any unresolved tensions.
+##### Axis 1: Breadth — "What other categories of decisions are missing entirely?"
 
-**Output format** — present findings as a numbered list of proposed additional decisions:
+Decisions have orthogonal categories. A decision about data storage says nothing about error handling. The breadth axis finds categories with zero coverage.
+
+1. **Category gap scan** — compare decisions against the internal completeness checklist (scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior). Flag categories with **no decisions at all**.
+2. **Stakeholder/actor scan** — who interacts with the system? For each actor (end user, admin, external API, background job, etc.), is there at least one decision about their experience? Flag missing actors.
+3. **Lifecycle phase scan** — decisions often cluster around the "happy runtime" phase. Check: is there a decision for initial setup/onboarding? For error recovery? For data migration/cleanup? For scaling? Flag unaddressed lifecycle phases.
+
+##### Axis 2: Depth — "Which existing decisions need to go one level deeper?"
+
+Each decision has downstream implications that may themselves require decisions. The depth axis follows these chains.
+
+4. **Implication chain walk** — for each existing decision, ask: "What else does this force us to decide?" Look for downstream decisions that were implicitly assumed but never explicitly made.
+5. **Failure mode scan** — for each decision, ask: "What happens when this goes wrong?" If the failure behavior was never decided, surface it.
+6. **Configuration/variation scan** — for each decision, ask: "Does this behave differently in different contexts?" (e.g., mobile vs desktop, first-time vs returning user, empty state vs full state). Flag unaddressed variations.
+
+##### Cross-axis check
+
+7. **Cross-decision tension check** — look for pairs of decisions (including newly proposed ones) that could conflict or create ambiguity when combined. Surface any unresolved tensions.
+
+**Output format** — present findings grouped by axis:
 
 ```markdown
 ## Challenge Results — {N} potential gaps found
 
-### Uncovered Categories
+### Breadth Gaps (missing decision categories)
 - Error handling: No decision on what happens when [X] fails
 - Performance: No decision on pagination/caching strategy
+- Actor gap: No decisions about admin/operator experience
 
-### Downstream Decisions (implied but not explicit)
+### Depth Gaps (existing decisions need deeper choices)
 - D1 implies [Y], but we never decided [Z]
-
-### Failure Modes
-- If D2 fails, what's the fallback? (not addressed)
+- D2: what's the fallback when this fails? (not addressed)
+- D3: behaves differently on mobile vs desktop? (not addressed)
 
 ### Tensions
 - D1 + D3 may conflict when [scenario] — needs resolution
 ```
 
-Then auto-generate scenario questions for the top gaps (max 3) and run a mini interview round. After the user answers, merge new decisions and re-present for approval.
+Then auto-generate scenario questions for the top gaps — **prioritize breadth gaps first** (a missing category is a bigger blind spot than a missing sub-decision), then depth gaps. Max 3 questions per challenge round. After the user answers, merge new decisions and re-present for approval.
 
 > **Circuit breaker**: Challenge can be selected at most **2 times** per L2 cycle. After 2 rounds, only Approve/Revise/Abort remain. This prevents infinite loops while allowing meaningful depth.
 
