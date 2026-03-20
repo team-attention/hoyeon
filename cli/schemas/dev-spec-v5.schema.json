@@ -134,6 +134,11 @@
           "enum": ["host", "sandbox", "ci"],
           "description": "WHERE verification runs: host=local, sandbox=docker/container, ci=CI pipeline"
         },
+        "subject": {
+          "type": "string",
+          "enum": ["web", "server", "cli", "database"],
+          "description": "WHAT is being verified: the system component under test. Required when execution_env is sandbox."
+        },
         "verify": { "$ref": "#/$defs/verify" },
         "status": {
           "type": "string",
@@ -182,6 +187,15 @@
             "properties": {
               "verify": { "$ref": "#/$defs/verifyInstruction" }
             }
+          }
+        },
+        {
+          "if": {
+            "properties": { "execution_env": { "const": "sandbox" } },
+            "required": ["execution_env"]
+          },
+          "then": {
+            "required": ["subject"]
           }
         }
       ]

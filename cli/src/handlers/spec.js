@@ -372,6 +372,56 @@ function loadSpec(filePath) {
 }
 
 /**
+ * Build verify_plan array for a task by mapping its AC scenarios to verify entries.
+ */
+function buildVerifyPlan(task, spec) {
+  const scenarioIds = (task.acceptance_criteria && task.acceptance_criteria.scenarios) || [];
+  if (scenarioIds.length === 0) return [];
+
+  // Build a flat lookup: scenario id → scenario object
+  const scenarioMap = new Map();
+  for (const req of (spec.requirements || [])) {
+    for (const s of (req.scenarios || [])) {
+      scenarioMap.set(s.id, s);
+    }
+  }
+
+  return scenarioIds.map(sid => {
+    const s = scenarioMap.get(sid);
+    if (!s) return { scenario: sid, method: 'unknown', env: 'host' };
+
+    const env = s.execution_env || 'host';
+    const method = s.verified_by;
+
+    const entry = {
+      scenario: s.id,
+      method,
+      env,
+    };
+
+    if (method === 'machine' && s.verify) {
+      entry.run = s.verify.run;
+      if (s.verify.expect !== undefined) entry.expect = s.verify.expect;
+    }
+
+    if (method === 'agent' && env !== 'sandbox' && s.verify) {
+      entry.checks = s.verify.checks;
+    }
+
+    if (env === 'sandbox') {
+      entry.subject = s.subject;
+      entry.recipe = `${s.subject}.md`;
+    }
+
+    if (method === 'human') {
+      entry.action = 'skip';
+    }
+
+    return entry;
+  });
+}
+
+/**
  * Build execution plan from spec.json tasks using topological sort.
  * Groups tasks into parallel rounds based on depends_on.
  */
@@ -592,6 +642,7 @@ function formatJson(spec, rounds, criticalPath) {
           depends_on: t.depends_on || [],
           steps: t.steps || [],
           file_scope: t.file_scope || [],
+          verify_plan: buildVerifyPlan(t, spec),
         };
       }),
     })),
@@ -621,6 +672,7 @@ function formatSlim(spec, rounds, criticalPath) {
           depends_on: t.depends_on || [],
           ...(t.tool ? { tool: t.tool } : {}),
           ...(t.args ? { args: t.args } : {}),
+          verify_plan: buildVerifyPlan(t, spec),
         };
       }),
     })),
@@ -1327,7 +1379,17 @@ function generateGuide(section) {
     return `Error: schema definition '${info.ref}' not found.`;
   }
 
-  return formatDef(section, def, defs, info.isArray);
+  let output = formatDef(section, def, defs, info.isArray);
+
+  // Append conditional requirement notes for scenario
+  if (section === 'scenario') {
+    output += '\n';
+    output += '\n  notes:';
+    output += '\n    subject: conditionally required when execution_env is sandbox';
+    output += '\n             enum(web|server|cli|database) — identifies which system under test';
+  }
+
+  return output;
 }
 
 function formatRoot(schema) {

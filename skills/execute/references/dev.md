@@ -92,6 +92,30 @@ operate there. No per-worker `cd` is needed. `spec_path` and `CONTEXT_DIR` are a
 
 ```
 # ═══════════════════════════════════════════════════
+# PRE-STEP: Build verify descriptions from CLI plan output
+# ═══════════════════════════════════════════════════
+
+# plan_json already has verify_plan per task (from Phase 0.2 formatSlim)
+# For each task with sandbox entries in verify_plan, read recipe files
+
+FOR EACH task in plan (flattened):
+  task_verify_plan = task.verify_plan  # from formatSlim output
+
+  # Collect sandbox recipes to inline
+  sandbox_subjects = unique(task_verify_plan.filter(e => e.env == "sandbox").map(e => e.subject))
+  sandbox_recipes = ""
+  FOR EACH subject in sandbox_subjects:
+    recipe_content = Read("${baseDir}/references/verify-recipes/{subject}.md")
+    sandbox_recipes += "### Recipe: {subject}\n{recipe_content}\n\n"
+
+  # Build description
+  verify_description[task.id] = VERIFIER_DESCRIPTION(
+    task.id,
+    JSON.stringify(task_verify_plan, null, 2),
+    sandbox_recipes || "None — no sandbox scenarios for this task."
+  )
+
+# ═══════════════════════════════════════════════════
 # TURN 1: Create ALL tasks in PARALLEL (single message)
 # ═══════════════════════════════════════════════════
 
@@ -99,9 +123,12 @@ FOR EACH task in plan (flattened from rounds, excluding done):
   w  = TaskCreate(subject="{task.id}.1:Worker — {task.action}",
                   description=WORKER_DESCRIPTION(task.id),
                   activeForm="{task.id}.1: Running Worker")
-  v  = TaskCreate(subject="{task.id}.V:Verify",
-                  description=VERIFIER_DESCRIPTION(task.id),
-                  activeForm="{task.id}.V: Verifying scenarios")
+
+  # Skip Verify for verification-type tasks (they ARE verification — no need to verify the verifier)
+  IF task.type != "verification":
+    v  = TaskCreate(subject="{task.id}.V:Verify",
+                    description=verify_description[task.id],
+                    activeForm="{task.id}.V: Verifying scenarios")
 
   # Commit tasks only for worktree and branch-commit modes
   IF work_mode != "no-commit":
@@ -215,55 +242,32 @@ Only append issues with ## {task_id} header — do NOT overwrite existing conten
 ### Verifier Description Template
 
 ```
-VERIFIER_DESCRIPTION(task_id) = """
-You are an independent Verifier agent. Verify task {task_id} scenarios.
+VERIFIER_DESCRIPTION(task_id, verify_plan_json, sandbox_recipes) = """
+You are an independent Verifier agent. Verify task {task_id}.
 You did NOT write this code — verify it objectively.
-Work in the current directory (session CWD — already set to worktree if applicable).
+Work in the current directory (session CWD).
 
-## Step 1: Read your task's scenarios
-Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
-Extract `acceptance_criteria.scenarios[]` — these are scenario IDs.
+## Your Verify Plan
 
-## Step 2: Lookup each scenario
-Read the spec file at {spec_path}. Find each scenario ID in `requirements[].scenarios[]`.
-For each scenario, note: given, when, then, verified_by, execution_env, verify.
+{verify_plan_json}
 
-## Step 3: Verify each scenario
+## Sandbox Recipes (if any)
 
-FOR EACH scenario:
-  IF verified_by == "machine" AND execution_env != "sandbox":
-    Run the command in verify.run
-    Check against verify.expect (exit_code, stdout_contains, stderr_empty)
-    Record: `hoyeon-cli spec requirement {scenario.id} --status pass|fail --task {task_id} {spec_path}`
+{sandbox_recipes}
 
-  IF verified_by == "agent" AND execution_env != "sandbox":
-    Read relevant source code (find files yourself — do NOT assume file paths)
-    Independently assess each item in verify.checks[]
-    Each check must be conclusively true or false — no assumptions
-    Record: `hoyeon-cli spec requirement {scenario.id} --status pass|fail --task {task_id} {spec_path}`
+## Execution
 
-  IF verified_by == "agent" AND execution_env == "sandbox":
-    Execute sandbox verification (browser test, docker, screenshot as appropriate)
-    Record result via spec requirement command
+Follow the verify_plan entries top-to-bottom.
+For each entry, use the execution rules from your agent system prompt (machine/agent/sandbox/human).
 
-  IF verified_by == "human":
-    Skip — record as pending: `hoyeon-cli spec requirement {scenario.id} --status pending --task {task_id} {spec_path}`
-
-## Step 4: Read context files
-Read: {CONTEXT_DIR}/learnings.json — structured learnings from previous workers (if exists)
-Read: {CONTEXT_DIR}/learnings.md — legacy learnings (if exists, and learnings.json absent)
+Record each result:
+  hoyeon-cli spec requirement {entry.scenario} --status pass|fail|pending --task {task_id} {spec_path}
 
 ## Output (print as last message)
 {"status": "VERIFIED"|"FAILED",
- "scenarios": [
-   {"id": "R1-S1", "status": "pass|fail|pending", "evidence": "what was checked and result"}
- ],
+ "scenarios": [{"id": "...", "method": "...", "status": "pass|fail|pending", "evidence": "..."}],
  "failed_count": 0,
  "pending_human_count": 0}
-
-### Status meanings:
-- **VERIFIED**: All non-human scenarios passed.
-- **FAILED**: One or more scenarios failed. Include evidence for each failure.
 """
 ```
 
@@ -275,10 +279,13 @@ Read: {CONTEXT_DIR}/learnings.md — legacy learnings (if exists, and learnings.
 # ═══════════════════════════════════════════════════
 
 IF work_mode != "no-commit":
-  # Worker → Verify → Commit chain
+  # Worker → Verify → Commit chain (verification-type tasks: Worker → Commit directly, no Verify)
   FOR EACH task:
-    TaskUpdate(taskId=w, addBlocks=[v])
-    TaskUpdate(taskId=v, addBlocks=[cm])
+    IF task.type == "verification":
+      TaskUpdate(taskId=w, addBlocks=[cm])
+    ELSE:
+      TaskUpdate(taskId=w, addBlocks=[v])
+      TaskUpdate(taskId=v, addBlocks=[cm])
 
   # Cross-task dependencies (from spec.json depends_on)
   FOR EACH task WHERE task.depends_on is not empty:
@@ -305,25 +312,36 @@ IF work_mode != "no-commit":
 
 ELSE:  # no-commit mode
   # Worker → Verify chain (no commit)
+  # Verification-type tasks: Worker is the last step (no Verify)
   FOR EACH task:
-    TaskUpdate(taskId=w, addBlocks=[v])
+    IF task.type != "verification":
+      TaskUpdate(taskId=w, addBlocks=[v])
 
-  # Cross-task dependencies: Verify → next Worker
+  # Cross-task dependencies: last step → next Worker
+  # For verification-type tasks, Worker is the last step (no Verify)
   FOR EACH task WHERE task.depends_on is not empty:
     FOR EACH dep_id in task.depends_on:
-      producer_last = task_ids[dep_id].verify
+      IF task_ids[dep_id].type == "verification":
+        producer_last = task_ids[dep_id].worker
+      ELSE:
+        producer_last = task_ids[dep_id].verify
       consumer_first = task_ids[task.id].worker
       TaskUpdate(taskId=producer_last, addBlocks=[consumer_first])
 
-  all_last = [task_ids[T].verify for each T]
+  # For finalize chain: last step per task is Verify (non-verification) or Worker (verification)
+  all_last = [
+    task_ids[T].verify IF task_ids[T].type != "verification"
+    ELSE task_ids[T].worker
+    for each T
+  ]
 
   IF depth == "standard":
-    # Verifiers → Code Review → Final Verify → Report
+    # Last steps → Code Review → Final Verify → Report
     FOR EACH last in all_last:
       TaskUpdate(taskId=last, addBlocks=[cr])
     TaskUpdate(taskId=cr, addBlocks=[fv])
   ELSE:
-    # Verifiers → Final Verify → Report (quick, no code review)
+    # Last steps → Final Verify → Report (quick, no code review)
     FOR EACH last in all_last:
       TaskUpdate(taskId=last, addBlocks=[fv])
 
@@ -529,7 +547,7 @@ ELIF result.status == "FAILED":
 
 ```
 Agent(
-  subagent_type="worker",
+  subagent_type="verifier",
   description="Verify: {task_id}",
   prompt=TaskGet(task.id).description,
   run_in_background=true  # if parallel round
@@ -570,10 +588,10 @@ ELIF result.status == "FAILED":
 
   # Re-dispatch Verifier (fresh context)
   v_retry = TaskCreate(subject="{task_id}.V.{verify_attempt}:Verify — retry",
-       description=VERIFIER_DESCRIPTION(task_id),
+       description=verify_description[task_id],
        activeForm="{task_id}: Re-verifying (attempt {verify_attempt})")
   TaskUpdate(taskId=v_retry, status="in_progress")
-  result = Agent(subagent_type="worker", description="Re-verify: {task_id}",
+  result = Agent(subagent_type="verifier", description="Re-verify: {task_id}",
                  prompt=TaskGet(v_retry).description)
   # Handle result recursively (same VERIFIED/FAILED logic)
 ```
