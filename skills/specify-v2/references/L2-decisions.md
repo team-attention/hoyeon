@@ -282,6 +282,7 @@ AskUserQuestion(
   options: [
     { label: "Approve all", description: "Decisions look good — proceed to L3" },
     { label: "Revise", description: "I want to change or add decisions" },
+    { label: "Challenge", description: "Think harder — what decisions are we missing?" },
     { label: "Abort", description: "Stop specification process" }
   ]
 )
@@ -289,7 +290,40 @@ AskUserQuestion(
 
 - **Approve all** → proceed to L2 Gate
 - **Revise** → user provides corrections, orchestrator merges changes, re-present for approval (loop until approved)
+- **Challenge** → orchestrator runs Decision Completeness Audit (see below), proposes additional decisions, re-present for approval
 - **Abort** → stop
+
+#### Decision Completeness Audit (triggered by "Challenge")
+
+When the user selects "Challenge", the orchestrator self-audits the current decision set against these lenses:
+
+1. **Completeness checklist gap scan** — compare decisions against the internal completeness checklist (scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior). Flag uncovered categories.
+2. **Implication chain walk** — for each existing decision, ask: "What else does this force us to decide?" Look for downstream decisions that were implicitly assumed but never explicitly made.
+3. **Failure mode scan** — for each decision, ask: "What happens when this goes wrong?" If the failure behavior was never decided, surface it.
+4. **Cross-decision tension check** — look for pairs of decisions that could conflict or create ambiguity when combined. Surface any unresolved tensions.
+
+**Output format** — present findings as a numbered list of proposed additional decisions:
+
+```markdown
+## Challenge Results — {N} potential gaps found
+
+### Uncovered Categories
+- Error handling: No decision on what happens when [X] fails
+- Performance: No decision on pagination/caching strategy
+
+### Downstream Decisions (implied but not explicit)
+- D1 implies [Y], but we never decided [Z]
+
+### Failure Modes
+- If D2 fails, what's the fallback? (not addressed)
+
+### Tensions
+- D1 + D3 may conflict when [scenario] — needs resolution
+```
+
+Then auto-generate scenario questions for the top gaps (max 3) and run a mini interview round. After the user answers, merge new decisions and re-present for approval.
+
+> **Circuit breaker**: Challenge can be selected at most **2 times** per L2 cycle. After 2 rounds, only Approve/Revise/Abort remain. This prevents infinite loops while allowing meaningful depth.
 
 > This approval is **mandatory** — even in autopilot mode, L2 decisions MUST be user-approved before gate-keeper runs. Decisions are the foundation for all downstream layers.
 

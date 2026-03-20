@@ -189,6 +189,22 @@ Each scenario MUST include:
 - execution_env: 'host' | 'sandbox' | 'ci'
 - verify: object matching verified_by type
 
+### Sandbox Scenario Subject Classification
+
+When creating scenarios with `execution_env: "sandbox"`, you MUST include a `subject` field.
+Classify based on what the scenario verifies:
+
+| Signal in scenario | subject |
+|-------------------|---------|
+| Browser, UI, page, click, render, visual, CSS, DOM | `"web"` |
+| API, endpoint, HTTP, REST, GraphQL, request, response, status code | `"server"` |
+| Command, CLI, terminal, argv, flag, stdout, stderr, exit code | `"cli"` |
+| Database, query, SQL, table, row, record, migration, schema | `"database"` |
+
+The subject determines which verification recipe the Verifier agent will follow.
+
+> `subject` is ONLY required when `execution_env: "sandbox"`. Do NOT add it to host or ci scenarios.
+
 ## verify Abstraction Rules (MANDATORY)
 
 verify describes OBSERVABLE BEHAVIOR, not implementation details.
@@ -472,6 +488,17 @@ cat > /tmp/spec-merge.json << 'EOF'
           "verified_by": "machine",
           "execution_env": "host",
           "verify": {"type": "command", "run": "npm test -- --grep R1-S1"}
+        },
+        {
+          "id": "R1-S2",
+          "category": "HP",
+          "given": "precondition",
+          "when": "action in browser",
+          "then": "expected UI result",
+          "verified_by": "machine",
+          "execution_env": "sandbox",
+          "subject": "web",
+          "verify": {"type": "command", "run": "npx playwright test --grep R1-S2"}
         }
       ]
     }
@@ -499,6 +526,7 @@ AskUserQuestion(
   options: [
     { label: "Approve all", description: "Requirements look good — proceed to L4" },
     { label: "Revise", description: "I want to change, add, or remove requirements" },
+    { label: "Challenge", description: "Think harder — what requirements are we missing?" },
     { label: "Abort", description: "Stop specification process" }
   ]
 )
@@ -506,7 +534,44 @@ AskUserQuestion(
 
 - **Approve all** → proceed to L3 Gate
 - **Revise** → user provides corrections, orchestrator re-runs workshop (or merges changes directly), re-present for approval (loop until approved)
+- **Challenge** → orchestrator runs Requirements Completeness Audit (see below), proposes additional requirements, re-present for approval
 - **Abort** → stop
+
+#### Requirements Completeness Audit (triggered by "Challenge")
+
+When the user selects "Challenge", the orchestrator self-audits the current requirement set:
+
+1. **Decision coverage check** — for each L2 decision, verify at least one requirement traces back to it. Flag orphan decisions (decided but never specified as a requirement).
+2. **Scenario gap scan** — for each requirement, check: are happy path, error path, and edge cases all covered? Flag requirements with only happy-path scenarios.
+3. **Negative requirements** — what should the system explicitly NOT do? Look for missing "must not" requirements implied by decisions or constraints.
+4. **User journey walk** — mentally walk through the primary user flow end-to-end. Flag any step where behavior is unspecified (e.g., "user lands on page — but what's the empty state?").
+5. **Cross-requirement conflict check** — look for pairs of requirements that could contradict each other when implemented together.
+
+**Output format:**
+
+```markdown
+## Challenge Results — {N} potential gaps found
+
+### Orphan Decisions (no requirement traces here)
+- D2 decided [X] but no requirement specifies the behavior
+
+### Scenario Gaps
+- R1 only has happy path — what if [failure scenario]?
+- R3 missing edge case: [specific edge case]
+
+### Missing Negative Requirements
+- Nothing says what happens when [boundary condition]
+
+### User Journey Gaps
+- Between R2 and R4, what happens when [transition scenario]?
+
+### Conflicts
+- R1 and R5 may conflict when [scenario]
+```
+
+Then auto-generate the missing requirements/scenarios as proposals, merge them, and re-present for approval.
+
+> **Circuit breaker**: Challenge can be selected at most **2 times** per L3 cycle. After 2 rounds, only Approve/Revise/Abort remain.
 
 > This approval is **mandatory** — even in autopilot mode, L3 requirements MUST be user-approved before gate-keeper runs. Requirements are what gets built — wrong requirements = wrong implementation.
 
