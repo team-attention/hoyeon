@@ -252,6 +252,22 @@ Available guide sections:
 - **`--append` for arrays** — use when adding to existing arrays (decisions, assumptions, known_gaps)
 - **`--patch` for nested updates** — use when updating specific items within arrays (e.g., adding scenarios to existing requirements)
 
+## CLI spec learning & search Reference
+
+**Learning** — Workers record structured learnings via CLI (auto-maps task→requirements):
+```bash
+hoyeon-cli spec learning --task T1 --json "$(cat ~/.hoyeon/${SESSION_ID}/tmp/learning.json)" <spec_path>
+# learning.json: { "problem": "...", "cause": "...", "rule": "...", "tags": [...] }
+# Saves to: context/learnings.json (structured, searchable)
+```
+
+**Search** — BM25 search across all specs (requirements, scenarios, constraints, learnings):
+```bash
+hoyeon-cli spec search "sqlite fts5"                    # human-readable output
+hoyeon-cli spec search "auth redirect" --json --limit 5  # JSON for agents
+hoyeon-cli spec search "empty cart" --specs-dir .dev/specs
+```
+
 ## Testing Strategy
 
 See [VERIFICATION.md](VERIFICATION.md) for the 4-Tier Testing Model (Unit → Integration → E2E → Agent Sandbox). Verification agents use this as their framework.

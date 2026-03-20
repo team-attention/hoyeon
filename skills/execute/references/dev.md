@@ -151,7 +151,8 @@ Run: `hoyeon-cli spec task {from_task} --get {spec_path}`
 Use its `outputs` to understand what was produced.
 
 ## Step 3: Read context files
-Read: {CONTEXT_DIR}/learnings.md — conventions & patterns from previous workers
+Read: {CONTEXT_DIR}/learnings.json — structured learnings from previous workers (if exists)
+Read: {CONTEXT_DIR}/learnings.md — legacy learnings from previous workers (if exists, and learnings.json absent)
 Read: {CONTEXT_DIR}/issues.md — failed approaches to avoid
 
 ## Step 4: Implement
@@ -169,16 +170,30 @@ Task AC has two parts — Worker handles checks[] only:
 Note: If this task's ID starts with T_SV, it is a sandbox verification task — you MUST run sandbox scenarios. Use `hoyeon-cli spec task {task_id} --get {spec_path}` to get scenario details and execute them.
 
 ## Step 5: Update context files
-Append to {CONTEXT_DIR}/learnings.md:
-  ## {task_id}
-  - learning 1
-  - learning 2
+
+For each learning discovered during implementation, save via CLI:
+
+```bash
+cat > ~/.hoyeon/${SESSION_ID}/tmp/learning.json << 'EOF'
+{
+  "problem": "what went wrong or was unexpected",
+  "cause": "why it happened",
+  "rule": "what to do instead (actionable rule)",
+  "tags": ["relevant", "tech", "keywords"]
+}
+EOF
+hoyeon-cli spec learning --task {task_id} --json "$(cat ~/.hoyeon/${SESSION_ID}/tmp/learning.json)" {spec_path}
+rm ~/.hoyeon/${SESSION_ID}/tmp/learning.json
+```
+
+**What to record**: surprising behavior, version-specific gotchas, workarounds, breaking changes, performance pitfalls.
+**What NOT to record**: obvious steps that worked as expected, framework basics.
 
 Append to {CONTEXT_DIR}/issues.md (if any):
   ## {task_id}
   - issue 1
 
-Only append with ## {task_id} header — do NOT overwrite existing content.
+Only append issues with ## {task_id} header — do NOT overwrite existing content.
 
 ## Output (print as last message)
 ```json
@@ -237,7 +252,8 @@ FOR EACH scenario:
     Skip — record as pending: `hoyeon-cli spec requirement {scenario.id} --status pending --task {task_id} {spec_path}`
 
 ## Step 4: Read context files
-Read: {CONTEXT_DIR}/learnings.md — for additional context from previous workers
+Read: {CONTEXT_DIR}/learnings.json — structured learnings from previous workers (if exists)
+Read: {CONTEXT_DIR}/learnings.md — legacy learnings (if exists, and learnings.json absent)
 
 ## Output (print as last message)
 {"status": "VERIFIED"|"FAILED",
@@ -832,7 +848,8 @@ TaskUpdate(taskId=rp, status="completed")
 
 ```
 .dev/specs/{name}/context/
-  learnings.md  — patterns, conventions discovered (workers append)
+  learnings.json — structured learnings (workers write via hoyeon-cli spec learning)
+  learnings.md  — legacy learnings (backward compat, read-only)
   issues.md     — failed approaches, unresolved problems (workers append)
   audit.md      — scope blockers, FV/CR events (orchestrator appends)
 ```
@@ -840,7 +857,7 @@ TaskUpdate(taskId=rp, status="completed")
 ### Worker Context Instructions
 
 Worker descriptions (WORKER_DESCRIPTION) include context file read and update instructions.
-Workers self-read `{CONTEXT_DIR}/learnings.md` and `{CONTEXT_DIR}/issues.md` directly,
+Workers self-read `{CONTEXT_DIR}/learnings.json` (or legacy `learnings.md`) and `{CONTEXT_DIR}/issues.md` directly,
 and append their findings after completing work.
 
 The orchestrator does NOT read these files — only workers do.

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
@@ -31,6 +31,8 @@ Usage:
   hoyeon-cli spec requirement <id> --get <path>     Get individual scenario as JSON
   hoyeon-cli spec requirement <id> --status pass|fail|skipped --task <task_id> [--reason <msg>] <path>  Update scenario status
   hoyeon-cli spec sandbox-tasks <path> [--json]     Auto-generate T_SANDBOX + T_SV tasks for sandbox scenarios
+  hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
+  hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]  BM25 search across all specs
 
 Options:
   --help, -h    Show this help message
@@ -2130,6 +2132,338 @@ async function handleSandboxTasks(args) {
   process.exit(0);
 }
 
+// ── BM25 tokenizer ──────────────────────────────────────────────────────────
+function tokenize(text) {
+  if (!text) return [];
+  return text.toLowerCase()
+    .replace(/[^a-z0-9가-힣\s\-_]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 1);
+}
+
+// ── spec learning ───────────────────────────────────────────────────────────
+async function handleLearning(args) {
+  const parsed = parseArgs(args);
+
+  const taskId = parsed.task;
+  if (!taskId) {
+    process.stderr.write('Error: --task <task-id> is required\n');
+    process.stderr.write('Usage: hoyeon-cli spec learning --task T1 --json \'{"problem":"...","cause":"...","rule":"...","tags":[...]}\' <path>\n');
+    process.exit(1);
+  }
+
+  const jsonStr = parsed.json;
+  if (!jsonStr) {
+    process.stderr.write('Error: --json is required\n');
+    process.exit(1);
+  }
+
+  let learningData;
+  try {
+    learningData = JSON.parse(jsonStr);
+  } catch (err) {
+    process.stderr.write(`Error: invalid JSON: ${err.message}\n`);
+    process.exit(1);
+  }
+
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write('Error: <path> to spec.json is required\n');
+    process.exit(1);
+  }
+
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+
+  // Find task and auto-map requirements
+  const task = specData.tasks.find(t => t.id === taskId);
+  if (!task) {
+    process.stderr.write(`Error: task '${taskId}' not found in spec\n`);
+    process.exit(1);
+  }
+
+  // Extract requirement IDs from acceptance_criteria.scenarios
+  const requirementIds = [];
+  if (task.acceptance_criteria?.scenarios) {
+    for (const scenarioId of task.acceptance_criteria.scenarios) {
+      const reqId = scenarioId.replace(/-S\d+$/, '');
+      if (!requirementIds.includes(reqId)) {
+        requirementIds.push(reqId);
+      }
+    }
+  }
+
+  // Load or create learnings.json
+  const contextDir = resolve(dirname(specPath), 'context');
+  const learningsPath = resolve(contextDir, 'learnings.json');
+
+  let learnings = [];
+  if (existsSync(learningsPath)) {
+    try {
+      learnings = JSON.parse(readFileSync(learningsPath, 'utf8'));
+    } catch {
+      learnings = [];
+    }
+  } else if (!existsSync(contextDir)) {
+    mkdirSync(contextDir, { recursive: true });
+  }
+
+  // Generate ID
+  const maxNum = learnings.reduce((max, l) => {
+    const m = l.id?.match(/^L(\d+)$/);
+    return m ? Math.max(max, parseInt(m[1], 10)) : max;
+  }, 0);
+  const newId = `L${maxNum + 1}`;
+
+  const entry = {
+    id: newId,
+    task: taskId,
+    requirements: requirementIds,
+    problem: learningData.problem || '',
+    cause: learningData.cause || '',
+    rule: learningData.rule || '',
+    tags: learningData.tags || [],
+    created_at: new Date().toISOString()
+  };
+
+  learnings.push(entry);
+  writeFileSync(learningsPath, JSON.stringify(learnings, null, 2) + '\n');
+
+  process.stdout.write(`Added learning '${newId}' for task '${taskId}' → requirements: [${requirementIds.join(', ')}]\n`);
+  process.stdout.write(JSON.stringify(entry, null, 2) + '\n');
+  process.exit(0);
+}
+
+// ── spec search (BM25) ─────────────────────────────────────────────────────
+async function handleSearch(args) {
+  const parsed = parseArgs(args);
+  const query = parsed._[0];
+
+  if (!query) {
+    process.stderr.write('Error: search query is required\n');
+    process.stderr.write('Usage: hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]\n');
+    process.exit(1);
+  }
+
+  const specsDir = resolve(parsed['specs-dir'] || '.dev/specs');
+  const limit = parseInt(parsed.limit || '10', 10);
+
+  if (!existsSync(specsDir)) {
+    process.stderr.write(`Error: specs directory not found: ${specsDir}\n`);
+    process.exit(1);
+  }
+
+  // Collect all documents
+  const docs = [];
+  const specDirs = readdirSync(specsDir, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+    .map(d => d.name);
+
+  for (const specName of specDirs) {
+    const specPath = resolve(specsDir, specName, 'spec.json');
+    if (!existsSync(specPath)) continue;
+
+    let specData;
+    try {
+      specData = JSON.parse(readFileSync(specPath, 'utf8'));
+    } catch { continue; }
+
+    // Build task→requirement mapping
+    const reqsByTask = {};
+    for (const task of (specData.tasks || [])) {
+      if (task.acceptance_criteria?.scenarios) {
+        const reqs = new Set();
+        for (const sid of task.acceptance_criteria.scenarios) {
+          reqs.add(sid.replace(/-S\d+$/, ''));
+        }
+        reqsByTask[task.id] = [...reqs];
+      }
+    }
+
+    // Index requirements + scenarios
+    for (const req of (specData.requirements || [])) {
+      let text = req.behavior || '';
+      for (const s of (req.scenarios || [])) {
+        text += ' ' + [s.given, s.when, s.then].filter(Boolean).join(' ');
+      }
+
+      docs.push({
+        type: 'requirement',
+        spec: specName,
+        id: req.id,
+        behavior: req.behavior,
+        scenarios: (req.scenarios || []).map(s => ({ id: s.id, given: s.given, when: s.when, then: s.then })),
+        text,
+        tasks: Object.entries(reqsByTask).filter(([, reqs]) => reqs.includes(req.id)).map(([tid]) => tid)
+      });
+    }
+
+    // Index constraints
+    for (const c of (specData.constraints || [])) {
+      docs.push({
+        type: 'constraint',
+        spec: specName,
+        id: c.id,
+        text: c.rule || '',
+        rule: c.rule
+      });
+    }
+
+    // Index structured learnings (learnings.json)
+    const learningsJsonPath = resolve(specsDir, specName, 'context', 'learnings.json');
+    if (existsSync(learningsJsonPath)) {
+      try {
+        const learnings = JSON.parse(readFileSync(learningsJsonPath, 'utf8'));
+        for (const l of learnings) {
+          docs.push({
+            type: 'learning',
+            spec: specName,
+            id: l.id,
+            task: l.task,
+            requirements: l.requirements,
+            problem: l.problem,
+            cause: l.cause,
+            rule: l.rule,
+            tags: l.tags,
+            text: [l.problem, l.cause, l.rule, ...(l.tags || [])].filter(Boolean).join(' ')
+          });
+        }
+      } catch {}
+    }
+
+    // Index legacy learnings (learnings.md) — grouped by task
+    const learningsMdPath = resolve(specsDir, specName, 'context', 'learnings.md');
+    if (existsSync(learningsMdPath)) {
+      try {
+        const md = readFileSync(learningsMdPath, 'utf8');
+        let currentTask = null;
+        let currentBullets = [];
+
+        const flushTask = () => {
+          if (currentTask && currentBullets.length > 0) {
+            docs.push({
+              type: 'learning-legacy',
+              spec: specName,
+              id: `${currentTask}-md`,
+              task: currentTask,
+              requirements: reqsByTask[currentTask] || [],
+              bullets: currentBullets,
+              text: currentBullets.join(' ')
+            });
+          }
+        };
+
+        for (const line of md.split('\n')) {
+          const taskMatch = line.match(/^## (T\w+)/);
+          if (taskMatch) {
+            flushTask();
+            currentTask = taskMatch[1];
+            currentBullets = [];
+            continue;
+          }
+          const bulletMatch = line.match(/^- (.+)/);
+          if (bulletMatch && currentTask) {
+            currentBullets.push(bulletMatch[1]);
+          }
+        }
+        flushTask();
+      } catch {}
+    }
+  }
+
+  if (docs.length === 0) {
+    process.stdout.write('No specs found to search.\n');
+    process.exit(0);
+  }
+
+  // BM25 scoring
+  const queryTokens = tokenize(query);
+  if (queryTokens.length === 0) {
+    process.stderr.write('Error: query has no searchable terms\n');
+    process.exit(1);
+  }
+
+  const N = docs.length;
+  const df = {};
+  for (const doc of docs) {
+    const docTokens = new Set(tokenize(doc.text));
+    for (const token of queryTokens) {
+      if (docTokens.has(token)) {
+        df[token] = (df[token] || 0) + 1;
+      }
+    }
+  }
+
+  const k1 = 1.2;
+  const b = 0.75;
+  const avgDl = docs.reduce((sum, d) => sum + tokenize(d.text).length, 0) / N;
+
+  const results = [];
+  for (const doc of docs) {
+    const docTokens = tokenize(doc.text);
+    const dl = docTokens.length;
+    let score = 0;
+
+    for (const term of queryTokens) {
+      const termDf = df[term] || 0;
+      if (termDf === 0) continue;
+      const idf = Math.log((N - termDf + 0.5) / (termDf + 0.5) + 1);
+      const tf = docTokens.filter(t => t === term).length;
+      const tfNorm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / avgDl));
+      score += idf * tfNorm;
+    }
+
+    if (score > 0) {
+      results.push({ ...doc, score });
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score);
+  const topResults = results.slice(0, limit);
+
+  if (topResults.length === 0) {
+    process.stdout.write('No matches found.\n');
+    process.exit(0);
+  }
+
+  // Output
+  if (parsed.json !== undefined && parsed.json !== false) {
+    // Strip text field from JSON output (it's just for scoring)
+    const cleaned = topResults.map(({ text, ...rest }) => rest);
+    process.stdout.write(JSON.stringify(cleaned, null, 2) + '\n');
+  } else {
+    process.stdout.write(`Found ${results.length} matches (showing top ${topResults.length}):\n\n`);
+    for (const r of topResults) {
+      process.stdout.write(`[${r.spec}] ${r.type} ${r.id} (score: ${r.score.toFixed(1)})\n`);
+      if (r.type === 'requirement') {
+        process.stdout.write(`  behavior: ${r.behavior}\n`);
+        for (const s of (r.scenarios || []).slice(0, 3)) {
+          process.stdout.write(`  ${s.id}: given "${s.given}" when "${s.when}" then "${s.then}"\n`);
+        }
+        if (r.scenarios?.length > 3) {
+          process.stdout.write(`  ... and ${r.scenarios.length - 3} more scenarios\n`);
+        }
+      } else if (r.type === 'learning') {
+        process.stdout.write(`  problem: ${r.problem}\n`);
+        process.stdout.write(`  rule: ${r.rule}\n`);
+        if (r.tags?.length) process.stdout.write(`  tags: ${r.tags.join(', ')}\n`);
+      } else if (r.type === 'learning-legacy') {
+        for (const bullet of (r.bullets || []).slice(0, 3)) {
+          process.stdout.write(`  - ${bullet.substring(0, 120)}\n`);
+        }
+        if (r.bullets?.length > 3) {
+          process.stdout.write(`  ... and ${r.bullets.length - 3} more\n`);
+        }
+      } else if (r.type === 'constraint') {
+        process.stdout.write(`  rule: ${r.rule}\n`);
+      }
+      process.stdout.write('\n');
+    }
+  }
+
+  process.exit(0);
+}
+
 export default async function spec(args) {
   const subcommand = args[0];
 
@@ -2170,6 +2504,10 @@ export default async function spec(args) {
     await handleRequirement(args.slice(1));
   } else if (subcommand === 'sandbox-tasks') {
     await handleSandboxTasks(args.slice(1));
+  } else if (subcommand === 'learning') {
+    await handleLearning(args.slice(1));
+  } else if (subcommand === 'search') {
+    await handleSearch(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown spec subcommand '${subcommand}'\n`);
     process.stderr.write(`Run 'hoyeon-cli spec --help' for usage.\n`);

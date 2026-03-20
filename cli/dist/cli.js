@@ -7621,7 +7621,7 @@ var require_dist = __commonJS({
 // src/handlers/spec.js
 var import__ = __toESM(require__(), 1);
 var import_ajv_formats = __toESM(require_dist(), 1);
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
 import { resolve, dirname } from "path";
 
 // schemas/dev-spec-v4.schema.json
@@ -9270,6 +9270,8 @@ Usage:
   hoyeon-cli spec requirement <id> --get <path>     Get individual scenario as JSON
   hoyeon-cli spec requirement <id> --status pass|fail|skipped --task <task_id> [--reason <msg>] <path>  Update scenario status
   hoyeon-cli spec sandbox-tasks <path> [--json]     Auto-generate T_SANDBOX + T_SV tasks for sandbox scenarios
+  hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
+  hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]  BM25 search across all specs
 
 Options:
   --help, -h    Show this help message
@@ -11002,6 +11004,297 @@ async function handleSandboxTasks(args) {
   }
   process.exit(0);
 }
+function tokenize(text) {
+  if (!text) return [];
+  return text.toLowerCase().replace(/[^a-z0-9가-힣\s\-_]/g, " ").split(/\s+/).filter((t) => t.length > 1);
+}
+async function handleLearning(args) {
+  const parsed = parseArgs(args);
+  const taskId = parsed.task;
+  if (!taskId) {
+    process.stderr.write("Error: --task <task-id> is required\n");
+    process.stderr.write(`Usage: hoyeon-cli spec learning --task T1 --json '{"problem":"...","cause":"...","rule":"...","tags":[...]}' <path>
+`);
+    process.exit(1);
+  }
+  const jsonStr = parsed.json;
+  if (!jsonStr) {
+    process.stderr.write("Error: --json is required\n");
+    process.exit(1);
+  }
+  let learningData;
+  try {
+    learningData = JSON.parse(jsonStr);
+  } catch (err) {
+    process.stderr.write(`Error: invalid JSON: ${err.message}
+`);
+    process.exit(1);
+  }
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write("Error: <path> to spec.json is required\n");
+    process.exit(1);
+  }
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+  const task = specData.tasks.find((t) => t.id === taskId);
+  if (!task) {
+    process.stderr.write(`Error: task '${taskId}' not found in spec
+`);
+    process.exit(1);
+  }
+  const requirementIds = [];
+  if (task.acceptance_criteria?.scenarios) {
+    for (const scenarioId of task.acceptance_criteria.scenarios) {
+      const reqId = scenarioId.replace(/-S\d+$/, "");
+      if (!requirementIds.includes(reqId)) {
+        requirementIds.push(reqId);
+      }
+    }
+  }
+  const contextDir = resolve(dirname(specPath), "context");
+  const learningsPath = resolve(contextDir, "learnings.json");
+  let learnings = [];
+  if (existsSync(learningsPath)) {
+    try {
+      learnings = JSON.parse(readFileSync(learningsPath, "utf8"));
+    } catch {
+      learnings = [];
+    }
+  } else if (!existsSync(contextDir)) {
+    mkdirSync(contextDir, { recursive: true });
+  }
+  const maxNum = learnings.reduce((max, l) => {
+    const m = l.id?.match(/^L(\d+)$/);
+    return m ? Math.max(max, parseInt(m[1], 10)) : max;
+  }, 0);
+  const newId = `L${maxNum + 1}`;
+  const entry = {
+    id: newId,
+    task: taskId,
+    requirements: requirementIds,
+    problem: learningData.problem || "",
+    cause: learningData.cause || "",
+    rule: learningData.rule || "",
+    tags: learningData.tags || [],
+    created_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  learnings.push(entry);
+  writeFileSync(learningsPath, JSON.stringify(learnings, null, 2) + "\n");
+  process.stdout.write(`Added learning '${newId}' for task '${taskId}' \u2192 requirements: [${requirementIds.join(", ")}]
+`);
+  process.stdout.write(JSON.stringify(entry, null, 2) + "\n");
+  process.exit(0);
+}
+async function handleSearch(args) {
+  const parsed = parseArgs(args);
+  const query = parsed._[0];
+  if (!query) {
+    process.stderr.write("Error: search query is required\n");
+    process.stderr.write('Usage: hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]\n');
+    process.exit(1);
+  }
+  const specsDir = resolve(parsed["specs-dir"] || ".dev/specs");
+  const limit = parseInt(parsed.limit || "10", 10);
+  if (!existsSync(specsDir)) {
+    process.stderr.write(`Error: specs directory not found: ${specsDir}
+`);
+    process.exit(1);
+  }
+  const docs = [];
+  const specDirs = readdirSync(specsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  for (const specName of specDirs) {
+    const specPath = resolve(specsDir, specName, "spec.json");
+    if (!existsSync(specPath)) continue;
+    let specData;
+    try {
+      specData = JSON.parse(readFileSync(specPath, "utf8"));
+    } catch {
+      continue;
+    }
+    const reqsByTask = {};
+    for (const task of specData.tasks || []) {
+      if (task.acceptance_criteria?.scenarios) {
+        const reqs = /* @__PURE__ */ new Set();
+        for (const sid of task.acceptance_criteria.scenarios) {
+          reqs.add(sid.replace(/-S\d+$/, ""));
+        }
+        reqsByTask[task.id] = [...reqs];
+      }
+    }
+    for (const req of specData.requirements || []) {
+      let text = req.behavior || "";
+      for (const s of req.scenarios || []) {
+        text += " " + [s.given, s.when, s.then].filter(Boolean).join(" ");
+      }
+      docs.push({
+        type: "requirement",
+        spec: specName,
+        id: req.id,
+        behavior: req.behavior,
+        scenarios: (req.scenarios || []).map((s) => ({ id: s.id, given: s.given, when: s.when, then: s.then })),
+        text,
+        tasks: Object.entries(reqsByTask).filter(([, reqs]) => reqs.includes(req.id)).map(([tid]) => tid)
+      });
+    }
+    for (const c of specData.constraints || []) {
+      docs.push({
+        type: "constraint",
+        spec: specName,
+        id: c.id,
+        text: c.rule || "",
+        rule: c.rule
+      });
+    }
+    const learningsJsonPath = resolve(specsDir, specName, "context", "learnings.json");
+    if (existsSync(learningsJsonPath)) {
+      try {
+        const learnings = JSON.parse(readFileSync(learningsJsonPath, "utf8"));
+        for (const l of learnings) {
+          docs.push({
+            type: "learning",
+            spec: specName,
+            id: l.id,
+            task: l.task,
+            requirements: l.requirements,
+            problem: l.problem,
+            cause: l.cause,
+            rule: l.rule,
+            tags: l.tags,
+            text: [l.problem, l.cause, l.rule, ...l.tags || []].filter(Boolean).join(" ")
+          });
+        }
+      } catch {
+      }
+    }
+    const learningsMdPath = resolve(specsDir, specName, "context", "learnings.md");
+    if (existsSync(learningsMdPath)) {
+      try {
+        const md = readFileSync(learningsMdPath, "utf8");
+        let currentTask = null;
+        let currentBullets = [];
+        const flushTask = () => {
+          if (currentTask && currentBullets.length > 0) {
+            docs.push({
+              type: "learning-legacy",
+              spec: specName,
+              id: `${currentTask}-md`,
+              task: currentTask,
+              requirements: reqsByTask[currentTask] || [],
+              bullets: currentBullets,
+              text: currentBullets.join(" ")
+            });
+          }
+        };
+        for (const line of md.split("\n")) {
+          const taskMatch = line.match(/^## (T\w+)/);
+          if (taskMatch) {
+            flushTask();
+            currentTask = taskMatch[1];
+            currentBullets = [];
+            continue;
+          }
+          const bulletMatch = line.match(/^- (.+)/);
+          if (bulletMatch && currentTask) {
+            currentBullets.push(bulletMatch[1]);
+          }
+        }
+        flushTask();
+      } catch {
+      }
+    }
+  }
+  if (docs.length === 0) {
+    process.stdout.write("No specs found to search.\n");
+    process.exit(0);
+  }
+  const queryTokens = tokenize(query);
+  if (queryTokens.length === 0) {
+    process.stderr.write("Error: query has no searchable terms\n");
+    process.exit(1);
+  }
+  const N = docs.length;
+  const df = {};
+  for (const doc of docs) {
+    const docTokens = new Set(tokenize(doc.text));
+    for (const token of queryTokens) {
+      if (docTokens.has(token)) {
+        df[token] = (df[token] || 0) + 1;
+      }
+    }
+  }
+  const k1 = 1.2;
+  const b = 0.75;
+  const avgDl = docs.reduce((sum, d) => sum + tokenize(d.text).length, 0) / N;
+  const results = [];
+  for (const doc of docs) {
+    const docTokens = tokenize(doc.text);
+    const dl = docTokens.length;
+    let score = 0;
+    for (const term of queryTokens) {
+      const termDf = df[term] || 0;
+      if (termDf === 0) continue;
+      const idf = Math.log((N - termDf + 0.5) / (termDf + 0.5) + 1);
+      const tf = docTokens.filter((t) => t === term).length;
+      const tfNorm = tf * (k1 + 1) / (tf + k1 * (1 - b + b * dl / avgDl));
+      score += idf * tfNorm;
+    }
+    if (score > 0) {
+      results.push({ ...doc, score });
+    }
+  }
+  results.sort((a, b2) => b2.score - a.score);
+  const topResults = results.slice(0, limit);
+  if (topResults.length === 0) {
+    process.stdout.write("No matches found.\n");
+    process.exit(0);
+  }
+  if (parsed.json !== void 0 && parsed.json !== false) {
+    const cleaned = topResults.map(({ text, ...rest }) => rest);
+    process.stdout.write(JSON.stringify(cleaned, null, 2) + "\n");
+  } else {
+    process.stdout.write(`Found ${results.length} matches (showing top ${topResults.length}):
+
+`);
+    for (const r of topResults) {
+      process.stdout.write(`[${r.spec}] ${r.type} ${r.id} (score: ${r.score.toFixed(1)})
+`);
+      if (r.type === "requirement") {
+        process.stdout.write(`  behavior: ${r.behavior}
+`);
+        for (const s of (r.scenarios || []).slice(0, 3)) {
+          process.stdout.write(`  ${s.id}: given "${s.given}" when "${s.when}" then "${s.then}"
+`);
+        }
+        if (r.scenarios?.length > 3) {
+          process.stdout.write(`  ... and ${r.scenarios.length - 3} more scenarios
+`);
+        }
+      } else if (r.type === "learning") {
+        process.stdout.write(`  problem: ${r.problem}
+`);
+        process.stdout.write(`  rule: ${r.rule}
+`);
+        if (r.tags?.length) process.stdout.write(`  tags: ${r.tags.join(", ")}
+`);
+      } else if (r.type === "learning-legacy") {
+        for (const bullet of (r.bullets || []).slice(0, 3)) {
+          process.stdout.write(`  - ${bullet.substring(0, 120)}
+`);
+        }
+        if (r.bullets?.length > 3) {
+          process.stdout.write(`  ... and ${r.bullets.length - 3} more
+`);
+        }
+      } else if (r.type === "constraint") {
+        process.stdout.write(`  rule: ${r.rule}
+`);
+      }
+      process.stdout.write("\n");
+    }
+  }
+  process.exit(0);
+}
 async function spec(args) {
   const subcommand = args[0];
   if (!subcommand || subcommand === "--help" || subcommand === "-h") {
@@ -11040,6 +11333,10 @@ async function spec(args) {
     await handleRequirement(args.slice(1));
   } else if (subcommand === "sandbox-tasks") {
     await handleSandboxTasks(args.slice(1));
+  } else if (subcommand === "learning") {
+    await handleLearning(args.slice(1));
+  } else if (subcommand === "search") {
+    await handleSearch(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown spec subcommand '${subcommand}'
 `);
@@ -11710,7 +12007,7 @@ async function session(args) {
 }
 
 // src/handlers/feedback.js
-import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync, readdirSync, existsSync } from "fs";
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, existsSync as existsSync2 } from "fs";
 import { resolve as resolve3, dirname as dirname3 } from "path";
 var FEEDBACK_HELP = `
 Usage:
@@ -11750,10 +12047,10 @@ function parseArgs4(args) {
   return result;
 }
 function nextFeedbackId(feedbackDir) {
-  if (!existsSync(feedbackDir)) {
+  if (!existsSync2(feedbackDir)) {
     return "fb-001";
   }
-  const files = readdirSync(feedbackDir).filter((f) => /^fb-\d{3}\.json$/.test(f)).sort();
+  const files = readdirSync2(feedbackDir).filter((f) => /^fb-\d{3}\.json$/.test(f)).sort();
   if (files.length === 0) {
     return "fb-001";
   }
@@ -11775,7 +12072,7 @@ async function handleCreate(args) {
   }
   const feedbackDir = parsed.dir ? resolve3(parsed.dir) : resolve3("feedback");
   try {
-    mkdirSync(feedbackDir, { recursive: true });
+    mkdirSync2(feedbackDir, { recursive: true });
   } catch (err) {
     process.stderr.write(`Error: could not create feedback directory: ${err.message}
 `);
@@ -11820,7 +12117,7 @@ async function feedback(args) {
 }
 
 // src/handlers/settings-validate.js
-import { readFileSync as readFileSync4, existsSync as existsSync2, accessSync, constants } from "fs";
+import { readFileSync as readFileSync4, existsSync as existsSync3, accessSync, constants } from "fs";
 import { resolve as resolve4, dirname as dirname4, join as join2 } from "path";
 var SETTINGS_HELP = `
 Usage:
@@ -11845,7 +12142,7 @@ function findSettingsJson(startDir) {
   let dir = startDir;
   while (true) {
     const candidate = join2(dir, ".claude", "settings.json");
-    if (existsSync2(candidate)) {
+    if (existsSync3(candidate)) {
       return candidate;
     }
     const parent = dirname4(dir);
@@ -11898,7 +12195,7 @@ async function handleValidate2() {
   const missingPaths = [];
   for (const { eventType, matcher, command } of hookEntries) {
     const absPath = resolve4(projectRoot, command);
-    if (!existsSync2(absPath)) {
+    if (!existsSync3(absPath)) {
       missingPaths.push({ eventType, matcher, command, absPath });
     }
   }
@@ -11919,7 +12216,7 @@ async function handleValidate2() {
   const nonExecutable = [];
   for (const { eventType, matcher, command } of hookEntries) {
     const absPath = resolve4(projectRoot, command);
-    if (!existsSync2(absPath)) continue;
+    if (!existsSync3(absPath)) continue;
     try {
       accessSync(absPath, constants.X_OK);
     } catch {
