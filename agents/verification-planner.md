@@ -142,13 +142,13 @@ Append `[sandbox]` inline when `execution_env: sandbox` (e.g., Tier 2-3 items re
 Items verifiable via sandbox agent infrastructure (BDD/Gherkin scenarios, browser agents, persona agents).
 Append `[sandbox]` inline when `execution_env: sandbox`.
 
-**When sandbox infra exists** (docker-compose, `sandbox/features/`, `.env.sandbox`):
+**When sandbox infra exists** (`context.sandbox_capability` is set in spec.json — if `scaffold_required: true`, T_SANDBOX will set up the infra):
 - BDD scenario execution via persona agents
 - N-run aggregation (run 3-5 times, pass if >80% succeed)
 - LLM-as-Judge evaluation of agent test outcomes
 - Screenshot-based visual verification (see below)
 
-**When sandbox infra does NOT exist**:
+**When sandbox infra does NOT exist** (`context.sandbox_capability` is null/missing in spec.json):
 - Output the section with: "Agent: no sandbox infrastructure — Tier 4 verification not possible"
 - Move these items to Manual instead
 
@@ -166,7 +166,7 @@ Items that no tier can mechanically verify:
 - **UX/UI quality**: Perceived responsiveness, interaction feel, animation smoothness
 - **Business logic correctness**: Domain-specific judgment calls
 - **Security review**: Threat modeling, auth flow verification
-- **Tier 4 without infra**: If no sandbox/BDD infra exists, sandbox-testable items become Manual
+- **Tier 4 without infra**: If `context.sandbox_capability` is null/missing, sandbox-testable items become Manual
 
 ## Input Format
 

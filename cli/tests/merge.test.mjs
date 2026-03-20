@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
@@ -45,7 +45,6 @@ function baseSpec(overrides = {}) {
     tasks: [
       { id: 'T1', action: 'Initial task', type: 'work', status: 'pending' },
     ],
-    history: [],
     ...overrides,
   };
 }
@@ -207,23 +206,18 @@ test('nested array patch — requirements[].scenarios[] replaces via shallow obj
   }
 });
 
-// Test 8: history entries are append-only
+// Test 8: history entries are written to external context/history.json
 test('history entries are append-only across multiple merges', () => {
-  const spec = createSpec(baseSpec({
-    history: [
-      { ts: '2026-01-01T00:00:00.000Z', type: 'spec_created', detail: 'initial' },
-    ],
-  }));
+  const spec = createSpec(baseSpec());
   try {
     runMerge(spec.path, { meta: { goal: 'updated goal' } });
     runMerge(spec.path, { meta: { goal: 'updated goal again' } });
-    const result = spec.read();
-    // Original entry + 2 merge entries = 3 total
-    assert.ok(result.history.length >= 3, 'history grows with each merge');
-    assert.equal(result.history[0].detail, 'initial', 'original history preserved');
-    // New entries added by merge handler
-    const mergeEntries = result.history.filter(h => h.type === 'spec_updated');
-    assert.equal(mergeEntries.length, 2, 'two spec_updated entries added');
+    // History is now in context/history.json next to spec.json
+    const historyPath = join(dirname(spec.path), 'context', 'history.json');
+    assert.ok(existsSync(historyPath), 'context/history.json created');
+    const history = JSON.parse(readFileSync(historyPath, 'utf8'));
+    const mergeEntries = history.filter(h => h.type === 'spec_updated');
+    assert.equal(mergeEntries.length, 2, 'two spec_updated entries in external history');
   } finally {
     spec.cleanup();
   }

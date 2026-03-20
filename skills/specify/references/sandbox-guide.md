@@ -41,7 +41,7 @@ capability = {
   "desktop": detected.macos_automator OR detected.desktop_app,
   "tools": [list of detected tool names],
   "confirmed_at": "{today}",
-  "detected": true
+  "scaffold_required": false
 }
 ```
 

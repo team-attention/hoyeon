@@ -39,9 +39,9 @@ Extracts knowledge from PR context and saves structured documentation to `docs/l
 4. **Parallel collection** (run following commands simultaneously, skip if files don't exist)
    ```bash
    # Context files (treat as empty if not found)
-   cat .dev/specs/{name}/context/learnings.md 2>/dev/null || echo ""
+   cat .dev/specs/{name}/context/learnings.json 2>/dev/null || echo ""
    cat .dev/specs/{name}/context/decisions.md 2>/dev/null || echo ""
-   cat .dev/specs/{name}/context/issues.md 2>/dev/null || echo ""
+   cat .dev/specs/{name}/context/issues.json 2>/dev/null || echo ""
 
    # PR comments and reviews (collect as JSON for stability)
    gh pr view {pr_number} --json comments,reviews
@@ -84,9 +84,9 @@ Extracts knowledge from PR context and saves structured documentation to `docs/l
 
 | File | Purpose |
 |------|---------|
-| learnings.md | Direct learnings |
+| learnings.json | Structured learnings |
 | decisions.md | Decision rationale |
-| issues.md | Out of scope issues (for future reference) |
+| issues.json | Structured issues |
 
 #### 2.3 Synthesize
 
@@ -140,7 +140,7 @@ Created: docs/learnings/2024-01-15-api-error-handling.md
 Summary:
 - Problem Type: error-handling
 - Tags: api, typescript, validation
-- Sources: learnings.md, 2 PR comments
+- Sources: learnings.json, 2 PR comments
 ```
 
 ---

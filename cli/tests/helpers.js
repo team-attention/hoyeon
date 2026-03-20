@@ -38,6 +38,7 @@ export function createTempSpec(data) {
   writeFileSync(specPath, JSON.stringify(data, null, 2));
   return {
     path: specPath,
+    dir: tmpDir,
     cleanup: () => rmSync(tmpDir, { recursive: true, force: true }),
   };
 }

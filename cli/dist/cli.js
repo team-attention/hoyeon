@@ -8404,10 +8404,6 @@ var dev_spec_v5_schema_default = {
       type: "array",
       items: { $ref: "#/$defs/constraint" }
     },
-    history: {
-      type: "array",
-      items: { $ref: "#/$defs/historyEntry" }
-    },
     verification_summary: {
       $ref: "#/$defs/verificationSummary",
       description: "Derived from requirements \u2014 A/H/S classification. Do not author independently."
@@ -8755,8 +8751,8 @@ var dev_spec_v5_schema_default = {
               description: "List of detected tool names (e.g., 'playwright', 'docker', 'xcrun simctl')"
             },
             confirmed_at: { type: "string", description: "ISO date when capability was confirmed" },
-            detected: { type: "boolean", description: "True if auto-detected from project files" },
-            scaffold_required: { type: "boolean", description: "True if T-sandbox-* scaffold tasks are needed" }
+            detected: { type: "boolean", description: "True if sandbox capability was auto-detected" },
+            scaffold_required: { type: "boolean", description: "True if T-sandbox-* scaffold tasks are needed (infra not yet present, T_SANDBOX will set it up)" }
           }
         }
       }
@@ -9285,6 +9281,7 @@ Usage:
   hoyeon-cli spec requirement <id> --status pass|fail|skipped --task <task_id> [--reason <msg>] <path>  Update scenario status
   hoyeon-cli spec sandbox-tasks <path> [--json]     Auto-generate T_SANDBOX + T_SV tasks for sandbox scenarios
   hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
+  hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to context/issues.json
   hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]  BM25 search across all specs
 
 Options:
@@ -9327,6 +9324,26 @@ function printGuideHints(errors) {
     }
   }
 }
+function appendHistory(specPath, entry) {
+  const contextDir = resolve(dirname(specPath), "context");
+  if (!existsSync(contextDir)) {
+    mkdirSync(contextDir, { recursive: true });
+  }
+  const historyPath = resolve(contextDir, "history.json");
+  let history = [];
+  if (existsSync(historyPath)) {
+    try {
+      history = JSON.parse(readFileSync(historyPath, "utf8"));
+    } catch {
+      history = [];
+    }
+  }
+  if (!entry.ts) {
+    entry.ts = (/* @__PURE__ */ new Date()).toISOString();
+  }
+  history.push(entry);
+  writeFileSync(historyPath, JSON.stringify(history, null, 2) + "\n");
+}
 function validateSpec(specData) {
   let schema;
   try {
@@ -9362,7 +9379,23 @@ function deepMerge(target, source, append = false, patch = false) {
           if (item && typeof item === "object" && item.id) {
             const idx = target[key].findIndex((t) => t && t.id === item.id);
             if (idx >= 0) {
-              target[key][idx] = { ...target[key][idx], ...item };
+              for (const itemKey of Object.keys(item)) {
+                if (item[itemKey] === null || item[itemKey] === void 0) continue;
+                if (Array.isArray(item[itemKey]) && Array.isArray(target[key][idx][itemKey])) {
+                  const nested = { [itemKey]: item[itemKey] };
+                  const nestedTarget = { [itemKey]: target[key][idx][itemKey] };
+                  deepMerge(nestedTarget, nested, false, true);
+                  target[key][idx][itemKey] = nestedTarget[itemKey];
+                } else if (typeof item[itemKey] === "object" && !Array.isArray(item[itemKey]) && target[key][idx][itemKey] && typeof target[key][idx][itemKey] === "object" && !Array.isArray(target[key][idx][itemKey])) {
+                  if ("type" in item[itemKey]) {
+                    target[key][idx][itemKey] = item[itemKey];
+                  } else {
+                    deepMerge(target[key][idx][itemKey], item[itemKey], false, true);
+                  }
+                } else {
+                  target[key][idx][itemKey] = item[itemKey];
+                }
+              }
             } else {
               target[key].push(item);
             }
@@ -9428,9 +9461,6 @@ async function handleInit(args) {
     },
     tasks: [
       { id: "T1", action: "TODO", type: "work", status: "pending" }
-    ],
-    history: [
-      { ts: now, type: "spec_created" }
     ]
   };
   if (parsed.type !== void 0) {
@@ -9449,6 +9479,7 @@ async function handleInit(args) {
   }
   validateSpec(specData);
   writeState(specPath, specData);
+  appendHistory(specPath, { ts: now, type: "spec_created" });
   process.stdout.write(`Spec created: ${specPath}
 `);
   process.stdout.write(`  name: ${name}
@@ -9496,18 +9527,13 @@ async function handleMerge(args) {
   }
   deepMerge(specData, fragment, append, patch);
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  if (!specData.history) specData.history = [];
   const mergedKeys = Object.keys(fragment).join(", ");
-  specData.history.push({
-    ts: now,
-    type: "spec_updated",
-    detail: `merged: ${mergedKeys}`
-  });
   if (specData.meta) {
     specData.meta.updated_at = now;
   }
   validateSpec(specData);
   writeState(specPath, specData);
+  appendHistory(specPath, { ts: now, type: "spec_updated", detail: `merged: ${mergedKeys}` });
   process.stdout.write(`Spec merged: ${specPath}
 `);
   process.stdout.write(`  merged keys: ${mergedKeys}
@@ -10020,15 +10046,11 @@ async function handleTask(args) {
       task.summary = parsed.summary;
     }
   }
-  if (!specData.history) {
-    specData.history = [];
-  }
   const historyType = status === "in_progress" ? "task_start" : status === "done" ? "task_done" : "spec_updated";
   const entry = { ts: now, type: historyType, task: taskId };
   if (parsed.summary) {
     entry.summary = parsed.summary;
   }
-  specData.history.push(entry);
   let schema;
   try {
     schema = loadSchema(specData);
@@ -10052,6 +10074,7 @@ async function handleTask(args) {
     process.exit(1);
   }
   writeState(specPath, specData);
+  appendHistory(specPath, entry);
   process.stdout.write(`Updated task '${taskId}' status to '${status}'
 `);
   process.exit(0);
@@ -10714,17 +10737,16 @@ async function handleDerive(args) {
   if (!specData.tasks) specData.tasks = [];
   specData.tasks = specData.tasks.concat([newTask]);
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  if (!specData.history) specData.history = [];
-  specData.history.push({
+  if (specData.meta) specData.meta.updated_at = now;
+  validateSpec(specData);
+  buildPlan(specData.tasks);
+  writeState(specPath, specData);
+  appendHistory(specPath, {
     ts: now,
     type: "tasks_changed",
     task: newId,
     detail: `derived from ${parsed.parent} via ${parsed.trigger}`
   });
-  if (specData.meta) specData.meta.updated_at = now;
-  validateSpec(specData);
-  buildPlan(specData.tasks);
-  writeState(specPath, specData);
   process.stdout.write(JSON.stringify({ created: newId }) + "\n");
   process.exit(0);
 }
@@ -10890,16 +10912,15 @@ async function handleRequirement(args) {
       found.scenario.verification_reason = parsed.reason;
     }
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    if (!specData.history) specData.history = [];
-    specData.history.push({
+    if (specData.meta) specData.meta.updated_at = now;
+    writeState(specPath, specData);
+    appendHistory(specPath, {
       ts: now,
       type: "scenario_verified",
       scenario: scenarioId,
       status: statusValue,
       task: parsed.task
     });
-    if (specData.meta) specData.meta.updated_at = now;
-    writeState(specPath, specData);
     process.stdout.write(`Updated scenario '${scenarioId}': status=${statusValue}, verified_by_task=${parsed.task}
 `);
     process.exit(0);
@@ -11040,14 +11061,13 @@ async function handleSandboxTasks(args) {
   }
   specData.tasks = existingTasks;
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  if (!specData.history) specData.history = [];
-  specData.history.push({
+  if (specData.meta) specData.meta.updated_at = now;
+  writeState(specPath, specData);
+  appendHistory(specPath, {
     ts: now,
     type: "tasks_changed",
     detail: `sandbox-tasks: created ${createdTasks.map((t) => t.id).join(", ")}`
   });
-  if (specData.meta) specData.meta.updated_at = now;
-  writeState(specPath, specData);
   if (useJson) {
     process.stdout.write(JSON.stringify({
       sandbox_scenarios: sandboxScenarios.map((sc) => sc.id),
@@ -11158,6 +11178,92 @@ async function handleLearning(args) {
   process.stdout.write(JSON.stringify(entry, null, 2) + "\n");
   process.exit(0);
 }
+async function handleIssue(args) {
+  const parsed = parseArgs(args);
+  const taskId = parsed.task;
+  if (!taskId) {
+    process.stderr.write("Error: --task <task-id> is required\n");
+    process.stderr.write(`Usage: hoyeon-cli spec issue --task T1 --json '{"type":"blocker","description":"..."}' <path>
+`);
+    process.stderr.write("   or: hoyeon-cli spec issue --task T1 --stdin <path> << 'EOF'\n");
+    process.exit(1);
+  }
+  let jsonStr = parsed.json;
+  if (parsed.stdin !== void 0) {
+    if (typeof parsed.stdin === "string") {
+      parsed._.unshift(parsed.stdin);
+    }
+    try {
+      jsonStr = readFileSync("/dev/stdin", "utf8").trim();
+    } catch (err) {
+      process.stderr.write(`Error: failed to read stdin: ${err.message}
+`);
+      process.exit(1);
+    }
+  }
+  if (!jsonStr) {
+    process.stderr.write("Error: --json or --stdin is required\n");
+    process.exit(1);
+  }
+  let issueData;
+  try {
+    issueData = JSON.parse(jsonStr);
+  } catch (err) {
+    process.stderr.write(`Error: invalid JSON: ${err.message}
+`);
+    process.exit(1);
+  }
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write("Error: <path> to spec.json is required\n");
+    process.exit(1);
+  }
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+  const task = specData.tasks.find((t) => t.id === taskId);
+  if (!task) {
+    process.stderr.write(`Error: task '${taskId}' not found in spec
+`);
+    process.exit(1);
+  }
+  const validTypes = ["failed_approach", "out_of_scope", "blocker"];
+  const issueType = issueData.type;
+  if (issueType && !validTypes.includes(issueType)) {
+    process.stderr.write(`Error: type must be one of: ${validTypes.join(", ")}
+`);
+    process.exit(1);
+  }
+  const contextDir = resolve(dirname(specPath), "context");
+  const issuesPath = resolve(contextDir, "issues.json");
+  let issues = [];
+  if (existsSync(issuesPath)) {
+    try {
+      issues = JSON.parse(readFileSync(issuesPath, "utf8"));
+    } catch {
+      issues = [];
+    }
+  } else if (!existsSync(contextDir)) {
+    mkdirSync(contextDir, { recursive: true });
+  }
+  const maxNum = issues.reduce((max, i) => {
+    const m = i.id?.match(/^I(\d+)$/);
+    return m ? Math.max(max, parseInt(m[1], 10)) : max;
+  }, 0);
+  const newId = `I${maxNum + 1}`;
+  const entry = {
+    id: newId,
+    task: taskId,
+    type: issueData.type || "",
+    description: issueData.description || "",
+    created_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  issues.push(entry);
+  writeFileSync(issuesPath, JSON.stringify(issues, null, 2) + "\n");
+  process.stdout.write(`Added issue '${newId}' for task '${taskId}'
+`);
+  process.stdout.write(JSON.stringify(entry, null, 2) + "\n");
+  process.exit(0);
+}
 async function handleSearch(args) {
   const parsed = parseArgs(args);
   const query = parsed._[0];
@@ -11239,42 +11345,6 @@ async function handleSearch(args) {
       } catch {
       }
     }
-    const learningsMdPath = resolve(specsDir, specName, "context", "learnings.md");
-    if (existsSync(learningsMdPath)) {
-      try {
-        const md = readFileSync(learningsMdPath, "utf8");
-        let currentTask = null;
-        let currentBullets = [];
-        const flushTask = () => {
-          if (currentTask && currentBullets.length > 0) {
-            docs.push({
-              type: "learning-legacy",
-              spec: specName,
-              id: `${currentTask}-md`,
-              task: currentTask,
-              requirements: reqsByTask[currentTask] || [],
-              bullets: currentBullets,
-              text: currentBullets.join(" ")
-            });
-          }
-        };
-        for (const line of md.split("\n")) {
-          const taskMatch = line.match(/^## (T\w+)/);
-          if (taskMatch) {
-            flushTask();
-            currentTask = taskMatch[1];
-            currentBullets = [];
-            continue;
-          }
-          const bulletMatch = line.match(/^- (.+)/);
-          if (bulletMatch && currentTask) {
-            currentBullets.push(bulletMatch[1]);
-          }
-        }
-        flushTask();
-      } catch {
-      }
-    }
   }
   if (docs.length === 0) {
     process.stdout.write("No specs found to search.\n");
@@ -11349,15 +11419,6 @@ async function handleSearch(args) {
 `);
         if (r.tags?.length) process.stdout.write(`  tags: ${r.tags.join(", ")}
 `);
-      } else if (r.type === "learning-legacy") {
-        for (const bullet of (r.bullets || []).slice(0, 3)) {
-          process.stdout.write(`  - ${bullet.substring(0, 120)}
-`);
-        }
-        if (r.bullets?.length > 3) {
-          process.stdout.write(`  ... and ${r.bullets.length - 3} more
-`);
-        }
       } else if (r.type === "constraint") {
         process.stdout.write(`  rule: ${r.rule}
 `);
@@ -11407,6 +11468,8 @@ async function spec(args) {
     await handleSandboxTasks(args.slice(1));
   } else if (subcommand === "learning") {
     await handleLearning(args.slice(1));
+  } else if (subcommand === "issue") {
+    await handleIssue(args.slice(1));
   } else if (subcommand === "search") {
     await handleSearch(args.slice(1));
   } else {
@@ -12415,7 +12478,7 @@ async function main() {
     process.exit(0);
   }
   if (args[0] === "--version") {
-    const version = true ? "1.2.0" : "dev";
+    const version = true ? "1.2.1" : "dev";
     process.stdout.write(`hoyeon-cli v${version}
 `);
     process.exit(0);

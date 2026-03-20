@@ -179,8 +179,7 @@ Use its `outputs` to understand what was produced.
 
 ## Step 3: Read context files
 Read: {CONTEXT_DIR}/learnings.json — structured learnings from previous workers (if exists)
-Read: {CONTEXT_DIR}/learnings.md — legacy learnings from previous workers (if exists, and learnings.json absent)
-Read: {CONTEXT_DIR}/issues.md — failed approaches to avoid
+Read: {CONTEXT_DIR}/issues.json — failed approaches to avoid (if exists)
 
 ## Step 4: Implement
 Follow the steps and file_scope from your task spec.
@@ -214,11 +213,16 @@ EOF
 **What to record**: surprising behavior, version-specific gotchas, workarounds, breaking changes, performance pitfalls.
 **What NOT to record**: obvious steps that worked as expected, framework basics.
 
-Append to {CONTEXT_DIR}/issues.md (if any):
-  ## {task_id}
-  - issue 1
+For each issue discovered during implementation, save via CLI:
 
-Only append issues with ## {task_id} header — do NOT overwrite existing content.
+```bash
+hoyeon-cli spec issue --task {task_id} --stdin {spec_path} << 'EOF'
+{
+  "type": "failed_approach|out_of_scope|blocker",
+  "description": "what went wrong or what is out of scope"
+}
+EOF
+```
 
 ## Output (print as last message)
 ```json
@@ -369,8 +373,8 @@ Before dispatching T_SANDBOX, verify sandbox capability:
 ```
 IF plan contains tasks with ID starting with "T_SANDBOX" or "T_SV":
   capability = spec.context.sandbox_capability
-  IF capability is null or capability.detected != true:
-    print("WARNING: Sandbox tasks exist but no sandbox_capability detected. Skipping sandbox tasks.")
+  IF capability is null:
+    print("WARNING: Sandbox tasks exist but no sandbox_capability set. Skipping sandbox tasks.")
     FOR EACH sandbox_task in plan WHERE id starts with "T_SANDBOX" or "T_SV":
       Bash("hoyeon-cli spec task {sandbox_task.id} --status done --summary 'Skipped — no sandbox capability' {spec_path}")
       TaskUpdate(taskId=sandbox_task.tracking_id, status="completed")
@@ -865,16 +869,15 @@ TaskUpdate(taskId=rp, status="completed")
 ```
 .dev/specs/{name}/context/
   learnings.json — structured learnings (workers write via hoyeon-cli spec learning)
-  learnings.md  — legacy learnings (backward compat, read-only)
-  issues.md     — failed approaches, unresolved problems (workers append)
+  issues.json   — structured issues (workers write via hoyeon-cli spec issue)
   audit.md      — scope blockers, FV/CR events (orchestrator appends)
 ```
 
 ### Worker Context Instructions
 
 Worker descriptions (WORKER_DESCRIPTION) include context file read and update instructions.
-Workers self-read `{CONTEXT_DIR}/learnings.json` (or legacy `learnings.md`) and `{CONTEXT_DIR}/issues.md` directly,
-and append their findings after completing work.
+Workers self-read `{CONTEXT_DIR}/learnings.json` and `{CONTEXT_DIR}/issues.json` directly,
+and write their findings via CLI after completing work.
 
 The orchestrator does NOT read these files — only workers do.
 
@@ -911,7 +914,7 @@ Details: {summary}
 12. **Background for parallel** — use `run_in_background: true` for round-parallel workers
 13. **work_mode governs git behavior** — `worktree`: uses `EnterWorktree` to switch session CWD into an isolated worktree (all tools automatically operate there); `branch-commit`: current branch with per-task commits; `no-commit`: current branch, no commits at all (no :Commit tasks, no Residual Commit)
 14. **Worktree = session CWD switch** — `EnterWorktree` changes the session's working directory. All tools (Read, Edit, Write, Bash, Glob, Grep) automatically operate in the worktree. No per-worker `cd` needed. `spec_path` and `CONTEXT_DIR` are converted to absolute paths before entering.
-15. **Sandbox tasks are regular tasks** — T_SANDBOX and T_SV* tasks MUST be dispatched as normal workers when `sandbox_capability.detected == true`. Never defer or skip them without checking capability. Dependencies handle execution order (T_SV* depends_on T_SANDBOX).
+15. **Sandbox tasks are regular tasks** — T_SANDBOX and T_SV* tasks MUST be dispatched as normal workers when `sandbox_capability` is set. Only skip when `sandbox_capability` is null/missing. If `scaffold_required: true`, T_SANDBOX sets up the infra first. Dependencies handle execution order (T_SV* depends_on T_SANDBOX).
 
 ---
 

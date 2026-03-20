@@ -614,7 +614,7 @@ Then auto-generate the missing requirements/scenarios as proposals — **priorit
 ### L3 Gate
 
 ```bash
-hoyeon-cli spec coverage .dev/specs/{name}/spec.json --layer scenarios
+hoyeon-cli spec coverage .dev/specs/{name}/spec.json
 ```
 
 Then call gate-keeper via SendMessage with requirements + scenario summary.

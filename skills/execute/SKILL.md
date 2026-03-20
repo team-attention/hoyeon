@@ -24,7 +24,7 @@ allowed-tools:
 validate_prompt: |
   All tasks in spec.json must have status "done" at completion.
   hoyeon-cli spec check must pass (internal consistency).
-  Context files (learnings.md, issues.md) must exist if meta.type == "dev". audit.md must be populated if meta.type == "dev".
+  Context files (learnings.json, issues.json) must exist if meta.type == "dev". audit.md must be populated if meta.type == "dev".
   Final Verify must run (all modes and types).
   Final report must be output.
   Dedicated verifier agent (subagent_type=verifier) must run for each work task using verify_plan from CLI plan output.
@@ -106,8 +106,6 @@ mkdir -p "$CONTEXT_DIR"
 ```
 
 **First run** (no context files):
-- Create `learnings.md` (empty — workers will append)
-- Create `issues.md` (empty — workers will append)
 - Create `audit.md` (empty — orchestrator will append)
 
 **Resume** (context files exist):
@@ -214,7 +212,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 2. **Always use cli** — `spec plan`, `spec task`, `spec merge`, `spec check`
 3. **TaskCreate for all modes** — create Claude Code tracking tasks before execution begins. Structure differs per mode (see each reference md).
 4. **Background for parallel** — use `run_in_background: true` for round-parallel workers
-5. **Context files (dev only)** — in dev mode, workers append to learnings.md / issues.md; orchestrator appends to audit.md. Plain mode does not use context files.
+5. **Context files (dev only)** — in dev mode, workers write to learnings.json / issues.json via CLI; orchestrator appends to audit.md. Plain mode does not use context files.
 6. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli spec plan` to rebuild task state
 
 ## Checklist Before Stopping
@@ -223,7 +221,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 - [ ] spec.json found and validated
 - [ ] `hoyeon-cli spec plan` executed and shown to user
 - [ ] `meta.type` read (defaulted to "dev" if absent)
-- [ ] Context directory initialized (learnings.md, issues.md, audit.md)
+- [ ] Context directory initialized (audit.md) — learnings.json and issues.json are created by CLI on first write
 - [ ] Pre-work status logged explicitly (none/pass/fail)
 - [ ] TaskCreate entries created for all tasks + finalize steps (structure per mode reference)
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)

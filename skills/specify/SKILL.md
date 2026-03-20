@@ -91,8 +91,6 @@ STEP 5: VERIFY — Run `hoyeon-cli spec validate .dev/specs/{name}/spec.json` to
 | `source` | `"D1"` (string) | `{"type": "decision", "ref": "D1"}` (object) |
 | `checks[]` | `["npm run build"]` (string array) | `[{"type": "build", "run": "npm run build"}]` (object array) |
 | `research` | `"Found patterns..."` (string) | `{"summary": "...", "patterns": [...]}` (object) |
-| `history[]` | `{"notes": "created"}` | `{"ts": "2026-...", "type": "spec_created", "notes": "created"}` (ts + type required) |
-
 ### Merge Failure Recovery
 
 When `spec merge` returns non-zero exit code, follow this exact sequence:
@@ -162,7 +160,7 @@ hoyeon-cli spec init {name} --goal "{goal}" --type dev --depth {depth} --interac
 
 **Naming**: `{name}` = kebab-case, derived from goal (e.g., "fix-login-bug", "add-auth-middleware").
 
-Output: minimal spec.json with `meta` + placeholder `tasks` + `history`.
+Output: minimal spec.json with `meta` + placeholder `tasks`.
 
 Immediately update session state with the spec path:
 
@@ -378,7 +376,6 @@ No TeamCreate, no SendMessage gates. Max 1 plan-reviewer round if run.
 - [ ] `requirements` section populated with Given-When-Then scenarios + `verified_by` + `execution_env`
 - [ ] `context.confirmed_goal` populated (NOT `meta.confirmed_goal`)
 - [ ] `meta.non_goals` populated (use empty array `[]` if none)
-- [ ] `history` includes `spec_created` entry
 - [ ] `meta.mode` is set
 - [ ] Plan Approval Summary presented (including Breaking Changes scan)
 - [ ] Breaking Changes section shows detected signals or "(none detected)"

@@ -295,7 +295,7 @@ When execute HALTs. Handling differs by severity.
 
 ```
 # Extract failure reason from execute's HALT output
-# or read from context dir's audit.md, issues.md
+# or read from context dir's audit.md, issues.json
 CONTEXT_DIR = ".dev/specs/fix-{slug}/context"
 failure_reason = {execute HALT output or last triage result from audit.md}
 ```
@@ -374,7 +374,7 @@ hoyeon-cli spec task T2 --status pending ${SPEC_PATH}
 
 Execute handles resume naturally:
 - Skips done tasks
-- Context files (learnings.md, issues.md) retain previous failure info for the new worker
+- Context files (learnings.json, issues.json) retain previous failure info for the new worker
 - `known_gaps` carry failure context and retry_hint for the worker
 
 ### Step 4.5: Circuit Breaker

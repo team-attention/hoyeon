@@ -84,10 +84,10 @@ FINAL VERIFICATION:
 ───────────────────────────────────────────────────────────
 
 LEARNINGS:
-   {from context/learnings.md, or "None"}
+   {from context/learnings.json, or "None"}
 
 ISSUES:
-   {from context/issues.md, or "None"}
+   {from context/issues.json, or "None"}
 
 ═══════════════════════════════════════════════════════════
 ```
@@ -101,4 +101,4 @@ ISSUES:
 - **ADAPTATIONS MADE**: Dynamic plan changes made during execution — tasks added/modified/removed from original plan due to discovered dependencies, blockers, or scope changes. Pull from context/audit.md (filter for "Adapt" entries). Shows the difference between what was planned vs what was actually executed.
 - **SANDBOX TESTING**: Summary of sandbox infrastructure tests run during verification. Pull from `context/sandbox-report.md`. Shows per-TODO sandbox results and teardown status. If no sandbox was used, print "No sandbox testing performed". If teardown FAILED for any TODO, flag it in POST-WORK.
 - **FINAL VERIFICATION**: Post-review integration verification results. Pull from `context/audit.md` (filter for "Final Verification" entries). Shows the status of project-level acceptance command re-runs after Code Review. In quick mode, print "SKIPPED (quick mode)". If FAILED and unresolved, flag failed commands in POST-WORK.
-- **POST-WORK**: Remaining tasks that execution could not complete — things requiring human action, deployment steps, cross-repo changes, manual QA. Pull from context/issues.md + any FAILED Auto items that were not resolved.
+- **POST-WORK**: Remaining tasks that execution could not complete — things requiring human action, deployment steps, cross-repo changes, manual QA. Pull from context/issues.json + any FAILED Auto items that were not resolved.
