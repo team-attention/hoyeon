@@ -27,6 +27,9 @@ validate_prompt: |
   Context files (learnings.md, issues.md) must exist if meta.type == "dev". audit.md must be populated if meta.type == "dev".
   Final Verify must run (all modes and types).
   Final report must be output.
+  Dedicated verifier agent (subagent_type=verifier) must run for each work task using verify_plan from CLI plan output.
+  Sandbox scenarios must have inlined recipes in verifier description.
+  Verification-type tasks must NOT get .V:Verify TaskCreate (TF dedup).
 ---
 
 # /execute — Spec-Driven Orchestrator
@@ -229,6 +232,13 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 
 ### dev mode (additional)
 - [ ] Follow ${baseDir}/references/dev.md completely for all dev-specific steps
+- [ ] verify_plan built from CLI `spec plan --format slim` output for each work task
+- [ ] Sandbox recipes inlined into verifier description from verify-recipes/{subject}.md
+- [ ] Dedicated verifier agent (subagent_type=verifier) ran for each work task (Worker → Verify → Commit chain)
+- [ ] Verification-type tasks skipped .V:Verify (TF dedup guard)
+- [ ] Verifier FAIL triggered fix loop (max 2 retries via spec derive)
+- [ ] Final Verify Tier 1 passed (gate for Tier 2)
+- [ ] Final Verify Tier 2 ran in standard mode (cross-task compatibility, scenario coverage, constraint audit)
 
 ### plain mode (additional)
 - [ ] Follow ${baseDir}/references/plain.md completely for all plain-specific steps

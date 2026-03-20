@@ -8,7 +8,7 @@
 [![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli)](https://www.npmjs.com/package/@team-attention/hoyeon-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[빠른 시작](#빠른-시작) · [철학](#요구사항은-작성하는-것이-아니다) · [도출 체인](#도출-체인) · [명령어](#명령어) · [에이전트](#스무-개의-사고)
+[빠른 시작](#빠른-시작) · [철학](#요구사항은-작성하는-것이-아니다) · [도출 체인](#도출-체인) · [명령어](#명령어) · [에이전트](#스물한-개의-사고)
 
 ---
 
@@ -120,7 +120,7 @@ You:  /execute
 
   Hoyeon orchestrates:
   ├─ Worker agents implement each task in parallel
-  ├─ Quality gates validate before each commit
+  ├─ Verifier 에이전트가 태스크별 시나리오를 독립 검증
   ├─ Code review: Codex + Gemini + Claude (multi-model consensus)
   └─ Final Verify: goal + constraints + AC — holistic check
 
@@ -137,7 +137,7 @@ You:  /execute
            → 각 레이어는 CLI 검증 + 에이전트 리뷰로 게이팅
 
 /execute → 오케스트레이터가 spec.json을 읽고 병렬 워커를 디스패치
-           → 각 워커가 인수 조건에 대해 자체 검증
+           → 독립 Verifier가 각 시나리오를 기계적으로 점검
            → 다중 모델 코드 리뷰가 합의된 판정을 도출
            → Final Verify가 목표, 제약 조건, AC를 전체적으로 점검
            → 완전한 추적성을 가진 원자적 커밋
@@ -207,9 +207,9 @@ You:  /execute
   ┌─────────────────────────────────────────────────────┐
   │  /execute                                           │
   │                                                     │
-  │  Worker T1 ──→ Self-verify ──→ Commit T1            │
-  │  Worker T2 ──→ Self-verify ──→ Commit T2  (parallel)│
-  │  Worker T3 ──→ Self-verify ──→ Commit T3            │
+  │  Worker T1 ──→ Verifier T1 ──→ Commit T1             │
+  │  Worker T2 ──→ Verifier T2 ──→ Commit T2  (parallel)│
+  │  Worker T3 ──→ Verifier T3 ──→ Commit T3             │
   │       │                                             │
   │       ▼                                             │
   │  Code Review (Codex + Gemini + Claude)              │
@@ -226,7 +226,7 @@ You:  /execute
   └─────────────────────────────────────────────────────┘
 ```
 
-워커는 자신의 태스크 스펙을 읽고, 검증 명령을 실행하고, 결과를 보고한다.
+워커는 구현하고, 독립 Verifier 에이전트가 각 시나리오의 `verify_plan`을 기계적으로 실행한다 — 판단 없음, 바이패스 없음. 샌드박스 시나리오에는 인라인 레시피(웹, 서버, CLI, 데이터베이스)가 제공된다.
 
 ### 스펙은 살아 있다
 
@@ -276,9 +276,9 @@ You:  /execute
 
 ---
 
-## 스무 개의 사고
+## 스물한 개의 사고
 
-스무 개의 에이전트, 각각 다른 사고 방식. 직접 상호작용하지 않는다 — 스킬이 뒤에서 이들을 오케스트레이션한다.
+스물한 개의 에이전트, 각각 다른 사고 방식. 직접 상호작용하지 않는다 — 스킬이 뒤에서 이들을 오케스트레이션한다.
 
 | 에이전트 | 역할 | 핵심 질문 |
 |-------|------|---------------|
@@ -289,12 +289,13 @@ You:  /execute
 | **Debugger** | 증상이 아닌 근본 원인을 추적한다 | *"이것이 원인인가, 증상인가?"* |
 | **Code Reviewer** | 다중 모델 합의 (Codex + Gemini + Claude) | *"세 전문가가 이것을 출시할까?"* |
 | **Worker** | 스펙 정밀도로 구현한다 | *"이것이 요구사항과 일치하는가?"* |
+| **Verifier** | 태스크별 독립 시나리오 검증 | *"코드가 모든 시나리오와 일치하는가?"* |
 | **Ralph Verifier** | 독립적, 컨텍스트 격리된 완료 기준 점검 | *"정말로 끝난 것인가?"* |
 | **Plan Reviewer** | 스펙 완전성과 품질을 검증한다 | *"계획이 목표를 커버하는가?"* |
 | **External Researcher** | 라이브러리와 모범 사례를 조사한다 | *"실제로 어떤 근거가 있는가?"* |
 
 <details>
-<summary><strong>전체 20개 에이전트</strong></summary>
+<summary><strong>전체 21개 에이전트</strong></summary>
 
 | 에이전트 | 역할 |
 |-------|------|
@@ -305,6 +306,7 @@ You:  /execute
 | Debugger | 버그 분류를 통한 근본 원인 분석 |
 | Code Reviewer | 다중 모델 리뷰: Codex + Gemini + Claude → SHIP/NEEDS_FIXES |
 | Worker | 스펙 기반 자체 검증으로 태스크 구현 |
+| Verifier | verify_plan 기반 독립 시나리오 검증 (기계적, 바이패스 없음) |
 | Ralph Verifier | 격리된 컨텍스트에서 독립적 완료 기준 검증 |
 | Plan Reviewer | 스펙 품질 리뷰: 목표 정렬, 커버리지, 세분화 |
 | External Researcher | 웹을 통한 라이브러리 조사 및 모범 사례 탐색 |
@@ -357,7 +359,7 @@ You:  /execute
 
 ## 내부 구조
 
-**24개 스킬 · 20개 에이전트 · 18개 훅**
+**24개 스킬 · 21개 에이전트 · 18개 훅**
 
 ```
 .claude/
@@ -373,7 +375,7 @@ You:  /execute
 │   ├── debugger       근본 원인 분석
 │   ├── worker         태스크 구현
 │   ├── code-reviewer  다중 모델 합의
-│   └── ...            16개 추가 에이전트
+│   └── ...            17개 추가 에이전트
 ├── scripts/           18개 훅 스크립트
 │   ├── session        라이프사이클 관리
 │   ├── guards         쓰기 보호, 계획 강제
@@ -388,6 +390,7 @@ You:  /execute
 - **품질 게이트** — AC Quality Gate가 인수 조건을 반복적으로 검증 (최대 5라운드)
 - **다중 모델 리뷰** — Codex + Gemini + Claude가 독립적으로 리뷰 후 SHIP/NEEDS_FIXES 판정 도출
 - **훅 시스템** — 18개 훅이 파이프라인 전환, 쓰기 보호, 게이트 강제, 실패 복구를 자동화
+- **검증 파이프라인** — CLI가 태스크별 verify_plan 생성; 전용 Verifier 에이전트가 인라인 샌드박스 레시피로 시나리오 실행
 - **자기 개선** — 범위 블로커 → 런타임에 수정 태스크 도출 (추가 전용, 깊이 1, 서킷 브레이커)
 - **Ralph 루프** — 완료 기준 기반 반복 + Stop 훅 재주입 + 독립적 컨텍스트 격리 검증
 

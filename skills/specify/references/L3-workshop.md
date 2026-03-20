@@ -189,6 +189,52 @@ Each scenario MUST include:
 - execution_env: 'host' | 'sandbox' | 'ci'
 - verify: object matching verified_by type
 
+### Sandbox Scenario Subject Classification
+
+When creating scenarios with `execution_env: "sandbox"`, you MUST include a `subject` field.
+Classify based on what the scenario verifies:
+
+| Signal in scenario | subject |
+|-------------------|---------|
+| Browser, UI, page, click, render, visual, CSS, DOM | `"web"` |
+| API, endpoint, HTTP, REST, GraphQL, request, response, status code | `"server"` |
+| Command, CLI, terminal, argv, flag, stdout, stderr, exit code | `"cli"` |
+| Database, query, SQL, table, row, record, migration, schema | `"database"` |
+
+The subject determines which verification recipe the Verifier agent will follow.
+
+> `subject` is ONLY required when `execution_env: "sandbox"`. Do NOT add it to host or ci scenarios.
+
+## verify Abstraction Rules (MANDATORY)
+
+verify describes OBSERVABLE BEHAVIOR, not implementation details.
+
+### Prohibited in verify fields:
+- File paths (src/auth/login.ts)
+- Function/class names (validatePassword(), AuthService)
+- Code patterns (if(!pw) throw)
+- Line numbers
+- Internal variable names
+
+### Allowed in verify fields:
+- API contracts (POST /login with empty body → 400)
+- Input/output relations (empty password → validation error message)
+- Behavior properties (invalid input does not trigger database query)
+- UI states (login success → dashboard shows username)
+
+### Self-check: "If all implementation file names changed, would this verify still be valid?"
+  Yes → correct abstraction level. No → rewrite.
+
+### Examples
+
+WRONG (implementation-coupled):
+  machine: {"type": "command", "run": "grep 'validation' src/auth/login.ts", "expect": {"exit_code": 0}}
+  agent: {"type": "assertion", "checks": ["src/auth/login.ts has validation guard before db.query call"]}
+
+RIGHT (behavior-level):
+  machine: {"type": "command", "run": "curl -s -w '%{http_code}' -X POST localhost:3000/login -d '{}'", "expect": {"stdout_contains": "400"}}
+  agent: {"type": "assertion", "checks": ["Empty password request returns HTTP 400 with error message containing 'required' or 'validation'", "Invalid input does not trigger database query"]}
+
 ## Sandbox Capability
 {IF sandbox_capability is set:
   Available: {sandbox_capability.tools} (docker: {sandbox_capability.docker}, browser: {sandbox_capability.browser})
@@ -267,6 +313,12 @@ IMPORTANT: Communication protocol:
 - Machine: verify.run is executable shell command, verify.expect has concrete value
 - Agent: verify.checks is falsifiable (can be proven wrong)
 - Human: verify.ask is actionable (step-by-step instructions)
+
+**verify abstraction level (BLOCKING):**
+- IF verify.run or verify.checks reference specific file paths → REJECT ("verify coupled to implementation: {path}")
+- IF verify.run or verify.checks reference function/class names → REJECT ("verify coupled to implementation: {name}")
+- IF verify.checks contain vague words: "works", "correctly", "properly", "as expected" → REJECT ("verify not falsifiable: {check}")
+- Self-check per scenario: "If implementation files were renamed, would this verify still hold?" No → REJECT
 
 **Sandbox/execution_env diversity:**
 - Tier 4 items have execution_env: 'sandbox'
@@ -436,6 +488,17 @@ cat > /tmp/spec-merge.json << 'EOF'
           "verified_by": "machine",
           "execution_env": "host",
           "verify": {"type": "command", "run": "npm test -- --grep R1-S1"}
+        },
+        {
+          "id": "R1-S2",
+          "category": "HP",
+          "given": "precondition",
+          "when": "action in browser",
+          "then": "expected UI result",
+          "verified_by": "machine",
+          "execution_env": "sandbox",
+          "subject": "web",
+          "verify": {"type": "command", "run": "npx playwright test --grep R1-S2"}
         }
       ]
     }
@@ -454,15 +517,43 @@ If merge fails → follow Merge Failure Recovery (SKILL.md). Do NOT proceed to L
 
 ### L3 User Approval (mandatory before gate)
 
-Before running the gate, present ALL requirements to the user for explicit approval:
+Before running the gate, present ALL requirements and their scenarios to the user as **text output first**, then ask for approval.
+
+**Step 1 — Display full details as text output (NOT inside AskUserQuestion):**
+
+Print all requirements with their scenarios in full detail. This is regular text output, not a tool call:
+
+```markdown
+---
+## L3 Requirements & Scenarios for Approval
+
+### R1 [P1]: {behavior}
+- **S1.1** (HP): Given {given}, When {when}, Then {then}
+- **S1.2** (EP): Given {given}, When {when}, Then {then}
+- **S1.3** (BC): Given {given}, When {when}, Then {then}
+
+### R2 [P2]: {behavior}
+- **S2.1** (HP): Given {given}, When {when}, Then {then}
+- ...
+
+{repeat for ALL requirements}
+
+**Total: {N} requirements, {M} scenarios**
+---
+```
+
+> Show EVERY requirement and EVERY scenario. Do not summarize or truncate even if the list is long. The user needs to see everything before approving.
+
+**Step 2 — Ask for approval (simple choice only):**
 
 ```
 AskUserQuestion(
-  question: "L3 requirements are ready. Please review:\n\n{FOR EACH r in requirements: R{r.id} [{r.priority}]: {r.behavior} (scenarios: {r.scenarios.length})\n}",
+  question: "Review the requirements and scenarios above. Ready to proceed?",
   header: "L3 Requirements Approval",
   options: [
     { label: "Approve all", description: "Requirements look good — proceed to L4" },
     { label: "Revise", description: "I want to change, add, or remove requirements" },
+    { label: "Challenge", description: "Think harder — what requirements are we missing?" },
     { label: "Abort", description: "Stop specification process" }
   ]
 )
@@ -470,7 +561,53 @@ AskUserQuestion(
 
 - **Approve all** → proceed to L3 Gate
 - **Revise** → user provides corrections, orchestrator re-runs workshop (or merges changes directly), re-present for approval (loop until approved)
+- **Challenge** → orchestrator runs Requirements Completeness Audit (see below), proposes additional requirements, re-present for approval
 - **Abort** → stop
+
+#### Requirements Completeness Audit (triggered by "Challenge")
+
+When the user selects "Challenge", the orchestrator self-audits the current requirement set across **two axes**:
+
+##### Axis 1: Breadth — "What entire requirements are missing?"
+
+1. **Decision coverage check** — for each L2 decision, verify at least one requirement traces back to it. Flag orphan decisions (decided but never specified as a requirement).
+2. **Negative requirements** — what should the system explicitly NOT do? Look for missing "must not" requirements implied by decisions or constraints.
+3. **User journey walk** — mentally walk through the primary user flow end-to-end. Flag any step where behavior is unspecified (e.g., "user lands on page — but what's the empty state?").
+4. **Constraint-to-requirement traceability** — for each L2 constraint, is there a requirement whose scenarios actually verify it? Flag constraints that no scenario exercises.
+
+##### Axis 2: Depth — "Which existing requirements need richer scenarios?"
+
+5. **Scenario category coverage** — for each requirement, check HP (happy path), EP (error path), BC (boundary/edge case), NI (negative/invalid input), IT (integration/interaction) categories. Flag requirements with only HP scenarios.
+6. **State variation scan** — for each requirement, ask: "Does behavior change based on state?" (empty vs populated, first-time vs returning, logged-in vs anonymous, mobile vs desktop). Flag unaddressed state variations.
+7. **Concurrency/timing scan** — for each requirement, ask: "What if two users/processes do this simultaneously?" or "What if this happens during a pending operation?" Flag race conditions or timing-dependent behavior left unspecified.
+
+##### Cross-axis check
+
+8. **Cross-requirement conflict check** — look for pairs of requirements that could contradict each other when implemented together.
+
+**Output format** — present findings grouped by axis:
+
+```markdown
+## Challenge Results — {N} potential gaps found
+
+### Breadth Gaps (missing requirements)
+- D2 decided [X] but no requirement specifies the behavior
+- Nothing says what happens when [boundary condition]
+- Between R2 and R4, what happens when [transition scenario]?
+- C3 (constraint) has no scenario that exercises it
+
+### Depth Gaps (existing requirements need richer scenarios)
+- R1 only has happy path — what if [failure scenario]?
+- R3: behavior differs for empty state vs populated state? (not specified)
+- R2: what if two users submit simultaneously? (not addressed)
+
+### Conflicts
+- R1 and R5 may conflict when [scenario]
+```
+
+Then auto-generate the missing requirements/scenarios as proposals — **prioritize breadth gaps first** (a missing requirement is a bigger blind spot than a missing scenario), then depth gaps. Merge them and re-present for approval.
+
+> **Circuit breaker**: Challenge can be selected at most **2 times** per L3 cycle. After 2 rounds, only Approve/Revise/Abort remain.
 
 > This approval is **mandatory** — even in autopilot mode, L3 requirements MUST be user-approved before gate-keeper runs. Requirements are what gets built — wrong requirements = wrong implementation.
 

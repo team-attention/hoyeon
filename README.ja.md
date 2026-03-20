@@ -8,7 +8,7 @@
 [![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli)](https://www.npmjs.com/package/@team-attention/hoyeon-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[クイックスタート](#クイックスタート) · [思想](#要件は書くものではない) · [導出チェーン](#導出チェーン) · [コマンド](#コマンド) · [エージェント](#20の思考)
+[クイックスタート](#クイックスタート) · [思想](#要件は書くものではない) · [導出チェーン](#導出チェーン) · [コマンド](#コマンド) · [エージェント](#21の思考)
 
 ---
 
@@ -120,7 +120,7 @@ You:  /execute
 
   Hoyeon orchestrates:
   ├─ Worker agents implement each task in parallel
-  ├─ Quality gates validate before each commit
+  ├─ Verifier エージェントがタスクごとにシナリオを独立検証
   ├─ Code review: Codex + Gemini + Claude (multi-model consensus)
   └─ Final Verify: goal + constraints + AC — holistic check
 
@@ -137,7 +137,7 @@ You:  /execute
            → Each layer gated by CLI validation + agent review
 
 /execute → Orchestrator read spec.json, dispatched parallel workers
-           → Each worker self-verified against acceptance criteria
+           → Independent verifiers checked each scenario mechanically
            → Multi-model code review synthesized verdict
            → Final Verify checked goal, constraints, AC holistically
            → Atomic commits with full traceability
@@ -207,9 +207,9 @@ You:  /execute
   ┌─────────────────────────────────────────────────────┐
   │  /execute                                           │
   │                                                     │
-  │  Worker T1 ──→ Self-verify ──→ Commit T1            │
-  │  Worker T2 ──→ Self-verify ──→ Commit T2  (parallel)│
-  │  Worker T3 ──→ Self-verify ──→ Commit T3            │
+  │  Worker T1 ──→ Verifier T1 ──→ Commit T1             │
+  │  Worker T2 ──→ Verifier T2 ──→ Commit T2  (parallel)│
+  │  Worker T3 ──→ Verifier T3 ──→ Commit T3             │
   │       │                                             │
   │       ▼                                             │
   │  Code Review (Codex + Gemini + Claude)              │
@@ -226,7 +226,7 @@ You:  /execute
   └─────────────────────────────────────────────────────┘
 ```
 
-ワーカーは自らタスク仕様を読み取り、検証コマンドを実行し、結果を報告します。
+ワーカーが実装し、独立した Verifier エージェントが各シナリオの `verify_plan` を機械的に実行します — 判断なし、バイパスなし。サンドボックスシナリオにはインライン レシピ（web、server、CLI、database）が提供されます。
 
 ### 仕様は生きている
 
@@ -276,9 +276,9 @@ You:  /execute
 
 ---
 
-## 20の思考
+## 21の思考
 
-20のエージェント、それぞれが異なる思考モードを持っています。直接やり取りすることはありません — スキルが裏側でそれらをオーケストレーションします。
+21のエージェント、それぞれが異なる思考モードを持っています。直接やり取りすることはありません — スキルが裏側でそれらをオーケストレーションします。
 
 | エージェント | 役割 | 核心的な問い |
 |-------|------|---------------|
@@ -289,12 +289,13 @@ You:  /execute
 | **Debugger** | 症状ではなく根本原因を追跡する | *「これは原因か、それとも症状か？」* |
 | **Code Reviewer** | マルチモデル合意（Codex + Gemini + Claude） | *「3人の専門家はこれを出荷するか？」* |
 | **Worker** | 仕様に忠実に実装する | *「これは要件と一致しているか？」* |
+| **Verifier** | タスクごとの独立シナリオ検証 | *「コードはすべてのシナリオと一致しているか？」* |
 | **Ralph Verifier** | 独立した、コンテキスト隔離された DoD チェック | *「本当に完了しているか？」* |
 | **Plan Reviewer** | 仕様の完全性と品質を検証する | *「計画はゴールをカバーしているか？」* |
 | **External Researcher** | ライブラリとベストプラクティスを調査する | *「実際にどんなエビデンスがあるか？」* |
 
 <details>
-<summary><strong>全20エージェント</strong></summary>
+<summary><strong>全21エージェント</strong></summary>
 
 | エージェント | 役割 |
 |-------|------|
@@ -305,6 +306,7 @@ You:  /execute
 | Debugger | バグ分類による根本原因分析 |
 | Code Reviewer | マルチモデルレビュー：Codex + Gemini + Claude → SHIP/NEEDS_FIXES |
 | Worker | 仕様駆動の自己検証によるタスク実装 |
+| Verifier | verify_plan を使った独立シナリオ検証（機械的、バイパス不可） |
 | Ralph Verifier | 隔離されたコンテキストでの独立した DoD 検証 |
 | Plan Reviewer | 仕様の品質レビュー：ゴール整合性、カバレッジ、粒度 |
 | External Researcher | Web 経由のライブラリ調査とベストプラクティス研究 |
@@ -357,7 +359,7 @@ You:  /execute
 
 ## 内部構造
 
-**24スキル · 20エージェント · 18フック**
+**24スキル · 21エージェント · 18フック**
 
 ```
 .claude/
@@ -373,7 +375,7 @@ You:  /execute
 │   ├── debugger       Root cause analysis
 │   ├── worker         Task implementation
 │   ├── code-reviewer  Multi-model consensus
-│   └── ...            16 more agents
+│   └── ...            17 more agents
 ├── scripts/           18 hook scripts
 │   ├── session        Lifecycle management
 │   ├── guards         Write protection, plan enforcement
@@ -388,6 +390,7 @@ You:  /execute
 - **品質ゲート** — AC Quality Gate が受け入れ基準を反復的にバリデーション（最大5ラウンド）
 - **マルチモデルレビュー** — Codex + Gemini + Claude が独立してレビューを実行し、SHIP/NEEDS_FIXES の判定を合成
 - **フックシステム** — 18のフックがパイプライン遷移の自動化、書き込みの保護、ゲートの強制、障害からの回復を担当
+- **検証パイプライン** — CLI がタスクごとに verify_plan を構築；専用 Verifier エージェントがインライン サンドボックス レシピでシナリオを実行
 - **自己改善** — スコープブロッカー → ランタイムでの派生修正タスク（追記のみ、深さ1、サーキットブレーカー）
 - **Ralph ループ** — DoD ベースの反復、Stop フックによる再注入 + 独立したコンテキスト隔離検証
 

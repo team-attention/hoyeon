@@ -121,7 +121,29 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.1.0)
+## Recent Changes (v1.2.0)
+
+- feat(cli,execute): add verify_plan pipeline with dedicated verifier agent
+  - buildVerifyPlan() maps task AC scenarios to structured verify entries
+  - scenario.subject field (web/server/cli/database), required for sandbox env
+  - Sandbox verify-recipes inlined into verifier description per subject
+  - Verification-type tasks skip .V:Verify (TF dedup guard)
+- feat(execute): add independent Verifier agent for scenario-based verification (Worker→Verify→Commit pipeline)
+- feat(execute): add Final Verify Tier 2 semantic cross-verification (cross-task compatibility, scenario coverage, constraint audit)
+- refactor(specify): replace specify-v2 with specify as primary skill (layer-based L0-L5)
+  - 3-agent collaborative L3 workshop (L3-user-advocate, L3-requirement-writer, L3-devil's-advocate)
+  - Challenge option for L2/L3 approval gates (breadth/depth axes)
+  - Mandatory user approval gates at L2 and L3
+  - Sandbox capability extended (simulator, desktop, terminal)
+  - Constraints, external_dependencies, infra-aware interview added
+  - Breaking Changes section in Plan Approval Summary
+  - Mandatory Merge Protocol + Merge Failure Recovery
+- feat(cli): add spec learning/search for cross-spec compounding (BM25 search, --stdin for subagents)
+- feat(execute): add work mode selection (worktree/branch-commit/no-commit)
+- refactor(execute): Worker performs Tier 1 checks only (build/lint), scenario verification moved to Verifier
+- refactor(execute): Verifier FAIL triggers fix loop (spec derive + re-verify, max 2 retries)
+
+## Previous Changes (v1.1.0)
 
 - refactor(specify): replace phase-based specify with layer-based derivation chain (L0-L5)
   - L0:Goal → L1:Context → L2:Decisions → L3:Requirements+Scenarios → L4:Tasks → L5:Review
@@ -242,6 +264,24 @@ Available guide sections:
 - **One merge per section** — call `spec merge` once per top-level key. Never merge multiple sections in parallel
 - **`--append` for arrays** — use when adding to existing arrays (decisions, assumptions, known_gaps)
 - **`--patch` for nested updates** — use when updating specific items within arrays (e.g., adding scenarios to existing requirements)
+
+## CLI spec learning & search Reference
+
+**Learning** — Workers record structured learnings via CLI (auto-maps task→requirements):
+```bash
+hoyeon-cli spec learning --task T1 --stdin <spec_path> << 'EOF'
+{"problem": "...", "cause": "...", "rule": "...", "tags": [...]}
+EOF
+# Saves to: context/learnings.json (structured, searchable)
+# Also supports: --json '{"problem":"..."}' (but heredoc stdin preferred for subagents)
+```
+
+**Search** — BM25 search across all specs (requirements, scenarios, constraints, learnings):
+```bash
+hoyeon-cli spec search "sqlite fts5"                    # human-readable output
+hoyeon-cli spec search "auth redirect" --json --limit 5  # JSON for agents
+hoyeon-cli spec search "empty cart" --specs-dir .dev/specs
+```
 
 ## Testing Strategy
 

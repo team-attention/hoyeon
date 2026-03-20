@@ -8,7 +8,7 @@ A Claude Code plugin that derives requirements from your intent, verifies every 
 [![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli)](https://www.npmjs.com/package/@team-attention/hoyeon-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[Quick Start](#quick-start) · [Philosophy](#requirements-are-not-written) · [The Chain](#the-derivation-chain) · [Commands](#commands) · [Agents](#twenty-minds)
+[Quick Start](#quick-start) · [Philosophy](#requirements-are-not-written) · [The Chain](#the-derivation-chain) · [Commands](#commands) · [Agents](#twenty-one-minds)
 
 ---
 
@@ -120,7 +120,7 @@ You:  /execute
 
   Hoyeon orchestrates:
   ├─ Worker agents implement each task in parallel
-  ├─ Quality gates validate before each commit
+  ├─ Verifier agents independently check scenarios per task
   ├─ Code review: Codex + Gemini + Claude (multi-model consensus)
   └─ Final Verify: goal + constraints + AC — holistic check
 
@@ -137,7 +137,7 @@ You:  /execute
            → Each layer gated by CLI validation + agent review
 
 /execute → Orchestrator read spec.json, dispatched parallel workers
-           → Each worker self-verified against acceptance criteria
+           → Independent verifiers checked each scenario mechanically
            → Multi-model code review synthesized verdict
            → Final Verify checked goal, constraints, AC holistically
            → Atomic commits with full traceability
@@ -207,9 +207,9 @@ The orchestrator reads `spec.json` and dispatches parallel worker agents:
   ┌─────────────────────────────────────────────────────┐
   │  /execute                                           │
   │                                                     │
-  │  Worker T1 ──→ Self-verify ──→ Commit T1            │
-  │  Worker T2 ──→ Self-verify ──→ Commit T2  (parallel)│
-  │  Worker T3 ──→ Self-verify ──→ Commit T3            │
+  │  Worker T1 ──→ Verifier T1 ──→ Commit T1             │
+  │  Worker T2 ──→ Verifier T2 ──→ Commit T2  (parallel)│
+  │  Worker T3 ──→ Verifier T3 ──→ Commit T3             │
   │       │                                             │
   │       ▼                                             │
   │  Code Review (Codex + Gemini + Claude)              │
@@ -226,7 +226,7 @@ The orchestrator reads `spec.json` and dispatches parallel worker agents:
   └─────────────────────────────────────────────────────┘
 ```
 
-Workers self-read their task spec, run verification commands, and report results.
+Workers implement, then independent Verifier agents execute each scenario's `verify_plan` mechanically — no judgment, no bypass. Sandbox scenarios get inlined recipes (web, server, CLI, database).
 
 ### The Spec Is Alive
 
@@ -276,9 +276,9 @@ The spec doesn't predict the future. It survives it — by knowing which parts t
 
 ---
 
-## Twenty Minds
+## Twenty-One Minds
 
-Twenty agents, each a different mode of thinking. You never interact with them directly — skills orchestrate them behind the scenes.
+Twenty-one agents, each a different mode of thinking. You never interact with them directly — skills orchestrate them behind the scenes.
 
 | Agent | Role | Core Question |
 |-------|------|---------------|
@@ -289,6 +289,7 @@ Twenty agents, each a different mode of thinking. You never interact with them d
 | **Debugger** | Traces bugs to root causes, not symptoms | *"Is this the cause, or a symptom?"* |
 | **Code Reviewer** | Multi-model consensus (Codex + Gemini + Claude) | *"Would three experts ship this?"* |
 | **Worker** | Implements with spec precision | *"Does this match the requirement?"* |
+| **Verifier** | Independent scenario verification per task | *"Does the code match every scenario?"* |
 | **Ralph Verifier** | Independent, context-isolated DoD check | *"Is it actually done?"* |
 | **Plan Reviewer** | Validates spec completeness and quality | *"Does the plan cover the goal?"* |
 | **External Researcher** | Investigates libraries and best practices | *"What evidence do we actually have?"* |
@@ -305,6 +306,7 @@ Twenty agents, each a different mode of thinking. You never interact with them d
 | Debugger | Root cause analysis with bug classification |
 | Code Reviewer | Multi-model review: Codex + Gemini + Claude → SHIP/NEEDS_FIXES |
 | Worker | Task implementation with spec-driven self-verification |
+| Verifier | Independent scenario verification using verify_plan (mechanical, no bypass) |
 | Ralph Verifier | Independent DoD verification in isolated context |
 | Plan Reviewer | Spec quality review: goal alignment, coverage, granularity |
 | External Researcher | Library research and best practice investigation via web |
@@ -357,7 +359,7 @@ Twenty agents, each a different mode of thinking. You never interact with them d
 
 ## Under the Hood
 
-**24 skills · 20 agents · 18 hooks**
+**24 skills · 21 agents · 18 hooks**
 
 ```
 .claude/
@@ -373,7 +375,7 @@ Twenty agents, each a different mode of thinking. You never interact with them d
 │   ├── debugger       Root cause analysis
 │   ├── worker         Task implementation
 │   ├── code-reviewer  Multi-model consensus
-│   └── ...            16 more agents
+│   └── ...            17 more agents
 ├── scripts/           18 hook scripts
 │   ├── session        Lifecycle management
 │   ├── guards         Write protection, plan enforcement
@@ -388,6 +390,7 @@ Twenty agents, each a different mode of thinking. You never interact with them d
 - **Quality Gates** — AC Quality Gate validates acceptance criteria iteratively (max 5 rounds)
 - **Multi-Model Review** — Codex + Gemini + Claude run independent reviews, synthesize SHIP/NEEDS_FIXES verdict
 - **Hook System** — 18 hooks automate pipeline transitions, guard writes, enforce gates, recover from failures
+- **Verify Pipeline** — CLI builds verify_plan per task; dedicated Verifier agents execute scenarios with inlined sandbox recipes
 - **Self-Improvement** — Scope blockers → derived fix tasks at runtime (append-only, depth-1, circuit breaker)
 - **Ralph Loop** — DoD-based iteration with Stop hook re-injection + independent context-isolated verification
 

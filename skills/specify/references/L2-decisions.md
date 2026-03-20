@@ -282,6 +282,7 @@ AskUserQuestion(
   options: [
     { label: "Approve all", description: "Decisions look good — proceed to L3" },
     { label: "Revise", description: "I want to change or add decisions" },
+    { label: "Challenge", description: "Think harder — what decisions are we missing?" },
     { label: "Abort", description: "Stop specification process" }
   ]
 )
@@ -289,7 +290,55 @@ AskUserQuestion(
 
 - **Approve all** → proceed to L2 Gate
 - **Revise** → user provides corrections, orchestrator merges changes, re-present for approval (loop until approved)
+- **Challenge** → orchestrator runs Decision Completeness Audit (see below), proposes additional decisions, re-present for approval
 - **Abort** → stop
+
+#### Decision Completeness Audit (triggered by "Challenge")
+
+When the user selects "Challenge", the orchestrator self-audits the current decision set across **two axes**:
+
+##### Axis 1: Breadth — "What other categories of decisions are missing entirely?"
+
+Decisions have orthogonal categories. A decision about data storage says nothing about error handling. The breadth axis finds categories with zero coverage.
+
+1. **Category gap scan** — compare decisions against the internal completeness checklist (scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior). Flag categories with **no decisions at all**.
+2. **Stakeholder/actor scan** — who interacts with the system? For each actor (end user, admin, external API, background job, etc.), is there at least one decision about their experience? Flag missing actors.
+3. **Lifecycle phase scan** — decisions often cluster around the "happy runtime" phase. Check: is there a decision for initial setup/onboarding? For error recovery? For data migration/cleanup? For scaling? Flag unaddressed lifecycle phases.
+
+##### Axis 2: Depth — "Which existing decisions need to go one level deeper?"
+
+Each decision has downstream implications that may themselves require decisions. The depth axis follows these chains.
+
+4. **Implication chain walk** — for each existing decision, ask: "What else does this force us to decide?" Look for downstream decisions that were implicitly assumed but never explicitly made.
+5. **Failure mode scan** — for each decision, ask: "What happens when this goes wrong?" If the failure behavior was never decided, surface it.
+6. **Configuration/variation scan** — for each decision, ask: "Does this behave differently in different contexts?" (e.g., mobile vs desktop, first-time vs returning user, empty state vs full state). Flag unaddressed variations.
+
+##### Cross-axis check
+
+7. **Cross-decision tension check** — look for pairs of decisions (including newly proposed ones) that could conflict or create ambiguity when combined. Surface any unresolved tensions.
+
+**Output format** — present findings grouped by axis:
+
+```markdown
+## Challenge Results — {N} potential gaps found
+
+### Breadth Gaps (missing decision categories)
+- Error handling: No decision on what happens when [X] fails
+- Performance: No decision on pagination/caching strategy
+- Actor gap: No decisions about admin/operator experience
+
+### Depth Gaps (existing decisions need deeper choices)
+- D1 implies [Y], but we never decided [Z]
+- D2: what's the fallback when this fails? (not addressed)
+- D3: behaves differently on mobile vs desktop? (not addressed)
+
+### Tensions
+- D1 + D3 may conflict when [scenario] — needs resolution
+```
+
+Then auto-generate scenario questions for the top gaps — **prioritize breadth gaps first** (a missing category is a bigger blind spot than a missing sub-decision), then depth gaps. Max 3 questions per challenge round. After the user answers, merge new decisions and re-present for approval.
+
+> **Circuit breaker**: Challenge can be selected at most **2 times** per L2 cycle. After 2 rounds, only Approve/Revise/Abort remain. This prevents infinite loops while allowing meaningful depth.
 
 > This approval is **mandatory** — even in autopilot mode, L2 decisions MUST be user-approved before gate-keeper runs. Decisions are the foundation for all downstream layers.
 

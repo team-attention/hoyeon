@@ -103,6 +103,14 @@ Task(subagent_type="ux-reviewer",
      prompt="User's Goal: [goal]. Evaluate how this change affects existing UX.")
 ```
 
+**Past learnings search** (run in parallel with above agents):
+
+```bash
+hoyeon-cli spec search "[goal keywords]" --json --limit 5
+```
+
+If results are found, include them in the research merge as `past_learnings`.
+
 ### Merge research
 
 Merge all research results into spec.json. Follow the Mandatory Merge Protocol (SKILL.md):
@@ -123,7 +131,8 @@ cat > /tmp/spec-merge.json << 'EOF'
       "structure": ["dir1/", "dir2/"],
       "commands": {"build": "npm run build", "test": "npm test"},
       "documentation": "relevant docs found",
-      "ux_review": "UX impact assessment"
+      "ux_review": "UX impact assessment",
+      "past_learnings": "relevant learnings from spec search (omit if no matches)"
     }
   }
 }

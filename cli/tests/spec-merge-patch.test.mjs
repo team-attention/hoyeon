@@ -162,7 +162,7 @@ run(`spec merge ${specPath} --patch --json '${JSON.stringify({
   requirements: [{
     id: 'R1',
     scenarios: [
-      { id: 'R1-S1', given: 'old given', when: 'old when', then: 'old then', verified_by: 'agent', execution_env: 'sandbox', verify: { type: 'assertion', checks: ['output contains expected fields'] } },
+      { id: 'R1-S1', given: 'old given', when: 'old when', then: 'old then', verified_by: 'agent', execution_env: 'sandbox', subject: 'web', verify: { type: 'assertion', checks: ['output contains expected fields'] } },
       { id: 'R1-S2', given: 'keep', when: 'keep', then: 'keep', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
     ],
   }],
@@ -460,7 +460,7 @@ writeSpec({
       id: 'R1', behavior: 'Login error handling', priority: 1,
       scenarios: [
         { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', execution_env: 'host', status: 'pass', verified_by_task: 'T1', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'a', when: 'b', then: 'c', verified_by: 'agent', execution_env: 'sandbox', verify: { type: 'assertion', checks: ['ok'] } },
+        { id: 'R1-S2', given: 'a', when: 'b', then: 'c', verified_by: 'agent', execution_env: 'sandbox', subject: 'web', verify: { type: 'assertion', checks: ['ok'] } },
         { id: 'R1-S3', given: 'a', when: 'b', then: 'c', verified_by: 'human', verify: { type: 'instruction', ask: 'check' } },
       ],
     },
@@ -562,7 +562,7 @@ writeSpec({
       id: 'R1', behavior: 'feature', priority: 1,
       scenarios: [
         { id: 'R1-S1', given: 'a', when: 'b', then: 'host output', verified_by: 'machine', execution_env: 'host', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'a', when: 'b', then: 'sandbox output', verified_by: 'agent', execution_env: 'sandbox', verify: { type: 'assertion', checks: ['ok'] } },
+        { id: 'R1-S2', given: 'a', when: 'b', then: 'sandbox output', verified_by: 'agent', execution_env: 'sandbox', subject: 'web', verify: { type: 'assertion', checks: ['ok'] } },
       ],
     },
   ],

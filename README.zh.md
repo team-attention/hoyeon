@@ -8,7 +8,7 @@
 [![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli)](https://www.npmjs.com/package/@team-attention/hoyeon-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[快速开始](#快速开始) · [理念](#需求不是写出来的) · [推导链](#推导链) · [命令](#命令) · [智能体](#二十个思维)
+[快速开始](#快速开始) · [理念](#需求不是写出来的) · [推导链](#推导链) · [命令](#命令) · [智能体](#二十一个思维)
 
 ---
 
@@ -120,7 +120,7 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
 
   Hoyeon 编排执行:
   ├─ Worker 智能体并行实现每个任务
-  ├─ 质量关卡在每次提交前验证
+  ├─ Verifier 智能体独立验证每个任务的场景
   ├─ 代码审查: Codex + Gemini + Claude (多模型共识)
   └─ Final Verify: 目标 + 约束 + AC — 整体检查
 
@@ -137,7 +137,7 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
            → 每层由 CLI 验证 + 智能体审查把关
 
 /execute → 编排器读取 spec.json，分派并行 Worker
-           → 每个 Worker 根据验收标准自行验证
+           → 独立 Verifier 机械式检查每个场景
            → 多模型代码审查综合裁定
            → Final Verify 整体检查目标、约束、AC
            → 原子提交，完整可追溯
@@ -207,9 +207,9 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
   ┌─────────────────────────────────────────────────────┐
   │  /execute                                           │
   │                                                     │
-  │  Worker T1 ──→ Self-verify ──→ Commit T1            │
-  │  Worker T2 ──→ Self-verify ──→ Commit T2  (并行)    │
-  │  Worker T3 ──→ Self-verify ──→ Commit T3            │
+  │  Worker T1 ──→ Verifier T1 ──→ Commit T1             │
+  │  Worker T2 ──→ Verifier T2 ──→ Commit T2  (并行)    │
+  │  Worker T3 ──→ Verifier T3 ──→ Commit T3             │
   │       │                                             │
   │       ▼                                             │
   │  Code Review (Codex + Gemini + Claude)              │
@@ -226,7 +226,7 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
   └─────────────────────────────────────────────────────┘
 ```
 
-Worker 自行读取任务规格，运行验证命令，并报告结果。
+Worker 负责实现，独立 Verifier 智能体机械执行每个场景的 `verify_plan` — 无判断，不可绕过。沙箱场景内联提供执行菜谱（web、server、CLI、database）。
 
 ### 规格是活的
 
@@ -276,9 +276,9 @@ Worker 自行读取任务规格，运行验证命令，并报告结果。
 
 ---
 
-## 二十个思维
+## 二十一个思维
 
-二十个智能体，每个代表不同的思维模式。你无需直接与它们交互——技能在幕后编排它们。
+二十一个智能体，每个代表不同的思维模式。你无需直接与它们交互——技能在幕后编排它们。
 
 | 智能体 | 角色 | 核心问题 |
 |-------|------|---------|
@@ -289,12 +289,13 @@ Worker 自行读取任务规格，运行验证命令，并报告结果。
 | **Debugger** | 追溯 bug 的根因，而非表象 | *"这是原因，还是症状?"* |
 | **Code Reviewer** | 多模型共识 (Codex + Gemini + Claude) | *"三位专家会发布这个吗?"* |
 | **Worker** | 按规格精确实现 | *"这符合需求吗?"* |
+| **Verifier** | 每任务独立场景验证 | *"代码与所有场景一致吗?"* |
 | **Ralph Verifier** | 独立的、上下文隔离的完成定义检查 | *"真的完成了吗?"* |
 | **Plan Reviewer** | 验证规格的完整性和质量 | *"计划覆盖目标了吗?"* |
 | **External Researcher** | 调研库和最佳实践 | *"我们实际有什么证据?"* |
 
 <details>
-<summary><strong>全部 20 个智能体</strong></summary>
+<summary><strong>全部 21 个智能体</strong></summary>
 
 | 智能体 | 角色 |
 |-------|------|
@@ -305,6 +306,7 @@ Worker 自行读取任务规格，运行验证命令，并报告结果。
 | Debugger | 带 bug 分类的根因分析 |
 | Code Reviewer | 多模型审查: Codex + Gemini + Claude → SHIP/NEEDS_FIXES |
 | Worker | 基于规格驱动的自验证任务实现 |
+| Verifier | 基于 verify_plan 的独立场景验证（机械执行，不可绕过） |
 | Ralph Verifier | 隔离上下文中的独立完成定义验证 |
 | Plan Reviewer | 规格质量审查: 目标对齐、覆盖度、粒度 |
 | External Researcher | 通过网络调研库和最佳实践 |
@@ -357,7 +359,7 @@ Worker 自行读取任务规格，运行验证命令，并报告结果。
 
 ## 底层架构
 
-**24 个技能 · 20 个智能体 · 18 个钩子**
+**24 个技能 · 21 个智能体 · 18 个钩子**
 
 ```
 .claude/
@@ -373,7 +375,7 @@ Worker 自行读取任务规格，运行验证命令，并报告结果。
 │   ├── debugger       根因分析
 │   ├── worker         任务实现
 │   ├── code-reviewer  多模型共识
-│   └── ...            另外 16 个智能体
+│   └── ...            另外 17 个智能体
 ├── scripts/           18 个钩子脚本
 │   ├── session        生命周期管理
 │   ├── guards         写入保护, 计划执行
@@ -388,6 +390,7 @@ Worker 自行读取任务规格，运行验证命令，并报告结果。
 - **质量关卡** — AC Quality Gate 迭代验证验收标准 (最多 5 轮)
 - **多模型审查** — Codex + Gemini + Claude 独立审查，综合产出 SHIP/NEEDS_FIXES 裁定
 - **钩子系统** — 18 个钩子自动化流水线流转、守护写入、执行关卡、故障恢复
+- **验证流水线** — CLI 为每个任务构建 verify_plan；专用 Verifier 智能体使用内联沙箱菜谱执行场景
 - **自改进** — 范围阻塞 → 运行时衍生修复任务 (只追加, 深度 1, 熔断器)
 - **Ralph 循环** — 基于 DoD 的迭代，Stop 钩子重注入 + 独立上下文隔离验证
 
