@@ -539,37 +539,46 @@ AskUserQuestion(
 
 #### Requirements Completeness Audit (triggered by "Challenge")
 
-When the user selects "Challenge", the orchestrator self-audits the current requirement set:
+When the user selects "Challenge", the orchestrator self-audits the current requirement set across **two axes**:
+
+##### Axis 1: Breadth — "What entire requirements are missing?"
 
 1. **Decision coverage check** — for each L2 decision, verify at least one requirement traces back to it. Flag orphan decisions (decided but never specified as a requirement).
-2. **Scenario gap scan** — for each requirement, check: are happy path, error path, and edge cases all covered? Flag requirements with only happy-path scenarios.
-3. **Negative requirements** — what should the system explicitly NOT do? Look for missing "must not" requirements implied by decisions or constraints.
-4. **User journey walk** — mentally walk through the primary user flow end-to-end. Flag any step where behavior is unspecified (e.g., "user lands on page — but what's the empty state?").
-5. **Cross-requirement conflict check** — look for pairs of requirements that could contradict each other when implemented together.
+2. **Negative requirements** — what should the system explicitly NOT do? Look for missing "must not" requirements implied by decisions or constraints.
+3. **User journey walk** — mentally walk through the primary user flow end-to-end. Flag any step where behavior is unspecified (e.g., "user lands on page — but what's the empty state?").
+4. **Constraint-to-requirement traceability** — for each L2 constraint, is there a requirement whose scenarios actually verify it? Flag constraints that no scenario exercises.
 
-**Output format:**
+##### Axis 2: Depth — "Which existing requirements need richer scenarios?"
+
+5. **Scenario category coverage** — for each requirement, check HP (happy path), EP (error path), BC (boundary/edge case), NI (negative/invalid input), IT (integration/interaction) categories. Flag requirements with only HP scenarios.
+6. **State variation scan** — for each requirement, ask: "Does behavior change based on state?" (empty vs populated, first-time vs returning, logged-in vs anonymous, mobile vs desktop). Flag unaddressed state variations.
+7. **Concurrency/timing scan** — for each requirement, ask: "What if two users/processes do this simultaneously?" or "What if this happens during a pending operation?" Flag race conditions or timing-dependent behavior left unspecified.
+
+##### Cross-axis check
+
+8. **Cross-requirement conflict check** — look for pairs of requirements that could contradict each other when implemented together.
+
+**Output format** — present findings grouped by axis:
 
 ```markdown
 ## Challenge Results — {N} potential gaps found
 
-### Orphan Decisions (no requirement traces here)
+### Breadth Gaps (missing requirements)
 - D2 decided [X] but no requirement specifies the behavior
-
-### Scenario Gaps
-- R1 only has happy path — what if [failure scenario]?
-- R3 missing edge case: [specific edge case]
-
-### Missing Negative Requirements
 - Nothing says what happens when [boundary condition]
-
-### User Journey Gaps
 - Between R2 and R4, what happens when [transition scenario]?
+- C3 (constraint) has no scenario that exercises it
+
+### Depth Gaps (existing requirements need richer scenarios)
+- R1 only has happy path — what if [failure scenario]?
+- R3: behavior differs for empty state vs populated state? (not specified)
+- R2: what if two users submit simultaneously? (not addressed)
 
 ### Conflicts
 - R1 and R5 may conflict when [scenario]
 ```
 
-Then auto-generate the missing requirements/scenarios as proposals, merge them, and re-present for approval.
+Then auto-generate the missing requirements/scenarios as proposals — **prioritize breadth gaps first** (a missing requirement is a bigger blind spot than a missing scenario), then depth gaps. Merge them and re-present for approval.
 
 > **Circuit breaker**: Challenge can be selected at most **2 times** per L3 cycle. After 2 rounds, only Approve/Revise/Abort remain.
 
