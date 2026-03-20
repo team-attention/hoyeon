@@ -121,7 +121,14 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.2.0)
+## Recent Changes (v1.2.1)
+
+- feat(cli): add `spec issue` subcommand — structured issues to context/issues.json (mirrors spec learning pattern)
+- refactor(cli): extract spec.json history[] to context/history.json via appendHistory() helper
+- refactor(skills): replace issues.md with issues.json (CLI-driven), remove learnings.md legacy references
+- fix(schema): add missing `detected` field to sandbox_capability in v5 schema
+
+## Previous Changes (v1.2.0)
 
 - feat(cli,execute): add verify_plan pipeline with dedicated verifier agent
   - buildVerifyPlan() maps task AC scenarios to structured verify entries
@@ -265,7 +272,7 @@ Available guide sections:
 - **`--append` for arrays** — use when adding to existing arrays (decisions, assumptions, known_gaps)
 - **`--patch` for nested updates** — use when updating specific items within arrays (e.g., adding scenarios to existing requirements)
 
-## CLI spec learning & search Reference
+## CLI spec learning, issue & search Reference
 
 **Learning** — Workers record structured learnings via CLI (auto-maps task→requirements):
 ```bash
@@ -276,12 +283,24 @@ EOF
 # Also supports: --json '{"problem":"..."}' (but heredoc stdin preferred for subagents)
 ```
 
+**Issue** — Workers record structured issues via CLI:
+```bash
+hoyeon-cli spec issue --task T1 --stdin <spec_path> << 'EOF'
+{"type": "failed_approach|out_of_scope|blocker", "description": "..."}
+EOF
+# Saves to: context/issues.json (structured)
+# Also supports: --json '{"type":"blocker","description":"..."}'
+```
+
 **Search** — BM25 search across all specs (requirements, scenarios, constraints, learnings):
 ```bash
 hoyeon-cli spec search "sqlite fts5"                    # human-readable output
 hoyeon-cli spec search "auth redirect" --json --limit 5  # JSON for agents
 hoyeon-cli spec search "empty cart" --specs-dir .dev/specs
 ```
+
+**History** — Spec mutation history is automatically written to `context/history.json` (not in spec.json).
+All `spec merge`, `spec task`, `spec derive`, `spec scenario`, and `spec sandbox-tasks` commands append entries automatically.
 
 ## Testing Strategy
 
