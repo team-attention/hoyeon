@@ -377,7 +377,6 @@ At each layer:
 - [ ] Gate-keeper defined via spawn prompt (DRIFT/GAP/CONFLICT/BACKTRACK review, read-only)
 - [ ] SendMessage called at each layer gate (L2, L3, L4) — L0 and L1 have no gate-keeper review
 - [ ] `context.research` populated (check `spec guide context` for accepted types)
-- [ ] AC Quality Gate passed (L5 Step 5)
 - [ ] `context.decisions[]` populated from interview
 - [ ] `constraints` populated (L2.7 — merge empty array explicitly if none apply)
 - [ ] `external_dependencies` populated (L4.5 — merge empty pre_work/post_work explicitly if none apply)

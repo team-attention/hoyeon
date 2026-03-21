@@ -67,33 +67,7 @@ AskUserQuestion(
 > **Quick**: Max 1 review round. Semantic rejection → HALT.
 > **Autopilot**: Cosmetic auto-fix. Semantic without scope change → auto-fix + log assumption. Scope change → HALT.
 
-### Step 5: AC Quality Gate (DO NOT SKIP)
-
-> **MANDATORY**: This step MUST always run. Do NOT skip even if L3 covered sub-requirements — L3 checks requirement quality, L5 checks the MERGED spec.json (which may have drifted during L4 task mapping and coverage fixes). These are different validation scopes.
-
-Run the full AC quality check (max 5 rounds):
-
-```
-FOR iteration IN 1..5:
-  result = Task(subagent_type="ac-quality-gate",
-    prompt="Final AC quality check for spec: .dev/specs/{name}/spec.json")
-  IF result.status == "PASS":
-    print("AC Quality Gate: PASS ({iteration} iteration(s))")
-    BREAK
-  hoyeon-cli spec validate .dev/specs/{name}/spec.json
-
-IF iteration > 5 AND result.status == "FAIL":
-  AskUserQuestion(
-    question: "These ACs could not be auto-fixed after 5 rounds. How should we proceed?",
-    options: [
-      { label: "Fix manually", description: "I'll provide specific verify commands" },
-      { label: "Accept as-is", description: "Proceed with current quality level" },
-      { label: "Abort", description: "Stop and rethink requirements" }
-    ]
-  )
-```
-
-### Step 6: Plan Approval Summary
+### Step 5: Plan Approval Summary
 
 Present a comprehensive Plan Approval Summary before asking the user to proceed. This is the user's last chance to review the full spec before execution — make it thorough.
 

@@ -88,7 +88,7 @@ Every scenario in `spec.json` carries a `verified_by` classification:
 }
 ```
 
-The system pushes everything toward `machine` verification. AC Quality Gate reviews each scenario and suggests converting `human` items to `machine` where possible. Multi-model code review (Codex + Gemini + Claude) runs independently and synthesizes a consensus verdict. Independent verifiers check Definition of Done in isolated contexts to eliminate self-verification bias.
+The system pushes everything toward `machine` verification. Multi-model code review (Codex + Gemini + Claude) runs independently and synthesizes a consensus verdict. Independent verifiers check Definition of Done in isolated contexts to eliminate self-verification bias.
 
 Human review is reserved for what machines genuinely can't judge — UX feel, business logic correctness, naming decisions. Everything else runs automatically, every time, without asking.
 
@@ -191,7 +191,7 @@ Six layers. Each derived from the one before it. Each gated before the next begi
   L2: Decisions      scenario interview → implications derivation (L2.5)
    ↓  ◇ gate         are decisions justified?
   L3: Requirements   R1: "Toggle switches theme" → scenarios + verify
-   ↓  ◇ gate         are requirements complete? (AC Quality Gate)
+   ↓  ◇ gate         are requirements complete?
   L4: Tasks          T1: "Add toggle component" → file_scope, AC
    ↓  ◇ gate         do tasks cover all requirements?
   L5: Review         plan-reviewer + step-back gate-keeper
@@ -343,7 +343,6 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 | Docs Researcher | Internal documentation and architecture decision search |
 | Code Explorer | Fast read-only codebase search and pattern finding |
 | Git Master | Atomic commit enforcement with project style detection |
-| AC Quality Gate | Acceptance criteria validation (iterative, max 5 rounds) |
 | Phase2 Stepback | Scope drift and blind spot detection before planning |
 | Verification Planner | Test strategy design (Auto/Agent/Manual classification) |
 | Value Assessor | Positive impact and goal alignment evaluation |
@@ -417,7 +416,6 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 **Key internals:**
 
 - **Derivation Chain** — L0→L5 with merge checkpoints + gate-keeper teams at each transition
-- **Quality Gates** — AC Quality Gate validates acceptance criteria iteratively (max 5 rounds)
 - **Multi-Model Review** — Codex + Gemini + Claude run independent reviews, synthesize SHIP/NEEDS_FIXES verdict
 - **Hook System** — 18 hooks automate pipeline transitions, guard writes, enforce gates, recover from failures
 - **Verify Pipeline** — CLI builds verify_plan per task; dedicated Verifier agents execute scenarios with inlined sandbox recipes
