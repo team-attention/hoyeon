@@ -118,6 +118,7 @@ Merge all research results into spec.json. Follow the Mandatory Merge Protocol (
 ```bash
 # STEP 1: GUIDE — check research field structure (MANDATORY)
 # ⚠️ research must be a structured OBJECT, not a string
+# ⚠️ NEVER truncate guide output (no head/tail) — read the FULL output
 hoyeon-cli spec guide context
 
 # STEP 2+3: CONSTRUCT + WRITE — match guide output exactly

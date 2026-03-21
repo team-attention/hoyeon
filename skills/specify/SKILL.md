@@ -343,10 +343,11 @@ No TeamCreate, no SendMessage gates. Max 1 plan-reviewer round if run.
 - **spec.json is the ONLY output** — no DRAFT.md, no PLAN.md, no state.json
 - **Always use cli** — `hoyeon-cli spec init`, `spec merge`, `spec validate`, `spec check`
 - **Never hand-write spec.json** — always go through `spec merge` for auto-validation
-- **Read guide before EVERY merge** — run `hoyeon-cli spec guide <section>` before constructing merge JSON. Field names, types (especially `verify` which must be an object `{type, run}`, not a string), and allowed properties vary per section. Also run `hoyeon-cli spec guide merge` to choose the right mode.
+- **Read guide before EVERY merge** — run `hoyeon-cli spec guide <section>` before constructing merge JSON. Field names, types (especially `verify` which must be an object `{type, run}`, not a string), and allowed properties vary per section. Also run `hoyeon-cli spec guide merge` to choose the right mode. **Never truncate guide output** (`head`, `tail` are forbidden) — always read the full output. Cache mentally per section: once you've read a section's guide in this session, you may skip re-reading for subsequent merges of the same section.
 - **File-based JSON passing** — never pass JSON directly as `--json '...'` argument. Always write to `/tmp/spec-merge.json` via heredoc with quoted EOF (`<< 'EOF'`), pass via `--json "$(cat /tmp/spec-merge.json)"`, clean up with `rm /tmp/spec-merge.json`.
 - **Merge failure recovery** — when `spec merge` fails: (1) run `hoyeon-cli spec guide <failed-section>`, (2) fix JSON to match schema, (3) retry. Do NOT attempt multiple blind retries.
 - **One merge per section** — call `spec merge` once per top-level key. Never merge multiple sections in parallel.
+- **Coverage fix: all gaps at once** — when `spec coverage` fails, read the ENTIRE gap list, then fix ALL gaps in a single `--patch` merge. Never fix one gap, re-run coverage, fix the next. This avoids O(n) coverage loops.
 - **--append for arrays** — use `--append` when adding to existing arrays (decisions, assumptions, known_gaps)
 - **--patch for updates** — use `--patch` when updating specific items by id
 - **verify abstraction** — verify fields must describe observable behavior (API contracts, input/output relations), NOT implementation details (file paths, function names, code patterns). Self-check: "If implementation files were renamed, would this verify still hold?"

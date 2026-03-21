@@ -162,7 +162,7 @@ For EACH requirement:
 - id: R1, R2, ... (sequential)
 - behavior: observable behavior statement (not implementation detail)
 - priority: 1 (critical) | 2 (important) | 3 (nice-to-have)
-- source: {type: 'goal'|'decision'|'implication', ref: 'D{id}'}
+- source: {type: 'goal'|'decision'|'gap'|'implicit'|'negative', ref: 'D{id}'}
 
 ## Output: Scenarios (per requirement)
 
@@ -468,8 +468,10 @@ hoyeon-cli spec guide verify
 
 # STEP 2+3: CONSTRUCT + WRITE
 # ⚠️ source must be {type, ref} OBJECT, not a string
+# ⚠️ source.type ENUM: goal|decision|gap|implicit|negative (NOT "implication")
 # ⚠️ verify must be {type, run} OBJECT, not a string
 # ⚠️ each scenario needs: id, category, given, when, then, verified_by, execution_env, verify
+# ⚠️ NEVER truncate guide output (no head/tail) — read the FULL output
 cat > /tmp/spec-merge.json << 'EOF'
 {
   "requirements": [
@@ -622,4 +624,4 @@ Then call gate-keeper via SendMessage with requirements + scenario summary.
 **Quick**: No coverage check, no gate. Auto-advance after requirements merge.
 **Standard**: Run coverage check + gate-keeper SendMessage. PASS → advance to L4.
 
-If coverage check fails → gate failure. Handle per Gate Protocol in SKILL.md.
+If coverage check fails → read the ENTIRE gap list, then fix ALL gaps in a single `--patch` merge. Do NOT fix one gap at a time (causes O(n) coverage loops). Handle per Gate Protocol in SKILL.md.
