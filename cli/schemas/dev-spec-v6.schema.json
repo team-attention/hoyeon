@@ -109,7 +109,9 @@
       "properties": {
         "id": { "type": "string" },
         "behavior": { "type": "string", "description": "What this sub-requirement specifies — a concrete, testable behavior" },
-        "verify": { "$ref": "#/$defs/verify" }
+        "verify": { "$ref": "#/$defs/verify" },
+        "status": { "type": "string", "enum": ["pass", "fail", "skipped"], "description": "Verification result set by verifier or CLI" },
+        "verified_by_task": { "type": "string", "description": "Task ID that verified this sub-requirement" }
       }
     },
     "meta": {
