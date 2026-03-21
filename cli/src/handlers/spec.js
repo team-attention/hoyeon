@@ -425,6 +425,7 @@ function loadSpec(filePath) {
  */
 function buildVerifyPlan(task, spec) {
   // v6: use fulfills[] → requirements[].sub[]
+  // sub-requirement verify types: command (run+expect), assertion (checks[]), instruction (ask)
   const reqIds = (task.fulfills) || [];
   if (reqIds.length > 0) {
     const entries = [];
@@ -432,31 +433,26 @@ function buildVerifyPlan(task, spec) {
       const req = (spec.requirements || []).find(r => r.id === reqId);
       if (!req) continue;
       for (const sr of (req.sub || [])) {
-        const env = sr.execution_env || 'host';
-        const method = sr.verified_by;
+        const method = sr.verify?.type;  // "command" | "assertion" | "instruction"
 
         const entry = {
-          scenario: sr.id,
-          method,
-          env,
+          sub_requirement: sr.id,
+          behavior: sr.behavior,
+          method: method || 'unknown',
         };
 
-        if (method === 'machine' && sr.verify) {
+        if (method === 'command' && sr.verify) {
           entry.run = sr.verify.run;
           if (sr.verify.expect !== undefined) entry.expect = sr.verify.expect;
         }
 
-        if (method === 'agent' && env !== 'sandbox' && sr.verify) {
+        if (method === 'assertion' && sr.verify) {
           entry.checks = sr.verify.checks;
         }
 
-        if (env === 'sandbox') {
-          entry.subject = sr.subject;
-          entry.recipe = `${sr.subject}.md`;
-        }
-
-        if (method === 'human') {
-          entry.action = 'skip';
+        if (method === 'instruction') {
+          entry.action = 'skip';  // human review — verifier cannot execute
+          if (sr.verify?.ask) entry.ask = sr.verify.ask;
         }
 
         entries.push(entry);

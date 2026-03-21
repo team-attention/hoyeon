@@ -10328,26 +10328,22 @@ function buildVerifyPlan(task, spec2) {
       const req = (spec2.requirements || []).find((r) => r.id === reqId);
       if (!req) continue;
       for (const sr of req.sub || []) {
-        const env = sr.execution_env || "host";
-        const method = sr.verified_by;
+        const method = sr.verify?.type;
         const entry = {
-          scenario: sr.id,
-          method,
-          env
+          sub_requirement: sr.id,
+          behavior: sr.behavior,
+          method: method || "unknown"
         };
-        if (method === "machine" && sr.verify) {
+        if (method === "command" && sr.verify) {
           entry.run = sr.verify.run;
           if (sr.verify.expect !== void 0) entry.expect = sr.verify.expect;
         }
-        if (method === "agent" && env !== "sandbox" && sr.verify) {
+        if (method === "assertion" && sr.verify) {
           entry.checks = sr.verify.checks;
         }
-        if (env === "sandbox") {
-          entry.subject = sr.subject;
-          entry.recipe = `${sr.subject}.md`;
-        }
-        if (method === "human") {
+        if (method === "instruction") {
           entry.action = "skip";
+          if (sr.verify?.ask) entry.ask = sr.verify.ask;
         }
         entries.push(entry);
       }
