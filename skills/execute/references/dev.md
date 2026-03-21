@@ -304,14 +304,14 @@ Each recipe contains step-by-step commands for that subject type (web, server, c
 ## Execution
 
 Follow the verify_plan entries top-to-bottom.
-For each entry, use the execution rules from your agent system prompt (machine/agent/sandbox/human).
+For each entry, use the execution rules from your agent system prompt (command/assertion/instruction).
 
 Record each result:
   hoyeon-cli spec requirement {entry.sub_requirement} --status pass|fail|pending --task {task_id} {spec_path}
 
 ## Output (print as last message)
 {"status": "VERIFIED"|"FAILED",
- "scenarios": [{"id": "...", "method": "...", "status": "pass|fail|pending", "evidence": "..."}],
+ "results": [{"id": "...", "method": "...", "status": "pass|fail|pending", "evidence": "..."}],
  "failed_count": 0,
  "pending_human_count": 0}
 """
@@ -599,7 +599,7 @@ Agent(
 
 ```
 IF result.status == "VERIFIED":
-  Bash("hoyeon-cli spec task {task_id} --status done --summary 'Verified: {result.scenarios.length} scenarios passed' {spec_path}")
+  Bash("hoyeon-cli spec task {task_id} --status done --summary 'Verified: {result.results.length} sub-requirements passed' {spec_path}")
   TaskUpdate(taskId, status="completed")
   # → :Commit becomes runnable (or next task if no-commit)
 
@@ -609,19 +609,19 @@ ELIF result.status == "FAILED":
   verify_attempts[task_id] = verify_attempt
 
   IF verify_attempt > 2:
-    log_to_audit("VERIFY FAILED (max retries): {task_id} — {result.failed_count} scenarios failed")
+    log_to_audit("VERIFY FAILED (max retries): {task_id} — {result.failed_count} sub-requirements failed")
     HALT
 
   log_to_audit("VERIFY FAILED (attempt {verify_attempt}): {task_id}")
 
   # Create fix task via spec derive
-  failed_scenarios = result.scenarios.filter(s => s.status == "fail")
+  failed_results = result.results.filter(s => s.status == "fail")
   derive_result = Bash("""hoyeon-cli spec derive \
     --parent {task_id} \
     --source verifier \
     --trigger scenario_failure \
-    --action "Fix verified failures: {failed_scenarios.map(s => s.id).join(', ')}" \
-    --reason "Verifier found {result.failed_count} scenario failure(s): {failed_scenarios.map(s => s.id + ': ' + s.evidence).join('; ')}" \
+    --action "Fix verified failures: {failed_results.map(s => s.id).join(', ')}" \
+    --reason "Verifier found {result.failed_count} sub-requirement failure(s): {failed_results.map(s => s.id + ': ' + s.evidence).join('; ')}" \
     {spec_path}""")
 
   # Dispatch fix worker (lightweight — no per-task commit)
