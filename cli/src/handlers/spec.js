@@ -4,7 +4,9 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import specSchema from '../../schemas/dev-spec-v4.schema.json' with { type: 'json' };
 import specSchemaV5 from '../../schemas/dev-spec-v5.schema.json' with { type: 'json' };
+import specSchemaV6 from '../../schemas/dev-spec-v6.schema.json' with { type: 'json' };
 // v5 is the default schema. Pass specData with meta.schema_version === 'v4' to use legacy v4 validation.
+// Pass specData with meta.schema_version === 'v6' to use v6 schema.
 
 import { writeState } from '../lib/state-io.js';
 
@@ -21,16 +23,16 @@ Usage:
   hoyeon-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
   hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
   hoyeon-cli spec check <path>                      Check internal consistency
-  hoyeon-cli spec coverage <path> [--layer decisions|requirements|scenarios|tasks] [--json]  Check spec coverage (source.ref, decision coverage, scenario min count, orphan scenarios)
+  hoyeon-cli spec coverage <path> [--layer decisions|requirements|tasks] [--json]  Check spec coverage (source.ref, decision coverage, requirement coverage, orphan detection)
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
   hoyeon-cli spec guide [section]                             Show schema guide for a section
-  hoyeon-cli spec scenario <scenario-id> --get <path>              Get scenario details as JSON
+  hoyeon-cli spec sub <sub-req-id> --get <path>                    Get sub-requirement details as JSON
   hoyeon-cli spec derive --parent <id> --source <src> --trigger <t> --action <a> --reason <r> <path>  Create a derived task
   hoyeon-cli spec drift <path>                       Show drift ratio (derived vs planned tasks)
-  hoyeon-cli spec requirement --status <path> [--json]  Show all requirements/scenarios with verification status
-  hoyeon-cli spec requirement <id> --get <path>     Get individual scenario as JSON
-  hoyeon-cli spec requirement <id> --status pass|fail|skipped --task <task_id> [--reason <msg>] <path>  Update scenario status
-  hoyeon-cli spec sandbox-tasks <path> [--json]     Auto-generate T_SANDBOX + T_SV tasks for sandbox scenarios
+  hoyeon-cli spec requirement --status <path> [--json]  Show all requirements/sub-requirements with verification status
+  hoyeon-cli spec requirement <id> --get <path>     Get individual sub-requirement as JSON
+  hoyeon-cli spec requirement <id> --status pass|fail|skipped --task <task_id> [--reason <msg>] <path>  Update sub-requirement status
+  hoyeon-cli spec sandbox-tasks <path> [--json]     Auto-generate T_SANDBOX + T_SV tasks for sandbox sub-requirements
   hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
   hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to context/issues.json
   hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]  BM25 search across all specs
@@ -58,6 +60,9 @@ Examples:
 function loadSchema(specData) {
   if (specData?.meta?.schema_version === 'v4') {
     return specSchema;
+  }
+  if (specData?.meta?.schema_version === 'v6') {
+    return specSchemaV6;
   }
   return specSchemaV5;
 }
@@ -415,9 +420,55 @@ function loadSpec(filePath) {
 }
 
 /**
- * Build verify_plan array for a task by mapping its AC scenarios to verify entries.
+ * Build verify_plan array for a task by mapping its fulfills[] → requirements[].sub[] to verify entries.
+ * For v5 specs (scenarios[]), falls back to legacy behavior.
  */
 function buildVerifyPlan(task, spec) {
+  // v6: use fulfills[] → requirements[].sub[]
+  const reqIds = (task.fulfills) || [];
+  if (reqIds.length > 0) {
+    const entries = [];
+    for (const reqId of reqIds) {
+      const req = (spec.requirements || []).find(r => r.id === reqId);
+      if (!req) continue;
+      for (const sr of (req.sub || [])) {
+        // Only build verify entries for sub-requirements that have a verify field
+        if (!sr.verify) continue;
+
+        const env = sr.execution_env || 'host';
+        const method = sr.verified_by;
+
+        const entry = {
+          scenario: sr.id,
+          method,
+          env,
+        };
+
+        if (method === 'machine' && sr.verify) {
+          entry.run = sr.verify.run;
+          if (sr.verify.expect !== undefined) entry.expect = sr.verify.expect;
+        }
+
+        if (method === 'agent' && env !== 'sandbox' && sr.verify) {
+          entry.checks = sr.verify.checks;
+        }
+
+        if (env === 'sandbox') {
+          entry.subject = sr.subject;
+          entry.recipe = `${sr.subject}.md`;
+        }
+
+        if (method === 'human') {
+          entry.action = 'skip';
+        }
+
+        entries.push(entry);
+      }
+    }
+    return entries;
+  }
+
+  // v5 fallback: use scenarios[] → requirements[].scenarios[]
   const scenarioIds = (task.acceptance_criteria && task.acceptance_criteria.scenarios) || [];
   if (scenarioIds.length === 0) return [];
 
@@ -1022,26 +1073,40 @@ async function handleMeta(args) {
 }
 
 /**
- * Collect all scenario IDs defined in requirements and the set of scenario IDs
- * referenced by at least one task's acceptance_criteria.scenarios array.
+ * Collect all requirement IDs (v6) or scenario IDs (v5) defined,
+ * and the set of those IDs referenced by at least one task.
  *
  * Shared helper used by handleCheck and handleCoverage (C2).
+ * Supports dual mode: v6 uses fulfills[] (requirement-level), v5 uses scenarios[].
  *
  * @param {object} specData - parsed spec JSON
  * @returns {{ allScenarioIds: Set<string>, referencedScenarioIds: Set<string> }}
  */
 function collectScenarioSets(specData) {
+  const isV6 = specData?.meta?.schema_version === 'v6';
+
   const allScenarioIds = new Set();
   for (const req of (specData.requirements || [])) {
-    for (const sc of (req.scenarios || [])) {
-      if (sc.id) allScenarioIds.add(sc.id);
+    if (isV6) {
+      // v6: track requirement IDs (coverage is at requirement level via fulfills[])
+      if (req.id) allScenarioIds.add(req.id);
+    } else {
+      for (const sc of (req.scenarios || [])) {
+        if (sc.id) allScenarioIds.add(sc.id);
+      }
     }
   }
 
   const referencedScenarioIds = new Set();
   for (const task of (specData.tasks || [])) {
-    for (const scenarioRef of (task.acceptance_criteria?.scenarios || [])) {
-      if (scenarioRef) referencedScenarioIds.add(scenarioRef);
+    if (isV6) {
+      for (const reqRef of (task.fulfills || [])) {
+        if (reqRef) referencedScenarioIds.add(reqRef);
+      }
+    } else {
+      for (const scenarioRef of (task.acceptance_criteria?.scenarios || [])) {
+        if (scenarioRef) referencedScenarioIds.add(scenarioRef);
+      }
     }
   }
 
@@ -1081,12 +1146,11 @@ async function handleCoverage(args) {
   const requirements = specData.requirements || [];
   const decisionIds = new Set(decisions.map(d => d.id).filter(Boolean));
 
-  const depth = specData.meta?.mode?.depth || 'standard';
-  const isQuick = depth === 'quick';
+  const isV6 = specData?.meta?.schema_version === 'v6';
 
   const runDecisions = !layer || layer === 'decisions';
   const runRequirements = !layer || layer === 'requirements';
-  const runScenarios = (!layer || layer === 'scenarios') && !isQuick;
+  const runScenarios = !layer || layer === 'scenarios';
   const runTasks = !layer || layer === 'tasks';
 
   // --- Check 1: source.ref integrity (decisions layer) ---
@@ -1130,55 +1194,75 @@ async function handleCoverage(args) {
     }
   }
 
-  // --- Check 3: scenario min count (requirements layer) ---
-  // Each requirement needs HP+EP+BC (when category field present) or ≥3 scenarios (count-only).
-  // Skip in quick mode — scenarios are not generated upfront.
-  if (runRequirements && !isQuick) {
-    for (const req of requirements) {
-      const scenarios = req.scenarios || [];
-      // Check if any scenario has a category field
-      const anyHasCategory = scenarios.some(sc => sc.category !== undefined);
-
-      if (anyHasCategory) {
-        // Category-aware mode: check for HP, EP, BC presence
-        const categories = new Set(scenarios.map(sc => sc.category).filter(Boolean));
-        const missing = [];
-        if (!categories.has('HP')) missing.push('HP');
-        if (!categories.has('EP')) missing.push('EP');
-        if (!categories.has('BC')) missing.push('BC');
-        if (missing.length > 0) {
+  // --- Check 3: sub-requirement coverage (requirements layer) ---
+  // v6: every requirement must have sub.length >= 1
+  // v5: scenario min count (HP+EP+BC or ≥3 count-only) — preserved for backward compat
+  if (runRequirements) {
+    if (isV6) {
+      for (const req of requirements) {
+        const subs = req.sub || [];
+        if (subs.length < 1) {
           gaps.push({
             layer: 'requirements',
-            check: 'scenario-min-count',
-            message: `requirement '${req.id}' is missing scenario categories: ${missing.join(', ')}`,
+            check: 'sub-requirement-coverage',
+            message: `requirement '${req.id}' has no sub-requirements (sub[] must have at least 1 entry)`,
           });
         }
-      } else {
-        // Count-only mode (no category field on any scenario): enforce minimum of 3 scenarios.
-        if (scenarios.length < 3) {
-          gaps.push({
-            layer: 'requirements',
-            check: 'scenario-min-count',
-            message: `requirement '${req.id}' has ${scenarios.length} scenario(s) but needs at least 3 (count-only mode — no category field present)`,
-          });
+      }
+    } else {
+      // v5: scenario min count (HP+EP+BC or ≥3 scenarios)
+      for (const req of requirements) {
+        const scenarios = req.scenarios || [];
+        const anyHasCategory = scenarios.some(sc => sc.category !== undefined);
+
+        if (anyHasCategory) {
+          const categories = new Set(scenarios.map(sc => sc.category).filter(Boolean));
+          const missing = [];
+          if (!categories.has('HP')) missing.push('HP');
+          if (!categories.has('EP')) missing.push('EP');
+          if (!categories.has('BC')) missing.push('BC');
+          if (missing.length > 0) {
+            gaps.push({
+              layer: 'requirements',
+              check: 'scenario-min-count',
+              message: `requirement '${req.id}' is missing scenario categories: ${missing.join(', ')}`,
+            });
+          }
+        } else {
+          if (scenarios.length < 3) {
+            gaps.push({
+              layer: 'requirements',
+              check: 'scenario-min-count',
+              message: `requirement '${req.id}' has ${scenarios.length} scenario(s) but needs at least 3 (count-only mode — no category field present)`,
+            });
+          }
         }
       }
     }
   }
 
-  // --- Check 4: orphan scenario detection (scenarios layer) ---
+  // --- Check 4: orphan detection (requirements or scenarios layer) ---
   // Reuses collectScenarioSets() helper (C2).
   // Only runs when runTasks is true — orphan detection requires tasks to exist.
-  if (runScenarios && runTasks) {
+  // v6: every requirement ID must be referenced by at least one task.fulfills[].
+  // v5: every scenario ID must be referenced by at least one task AC.scenarios[].
+  const orphanLayer = isV6 ? 'requirements' : 'scenarios';
+  const orphanCheck = isV6 ? 'orphan-requirement' : 'orphan-scenario';
+  const runOrphanCheck = isV6 ? (runRequirements && runTasks) : (runScenarios && runTasks);
+
+  if (runOrphanCheck) {
     const { allScenarioIds, referencedScenarioIds } = collectScenarioSets(specData);
-    const tasksWithAC = (specData.tasks || []).filter(t => t.acceptance_criteria?.scenarios);
-    if (allScenarioIds.size > 0 && tasksWithAC.length > 0) {
-      for (const scenarioId of allScenarioIds) {
-        if (!referencedScenarioIds.has(scenarioId)) {
+    const tasksWithFulfills = isV6
+      ? (specData.tasks || []).filter(t => t.fulfills && t.fulfills.length > 0)
+      : (specData.tasks || []).filter(t => t.acceptance_criteria?.scenarios);
+    if (allScenarioIds.size > 0 && tasksWithFulfills.length > 0) {
+      for (const id of allScenarioIds) {
+        if (!referencedScenarioIds.has(id)) {
+          const label = isV6 ? 'requirement' : 'scenario';
           gaps.push({
-            layer: 'scenarios',
-            check: 'orphan-scenario',
-            message: `scenario '${scenarioId}' is defined but not referenced by any task acceptance_criteria`,
+            layer: orphanLayer,
+            check: orphanCheck,
+            message: `'${id}' is defined but not referenced by any task fulfills[]`,
           });
         }
       }
@@ -1218,8 +1302,7 @@ async function handleCheck(args) {
 
   const specData = loadSpec(resolve(filePath));
   const issues = [];
-  const depth = specData.meta?.mode?.depth || 'standard';
-  const isQuick = depth === 'quick';
+  const isV6 = specData?.meta?.schema_version === 'v6';
 
   const taskIds = new Set(specData.tasks.map(t => t.id));
 
@@ -1267,10 +1350,18 @@ async function handleCheck(args) {
     }
   }
 
-  // Referential integrity: AC.scenarios[] must reference valid requirements[].scenarios[].id
-  // Skip in quick mode — scenarios are not generated upfront.
+  // Referential integrity: fulfills[] (v6) or AC.scenarios[] (v5) must reference valid IDs
   const { allScenarioIds, referencedScenarioIds } = collectScenarioSets(specData);
-  if (!isQuick) {
+  if (isV6) {
+    const reqIds = new Set((specData.requirements || []).map(r => r.id).filter(Boolean));
+    for (const task of specData.tasks) {
+      for (const reqRef of (task.fulfills || [])) {
+        if (!reqIds.has(reqRef)) {
+          issues.push(`task '${task.id}' fulfills[] references unknown requirement '${reqRef}'`);
+        }
+      }
+    }
+  } else {
     for (const task of specData.tasks) {
       for (const scenarioRef of (task.acceptance_criteria?.scenarios || [])) {
         if (!allScenarioIds.has(scenarioRef)) {
@@ -1292,15 +1383,19 @@ async function handleCheck(args) {
     }
   }
 
-  // Orphan scenario detection: scenarios defined but not referenced by any task AC
-  // (skip gracefully when no task defines acceptance_criteria — v4 compat)
-  // Skip in quick mode — scenarios are not generated upfront.
-  if (!isQuick) {
-    const tasksWithAC = (specData.tasks || []).filter(t => t.acceptance_criteria?.scenarios);
-    if (allScenarioIds.size > 0 && tasksWithAC.length > 0) {
-      for (const scenarioId of allScenarioIds) {
-        if (!referencedScenarioIds.has(scenarioId)) {
-          issues.push(`scenario '${scenarioId}' is defined but not referenced by any task acceptance_criteria`);
+  // Orphan detection: items defined but not referenced by any task
+  // v6: requirement not referenced by any task.fulfills[] → orphan
+  // v5: scenario not referenced by any task AC.scenarios[] → orphan
+  // (skip gracefully when no task defines fulfills/AC — v4 compat)
+  {
+    const tasksWithRefs = isV6
+      ? (specData.tasks || []).filter(t => t.fulfills && t.fulfills.length > 0)
+      : (specData.tasks || []).filter(t => t.acceptance_criteria?.scenarios);
+    if (allScenarioIds.size > 0 && tasksWithRefs.length > 0) {
+      for (const id of allScenarioIds) {
+        if (!referencedScenarioIds.has(id)) {
+          const label = isV6 ? 'requirement' : 'scenario';
+          issues.push(`${label} '${id}' is defined but not referenced by any task fulfills[]`);
         }
       }
     }
@@ -1367,15 +1462,16 @@ function generateGuide(section) {
     meta: { ref: 'meta', desc: 'Spec metadata (name, goal, mode, etc.)' },
     context: { ref: 'context', desc: 'Request context, interview decisions, research, assumptions' },
     tasks: { ref: 'task', desc: 'Task DAG (work items + verification)', isArray: true },
-    requirements: { ref: 'requirement', desc: 'Requirements with scenarios and verification', isArray: true },
+    requirements: { ref: 'requirement', desc: 'Requirements with sub[] (v6) or scenarios[] (v5)', isArray: true },
     constraints: { ref: 'constraint', desc: 'Must-not-do / preserve constraints', isArray: true },
     history: { ref: 'historyEntry', desc: 'Spec change history entries', isArray: true },
     verification: { ref: 'verificationSummary', desc: 'A/H/S verification classification summary' },
     external: { ref: 'externalDependencies', desc: 'Human-only pre/post-work dependencies' },
-    scenario: { ref: 'scenario', desc: 'Requirement scenario (given/when/then + verify)' },
+    sub: { ref: 'scenario', desc: 'v6 sub-requirement (behavior + verify)' },
+    scenario: { ref: 'scenario', desc: 'v5 requirement scenario (given/when/then + verify)' },
     verify: { ref: null, desc: 'Verify types: command, assertion, instruction', custom: 'verify' },
     merge: { ref: null, desc: 'Merge modes: replace (default), --append, --patch', custom: 'merge' },
-    'acceptance-criteria': { ref: null, desc: 'v5 AC structure: scenarios[] + checks[]', custom: 'acceptance-criteria' },
+    'acceptance-criteria': { ref: null, desc: 'v6 AC structure: checks[] only — behavior coverage via fulfills[] (v5: scenarios[])', custom: 'acceptance-criteria' },
   };
 
   if (!section || section === 'list') {
@@ -1628,11 +1724,18 @@ function formatMergeGuide() {
 
 function formatAcceptanceCriteriaGuide() {
   const lines = [
-    'acceptance_criteria (v5): scenarios[] + checks[]',
+    'acceptance_criteria (v6): checks[] only',
+    '  (v5 compat: scenarios[] + checks[])',
     '',
-    '  scenarios: string[]',
+    '  Note (v6): behavior verification coverage is declared via task.fulfills[]',
+    '    fulfills: string[]  (top-level task field)',
+    '    List of requirement IDs (requirements[].id) that this task fulfills.',
+    '    spec check validates that each ID exists in requirements[].',
+    '    verify_plan is built by collecting sub[] entries from those requirements.',
+    '    example: ["R1", "R2"]',
+    '',
+    '  scenarios: string[]  (v5 — backward compat)',
     '    List of scenario IDs from requirements[].scenarios[].id that this task fulfills.',
-    '    These are referential — spec check validates that each ID exists in requirements.',
     '    example: ["R1-S1", "R1-S2", "R2-S1"]',
     '',
     '  checks: taskCheck[]',
@@ -1642,17 +1745,19 @@ function formatAcceptanceCriteriaGuide() {
     '      * run: string (shell command)',
     '    example: [{"type":"build","run":"cd cli && node build.mjs"},{"type":"static","run":"tsc --noEmit"}]',
     '',
-    '  example acceptance_criteria:',
+    '  example acceptance_criteria (v6):',
     '    {',
-    '      "scenarios": ["R1-S1", "R2-S1"],',
     '      "checks": [',
     '        {"type": "build", "run": "cd cli && node build.mjs"},',
     '        {"type": "lint", "run": "eslint src/"}',
     '      ]',
     '    }',
+    '  example task.fulfills (v6):',
+    '    "fulfills": ["R1", "R2"]',
     '',
     '  Note: spec check validates referential integrity.',
-    '    AC.scenarios IDs must exist in requirements[].scenarios[].id.',
+    '    v6: task.fulfills[] IDs must exist in requirements[].id.',
+    '    v5: AC.scenarios IDs must exist in requirements[].scenarios[].id.',
     '    Run: hoyeon-cli spec check <path>',
   ];
   return lines.join('\n');
@@ -1909,10 +2014,20 @@ async function handleScenario(args) {
  * Returns { scenario, requirement } or null.
  */
 function findScenarioById(specData, scenarioId) {
+  const isV6 = specData?.meta?.schema_version === 'v6';
   for (const req of (specData.requirements || [])) {
-    for (const scenario of (req.scenarios || [])) {
-      if (scenario.id === scenarioId) {
-        return { scenario, requirement: req };
+    // v6: search in sub[]
+    if (isV6) {
+      for (const sr of (req.sub || [])) {
+        if (sr.id === scenarioId) {
+          return { scenario: sr, requirement: req };
+        }
+      }
+    } else {
+      for (const scenario of (req.scenarios || [])) {
+        if (scenario.id === scenarioId) {
+          return { scenario, requirement: req };
+        }
       }
     }
   }
@@ -2053,11 +2168,13 @@ async function handleRequirement(args) {
 
 function handleRequirementStatusView(specData, useJson) {
   const requirements = specData.requirements || [];
+  const isV6 = specData?.meta?.schema_version === 'v6';
 
   const requirementRows = requirements.map(req => {
-    const scenarios = (req.scenarios || []).map(sc => {
+    // v6: use sub[], v5: use scenarios[]
+    const items = isV6 ? (req.sub || []) : (req.scenarios || []);
+    const scenarios = items.map(sc => {
       const verifiedBy = sc.verified_by || 'unknown';
-      const execEnv = sc.execution_env ? `[${sc.execution_env}]` : '';
       const status = sc.status || 'pending';
       const verifiedByTask = sc.verified_by_task || null;
 
@@ -2138,10 +2255,14 @@ async function handleSandboxTasks(args) {
   const specData = loadSpec(specPath);
   const useJson = parsed.json === true;
 
-  // Find all sandbox scenarios
+  const isV6 = specData?.meta?.schema_version === 'v6';
+
+  // Find all sandbox scenarios/sub-requirements
   const sandboxScenarios = [];
   for (const req of (specData.requirements || [])) {
-    for (const sc of (req.scenarios || [])) {
+    // v6: use sub[] (only entries with verify field), v5: use scenarios[]
+    const items = isV6 ? (req.sub || []).filter(sr => sr.verify) : (req.scenarios || []);
+    for (const sc of items) {
       if (sc.execution_env === 'sandbox') {
         sandboxScenarios.push({ ...sc, requirement_id: req.id });
       }
@@ -2163,10 +2284,12 @@ async function handleSandboxTasks(args) {
   // Build set of sandbox scenario IDs for lookup
   const sandboxScenarioIds = new Set(sandboxScenarios.map(sc => sc.id));
 
-  // Find work tasks that reference sandbox scenarios in their acceptance_criteria.scenarios
+  // Find work tasks that reference sandbox scenarios/sub-requirements
   const workTasksReferencingSandbox = existingTasks.filter(t => {
-    const acScenarios = t.acceptance_criteria?.scenarios || [];
-    return acScenarios.some(sid => sandboxScenarioIds.has(sid));
+    const acRefs = isV6
+      ? (t.fulfills || [])
+      : (t.acceptance_criteria?.scenarios || []);
+    return acRefs.some(sid => sandboxScenarioIds.has(sid));
   });
 
   const createdTasks = [];
@@ -2202,7 +2325,7 @@ async function handleSandboxTasks(args) {
     if (!existingTaskIds.has(svId)) {
       const svTask = {
         id: svId,
-        action: `Verify ${sc.id}: ${sc.then}`,
+        action: `Verify ${sc.id}: ${isV6 ? sc.behavior : sc.then}`,
         type: 'work',
         status: 'pending',
         depends_on: ['T_SANDBOX'],
@@ -2308,9 +2431,17 @@ async function handleLearning(args) {
     process.exit(1);
   }
 
-  // Extract requirement IDs from acceptance_criteria.scenarios
+  // Extract requirement IDs: v6 uses fulfills[], v5 uses acceptance_criteria.scenarios
   const requirementIds = [];
-  if (task.acceptance_criteria?.scenarios) {
+  if (task.fulfills && task.fulfills.length > 0) {
+    // v6: fulfills[] already contains requirement IDs directly
+    for (const reqId of task.fulfills) {
+      if (!requirementIds.includes(reqId)) {
+        requirementIds.push(reqId);
+      }
+    }
+  } else if (task.acceptance_criteria?.scenarios) {
+    // v5 fallback: strip scenario suffix R1-S1 → R1
     for (const scenarioId of task.acceptance_criteria.scenarios) {
       const reqId = scenarioId.replace(/-S\d+$/, '');
       if (!requirementIds.includes(reqId)) {
@@ -2499,22 +2630,43 @@ async function handleSearch(args) {
     } catch { continue; }
 
     // Build task→requirement mapping
+    const specIsV6Search = specData?.meta?.schema_version === 'v6';
     const reqsByTask = {};
     for (const task of (specData.tasks || [])) {
-      if (task.acceptance_criteria?.scenarios) {
-        const reqs = new Set();
-        for (const sid of task.acceptance_criteria.scenarios) {
-          reqs.add(sid.replace(/-S\d+$/, ''));
+      if (specIsV6Search) {
+        // v6: fulfills[] already contains requirement IDs directly
+        const fulfills = task.fulfills || [];
+        if (fulfills.length > 0) {
+          reqsByTask[task.id] = [...fulfills];
         }
-        reqsByTask[task.id] = [...reqs];
+      } else {
+        const acRefs = task.acceptance_criteria?.scenarios || [];
+        if (acRefs.length > 0) {
+          const reqs = new Set();
+          for (const sid of acRefs) {
+            // Strip scenario suffix: R1-S1 → R1
+            reqs.add(sid.replace(/-S\d+$/, ''));
+          }
+          reqsByTask[task.id] = [...reqs];
+        }
       }
     }
 
-    // Index requirements + scenarios
+    const specIsV6 = specData?.meta?.schema_version === 'v6';
+
+    // Index requirements + sub-requirements (v6) or scenarios (v5)
     for (const req of (specData.requirements || [])) {
       let text = req.behavior || '';
-      for (const s of (req.scenarios || [])) {
-        text += ' ' + [s.given, s.when, s.then].filter(Boolean).join(' ');
+      if (specIsV6) {
+        // v6: index sub[].behavior text
+        for (const sr of (req.sub || [])) {
+          text += ' ' + (sr.behavior || '');
+        }
+      } else {
+        // v5: index scenarios GWT text
+        for (const s of (req.scenarios || [])) {
+          text += ' ' + [s.given, s.when, s.then].filter(Boolean).join(' ');
+        }
       }
 
       docs.push({
@@ -2522,7 +2674,9 @@ async function handleSearch(args) {
         spec: specName,
         id: req.id,
         behavior: req.behavior,
-        scenarios: (req.scenarios || []).map(s => ({ id: s.id, given: s.given, when: s.when, then: s.then })),
+        scenarios: specIsV6
+          ? (req.sub || []).map(sr => ({ id: sr.id, behavior: sr.behavior }))
+          : (req.scenarios || []).map(s => ({ id: s.id, given: s.given, when: s.when, then: s.then })),
         text,
         tasks: Object.entries(reqsByTask).filter(([, reqs]) => reqs.includes(req.id)).map(([tid]) => tid)
       });

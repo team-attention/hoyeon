@@ -121,7 +121,15 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.2.2)
+## Recent Changes (v1.3.0)
+
+- feat(schema): v6 schema — replace scenarios with sub-requirements (id, behavior, optional verify)
+- refactor(specify): single mode (no quick/standard), --workshop flag for optional 3-agent L3
+- refactor(execute): risk-based should_spawn_verifier (remove empty verify_plan gate)
+- refactor(agents): verifier single mode with verify/no-verify paths, simplified ac-quality-gate
+- refactor(cli): v6 validation routing, sub-requirement coverage/check/search support
+
+## Previous Changes (v1.2.2)
 
 - feat(execute): add Verify Auto-Pass gate (`should_spawn_verifier()`) to skip per-task `.V:Verify` for simple specs
   - Empty verify_plan (specify --quick) → skip verify entirely
@@ -269,11 +277,11 @@ Available guide sections:
 | `hoyeon-cli spec guide meta` | meta fields (goal, non_goals, mode) |
 | `hoyeon-cli spec guide context` | context fields (request, research, assumptions, decisions, confirmed_goal, known_gaps) |
 | `hoyeon-cli spec guide constraints` | constraints field structure (id, type, rule, verified_by, verify) |
-| `hoyeon-cli spec guide requirements` | requirements fields (id, behavior, priority, source, scenarios) |
-| `hoyeon-cli spec guide scenario` | scenario fields (id, given, when, then, verified_by, execution_env, verify) |
+| `hoyeon-cli spec guide requirements` | requirements fields (id, behavior, priority, source, sub[]) |
+| `hoyeon-cli spec guide sub` | sub-requirement fields (id, behavior, optional verify) |
 | `hoyeon-cli spec guide verify` | verify object structure (`{type, run}` — NOT a string) |
 | `hoyeon-cli spec guide tasks` | task fields (id, action, type, status, risk, file_scope, etc.) |
-| `hoyeon-cli spec guide acceptance-criteria` | AC fields (scenarios refs + checks) |
+| `hoyeon-cli spec guide acceptance-criteria` | AC fields (checks[] only — behavior coverage via task.fulfills[]) |
 | `hoyeon-cli spec guide external` | external_dependencies (pre_work, post_work) |
 | `hoyeon-cli spec guide merge` | merge modes (replace vs `--append` vs `--patch`) |
 
@@ -281,7 +289,7 @@ Available guide sections:
 - **File-based JSON passing** — write JSON to `/tmp/spec-merge.json` via heredoc (`<< 'EOF'`), pass via `--json "$(cat /tmp/spec-merge.json)"`. Never pass JSON directly as CLI argument (zsh glob expansion corrupts `[`, `{`, `$`)
 - **One merge per section** — call `spec merge` once per top-level key. Never merge multiple sections in parallel
 - **`--append` for arrays** — use when adding to existing arrays (decisions, assumptions, known_gaps)
-- **`--patch` for nested updates** — use when updating specific items within arrays (e.g., adding scenarios to existing requirements)
+- **`--patch` for nested updates** — use when updating specific items within arrays (e.g., adding sub-requirements to existing requirements)
 
 ## CLI spec learning, issue & search Reference
 
@@ -303,7 +311,7 @@ EOF
 # Also supports: --json '{"type":"blocker","description":"..."}'
 ```
 
-**Search** — BM25 search across all specs (requirements, scenarios, constraints, learnings):
+**Search** — BM25 search across all specs (requirements, sub-requirements, constraints, learnings):
 ```bash
 hoyeon-cli spec search "sqlite fts5"                    # human-readable output
 hoyeon-cli spec search "auth redirect" --json --limit 5  # JSON for agents
@@ -311,7 +319,7 @@ hoyeon-cli spec search "empty cart" --specs-dir .dev/specs
 ```
 
 **History** — Spec mutation history is automatically written to `context/history.json` (not in spec.json).
-All `spec merge`, `spec task`, `spec derive`, `spec scenario`, and `spec sandbox-tasks` commands append entries automatically.
+All `spec merge`, `spec task`, `spec derive`, `spec sub`, and `spec sandbox-tasks` commands append entries automatically.
 
 ## Testing Strategy
 

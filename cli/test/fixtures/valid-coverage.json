@@ -2,7 +2,7 @@
   "meta": {
     "name": "valid-coverage-test",
     "goal": "Test that a fully compliant spec passes all coverage checks",
-    "schema_version": "v5"
+    "schema_version": "v6"
   },
   "decisions": [
     {
@@ -20,15 +20,10 @@
         "type": "decision",
         "ref": "D1"
       },
-      "scenarios": [
+      "sub": [
         {
-          "id": "R1-S1",
-          "given": "A valid spec",
-          "when": "spec coverage is run",
-          "then": "Exits 0",
-          "category": "HP",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R1.1",
+          "behavior": "Exits 0 when spec coverage is run on a valid spec",
           "verify": {
             "type": "command",
             "run": "node dist/cli.js spec coverage test/fixtures/valid-coverage.json",
@@ -36,13 +31,8 @@
           }
         },
         {
-          "id": "R1-S2",
-          "given": "A spec with a gap",
-          "when": "spec coverage is run",
-          "then": "Exits 1",
-          "category": "EP",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R1.2",
+          "behavior": "Exits 1 when spec coverage is run on a spec with a gap",
           "verify": {
             "type": "command",
             "run": "node dist/cli.js spec coverage test/fixtures/broken-source-ref.json",
@@ -50,13 +40,8 @@
           }
         },
         {
-          "id": "R1-S3",
-          "given": "A spec with uncovered decision",
-          "when": "spec coverage is run",
-          "then": "Exits 1",
-          "category": "BC",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R1.3",
+          "behavior": "Exits 1 when spec coverage is run on a spec with uncovered decision",
           "verify": {
             "type": "command",
             "run": "node dist/cli.js spec coverage test/fixtures/uncovered-decision.json",
@@ -72,8 +57,8 @@
       "action": "Implement coverage command",
       "type": "work",
       "status": "pending",
+      "fulfills": ["R1"],
       "acceptance_criteria": {
-        "scenarios": ["R1-S1", "R1-S2", "R1-S3"],
         "checks": []
       }
     }

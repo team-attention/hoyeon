@@ -29,7 +29,7 @@ validate_prompt: |
   Final report must be output.
   Dedicated verifier agent (subagent_type=verifier) must run for tasks where should_spawn_verifier() returns true.
   Verify Auto-Pass gate must skip .V:Verify for tasks with empty verify_plan, machine-only + low/medium risk.
-  Sandbox scenarios must have inlined recipes in verifier description.
+  Sandbox sub-requirements must have inlined recipes in verifier description.
   Verification-type tasks must NOT get .V:Verify TaskCreate (TF dedup).
   Auto-passed verify tasks must be logged to audit.
 ---
@@ -240,7 +240,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 - [ ] Verification-type tasks skipped .V:Verify (TF dedup guard)
 - [ ] Verifier FAIL triggered fix loop (max 2 retries via spec derive)
 - [ ] Final Verify Tier 1 passed (gate for Tier 2)
-- [ ] Final Verify Tier 2 ran in standard mode (cross-task compatibility, scenario coverage, constraint audit)
+- [ ] Final Verify Tier 2 ran in standard mode (cross-task compatibility, sub-requirement coverage, constraint audit)
 
 ### plain mode (additional)
 - [ ] Follow ${baseDir}/references/plain.md completely for all plain-specific steps

@@ -1,12 +1,12 @@
 # Sandbox Capability Check — Reference Guide
 
-This guide is referenced by L3 (Requirements+Scenarios) when `context.sandbox_capability` is not set.
+This guide is referenced by L3 (Requirements+Sub-requirements) when `context.sandbox_capability` is not set.
 The main agent reads this file and follows the steps inline.
 
 ## When to Trigger
 
-- **Primary**: "Sandbox Capability Check (before pingpong)" section in L3 flow — runs before L3-drafter starts
-- **Safety net**: L3-reviewer flags `sandbox_capability_unknown` gap (non-blocking) — if before-pingpong check was somehow skipped, orchestrator runs this guide before next pingpong round (does NOT count as a retry round)
+- **Primary**: Before L3 derivation begins — determines whether sub-requirements should include verify fields targeting sandbox environments
+- **Safety net**: If `context.sandbox_capability` is not set when sub-requirements with sandbox verify fields are generated
 - Condition: `context.sandbox_capability` is NOT set in spec.json
 
 ## Phase A: Auto-detect Existing Infrastructure
@@ -46,8 +46,8 @@ capability = {
 ```
 
 Merge into spec.json context, then:
-- If 0 sandbox scenarios in current draft → GOTO L3_DRAFT (restart Round 1 of the pingpong with updated capability in prompt)
-- If sandbox scenarios already exist → proceed to merge
+- If sub-requirements with sandbox verify fields have not been generated yet → re-run L3 derivation with updated capability in prompt
+- If sub-requirements already exist → proceed to merge
 
 ## Phase B: No Infra Detected — Classify and Recommend
 
@@ -189,10 +189,9 @@ If Vitest Browser Mode also selected, add extra steps:
 }
 ```
 
-> **Natural language scenarios for simulator/desktop**: Since these sandbox types don't have standardized test frameworks like Playwright, scenarios should describe verification in natural language. The L3-drafter writes `verify.checks` as human-readable assertions (e.g., "Main screen shows 3 tab items", "Settings button is tappable"), and the worker uses the appropriate tool (xcrun simctl, macos-automator-mcp accessibility_query) to implement them.
+> **Natural language sub-requirements for simulator/desktop**: Since these sandbox types don't have standardized test frameworks like Playwright, sub-requirements should describe verification in natural language. Write `verify.checks` as human-readable assertions (e.g., "Main screen shows 3 tab items", "Settings button is tappable"), and the worker uses the appropriate tool (xcrun simctl, macos-automator-mcp accessibility_query) to implement them.
 
 ### After scaffold tasks added
 
 - Record capability with `"scaffold_required": true`
-- All tasks with `execution_env: "sandbox"` scenarios depend on `T-sandbox-*`
-- Re-run L3 draft to generate sandbox scenarios: `GOTO L3_DRAFT`
+- Re-run L3 derivation to generate sub-requirements with sandbox verify fields using the updated capability

@@ -33,7 +33,7 @@ FOR EACH task in plan (flattened):
     verify_description[task.id] = VERIFIER_DESCRIPTION(
       task.id,
       JSON.stringify(task_verify_plan, null, 2),
-      sandbox_recipe_paths || "None — no sandbox scenarios for this task."
+      sandbox_recipe_paths || "None — no sandbox sub-requirements for this task."
     )
 
 # ═══════════════════════════════════════════════════
@@ -49,7 +49,7 @@ FOR EACH task in plan (flattened from rounds, excluding done):
   IF verify_description[task.id] exists:
     v = TaskCreate(subject="{task.id}.V:Verify",
                    description=verify_description[task.id],
-                   activeForm="{task.id}.V: Verifying scenarios")
+                   activeForm="{task.id}.V: Verifying sub-requirements")
 
 # Finalize tasks
 fv = TaskCreate(subject="Finalize:Final Verify",
@@ -220,9 +220,9 @@ FAILURES:
 MANUAL REVIEW (require human verification)
 ───────────────────────────────────────────────────
 {FOR EACH req in spec.requirements ?? []:}
-{FOR EACH scenario where verified_by == "human":}
-- {scenario.id}: {scenario.then}
-  Check: {scenario.verify.ask}
+{FOR EACH sub_req where verified_by == "human":}
+- {sub_req.id}: {sub_req.description}
+  Check: {sub_req.verify.ask}
 
 {IF no manual items: "None"}
 
@@ -250,7 +250,7 @@ IF fv_failed:
 1. **Flexible dispatch** — orchestrator can handle tasks directly, via Skill, or via Agent
 2. **No git commits** — plain mode does not manage git operations
 3. **No code review** — no code-reviewer agent
-4. **Conditional per-task verify** — Verifier dispatched only for tasks with non-empty verify_plan (from CLI plan output). Tasks without scenarios skip verification.
+4. **Conditional per-task verify** — Verifier dispatched only for tasks with non-empty verify_plan (from CLI plan output). Tasks without sub-requirements skip verification.
 5. **Final Verify required** — holistic spec verification always runs at the end
 6. **On failure → HALT** — no retry or adaptation flow
 
@@ -259,8 +259,8 @@ IF fv_failed:
 ## Checklist
 
 - [ ] All TaskCreate in single turn (Turn 1), all TaskUpdate in single turn (Turn 2)
-- [ ] verify_plan built from CLI plan output for tasks with scenarios
-- [ ] Sandbox recipes inlined into verifier description for sandbox scenarios
+- [ ] verify_plan built from CLI plan output for tasks with sub-requirements
+- [ ] Sandbox recipes inlined into verifier description for sandbox sub-requirements
 - [ ] Verifier (subagent_type=verifier) dispatched for tasks with non-empty verify_plan
 - [ ] All tasks dispatched in DAG order from `plan.rounds`
 - [ ] Each task handled flexibly (direct work, Skill, or Agent)

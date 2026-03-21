@@ -46,7 +46,7 @@ After every merge, the CLI auto-validates. On failure:
 
 ```
 meta, context, tasks, requirements, constraints, history,
-verification, external, scenario, verify, merge, acceptance-criteria
+verification, external, sub, verify, merge, acceptance-criteria
 ```
 
 Run `hoyeon-cli spec guide` to see the full list (may change over time).
@@ -60,7 +60,7 @@ When writing merge instructions in SKILL.md:
 - **DO**: Mention which merge flag to use (`--append`, `--patch`, or default)
 - **DO NOT**: Include JSON body examples with field values
 - **DO NOT**: Hardcode verify schema (type/run/expect structure)
-- **DO NOT**: Hardcode scenario field names
+- **DO NOT**: Hardcode sub-requirement field names
 
 ### Example (good)
 

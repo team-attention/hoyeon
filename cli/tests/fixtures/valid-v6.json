@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "name": "valid-v6-spec",
+    "goal": "Test the hoyeon-cli spec validation with a complete v6 fixture",
+    "type": "dev",
+    "schema_version": "v6",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  "context": {
+    "request": "Add schema validation tests",
+    "confirmed_goal": "Validate v6 sub-requirement format end-to-end"
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "Use sub-requirements instead of scenarios",
+      "rationale": "Simplifies spec structure by removing given/when/then ceremony"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI validates spec.json against v6 schema",
+      "priority": 1,
+      "source": { "type": "decision", "ref": "D1" },
+      "sub": [
+        {
+          "id": "R1.1",
+          "behavior": "Exit code 0 and no errors printed when hoyeon-cli spec validate is run on a valid v6 spec.json",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec validate ./spec.json",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R1.2",
+          "behavior": "Exit code 1 and validation errors printed when hoyeon-cli spec validate is run on an invalid spec.json missing meta",
+          "verify": {
+            "type": "command",
+            "run": "hoyeon-cli spec validate ./invalid.json",
+            "expect": { "exit_code": 1 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Create test infrastructure",
+      "type": "work",
+      "status": "pending",
+      "risk": "low",
+      "file_scope": ["cli/tests/"],
+      "depends_on": [],
+      "steps": [
+        "Create fixtures directory",
+        "Create helper utilities",
+        "Add test script to package.json"
+      ],
+      "fulfills": ["R1"],
+      "acceptance_criteria": {
+        "checks": [
+          { "type": "build", "run": "cd cli && npm test" }
+        ]
+      }
+    }
+  ]
+}

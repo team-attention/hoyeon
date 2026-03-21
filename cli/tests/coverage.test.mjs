@@ -98,23 +98,23 @@ test('spec coverage detects uncovered decisions (decision not referenced by any 
 });
 
 // ============================================================
-// Test 5: spec coverage detects orphaned scenario references in tasks
+// Test 5: spec coverage detects orphaned requirement references in tasks
 // ============================================================
 test('spec coverage detects orphaned scenario references in tasks', () => {
-  // R1-S4 is defined in requirements but not referenced by any task AC.
-  const { path, cleanup } = createTempSpec(loadFixture('coverage-orphan-scenario.json'));
+  // R2 is defined in requirements but not referenced by any task fulfills[].
+  const { path, cleanup } = createTempSpec(loadFixture('coverage-orphan-sub.json'));
 
   try {
     const { stdout, status } = runCli(['spec', 'coverage', path, '--json'], { expectFail: true });
-    assert.notEqual(status, 0, 'exit code should be non-zero when orphan scenarios exist');
+    assert.notEqual(status, 0, 'exit code should be non-zero when orphan requirements exist');
     const result = JSON.parse(stdout);
     assert.equal(result.coverage, 'fail', 'coverage should be "fail"');
 
-    const orphanGaps = result.gaps.filter(g => g.check === 'orphan-scenario');
-    assert.ok(orphanGaps.length > 0, 'should detect at least one orphaned scenario');
+    const orphanGaps = result.gaps.filter(g => g.check === 'orphan-requirement' || g.check === 'orphan-scenario');
+    assert.ok(orphanGaps.length > 0, 'should detect at least one orphaned requirement');
     assert.ok(
-      orphanGaps.some(g => g.message.includes('R1-S4')),
-      `orphan gap should mention R1-S4, got: ${JSON.stringify(orphanGaps)}`,
+      orphanGaps.some(g => g.message.includes('R2')),
+      `orphan gap should mention R2, got: ${JSON.stringify(orphanGaps)}`,
     );
   } finally {
     cleanup();

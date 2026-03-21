@@ -56,54 +56,58 @@ Agent(
   {FOR EACH task in spec.tasks where status == "done":}
   ### {task.id}: {task.action}
 
-  **Scenario checks** (from acceptance_criteria.scenarios[]):
-  {FOR EACH scenario_id in task.acceptance_criteria.scenarios ?? []:}
-    Look up scenario_id in spec.requirements[].scenarios[] to find the full scenario.
-    {IF scenario.verified_by == "machine" AND scenario.execution_env != "sandbox":}
-    - [{scenario_id}] Run: `{scenario.verify.run}` → expect exit {scenario.verify.expect.exit_code}
-    {IF scenario.verified_by == "agent":}
-    - [{scenario_id}] Assert: {scenario.verify.checks}
-    {IF scenario.verified_by == "human":}
-    - [{scenario_id}] [MANUAL — skip, report only] {scenario.then}
-    {IF scenario.verified_by == "machine" AND scenario.execution_env == "sandbox":}
-    - [{scenario_id}] [SANDBOX — delegate to worker agent — see Step 4]
+  **Sub-requirement checks** (from task.fulfills[]):
+  {FOR EACH req_id in task.fulfills ?? []:}
+    Look up req_id in spec.requirements[] to find the requirement, then iterate its sub[] items.
+    {IF sub_req.verify exists AND sub_req.verified_by == "machine" AND sub_req.execution_env != "sandbox":}
+    - [{sub_req_id}] Run: `{sub_req.verify.run}` → expect exit {sub_req.verify.expect.exit_code}
+    {IF sub_req.verify exists AND sub_req.verified_by == "agent":}
+    - [{sub_req_id}] Assert: {sub_req.verify.checks}
+    {IF sub_req.verified_by == "human":}
+    - [{sub_req_id}] [MANUAL — skip, report only] {sub_req.then}
+    {IF sub_req.verified_by == "machine" AND sub_req.execution_env == "sandbox":}
+    - [{sub_req_id}] [SANDBOX — delegate to worker agent — see Step 4]
+    {IF sub_req.verify does not exist:}
+    - [{sub_req_id}] Assert behavior against code: {sub_req.description}
 
   **Automated checks** (from acceptance_criteria.checks[]):
   {FOR EACH check in task.acceptance_criteria.checks ?? []:}
   - [{check.type}] Run: `{check.run}` → expect exit 0
 
-  ## Step 4: Scenario Status Check
+  ## Step 4: Sub-Requirement Status Check
   Run: `hoyeon-cli spec requirement --status --json {spec_path}`
 
   Parse the JSON output:
-  - If summary.fail > 0 → report each failed scenario with its id, status, and details
-  - If any sandbox scenario has status "pending" → mark as SKIPPED with reason "sandbox verification task not executed"
-  - Human scenarios with status "pending" → expected, mark as MANUAL REVIEW
-  - All machine/agent scenarios should be "pass" — any "pending" ones were missed
+  - If summary.fail > 0 → report each failed sub-requirement with its id, status, and details
+  - If any sandbox sub-requirement has status "pending" → mark as SKIPPED with reason "sandbox verification task not executed"
+  - Human sub-requirements with status "pending" → expected, mark as MANUAL REVIEW
+  - All machine/agent sub-requirements should be "pass" — any "pending" ones were missed
 
-  Include scenario_status in the output:
+  Include sub_requirement_status in the output:
   ```json
-  "scenario_status": {
+  "sub_requirement_status": {
     "pass": N, "fail": N, "pending": N, "skipped": N,
     "results": [
-      {"id": "R1-S1", "status": "pass", "task": "T1"},
-      {"id": "R1-S2", "status": "pass", "task": "T_SV1"},
-      {"id": "R1-S3", "status": "pending", "reason": "human review"}
+      {"sub_requirement_id": "R1-SR1", "status": "pass", "task": "T1"},
+      {"sub_requirement_id": "R1-SR2", "status": "pass", "task": "T_SV1"},
+      {"sub_requirement_id": "R1-SR3", "status": "pending", "reason": "human review"}
     ]
   }
   ```
 
-  ## Step 5: Requirements Scenarios
+  ## Step 5: Requirements Sub-Requirements
   {FOR EACH req in spec.requirements ?? []:}
   ### {req.id}: {req.behavior}
-  {FOR EACH scenario in req.scenarios:}
-    {IF scenario.verified_by == "machine" AND (scenario.execution_env == "host" OR !scenario.execution_env):}
-    - [{scenario.id}] Given: {scenario.given} | When: {scenario.when} | Then: {scenario.then}
-      Run: `{scenario.verify.run}` → expect exit {scenario.verify.expect.exit_code}
-    {IF scenario.verified_by == "agent":}
-    - [{scenario.id}] Assert: {scenario.verify.checks}
-    {IF scenario.verified_by == "human":}
-    - [{scenario.id}] [MANUAL — skip, report only] {scenario.then}
+  {FOR EACH sub_req in req.sub ?? []:}
+    {IF sub_req.verify exists AND sub_req.verified_by == "machine" AND (sub_req.execution_env == "host" OR !sub_req.execution_env):}
+    - [{sub_req.id}] Description: {sub_req.description}
+      Run: `{sub_req.verify.run}` → expect exit {sub_req.verify.expect.exit_code}
+    {IF sub_req.verify exists AND sub_req.verified_by == "agent":}
+    - [{sub_req.id}] Assert: {sub_req.verify.checks}
+    {IF sub_req.verified_by == "human":}
+    - [{sub_req.id}] [MANUAL — skip, report only] {sub_req.description}
+    {IF sub_req.verify does not exist:}
+    - [{sub_req.id}] Assert behavior against code: {sub_req.description}
   {IF no requirements: "None defined — skip this step"}
 
   ## OUTPUT FORMAT
@@ -119,14 +123,14 @@ Agent(
     },
     "acceptance_criteria": {
       "pass": 0, "fail": 0, "results": [
-        {"task_id": "T1", "scenario_id": "S1.1", "description": "...", "status": "PASS|FAIL", "reason": "..."}
+        {"task_id": "T1", "sub_requirement_id": "SR1.1", "description": "...", "status": "PASS|FAIL", "reason": "..."}
       ]
     },
-    "scenario_status": {
+    "sub_requirement_status": {
       "pass": 0, "fail": 0, "pending": 0, "skipped": 0,
       "results": [
-        {"id": "R1-S1", "status": "pass", "task": "T1"},
-        {"id": "R1-S2", "status": "pending", "reason": "human review"}
+        {"sub_requirement_id": "R1-SR1", "status": "pass", "task": "T1"},
+        {"sub_requirement_id": "R1-SR2", "status": "pending", "reason": "human review"}
       ]
     },
     "requirements": {
@@ -221,10 +225,10 @@ Tier 2 catches issues that pass Tier 1 but fail in integration — when individu
 
 ### Why Tier 2 exists
 
-Per-task Verifiers check each task's scenarios independently. But they cannot catch:
+Per-task Verifiers check each task's sub-requirements independently. But they cannot catch:
 - Task A outputs JWT tokens, Task B expects session cookies (format mismatch)
 - Task A and Task B both modified the same utility file with conflicting changes
-- A requirement has no scenarios with status "pass" (coverage gap)
+- A requirement has no sub-requirements with status "pass" (coverage gap)
 
 ### Dispatch (parallel agents)
 
@@ -245,15 +249,14 @@ Agent(subagent_type="worker", description="FV-Tier2: Cross-task compatibility",
   run_in_background=true)
 ```
 
-**Agent B — Scenario coverage audit:**
+**Agent B — Sub-requirement coverage audit:**
 ```
-Agent(subagent_type="worker", description="FV-Tier2: Scenario coverage",
+Agent(subagent_type="worker", description="FV-Tier2: Sub-requirement coverage",
   prompt="""
-  Read spec at {spec_path}. Check ALL requirements[].scenarios[]:
-  1. Every scenario should have status: pass or pending (human)
-  2. Flag any scenario with status: fail or no status recorded
-  3. Flag any requirement where zero scenarios have status: pass
-  4. Check scenario category coverage: each requirement should have HP + EP + BC minimum
+  Read spec at {spec_path}. Check ALL requirements[].sub[]:
+  1. Every sub-requirement should have status: pass or pending (human)
+  2. Flag any sub-requirement with status: fail or no status recorded
+  3. Flag any requirement where zero sub-requirements have status: pass
 
   Output: {"status": "PASS"|"FAIL", "uncovered": [...], "failed": [...]}
   """,

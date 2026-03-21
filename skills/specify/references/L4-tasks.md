@@ -1,7 +1,7 @@
 ## L4: Tasks
 
 **Who**: Orchestrator
-**Output**: `tasks[]` with acceptance_criteria.scenarios referencing scenario IDs
+**Output**: `tasks[]` with `fulfills[]` referencing requirement IDs and `acceptance_criteria.checks[]`
 **Merge**: `spec merge tasks`
 **Gate**: `spec coverage --layer tasks` + gate-keeper via SendMessage
 
@@ -13,7 +13,7 @@
   T1 acceptance_criteria.checks should include: `{type: "build", run: "npm run build"}` (or pnpm/yarn equivalent).
   This ensures subsequent workers have a working baseline — do NOT assume "scaffold" implicitly means "install + build verified".
 - Every task: `must_not_do: ["Do not run git commands"]`
-- Every task: `acceptance_criteria` with `scenarios` (scenario ID refs, **empty `[]` in quick mode**) + `checks` (runnable commands)
+- Every task: `fulfills` (requirement ID refs) + `acceptance_criteria` with `checks` (runnable commands)
 - Every task: `inputs` listing dependencies from previous tasks (use task output IDs)
 - HIGH risk tasks: include rollback steps in `steps`
 - **Migration/Infrastructure intent tasks**: DB migration tasks MUST include:
@@ -39,7 +39,7 @@
 
 - Good: `"Add rate limiting middleware to auth endpoints using existing RateLimiter class"`
 - Bad: `"Open src/auth/middleware.ts, go to line 42, add import for RateLimiter"`
-- Good: `"Write integration tests covering the 3 scenarios referenced in acceptance_criteria"`
+- Good: `"Write integration tests covering the 3 sub-requirements referenced in acceptance_criteria"`
 - Bad: `"Create file tests/auth.test.ts with exactly 3 test cases"`
 
 #### Task Type Field
@@ -53,26 +53,10 @@
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `scenarios` | Yes | Scenario IDs from `requirements[].scenarios[].id` this task fulfills |
-| `checks` | Yes | Automated checks: `[{type: "static"|"build"|"lint"|"format", run: "<command>"}]` |
+| `fulfills` | Yes | Requirement IDs from `requirements[].id` this task fulfills (task-level field, sibling of `id`) |
+| `checks` | Yes | Automated checks: `[{type: "static"|"build"|"lint"|"format", run: "<command>"}]` (inside `acceptance_criteria`) |
 
-**Worker completion condition**: All referenced scenarios verified AND all checks pass
-
-#### Sandbox Scenario Infra Auto-task (MANDATORY)
-
-⚠️ **MUST run immediately after task merge** when `context.sandbox_capability.scaffold_required == true`:
-
-```bash
-hoyeon-cli spec sandbox-tasks .dev/specs/{name}/spec.json
-```
-
-This auto-generates:
-- **T_SANDBOX**: sandbox environment preparation (Docker Compose, Playwright config, seed data, healthcheck)
-- **T_SV1~N**: per-scenario verification tasks for every `execution_env: "sandbox"` scenario
-
-**Skip condition**: `scaffold_required == false` (sandbox infra already exists, detected in Phase A).
-**If skipped when required**: L4 gate WILL fail — gate-keeper checks for `sandbox_tasks_missing`.
-**Execution order**: Run AFTER manual task merge, BEFORE L4.5 (External Dependencies) and L4 Gate.
+**Worker completion condition**: All checks pass. Behavior verification via `fulfills[]` → `requirements[].sub[]`
 
 ### Merge tasks
 
@@ -88,7 +72,7 @@ hoyeon-cli spec guide acceptance-criteria
 
 # STEP 2+3: CONSTRUCT + WRITE
 # ⚠️ checks[] must be [{type, run}] OBJECTS, not ["command"] strings
-# ⚠️ every task needs: must_not_do, acceptance_criteria (scenarios + checks), inputs
+# ⚠️ every task needs: must_not_do, fulfills (req ID refs), acceptance_criteria (checks), inputs
 cat > /tmp/spec-merge.json << 'EOF'
 {
   "tasks": [
@@ -102,8 +86,8 @@ cat > /tmp/spec-merge.json << 'EOF'
       "steps": ["Approach description (strategy, not prescription)"],
       "inputs": [],
       "must_not_do": ["Do not run git commands"],
+      "fulfills": ["R1"],
       "acceptance_criteria": {
-        "scenarios": ["R1-S1", "R1-S2"],
         "checks": [{"type": "build", "run": "npm run build"}]
       }
     }
@@ -120,7 +104,7 @@ hoyeon-cli spec validate .dev/specs/{name}/spec.json
 
 If merge fails → follow Merge Failure Recovery (SKILL.md). Do NOT proceed to L4.5 with a broken merge.
 
-> Requirements were confirmed in L2 (with source fields) and scenarios were generated in L3 by the 3-agent workshop (L3-user-advocate / L3-requirement-writer / L3-devil's-advocate). Do NOT merge requirements again here.
+> Requirements and sub-requirements were confirmed in L3 (by orchestrator directly or via the 3-agent workshop). Do NOT merge requirements again here.
 
 ### L4.5: External Dependencies Derivation (non-interactive)
 
@@ -183,13 +167,13 @@ If merge fails → follow Merge Failure Recovery (SKILL.md).
 hoyeon-cli spec coverage .dev/specs/{name}/spec.json --layer tasks
 ```
 
-Then call gate-keeper via SendMessage with tasks + scenario coverage summary + external dependencies + **L4-specific review checklist**:
+Then call gate-keeper via SendMessage with tasks + sub-requirement coverage summary + external dependencies + **L4-specific review checklist**:
 
 ```
 SendMessage(to="gate-keeper", message="
 Review the following tasks for L4 gate.
 
-{tasks summary with scenario mappings}
+{tasks summary with sub-requirement mappings}
 
 ## L4-Specific Review Checklist (in addition to standard DRIFT/GAP/CONFLICT/BACKTRACK)
 
@@ -212,16 +196,8 @@ Review the following tasks for L4 gate.
 - Flag steps that reference specific line numbers or exact code to write (these will be stale at execution)
 
 **Acceptance criteria completeness:**
-- Every scenario referenced in a task should be verifiable by the checks + scenarios in AC
+- Every requirement ID in `fulfills[]` should be traceable to a requirement in requirements[]
 - checks[] should have at least one runnable command per work task
-
-**Sandbox tasks check (BLOCKING):**
-- IF context.sandbox_capability.scaffold_required == true:
-  → T_SANDBOX task MUST exist in tasks[]
-  → T_SV* tasks MUST cover ALL execution_env: 'sandbox' scenarios
-  → Count T_SV* tasks vs sandbox scenario count — they MUST match
-  → Missing → flag as BLOCKING gap (category: 'sandbox_tasks_missing')
-- IF scaffold_required == false: verify sandbox infra was detected in Phase A (no scaffold needed)
 ")
 ```
 

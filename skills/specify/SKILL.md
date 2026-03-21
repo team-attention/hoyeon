@@ -2,9 +2,9 @@
 name: specify
 description: |
   Layer-based spec generator (L0-L5 derivation chain) outputting unified spec.json v5 via cli.
-  Layer sequence: Goal→Context→Decisions→Requirements+Scenarios→Tasks→Review.
+  Layer sequence: Goal→Context→Decisions→Requirements+Sub-requirements→Tasks→Review.
   Each layer has a merge checkpoint and a gate (spec coverage + step-back gate-keeper).
-  Mode support: quick/standard × interactive/autopilot.
+  Mode support: interactive/autopilot. Optional: --workshop for 3-agent L3 workshop.
   Use when: "/specify", "specify", "plan this", "계획 짜줘", "스펙 만들어줘"
 allowed-tools:
   - Read
@@ -19,16 +19,16 @@ allowed-tools:
 validate_prompt: |
   Must produce a valid spec.json that passes both hoyeon-cli spec validate and hoyeon-cli spec check.
   spec.json must include: meta.mode, context.research (structured), tasks with acceptance_criteria,
-  requirements with scenarios, context.confirmed_goal.
-  Standard mode must include: constraints, external_dependencies, meta.non_goals.
+  requirements with sub-requirements, context.confirmed_goal.
+  Must include: constraints, external_dependencies, meta.non_goals.
   SKILL.md must have exactly 6 sections starting with "## L0:" through "## L5:".
   Output files must be in .dev/specs/{name}/ directory.
 ---
 
-# /specify-v2 — Layer-Based Spec Generator (spec.json v5)
+# /specify — Layer-Based Spec Generator (spec.json v5)
 
 Generate a schema-validated, machine-executable spec.json through a structured derivation chain.
-Layer structure: **Goal → Context → Decisions → Requirements+Scenarios → Tasks → Review**.
+Layer structure: **Goal → Context → Decisions → Requirements+Sub-requirements → Tasks → Review**.
 Each layer builds on the previous — no skipping, no out-of-order merges.
 
 ---
@@ -56,9 +56,9 @@ These principles guide reference file design. They do NOT override the core laye
 
 | Flag | Effect | Default |
 |------|--------|---------|
-| `--quick` | `{depth}` = quick | `{depth}` = standard |
-| `--autopilot` | `{interaction}` = autopilot | (depends on depth) |
-| `--interactive` | `{interaction}` = interactive | (depends on depth) |
+| `--workshop` | Enable 3-agent L3 workshop (L3-user-advocate, L3-requirement-writer, L3-devil's-advocate) | Off (orchestrator derives sub-requirements directly) |
+| `--autopilot` | `{interaction}` = autopilot | `{interaction}` = interactive |
+| `--interactive` | `{interaction}` = interactive | (default) |
 
 ### Merge JSON Passing Convention
 
@@ -110,32 +110,9 @@ When `spec merge` returns non-zero exit code, follow this exact sequence:
 - Continue to the next layer while current merge is broken
 - Batch-fix multiple sections at once (fix one at a time)
 
-### Auto-Detect Depth
-
-| Keywords | Auto-Depth |
-|----------|------------|
-| "fix", "typo", "rename", "bump", "update version" | quick |
-| Everything else | standard |
-
 ### Interaction Defaults
 
-| Depth | Default Interaction |
-|-------|---------------------|
-| quick | autopilot |
-| standard | interactive |
-
-### Mode Combination Matrix
-
-|  | Interactive | Autopilot |
-|---|-------------|-----------|
-| **Quick** | `--quick --interactive` | `--quick` (default for quick) |
-| **Standard** | (default) | `--autopilot` |
-
-### Mode Variables
-
-Throughout this document, `{depth}` and `{interaction}` refer to the resolved mode values:
-- `{depth}` = `quick` | `standard`
-- `{interaction}` = `interactive` | `autopilot`
+Default is `interactive`. Use `--autopilot` to skip user prompts (except HIGH risk items).
 
 ### Autopilot Decision Rules
 
@@ -154,7 +131,7 @@ Throughout this document, `{depth}` and `{interaction}` refer to the resolved mo
 ### spec init
 
 ```bash
-hoyeon-cli spec init {name} --goal "{goal}" --type dev --depth {depth} --interaction {interaction} \
+hoyeon-cli spec init {name} --goal "{goal}" --type dev --interaction {interaction} \
   .dev/specs/{name}/spec.json
 ```
 
@@ -178,30 +155,34 @@ hoyeon-cli session set --sid $SESSION_ID --spec ".dev/specs/{name}/spec.json"
 > ```
 > Also: **always run `hoyeon-cli spec guide <section>` before constructing merge JSON** to verify field names and types.
 
-### Team Mode Setup (standard mode only)
+### Team Mode Setup
 
-> **Mode Gate**: Quick mode — SKIP team mode entirely. No TeamCreate, no SendMessage gates.
-
-After spec init, spawn the full team with 4 teammates:
+After spec init, spawn the team. The team size depends on whether `--workshop` is used.
 
 ```
 TeamCreate("specify-session")
 ```
 
-**Teammates (4):**
+**Teammates:**
 
-| Name | Role | Active During | Spawn Prompt Focus |
-|------|------|---------------|-------------------|
-| **gate-keeper** | Layer-transition reviewer | L2~L4 gate | Check for DRIFT, GAP, CONFLICT, BACKTRACK + information sufficiency (EXTERNAL_REF_UNVERIFIED, CODEBASE_CLAIM_UNVERIFIED, ASSUMPTION_LOAD). Return PASS or REVIEW_NEEDED with numbered items. Read-only: use Read, Grep, Glob only. Do NOT write files, run Bash, or create Tasks. |
-| **L3-user-advocate** | User journey mapper + priority judge | L3 | From decisions, derive user personas and their journeys. For every screen/feature, enumerate ALL reachability paths. Judge gap severity from user perspective. |
-| **L3-requirement-writer** | Requirements + scenarios author | L3 | Receive user journeys from L3-user-advocate. Structure into formal Requirements + Given-When-Then Scenarios. Output structured JSON with requirements[] and scenarios[]. |
-| **L3-devil's-advocate** | Adversarial completeness tester | L3 | Attack requirements: find missing paths, contradictions, impossible assumptions. Return PASS or GAPS with specific issues. |
+| Name | Role | Active During | Spawn Prompt Focus | Required |
+|------|------|---------------|--------------------|----------|
+| **gate-keeper** | Layer-transition reviewer | L2~L4 gate | Check for DRIFT, GAP, CONFLICT, BACKTRACK + information sufficiency (EXTERNAL_REF_UNVERIFIED, CODEBASE_CLAIM_UNVERIFIED, ASSUMPTION_LOAD). Return PASS or REVIEW_NEEDED with numbered items. Read-only: use Read, Grep, Glob only. Do NOT write files, run Bash, or create Tasks. | Always |
+| **L3-user-advocate** | User journey mapper + priority judge | L3 (--workshop only) | From decisions, derive user personas and their journeys. For every screen/feature, enumerate ALL reachability paths. Judge gap severity from user perspective. | `--workshop` only |
+| **L3-requirement-writer** | Requirements + sub-requirements author | L3 (--workshop only) | Receive user journeys from L3-user-advocate. Structure into formal Requirements + Sub-requirements. Output structured JSON with requirements[] and sub[]. | `--workshop` only |
+| **L3-devil's-advocate** | Adversarial completeness tester | L3 (--workshop only) | Attack requirements: find missing paths, contradictions, impossible assumptions. Return PASS or GAPS with specific issues. | `--workshop` only |
 
 > All teammates are general-purpose agents. Specialization is defined entirely through spawn prompts.
-> L3 agents are idle during L0~L2 and L4~L5. Pre-spawned because TeamCreate can only be called once.
+> L3 agents (when spawned) are idle during L0~L2 and L4~L5. Pre-spawned because TeamCreate can only be called once.
 
-**Teammate lifecycle:**
-- L0~L1: all teammates idle (no gate-keeper review — L0 uses mirror confirmation, L1 auto-advances after merge)
+**Teammate lifecycle (without --workshop — default):**
+- L0~L1: gate-keeper idle (L0 uses mirror confirmation, L1 auto-advances after merge)
+- L2: gate-keeper active
+- L3: gate-keeper active; orchestrator derives sub-requirements directly (no L3 agents)
+- L4~L5: gate-keeper only
+
+**Teammate lifecycle (with --workshop):**
+- L0~L1: all teammates idle (L0 uses mirror confirmation, L1 auto-advances after merge)
 - L2: gate-keeper active, L3 agents idle
 - L3: all 4 active
 - L3 complete → shutdown L3 agents via `SendMessage(to="L3-user-advocate", message={type: "shutdown_request"})` (repeat for L3-requirement-writer and L3-devil's-advocate). Gate-keeper excluded.
@@ -299,7 +280,7 @@ hoyeon-cli session set --sid $SESSION_ID --json '{"research_dispatch_count": N}'
 
 ---
 
-## Layer Execution (Standard Mode)
+## Layer Execution
 
 Execute layers sequentially. Read each layer's reference file just-in-time.
 
@@ -314,27 +295,8 @@ Execute layers sequentially. Read each layer's reference file just-in-time.
 At each layer:
 1. Read the reference file
 2. Follow instructions in the reference file
-3. Apply Gate Protocol (standard mode)
+3. Apply Gate Protocol
 4. Advance to next layer
-
----
-
-## Quick Mode Flow
-
-Quick mode compresses the entire layer sequence without reading reference files.
-
-| Layer | Quick Behavior |
-|-------|---------------|
-| L0 | spec init only, no mirror (autopilot assumption of goal) |
-| L1 | Orchestrator minimal scan (2-3 Glob/Grep), merge abbreviated research |
-| L2 | Assumptions only, no interview. L2.5 auto. No constraints (L2.7 skip) |
-| L3 | Orchestrator derives requirements directly — **no scenarios** (no teammates, no workshop). Scenarios are generated dynamically at execution time by the Verifier agent. |
-| L4 | Tasks created directly, no gate |
-| L5 | spec validate + spec check only, no plan-reviewer, no AC gate |
-
-No TeamCreate, no SendMessage gates. Max 1 plan-reviewer round if run.
-
-**Quick mode L1**: Orchestrator performs a minimal codebase scan (Glob/Grep, 2-3 key directories) and merges `context.research` with an abbreviated summary. No agent spawns (no Task calls). Merge directly after scan.
 
 ---
 
@@ -352,15 +314,15 @@ No TeamCreate, no SendMessage gates. Max 1 plan-reviewer round if run.
 - **--patch for updates** — use `--patch` when updating specific items by id
 - **verify abstraction** — verify fields must describe observable behavior (API contracts, input/output relations), NOT implementation details (file paths, function names, code patterns). Self-check: "If implementation files were renamed, would this verify still hold?"
 - **Every task needs must_not_do** — at minimum `["Do not run git commands"]`
-- **Every task needs acceptance_criteria** — `scenarios` (refs to requirement scenario IDs) + `checks` (runnable commands)
-- **Requirements = single source of truth** — all verification lives in `requirements[].scenarios` with `verified_by` + `execution_env`
+- **Every task needs acceptance_criteria** — `checks` (runnable commands). Behavior verification via `fulfills[]` (requirement ID refs)
+- **Requirements = single source of truth** — all verification lives in `requirements[].sub[]` with optional `verify` fields
 - **Incremental merge** — merge after every layer and every user response; do not batch
 - **confirmed_goal in context** — NEVER move `confirmed_goal` to `meta`
 - **gate-keeper** — teammate spawned via TeamCreate, role defined by spawn prompt (not a custom agent file)
 - **Team mode members** — disallowed-tools MUST include Task and Skill
-- **L3-user-advocate** — teammate for user journey mapping + gap severity judgment (spawned at session start, active during L3, shutdown after L3)
-- **L3-requirement-writer** — teammate for requirements + scenarios structuring from journeys (spawned at session start, active during L3, shutdown after L3)
-- **L3-devil's-advocate** — teammate for adversarial completeness testing + research requests (spawned at session start, active during L3, shutdown after L3)
+- **L3-user-advocate** — teammate for user journey mapping + gap severity judgment (only with `--workshop`; spawned at session start, active during L3, shutdown after L3)
+- **L3-requirement-writer** — teammate for requirements + sub-requirements structuring from journeys (only with `--workshop`; spawned at session start, active during L3, shutdown after L3)
+- **L3-devil's-advocate** — teammate for adversarial completeness testing + research requests (only with `--workshop`; spawned at session start, active during L3, shutdown after L3)
 - **Team mode members** — disallowed-tools MUST include Task and Skill (C3)
 
 ---
@@ -372,9 +334,9 @@ No TeamCreate, no SendMessage gates. Max 1 plan-reviewer round if run.
 - [ ] `hoyeon-cli spec validate` passes
 - [ ] `hoyeon-cli spec check` passes
 - [ ] All tasks have `status: "pending"`
-- [ ] All tasks have `must_not_do` and `acceptance_criteria` (`scenarios` + `checks`)
+- [ ] All tasks have `must_not_do` and `acceptance_criteria` (`checks`) and `fulfills` (requirement ID refs)
 - [ ] All tasks have `inputs` field
-- [ ] `requirements` section populated with Given-When-Then scenarios + `verified_by` + `execution_env`
+- [ ] Every requirement has at least 1 sub-requirement in `sub[]`
 - [ ] `context.confirmed_goal` populated (NOT `meta.confirmed_goal`)
 - [ ] `meta.non_goals` populated (use empty array `[]` if none)
 - [ ] `meta.mode` is set
@@ -382,8 +344,8 @@ No TeamCreate, no SendMessage gates. Max 1 plan-reviewer round if run.
 - [ ] Breaking Changes section shows detected signals or "(none detected)"
 - [ ] `meta.approved_by` and `meta.approved_at` written after approval
 
-### Standard mode (additional)
-- [ ] TeamCreate called at session start with 4 teammates: gate-keeper, L3-user-advocate, L3-requirement-writer, L3-devil's-advocate
+### Always (additional)
+- [ ] TeamCreate called at session start with at least gate-keeper
 - [ ] Gate-keeper defined via spawn prompt (DRIFT/GAP/CONFLICT/BACKTRACK review, read-only)
 - [ ] SendMessage called at each layer gate (L2, L3, L4) — L0 and L1 have no gate-keeper review
 - [ ] `context.research` is structured object (not string)
@@ -391,24 +353,13 @@ No TeamCreate, no SendMessage gates. Max 1 plan-reviewer round if run.
 - [ ] `context.decisions[]` populated from interview
 - [ ] `constraints` populated (L2.7 — merge empty array explicitly if none apply)
 - [ ] `external_dependencies` populated (L4.5 — merge empty pre_work/post_work explicitly if none apply)
-- [ ] L3 workshop ran (L3-user-advocate → L3-requirement-writer → L3-devil's-advocate, max 3 cycles)
-- [ ] VERIFICATION.md pre-read and inlined into L3-requirement-writer SendMessage prompt
-- [ ] L3 agents shutdown after L3 merge (gate-keeper excluded)
-- [ ] Sandbox Scenario Fallback Rules applied
-- [ ] Human minimization applied (every `verified_by: human` has `conversion_rejected` justification)
-- [ ] Human scenario ratio < 30% (or justified exception)
-- [ ] Sandbox Capability Check completed (auto-detect → scaffold if needed → re-run L3 with capability set)
-- [ ] L3-devil's-advocate checked execution_env diversity
-- [ ] IF `scaffold_required == true`: `hoyeon-cli spec sandbox-tasks` executed AND T_SANDBOX + T_SV* tasks present in spec
-- [ ] IF `scaffold_required == false`: sandbox infra detected in Phase A (no scaffold needed)
 - [ ] plan-reviewer returned OKAY
 - [ ] `spec coverage` passes (full chain + per-layer at each transition)
 
-### Quick mode (overrides)
-- [ ] No TeamCreate, no SendMessage
-- [ ] No layer gates
-- [ ] No plan-reviewer (or max 1 round if run)
-- [ ] assumptions populated instead of decisions
+### With --workshop flag (additional)
+- [ ] TeamCreate called with 4 teammates: gate-keeper, L3-user-advocate, L3-requirement-writer, L3-devil's-advocate
+- [ ] L3 workshop ran (L3-user-advocate → L3-requirement-writer → L3-devil's-advocate, max 3 cycles)
+- [ ] L3 agents shutdown after L3 merge (gate-keeper excluded)
 
 ### Interactive mode (additional)
 - [ ] User explicitly triggered plan generation ("proceed to planning") — not auto-transitioned

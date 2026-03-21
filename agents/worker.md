@@ -71,20 +71,18 @@ CHARTER_CHECK:
 
 ### 4. Verify Before Completion (Acceptance Criteria)
 
-**Task AC has two parts (v5 schema):**
+**Task verification has two parts (v6 schema):**
 
-1. `acceptance_criteria.scenarios[]` — scenario IDs referencing `requirements[].scenarios[].id`
-   - Look up each scenario in `requirements[].scenarios[]` to find verify details
-   - Run `verified_by: "machine"` scenarios' `verify.run` command
-     - Skip `execution_env: "sandbox"` scenarios ONLY in regular work tasks
-     - If this task IS a T_SV sandbox verification task, do NOT skip sandbox scenarios — execute them
-   - For `verified_by: "agent"` scenarios, assert manually
-   - For `verified_by: "human"` scenarios, skip (report only)
+1. `fulfills[]` → `requirements[].sub[]` — behavior verification
+   - Look up each requirement ID in `fulfills[]`
+   - For each requirement, iterate its `sub[]` array
+   - If sub-requirement has `verify` field → run the verify command/assertion
+   - If sub-requirement has no `verify` field → assert the behavior is satisfied by reading the code
 
 2. `acceptance_criteria.checks[]` — automated checks (static/build/lint/format)
    - Run each check's `run` command and verify exit code 0
 
-**Completion condition**: All `scenarios` (machine/agent) pass AND all `checks` pass
+**Completion condition**: All sub-requirements verified AND all `checks` pass
 
 ## Output Format
 
@@ -96,8 +94,8 @@ When work is complete, **always** report in the following JSON format:
     "middleware_path": "src/auth/middleware.ts",
     "exported_name": "authMiddleware"
   },
+  "fulfills": ["R1"],
   "acceptance_criteria": {
-    "scenarios": ["REQ-1.S1", "REQ-1.S2"],
     "checks": [
       {
         "type": "static",
@@ -112,18 +110,18 @@ When work is complete, **always** report in the following JSON format:
       }
     ]
   },
-  "scenario_results": [
+  "sub_requirement_results": [
     {
-      "id": "REQ-1.S1",
-      "description": "Auth middleware rejects unauthenticated requests",
-      "verified_by": "machine",
+      "id": "R1.1",
+      "behavior": "Auth middleware rejects unauthenticated requests",
+      "has_verify": true,
       "command": "npm test -- auth.test.ts",
       "status": "PASS"
     },
     {
-      "id": "REQ-1.S2",
-      "description": "Middleware reads JWT from Authorization header",
-      "verified_by": "agent",
+      "id": "R1.2",
+      "behavior": "Middleware reads JWT from Authorization header",
+      "has_verify": false,
       "status": "PASS",
       "detail": "src/auth/middleware.ts line 12 reads req.headers.authorization"
     }
@@ -146,24 +144,22 @@ When work is complete, **always** report in the following JSON format:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `outputs` | ✅ | Values defined in EXPECTED OUTCOME's Outputs |
-| `acceptance_criteria` | ✅ | Object with `scenarios` (string[]) and `checks` arrays — echoes the task spec unchanged |
-| `scenario_results` | ✅ | Full verification evidence objects for each scenario ID in `acceptance_criteria.scenarios` |
+| `acceptance_criteria` | ✅ | Object with `checks` array — echoes the task spec unchanged |
+| `sub_requirement_results` | ✅ | Verification evidence for each sub-requirement from `fulfills[]` → `requirements[].sub[]` |
 | `learnings` | ❌ | Discovered and **applied** patterns/conventions |
 | `issues` | ❌ | Problems discovered but **not resolved** (out of scope/unresolved) |
 | `decisions` | ❌ | Decisions made and their reasons |
 
-**acceptance_criteria.scenarios** — `string[]` of scenario IDs copied verbatim from the task spec (e.g., `["REQ-1.S1", "REQ-1.S2"]`). Do not expand or modify.
-
-**scenario_results item structure:**
+**sub_requirement_results item structure:**
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | ✅ | Scenario ID from `requirements[].scenarios[].id` |
-| `description` | ✅ | Scenario description (human-readable) |
-| `verified_by` | ✅ | `machine` / `agent` / `human` |
-| `command` | ✅ (machine) | Command executed for machine scenarios |
+| `id` | ✅ | Sub-requirement ID from `requirements[].sub[].id` |
+| `behavior` | ✅ | Sub-requirement behavior text |
+| `has_verify` | ✅ | `true` if sub-requirement has a verify field |
+| `command` | ✅ (has_verify) | Command executed for sub-requirements with verify |
 | `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
-| `detail` | ❌ | Evidence for agent scenarios or reason for FAIL/SKIP |
+| `detail` | ❌ | Evidence for behavior assertion or reason for FAIL/SKIP |
 
 **acceptance_criteria.checks item structure:**
 
@@ -174,7 +170,7 @@ When work is complete, **always** report in the following JSON format:
 | `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
 | `reason` | ❌ | Reason for FAIL/SKIP |
 
-**Completion condition**: All `scenario_results` entries (machine/agent) are `PASS` AND all `checks` are `PASS`
+**Completion condition**: All `sub_requirement_results` entries are `PASS` AND all `checks` are `PASS`
 
 **learnings vs issues distinction:**
 ```
@@ -192,24 +188,17 @@ When a worker receives a task whose ID starts with `T_SV`, it is a **sandbox ver
 
 ### What this means
 
-A T_SV task verifies a specific scenario in a sandbox environment. The normal rule "skip `execution_env: \"sandbox\"` scenarios" does NOT apply here. The entire purpose of a T_SV task is to run those sandbox scenarios.
+A T_SV task verifies a specific sub-requirement that requires a sandbox environment. Execute the sub-requirement's `verify` command in the sandbox context.
 
 ### How to execute a T_SV task
 
-1. **Verify sandbox is available** — check that the sandbox environment exists (e.g., the sandbox directory exists, or docker-compose services are up). If unavailable, report FAILED immediately with the reason.
-2. **Run the scenario's `verify.run` command** in the sandbox context (do not skip it).
+1. **Verify sandbox is available** — check that the sandbox environment exists (e.g., docker-compose services are up). If unavailable, report FAILED immediately with the reason.
+2. **Run the sub-requirement's `verify.run` command** in the sandbox context.
 3. **Record the result** using the CLI:
    ```
-   hoyeon-cli spec requirement <scenario_id> --status pass|fail --task <task_id> <spec_path>
+   hoyeon-cli spec requirement <sub_req_id> --status pass|fail --task <task_id> <spec_path>
    ```
 4. **Report outcome** in the standard JSON output format.
-
-### Summary of sandbox skip rule
-
-| Task type | `execution_env: "sandbox"` scenarios |
-|-----------|--------------------------------------|
-| Regular work task | SKIP |
-| T_SV sandbox verification task | EXECUTE — this is the point |
 
 ---
 

@@ -2,7 +2,7 @@
   "meta": {
     "name": "broken-source-ref-test",
     "goal": "Test source.ref integrity check detects non-existent decision refs",
-    "schema_version": "v5"
+    "schema_version": "v6"
   },
   "decisions": [
     {
@@ -20,14 +20,10 @@
         "type": "decision",
         "ref": "D-NONEXISTENT"
       },
-      "scenarios": [
+      "sub": [
         {
-          "id": "R1-S1",
-          "given": "A spec with source.ref pointing to non-existent decision",
-          "when": "spec check is run",
-          "then": "Exits 1 with error message naming broken ref",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R1.1",
+          "behavior": "Exits 1 with error message naming broken ref when spec check is run on a spec with source.ref pointing to non-existent decision",
           "verify": {
             "type": "command",
             "run": "node dist/cli.js spec check test/fixtures/broken-source-ref.json",
@@ -43,8 +39,8 @@
       "action": "Implement source.ref check",
       "type": "work",
       "status": "pending",
+      "fulfills": ["R1"],
       "acceptance_criteria": {
-        "scenarios": ["R1-S1"],
         "checks": []
       }
     }

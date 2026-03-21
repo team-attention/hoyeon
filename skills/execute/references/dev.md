@@ -99,17 +99,15 @@ function should_spawn_verifier(task):
   Determines whether a task needs an independent Verifier agent.
   When false, Worker Tier 1 checks + Final Verify provide sufficient coverage.
   """
-  # Empty verify_plan (e.g. specify --quick) → no scenarios to verify
-  IF task.verify_plan is empty: return false
-
-  # Judgment-based or sandbox scenarios need independent eyes
-  has_judgment = task.verify_plan.some(e => e.method in ["agent", "sandbox"])
-  IF has_judgment: return true
+  # Non-empty verify_plan → verification needed
+  IF task.verify_plan is non-empty: return true
 
   # High-risk tasks always get full ceremony
   IF task.risk == "high": return true
 
-  # Machine-only + low/medium risk → skip per-task verify, defer to Final Verify
+  # Medium-risk + broad file scope → get verification
+  IF task.risk == "medium" AND task.file_scope.length > 3: return true
+
   return false
 ```
 
@@ -148,7 +146,7 @@ FOR EACH task in plan (flattened):
     verify_description[task.id] = VERIFIER_DESCRIPTION(
       task.id,
       JSON.stringify(task_verify_plan, null, 2),
-      sandbox_recipe_paths || "None — no sandbox scenarios for this task."
+      sandbox_recipe_paths || "None — no sandbox sub-requirements for this task."
     )
 
 # ═══════════════════════════════════════════════════
@@ -166,7 +164,7 @@ FOR EACH task in plan (flattened from rounds, excluding done):
   IF needs_verify:
     v  = TaskCreate(subject="{task.id}.V:Verify",
                     description=verify_description[task.id],
-                    activeForm="{task.id}.V: Verifying scenarios")
+                    activeForm="{task.id}.V: Verifying sub-requirements")
   ELSE:
     log_to_audit("AUTO_PASS: Verify skipped for {task.id} — {auto_pass_reason(task)}")
     v = null  # no verify task
@@ -232,9 +230,9 @@ Do NOT run git commands — Orchestrator handles commits.
 Task AC has two parts — Worker handles checks[] only:
 1. `acceptance_criteria.checks[]` — automated checks (static/build/lint/format)
    - Run each check's `run` command and verify exit code 0
-2. `acceptance_criteria.scenarios[]` — DO NOT verify these. An independent Verifier agent will handle scenario verification after you complete.
+2. `fulfills[]` — behavior verification via requirement IDs. An independent Verifier agent will handle sub-requirement verification after you complete.
 
-Note: If this task's ID starts with T_SV, it is a sandbox verification task — you MUST run sandbox scenarios. Use `hoyeon-cli spec task {task_id} --get {spec_path}` to get scenario details and execute them.
+Note: If this task's ID starts with T_SV, it is a sandbox verification task — you MUST run sandbox sub-requirements. Use `hoyeon-cli spec task {task_id} --get {spec_path}` to get sub-requirement details and execute them.
 
 ## Step 5: Update context files
 
@@ -300,7 +298,7 @@ Work in the current directory (session CWD).
 
 {sandbox_recipe_paths}
 
-IMPORTANT: Read each recipe file listed above BEFORE executing sandbox scenarios.
+IMPORTANT: Read each recipe file listed above BEFORE executing sandbox sub-requirements.
 Each recipe contains step-by-step commands for that subject type (web, server, cli, database).
 
 ## Execution
@@ -309,7 +307,7 @@ Follow the verify_plan entries top-to-bottom.
 For each entry, use the execution rules from your agent system prompt (machine/agent/sandbox/human).
 
 Record each result:
-  hoyeon-cli spec requirement {entry.scenario} --status pass|fail|pending --task {task_id} {spec_path}
+  hoyeon-cli spec requirement {entry.sub_requirement} --status pass|fail|pending --task {task_id} {spec_path}
 
 ## Output (print as last message)
 {"status": "VERIFIED"|"FAILED",
@@ -405,7 +403,7 @@ ELSE:  # no-commit mode
 
 **T_SANDBOX and T_SV* tasks are regular tasks — dispatch them as normal workers.**
 Do NOT defer, skip, or mark them done without execution. The worker description already
-contains instructions for handling sandbox scenarios (T_SV prefix check).
+contains instructions for handling sandbox sub-requirements (T_SV prefix check).
 
 Before dispatching T_SANDBOX, verify sandbox capability:
 
@@ -583,7 +581,7 @@ ELIF result.status == "FAILED":
 
 ---
 
-### 1b. :Verify — Independent Scenario Verification
+### 1b. :Verify — Independent Sub-Requirement Verification
 
 > **Self-read pattern**: Same as Worker — Verifier reads spec via CLI.
 > Runs in a SEPARATE context from Worker — no shared state, no bias.
@@ -878,9 +876,9 @@ Audit: {count} events
 MANUAL REVIEW (require human verification)
 ───────────────────────────────────────────────────
 {FOR EACH req in (spec.requirements ?? []):}
-{FOR EACH scenario where verified_by == "human":}
-- {scenario.id}: {scenario.then}
-  Check: {scenario.verify.ask}
+{FOR EACH sub_req where verified_by == "human":}
+- {sub_req.id}: {sub_req.description}
+  Check: {sub_req.verify.ask}
 
 {IF no manual items: "None"}
 
@@ -948,7 +946,7 @@ Details: {summary}
 7. **Per-task commit** — every task gets its own commit via git-master
 8. **Worker BLOCKED = scope fix** — when Worker reports BLOCKED, orchestrator creates a derived fix task via `spec derive --trigger scope_blocker`, dispatches it, then re-runs the original worker
 9. **Worker FAILED = immediate HALT** — no per-task retry. **Verifier FAILED = fix loop** — max 2 retries via spec derive → fix worker → re-verify
-10. **Verify Auto-Pass gate** — `should_spawn_verifier()` skips per-task `.V:Verify` for tasks with empty verify_plan, machine-only scenarios + low/medium risk. Workers perform Tier 1 (checks[]), Verifier agent handles scenario verification when spawned. must_not_do compliance checked at FV. Override: `meta.force_verify: true`.
+10. **Verify Auto-Pass gate** — `should_spawn_verifier()` spawns per-task `.V:Verify` for tasks with non-empty verify_plan, high risk, or medium risk + broad file scope. Workers perform Tier 1 (checks[]), Verifier agent handles sub-requirement verification when spawned. must_not_do compliance checked at FV. Override: `meta.force_verify: true`.
 11. **Adaptation updates spec.json** — new tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on, re-plan automatically)
 12. **Background for parallel** — use `run_in_background: true` for round-parallel workers
 13. **work_mode governs git behavior** — `worktree`: uses `EnterWorktree` to switch session CWD into an isolated worktree (all tools automatically operate there); `branch-commit`: current branch with per-task commits; `no-commit`: current branch, no commits at all (no :Commit tasks, no Residual Commit)

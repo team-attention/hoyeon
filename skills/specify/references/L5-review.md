@@ -31,17 +31,15 @@ hoyeon-cli spec plan .dev/specs/{name}/spec.json
 
 Show output to user. Capture output for inclusion in Step 6 Plan Approval Summary.
 
-### Step 4: Semantic Review (standard mode only)
-
-> **Mode Gate**: Quick → skip plan-reviewer. Mechanical validation is sufficient.
+### Step 4: Semantic Review
 
 ```
 Task(subagent_type="plan-reviewer",
      prompt="Review spec: .dev/specs/{name}/spec.json
 Read the file and evaluate all layers:
 1. Meta & Context — goal clarity, decisions, assumptions, gaps
-2. Requirements & Scenarios — behavior coverage, verify quality
-3. Tasks — goal alignment, requirement coverage, granularity, dependencies, AC
+2. Requirements & Sub-requirements — behavior coverage, sub-requirement completeness, verify quality
+3. Tasks — goal alignment, requirement coverage, granularity, dependencies, AC (fulfills[] refs + checks)
 4. Cross-cutting — constraints, simplicity, verification strategy")
 ```
 
@@ -69,10 +67,9 @@ AskUserQuestion(
 > **Quick**: Max 1 review round. Semantic rejection → HALT.
 > **Autopilot**: Cosmetic auto-fix. Semantic without scope change → auto-fix + log assumption. Scope change → HALT.
 
-### Step 5: AC Quality Gate (standard mode only — DO NOT SKIP)
+### Step 5: AC Quality Gate (DO NOT SKIP)
 
-> **Mode Gate**: Quick → skip. Proceed directly to Step 6.
-> **MANDATORY**: This step MUST run in standard mode. Do NOT skip even if L3 workshop covered scenarios — L3 checks requirement quality, L5 checks the MERGED spec.json (which may have drifted during L4 task mapping and coverage fixes). These are different validation scopes.
+> **MANDATORY**: This step MUST always run. Do NOT skip even if L3 covered sub-requirements — L3 checks requirement quality, L5 checks the MERGED spec.json (which may have drifted during L4 task mapping and coverage fixes). These are different validation scopes.
 
 Run the full AC quality check (max 5 rounds):
 
@@ -128,12 +125,12 @@ Key Decisions ({n} total)
   ...
 ────────────────────────────────────────
 
-Requirements ({n} total, {m} scenarios)
+Requirements ({n} total, {m} sub-requirements)
 ────────────────────────────────────────
   R1: {behavior} [priority:{1|2|3}] ← {source.type}:{source.ref}
-    Scenarios: {scenario_count} (HP:{n} EP:{n} BC:{n} NI:{n} IT:{n})
+    Sub-requirements: {sub_count} ({R1.1}, {R1.2}, ...)
   R2: {behavior} [priority:{1|2|3}] ← {source.type}:{source.ref}
-    Scenarios: {scenario_count} (HP:{n} EP:{n} BC:{n})
+    Sub-requirements: {sub_count} ({R2.1}, ...)
   ...
 ────────────────────────────────────────
 
@@ -186,7 +183,7 @@ Post-work (human actions after completion)
 ────────────────────────────────────────
 
 Constraints: {n} items
-Verification: Auto {auto_count} | Manual {manual_count} | Sandbox {sandbox_count}
+Sub-requirements: {total_sub_count} total across {n} requirements
 ```
 
 Then ask (interactive only):
@@ -196,7 +193,7 @@ AskUserQuestion(
   question: "Review the plan above. Select the next step.",
   options: [
     { label: "/execute", description: "Start implementation immediately" },
-    { label: "Revise requirements (L3)", description: "Go back to refine requirements and scenarios" },
+    { label: "Revise requirements (L3)", description: "Go back to refine requirements and sub-requirements" },
     { label: "Revise tasks (L4)", description: "Go back to refine task breakdown" }
   ]
 )

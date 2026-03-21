@@ -1,60 +1,23 @@
-## L3: Requirements + Scenarios
+## L3: Requirements + Sub-requirements
 
-**Who**: L3-user-advocate + L3-requirement-writer + L3-devil's-advocate (teammates) — 3-Agent Requirements Workshop
+**Who**: Orchestrator (default) OR L3-user-advocate + L3-requirement-writer + L3-devil's-advocate (with `--workshop`)
 **Input**: goal + decisions + provisional requirements (as seed)
-**Output**: `requirements[]` with source fields + `scenarios[]` with category/verified_by/verify
-**Merge**: `spec merge requirements` (atomic, with scenarios)
-**Gate**: `spec coverage --layer scenarios` + gate-keeper via SendMessage
+**Output**: `requirements[]` with source fields + `sub[]` (sub-requirements per requirement)
+**Merge**: `spec merge requirements` (atomic, with sub[])
+**Gate**: `spec coverage --layer requirements` + gate-keeper via SendMessage
 **Backtracking**: If decision gap found → AskUserQuestion → spec merge decisions (L2) → re-run L3
 
-### Pre-read: VERIFICATION.md
+### Default Flow (without --workshop)
 
-Before starting the workshop, read VERIFICATION.md to inline into L3-requirement-writer's prompt:
+Orchestrator derives requirements and sub-requirements directly from goal + decisions.
 
-```bash
-# ${baseDir} is provided as header context to the main agent.
-# Resolve: ${baseDir}/references/VERIFICATION_GUIDE.md
-TESTING_MD_CONTENT = Read("${baseDir}/references/VERIFICATION_GUIDE.md")
-```
+For each confirmed decision and implication:
+1. Identify observable behaviors (requirements)
+2. For each requirement, derive at least 1 sub-requirement describing a concrete, testable behavior
 
-> Why inline? Teammates cannot resolve `${baseDir}`. The orchestrator reads the file and passes content directly into the SendMessage prompt.
+Skip to "Merge requirements" after deriving. No SendMessage to L3 agents, no workshop.
 
-### Sandbox Capability Check (before workshop)
-
-Run **before** the 3-agent workshop so L3-requirement-writer knows whether to generate sandbox scenarios.
-
-```
-IF context.sandbox_capability is NOT set:
-  ⚠️ MANDATORY: Read references/sandbox-guide.md — DO NOT skip, approximate, or infer capability.
-  Execute all 3 phases in strict order:
-
-  Phase A — Auto-detect existing infra:
-    Glob for: playwright.config.*, cypress.config.*, docker-compose.*, Dockerfile,
-              *.xcodeproj, *.xcworkspace, electron-builder.yml, tauri.conf.json
-    Check package.json for: @vitest/browser, testcontainers, playwright, cypress
-    IF any detected → record capability from detection evidence → DONE
-
-  Phase B — No infra detected → MUST ask user:
-    Classify project signals: has_ui, has_api, has_db, has_cli, has_native_app, has_desktop_app
-    Build dynamic options based on signals (see sandbox-guide.md for option mapping)
-    MUST call AskUserQuestion — NEVER set capability without user response or Phase A evidence
-
-  Phase C — User approved scaffold:
-    Add T-sandbox-* scaffold tasks → record capability in spec.json
-
-  ⚠️ NEVER set sandbox_capability without EITHER:
-     (a) Phase A detection evidence (specific file paths found), OR
-     (b) Phase B user response (AskUserQuestion result)
-  Setting capability based on general assumptions (e.g., "Docker is available") is FORBIDDEN.
-```
-
-Pass the resolved `context.sandbox_capability` into L3-requirement-writer's SendMessage prompt so it knows what sandbox environments are available.
-
-### Quick Mode Shortcut
-
-> **Mode Gate**: Quick → orchestrator derives requirements + scenarios directly (no workshop, no teammates). Merge and auto-advance.
-
-### 3-Agent Requirements Workshop (standard mode) — Collaborative Communication
+### 3-Agent Requirements Workshop (with --workshop flag) — Collaborative Communication
 
 Three L3 teammates (L3-user-advocate, L3-requirement-writer, L3-devil's-advocate) are **activated simultaneously** and collaborate freely via SendMessage. The orchestrator sends all 3 initial prompts **in a single message**, then monitors for convergence.
 
@@ -127,7 +90,7 @@ Also output:
 ```
 SendMessage(to="L3-requirement-writer", message="
 You are in a 3-agent requirements workshop with L3-user-advocate and L3-devil's-advocate.
-You will receive user journeys from L3-user-advocate. Structure them into formal Requirements + Scenarios.
+You will receive user journeys from L3-user-advocate. Structure them into formal Requirements + Sub-requirements.
 
 Send your requirements to L3-devil's-advocate via SendMessage(to='devil\'s-advocate').
 If L3-devil's-advocate sends GAPS back, revise and re-send to L3-devil's-advocate.
@@ -151,8 +114,8 @@ Provisional requirements (from interview — use as seed, validate and complete)
 
 ## Structuring Rules
 
-- Every user journey path MUST produce at least one requirement or scenario
-- Group related journey paths into single requirements (e.g., 'Profile accessible via feed avatar click, search result click, and URL direct access' = ONE requirement with multiple scenarios)
+- Every user journey path MUST produce at least one requirement or sub-requirement
+- Group related journey paths into single requirements (e.g., 'Profile accessible via feed avatar click, search result click, and URL direct access' = ONE requirement with multiple sub-requirements)
 - Convert each confirmed implication into at least one requirement
 - If you find missing decisions, output as 'decision_gaps' — orchestrator will handle backtracking
 
@@ -164,98 +127,36 @@ For EACH requirement:
 - priority: 1 (critical) | 2 (important) | 3 (nice-to-have)
 - source: {type: 'goal'|'decision'|'gap'|'implicit'|'negative', ref: 'D{id}'}
 
-## Output: Scenarios (per requirement)
+## Output: Sub-requirements (per requirement)
 
-### Scenario Coverage Categories (MANDATORY)
+Each requirement MUST have at least 1 sub-requirement. Sub-requirements describe concrete, testable behaviors that together fulfill the parent requirement.
 
-| Category | Code | When Required | Example |
-|----------|------|---------------|---------|
-| Happy Path | HP | Always | Valid input → expected output |
-| Error/Failure | EP | Always | System fails gracefully on error |
-| Boundary/Edge | BC | Always | Empty input, max values, zero |
-| Negative/Invalid | NI | User input or auth | Rejected input, unauthorized |
-| Integration | IT | External system | Dependency unavailable |
+### Sub-requirement Fields
 
-**Minimum: HP + EP + BC per requirement (3 scenarios minimum).**
-**Self-check before output**: count scenarios per requirement. If any has < 3, add missing categories.
+Each sub-requirement MUST include:
+- id: {req_id}.{n} (e.g., R1.1, R1.2)
+- behavior: concrete, observable behavior statement
+- verify: (optional) object describing how to verify — `{type: 'command'|'assertion'|'manual', run?: '...', checks?: [...], ask?: '...'}`
 
-### Scenario Fields (ALL required)
-
-Each scenario MUST include:
-- id: {req_id}-S{n} (e.g., R1-S1, R1-S2)
-- category: HP | EP | BC | NI | IT
-- given / when / then: concrete, testable statements
-- verified_by: 'machine' | 'agent' | 'human'
-- execution_env: 'host' | 'sandbox' | 'ci'
-- verify: object matching verified_by type
-
-### Sandbox Scenario Subject Classification
-
-When creating scenarios with `execution_env: "sandbox"`, you MUST include a `subject` field.
-Classify based on what the scenario verifies:
-
-| Signal in scenario | subject |
-|-------------------|---------|
-| Browser, UI, page, click, render, visual, CSS, DOM | `"web"` |
-| API, endpoint, HTTP, REST, GraphQL, request, response, status code | `"server"` |
-| Command, CLI, terminal, argv, flag, stdout, stderr, exit code | `"cli"` |
-| Database, query, SQL, table, row, record, migration, schema | `"database"` |
-
-The subject determines which verification recipe the Verifier agent will follow.
-
-> `subject` is ONLY required when `execution_env: "sandbox"`. Do NOT add it to host or ci scenarios.
-
-## verify Abstraction Rules (MANDATORY)
+### verify Abstraction Rules (MANDATORY)
 
 verify describes OBSERVABLE BEHAVIOR, not implementation details.
 
-### Prohibited in verify fields:
+#### Prohibited in verify fields:
 - File paths (src/auth/login.ts)
 - Function/class names (validatePassword(), AuthService)
 - Code patterns (if(!pw) throw)
 - Line numbers
 - Internal variable names
 
-### Allowed in verify fields:
+#### Allowed in verify fields:
 - API contracts (POST /login with empty body → 400)
 - Input/output relations (empty password → validation error message)
 - Behavior properties (invalid input does not trigger database query)
 - UI states (login success → dashboard shows username)
 
-### Self-check: "If all implementation file names changed, would this verify still be valid?"
+#### Self-check: 'If all implementation file names changed, would this verify still be valid?'
   Yes → correct abstraction level. No → rewrite.
-
-### Examples
-
-WRONG (implementation-coupled):
-  machine: {"type": "command", "run": "grep 'validation' src/auth/login.ts", "expect": {"exit_code": 0}}
-  agent: {"type": "assertion", "checks": ["src/auth/login.ts has validation guard before db.query call"]}
-
-RIGHT (behavior-level):
-  machine: {"type": "command", "run": "curl -s -w '%{http_code}' -X POST localhost:3000/login -d '{}'", "expect": {"stdout_contains": "400"}}
-  agent: {"type": "assertion", "checks": ["Empty password request returns HTTP 400 with error message containing 'required' or 'validation'", "Invalid input does not trigger database query"]}
-
-## Sandbox Capability
-{IF sandbox_capability is set:
-  Available: {sandbox_capability.tools} (docker: {sandbox_capability.docker}, browser: {sandbox_capability.browser})
-  → USE execution_env: 'sandbox' for scenarios where these tools apply
-ELSE:
-  No sandbox available — use execution_env: 'host' for all scenarios
-}
-
-## Testing Strategy (from VERIFICATION.md)
-{TESTING_MD_CONTENT}
-
-## Human Minimization (MANDATORY)
-
-Before marking ANY scenario as verified_by: 'human', attempt conversion:
-1. Agent via screenshot comparison? → 'agent', execution_env: 'sandbox'
-2. Agent via DOM/accessibility assertion? → 'agent', execution_env: 'host'
-3. Machine via output pattern matching? → 'machine', execution_env: 'host'
-4. Machine via docker-based integration test? → 'machine', execution_env: 'sandbox'
-5. ONLY if none → 'human' with 'conversion_rejected' justification
-
-Target: human scenarios < 30% of total.
 ")
 ```
 
@@ -284,7 +185,7 @@ If user selects "Yes, go back to L2" → merge additional decisions, then re-run
 ```
 SendMessage(to="L3-devil's-advocate", message="
 You are in a 3-agent requirements workshop with L3-user-advocate and L3-requirement-writer.
-You will receive requirements+scenarios from L3-requirement-writer. Your job is to BREAK them — find missing paths, contradictions, impossible assumptions, and untested edge cases.
+You will receive requirements+sub-requirements from L3-requirement-writer. Your job is to BREAK them — find missing paths, contradictions, impossible assumptions, and untested behaviors.
 
 IMPORTANT: Communication protocol:
 - If you find GAPS: send them DIRECTLY to L3-requirement-writer via SendMessage(to='L3-requirement-writer'). Include cycle counter.
@@ -304,35 +205,22 @@ IMPORTANT: Communication protocol:
 - No requirement is an implementation detail (must be observable behavior)
 - Source tracing is correct (goal/decision/implicit with correct ref)
 
-**Scenario coverage:**
-- Every requirement has HP + EP + BC minimum (3 scenarios)
-- NI scenarios present for user-input/auth requirements
-- IT scenarios present for external-system requirements
+**Sub-requirement coverage:**
+- Every requirement has at least 1 sub-requirement
+- Sub-requirements together cover the full behavior of the parent requirement
+- No sub-requirement is duplicated across requirements
 
-**Scenario quality:**
-- Machine: verify.run is executable shell command, verify.expect has concrete value
-- Agent: verify.checks is falsifiable (can be proven wrong)
-- Human: verify.ask is actionable (step-by-step instructions)
+**Sub-requirement quality:**
+- verify fields (when present) are at behavior level — not coupled to implementation
+- verify.run (if present): executable shell command with concrete expected value
+- verify.checks (if present): falsifiable assertions (can be proven wrong)
+- verify.ask (if present): actionable step-by-step instructions
 
 **verify abstraction level (BLOCKING):**
-- IF verify.run or verify.checks reference specific file paths → REJECT ("verify coupled to implementation: {path}")
-- IF verify.run or verify.checks reference function/class names → REJECT ("verify coupled to implementation: {name}")
-- IF verify.checks contain vague words: "works", "correctly", "properly", "as expected" → REJECT ("verify not falsifiable: {check}")
-- Self-check per scenario: "If implementation files were renamed, would this verify still hold?" No → REJECT
-
-**Sandbox/execution_env diversity:**
-- Tier 4 items have execution_env: 'sandbox'
-- UI changes have screenshot-based sandbox scenarios
-- IF sandbox capability is available AND all scenarios are execution_env: 'host':
-  → Flag as gap (category: 'sandbox_underuse')
-- IF `context.sandbox_capability` is NOT set:
-  → Flag as **BLOCKING** gap (category: 'sandbox_capability_unknown')
-- IF `sandbox_capability.browser == false` AND project has UI signals:
-  → Flag as gap (category: 'browser_sandbox_skipped_for_ui_project')
-
-**Human minimization:**
-- Every verified_by: 'human' scenario MUST have 'conversion_rejected' justification
-- If human_ratio > 30% → flag as gap (category: 'human_overuse')
+- IF verify.run or verify.checks reference specific file paths → REJECT ('verify coupled to implementation: {path}')
+- IF verify.run or verify.checks reference function/class names → REJECT ('verify coupled to implementation: {name}')
+- IF verify.checks contain vague words: 'works', 'correctly', 'properly', 'as expected' → REJECT ('verify not falsifiable: {check}')
+- Self-check per sub-requirement: 'If implementation files were renamed, would this verify still hold?' No → REJECT
 
 **External/codebase claim verification:**
 - If a requirement assumes external API behavior → flag for research if unverified
@@ -367,11 +255,6 @@ AskUserQuestion(
 )
 ```
 
-**Safety net**: If L3-devil's-advocate reports a BLOCKING gap (`sandbox_capability_unknown` or `browser_sandbox_skipped_for_ui_project`),
-orchestrator MUST intervene before next cycle:
-- `sandbox_capability_unknown`: read `references/sandbox-guide.md`, execute Phase A → B → C inline
-- `browser_sandbox_skipped_for_ui_project`: re-run Phase B of sandbox-guide.md
-
 #### L3 Agent Shutdown
 
 After L3 merge completes (requirements merged into spec.json):
@@ -395,64 +278,7 @@ IF review.suggested_additions is non-empty:
   # Only merge user-approved suggestions as new requirements
 ```
 
-#### Sandbox Scenario Fallback (before merge)
-
-```
-# sandbox_capability was resolved before workshop (see "Sandbox Capability Check" above).
-# This section handles the fallback: if L3-requirement-writer generated sandbox scenarios
-# but the capability doesn't support them, convert to agent+host.
-
-sandbox_scenarios = [s for r in draft.requirements for s in r.scenarios if s.execution_env == "sandbox"]
-
-IF sandbox_scenarios is non-empty:
-  # Check if capability already recorded in spec.json context
-  # NOTE: In normal flow, capability is always set by the before-workshop check.
-  # This branch is a defensive fallback — should not fire in happy path.
-  existing_capability = spec.context.sandbox_capability
-
-  IF existing_capability is NOT set:
-    # First time — ask user (once per project, stored in spec.json context)
-    AskUserQuestion(
-      question: "The following scenarios require sandbox environments:\n" +
-        {FOR EACH s in sandbox_scenarios: "- {s.id}: {s.given} → {s.execution_env}\n"} +
-        "\nWhich sandbox environments are available?",
-      header: "Sandbox Capability Check",
-      options: [
-        { label: "Docker (local)", description: "Container-based testing (docker-compose, etc.)" },
-        { label: "Browser sandbox (chromux)", description: "Browser automation for UI verification" },
-        { label: "Both Docker + Browser", description: "Full sandbox capability" },
-        { label: "No sandbox available", description: "Convert all sandbox scenarios to agent+host alternatives" }
-      ]
-    )
-
-    # Map user response to capability object
-    capability = {
-      "docker": user_selected "Docker" or "Both",
-      "browser": user_selected "Browser" or "Both",
-      "confirmed_at": "{today}"
-    }
-
-    # Store in spec.json context (persists for future specify runs)
-    hoyeon-cli spec merge .dev/specs/{name}/spec.json --json '{"context": {"sandbox_capability": {capability}}}'
-
-  ELSE:
-    capability = existing_capability
-
-  # Apply capability filter: convert unsupported sandbox scenarios to agent+host
-  FOR EACH s in sandbox_scenarios:
-    IF s uses docker AND NOT capability.docker:
-      s.execution_env = "host"
-      s.verified_by = "agent"  # fallback: agent assertion on host
-      s.verify = {type: "assertion", checks: [adapted from original verify]}
-      s.conversion_note = "sandbox→host: docker unavailable, converted to agent assertion"
-    IF s uses browser AND NOT capability.browser:
-      s.execution_env = "host"
-      s.verified_by = "agent"
-      s.verify = {type: "assertion", checks: [adapted from original verify]}
-      s.conversion_note = "sandbox→host: browser sandbox unavailable, converted to agent assertion"
-```
-
-### Merge requirements (atomic, with scenarios)
+### Merge requirements (atomic, with sub[])
 
 > **Merge flag**: Use NO flag (default deep-merge) on the first-time write — this replaces the placeholder `requirements[]`.
 > On backtrack re-run, still use NO flag — overwrites the entire `requirements[]` array.
@@ -461,16 +287,13 @@ IF sandbox_scenarios is non-empty:
 Follow the Mandatory Merge Protocol (SKILL.md):
 
 ```bash
-# STEP 1: GUIDE (MANDATORY) — check ALL three schemas before constructing
+# STEP 1: GUIDE (MANDATORY) — check schema before constructing
 hoyeon-cli spec guide requirements
-hoyeon-cli spec guide scenario
-hoyeon-cli spec guide verify
 
 # STEP 2+3: CONSTRUCT + WRITE
 # ⚠️ source must be {type, ref} OBJECT, not a string
 # ⚠️ source.type ENUM: goal|decision|gap|implicit|negative (NOT "implication")
-# ⚠️ verify must be {type, run} OBJECT, not a string
-# ⚠️ each scenario needs: id, category, given, when, then, verified_by, execution_env, verify
+# ⚠️ verify (when present) must be {type, run|checks|ask} OBJECT, not a string
 # ⚠️ NEVER truncate guide output (no head/tail) — read the FULL output
 cat > /tmp/spec-merge.json << 'EOF'
 {
@@ -480,27 +303,15 @@ cat > /tmp/spec-merge.json << 'EOF'
       "behavior": "observable behavior statement",
       "priority": 1,
       "source": {"type": "decision", "ref": "D1"},
-      "scenarios": [
+      "sub": [
         {
-          "id": "R1-S1",
-          "category": "HP",
-          "given": "precondition",
-          "when": "action",
-          "then": "expected result",
-          "verified_by": "machine",
-          "execution_env": "host",
-          "verify": {"type": "command", "run": "npm test -- --grep R1-S1"}
+          "id": "R1.1",
+          "behavior": "concrete testable behavior"
         },
         {
-          "id": "R1-S2",
-          "category": "HP",
-          "given": "precondition",
-          "when": "action in browser",
-          "then": "expected UI result",
-          "verified_by": "machine",
-          "execution_env": "sandbox",
-          "subject": "web",
-          "verify": {"type": "command", "run": "npx playwright test --grep R1-S2"}
+          "id": "R1.2",
+          "behavior": "another concrete behavior",
+          "verify": {"type": "command", "run": "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/health"}
         }
       ]
     }
@@ -519,38 +330,37 @@ If merge fails → follow Merge Failure Recovery (SKILL.md). Do NOT proceed to L
 
 ### L3 User Approval (mandatory before gate)
 
-Before running the gate, present ALL requirements and their scenarios to the user as **text output first**, then ask for approval.
+Before running the gate, present ALL requirements and their sub-requirements to the user as **text output first**, then ask for approval.
 
 **Step 1 — Display full details as text output (NOT inside AskUserQuestion):**
 
-Print all requirements with their scenarios in full detail. This is regular text output, not a tool call:
+Print all requirements with their sub-requirements in full detail. This is regular text output, not a tool call:
 
 ```markdown
 ---
-## L3 Requirements & Scenarios for Approval
+## L3 Requirements & Sub-requirements for Approval
 
 ### R1 [P1]: {behavior}
-- **S1.1** (HP): Given {given}, When {when}, Then {then}
-- **S1.2** (EP): Given {given}, When {when}, Then {then}
-- **S1.3** (BC): Given {given}, When {when}, Then {then}
+- **R1.1**: {sub-requirement behavior}
+- **R1.2**: {sub-requirement behavior}
 
 ### R2 [P2]: {behavior}
-- **S2.1** (HP): Given {given}, When {when}, Then {then}
+- **R2.1**: {sub-requirement behavior}
 - ...
 
 {repeat for ALL requirements}
 
-**Total: {N} requirements, {M} scenarios**
+**Total: {N} requirements, {M} sub-requirements**
 ---
 ```
 
-> Show EVERY requirement and EVERY scenario. Do not summarize or truncate even if the list is long. The user needs to see everything before approving.
+> Show EVERY requirement and EVERY sub-requirement. Do not summarize or truncate even if the list is long. The user needs to see everything before approving.
 
 **Step 2 — Ask for approval (simple choice only):**
 
 ```
 AskUserQuestion(
-  question: "Review the requirements and scenarios above. Ready to proceed?",
+  question: "Review the requirements and sub-requirements above. Ready to proceed?",
   header: "L3 Requirements Approval",
   options: [
     { label: "Approve all", description: "Requirements look good — proceed to L4" },
@@ -575,11 +385,11 @@ When the user selects "Challenge", the orchestrator self-audits the current requ
 1. **Decision coverage check** — for each L2 decision, verify at least one requirement traces back to it. Flag orphan decisions (decided but never specified as a requirement).
 2. **Negative requirements** — what should the system explicitly NOT do? Look for missing "must not" requirements implied by decisions or constraints.
 3. **User journey walk** — mentally walk through the primary user flow end-to-end. Flag any step where behavior is unspecified (e.g., "user lands on page — but what's the empty state?").
-4. **Constraint-to-requirement traceability** — for each L2 constraint, is there a requirement whose scenarios actually verify it? Flag constraints that no scenario exercises.
+4. **Constraint-to-requirement traceability** — for each L2 constraint, is there a requirement whose sub-requirements actually verify it? Flag constraints that no sub-requirement exercises.
 
-##### Axis 2: Depth — "Which existing requirements need richer scenarios?"
+##### Axis 2: Depth — "Which existing requirements need richer sub-requirements?"
 
-5. **Scenario category coverage** — for each requirement, check HP (happy path), EP (error path), BC (boundary/edge case), NI (negative/invalid input), IT (integration/interaction) categories. Flag requirements with only HP scenarios.
+5. **Sub-requirement coverage** — for each requirement, check that sub-requirements cover: happy path behavior, failure/error handling, and boundary conditions. Flag requirements with only one sub-requirement that doesn't address failures.
 6. **State variation scan** — for each requirement, ask: "Does behavior change based on state?" (empty vs populated, first-time vs returning, logged-in vs anonymous, mobile vs desktop). Flag unaddressed state variations.
 7. **Concurrency/timing scan** — for each requirement, ask: "What if two users/processes do this simultaneously?" or "What if this happens during a pending operation?" Flag race conditions or timing-dependent behavior left unspecified.
 
@@ -595,19 +405,19 @@ When the user selects "Challenge", the orchestrator self-audits the current requ
 ### Breadth Gaps (missing requirements)
 - D2 decided [X] but no requirement specifies the behavior
 - Nothing says what happens when [boundary condition]
-- Between R2 and R4, what happens when [transition scenario]?
-- C3 (constraint) has no scenario that exercises it
+- Between R2 and R4, what happens when [transition sub-requirement]?
+- C3 (constraint) has no sub-requirement that exercises it
 
-### Depth Gaps (existing requirements need richer scenarios)
-- R1 only has happy path — what if [failure scenario]?
+### Depth Gaps (existing requirements need richer sub-requirements)
+- R1 only covers happy path — what if [failure behavior]?
 - R3: behavior differs for empty state vs populated state? (not specified)
 - R2: what if two users submit simultaneously? (not addressed)
 
 ### Conflicts
-- R1 and R5 may conflict when [scenario]
+- R1 and R5 may conflict when [situation]
 ```
 
-Then auto-generate the missing requirements/scenarios as proposals — **prioritize breadth gaps first** (a missing requirement is a bigger blind spot than a missing scenario), then depth gaps. Merge them and re-present for approval.
+Then auto-generate the missing requirements/sub-requirements as proposals — **prioritize breadth gaps first** (a missing requirement is a bigger blind spot than a missing sub-requirement), then depth gaps. Merge them and re-present for approval.
 
 > **Circuit breaker**: Challenge can be selected at most **2 times** per L3 cycle. After 2 rounds, only Approve/Revise/Abort remain.
 
@@ -619,9 +429,8 @@ Then auto-generate the missing requirements/scenarios as proposals — **priorit
 hoyeon-cli spec coverage .dev/specs/{name}/spec.json
 ```
 
-Then call gate-keeper via SendMessage with requirements + scenario summary.
+Then call gate-keeper via SendMessage with requirements + sub-requirement summary.
 
-**Quick**: No coverage check, no gate. Auto-advance after requirements merge.
 **Standard**: Run coverage check + gate-keeper SendMessage. PASS → advance to L4.
 
 If coverage check fails → read the ENTIRE gap list, then fix ALL gaps in a single `--patch` merge. Do NOT fix one gap at a time (causes O(n) coverage loops). Handle per Gate Protocol in SKILL.md.

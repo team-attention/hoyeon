@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "name": "orphan-sub-test",
+    "goal": "Test orphan sub-requirement detection when a sub-requirement is not in any task AC",
+    "schema_version": "v6"
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "CLI detects orphan sub-requirements",
+      "priority": 1,
+      "sub": [
+        {
+          "id": "R1.1",
+          "behavior": "No error for this sub-requirement when spec check is run on a valid sub-requirement referenced in a task",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec check test/fixtures/orphan-sub.json",
+            "expect": { "exit_code": 0 }
+          }
+        },
+        {
+          "id": "R1.2",
+          "behavior": "Exits 1 naming the orphan sub-requirement when spec check is run on a sub-requirement not referenced in any task",
+          "verify": {
+            "type": "command",
+            "run": "node dist/cli.js spec check test/fixtures/orphan-sub.json",
+            "expect": { "exit_code": 1 }
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "action": "Implement orphan detection",
+      "type": "work",
+      "status": "pending",
+      "fulfills": ["R1"],
+      "acceptance_criteria": {
+        "checks": []
+      }
+    }
+  ]
+}

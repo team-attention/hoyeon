@@ -27,7 +27,7 @@ validate_prompt: |
   Must end with AskUserQuestion offering next actions (Execute / Revise plan / Discuss further).
   Must NOT generate spec.json until user explicitly chooses "Execute".
   Must NOT: create teams or spawn agents during planning.
-  spec.json must include requirements (one per task) with scenarios before tasks are merged.
+  spec.json must include requirements (one per task) with sub-requirements before tasks are merged.
   spec.json must include context.assumptions (at least one assumption about the plan).
   If any task has type: dev, spec.json must include context.research with commands and structure.
 ---
@@ -261,13 +261,13 @@ hoyeon-cli spec init {plan-name} --goal "{user's goal}" --type dev|plain --depth
 #### 9.2.5 Merge lightweight requirements
 
 Before merging tasks, generate **lightweight requirements** from the task breakdown.
-Each task's "Done when" condition becomes a requirement with one scenario.
+Each task's "Done when" condition becomes a requirement with one sub-requirement.
 
 Rules:
 - One requirement per task (R1 maps to T1, R2 to T2, etc.)
-- Each requirement has exactly one scenario with `verified_by: "machine"` and a `verify.run` command derived from the task's done-when condition
+- Each requirement has exactly one sub-requirement with `verified_by: "machine"` and a `verify.run` command derived from the task's done-when condition
 - If a task has no runnable verification (e.g., "review document"), use `verified_by: "human"` with `verify: {"type": "instruction", "ask": "..."}`
-- Keep it minimal — no gap analysis, no multi-scenario requirements
+- Keep it minimal — no gap analysis, no multi-sub-requirement requirements
 
 > **⚠️ Merge Convention**: All `spec merge --json '...'` examples below show JSON inline for readability. In practice:
 > 1. **Always run `hoyeon-cli spec guide <section>` before constructing merge JSON** to verify field names and types
@@ -278,8 +278,8 @@ Rules:
 # 1. Check field structure
 hoyeon-cli spec guide requirements
 
-# 2. Construct JSON with requirements.id, requirements.behavior, requirements.priority, requirements.scenarios
-#    Each scenario needs: id, given, when, then, verified_by, execution_env, verify
+# 2. Construct JSON with requirements.id, requirements.behavior, requirements.priority, requirements.sub[]
+#    Each sub-requirement needs: id, behavior, verified_by, optional verify
 #    For machine-verified: verify.type="command", verify.run="{cmd}", verify.expect.exit_code=0
 #    For human-verified: verify.type="instruction", verify.ask="..."
 
@@ -291,8 +291,8 @@ hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /t
 ```
 
 This ensures:
-- `acceptance_criteria.scenarios` in tasks reference real scenario IDs
-- Final Verify in /execute can check requirement scenarios (not just build checks)
+- `fulfills[]` in tasks reference real requirement IDs for behavior verification
+- Final Verify in /execute can check requirement sub-requirements via fulfills → req.sub[]
 
 #### 9.2.7 Merge context and assumptions
 
@@ -331,7 +331,7 @@ hoyeon-cli spec guide tasks
 
 # 2. Construct JSON with all tasks in a single array
 #    Each task needs: id, action, type, status, file_scope, depends_on, tool, steps, must_not_do, acceptance_criteria, risk
-#    acceptance_criteria needs: scenarios (referencing requirement scenario IDs), checks (type + run)
+#    acceptance_criteria needs: scenarios (referencing requirement sub-requirement IDs), checks (type + run)
 
 # 3. Merge ALL tasks in one call via file-based passing
 cat > /tmp/spec-merge.json << 'EOF'
@@ -342,21 +342,21 @@ hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /t
 
 Map from plan:
 - Task Breakdown → `action`, `file_scope` (touch zone)
-- Done condition → `acceptance_criteria.scenarios` (scenario IDs) + `acceptance_criteria.checks` (commands)
+- Done condition → `fulfills[]` (requirement IDs) + `acceptance_criteria.checks` (commands)
 - Dependency DAG → `depends_on`
 - Agent Mapping → `tool` (from Phase 5 discovery result)
 
 #### 9.3.5 Auto-generate sandbox tasks
 
-After all tasks are merged, check for sandbox scenarios and generate infra + verification tasks:
+After all tasks are merged, check for sandbox sub-requirements and generate infra + verification tasks:
 
 ```bash
-# Auto-generates T_SANDBOX (infra prep) + T_SV1~N (per-scenario verification) tasks
-# No-ops if no execution_env: sandbox scenarios exist
+# Auto-generates T_SANDBOX (infra prep) + T_SV1~N (per-sub-requirement verification) tasks
+# No-ops if no execution_env: sandbox sub-requirements exist
 hoyeon-cli spec sandbox-tasks ${SPEC_PATH}
 ```
 
-This command scans all scenarios for `execution_env: "sandbox"` and automatically creates the required infra and per-scenario verification tasks with correct `depends_on` wiring.
+This command scans all sub-requirements for `execution_env: "sandbox"` and automatically creates the required infra and per-sub-requirement verification tasks with correct `depends_on` wiring.
 
 #### 9.4 Update state.json
 

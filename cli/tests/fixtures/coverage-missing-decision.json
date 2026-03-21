@@ -3,7 +3,7 @@
     "name": "coverage-missing-decision",
     "goal": "Test coverage failure when requirement references non-existent decision",
     "type": "dev",
-    "schema_version": "v5",
+    "schema_version": "v6",
     "created_at": "2026-01-01T00:00:00.000Z"
   },
   "context": {
@@ -27,15 +27,10 @@
       "behavior": "CLI initializes a spec from the project goal",
       "priority": 1,
       "source": { "type": "goal" },
-      "scenarios": [
+      "sub": [
         {
-          "id": "R1-S1",
-          "given": "A new project directory",
-          "when": "spec init is run with a goal",
-          "then": "A valid spec.json is created",
-          "category": "HP",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R1.1",
+          "behavior": "A valid spec.json is created when spec init is run with a goal in a new project directory",
           "verify": {
             "type": "command",
             "run": "hoyeon-cli spec init test-proj --goal 'Test' /tmp/test/spec.json",
@@ -43,13 +38,8 @@
           }
         },
         {
-          "id": "R1-S2",
-          "given": "A directory where spec.json already exists",
-          "when": "spec init is run again",
-          "then": "An error is returned and no overwrite occurs",
-          "category": "EP",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R1.2",
+          "behavior": "An error is returned and no overwrite occurs when spec init is run again in a directory where spec.json already exists",
           "verify": {
             "type": "command",
             "run": "hoyeon-cli spec init test-proj --goal 'Test' /tmp/existing/spec.json",
@@ -57,13 +47,8 @@
           }
         },
         {
-          "id": "R1-S3",
-          "given": "A valid spec.json exists",
-          "when": "spec validate is run",
-          "then": "Validation passes with exit code 0",
-          "category": "BC",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R1.3",
+          "behavior": "Validation passes with exit code 0 when spec validate is run on a valid spec.json",
           "verify": {
             "type": "command",
             "run": "hoyeon-cli spec validate /tmp/test/spec.json",
@@ -77,15 +62,10 @@
       "behavior": "CLI uses a decision-driven feature",
       "priority": 2,
       "source": { "type": "decision", "ref": "D3" },
-      "scenarios": [
+      "sub": [
         {
-          "id": "R2-S1",
-          "given": "The CLI binary is invoked",
-          "when": "node is available on the system",
-          "then": "CLI executes successfully using Node.js",
-          "category": "HP",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R2.1",
+          "behavior": "CLI executes successfully using Node.js when the CLI binary is invoked and node is available on the system",
           "verify": {
             "type": "command",
             "run": "node --version",
@@ -93,25 +73,16 @@
           }
         },
         {
-          "id": "R2-S2",
-          "given": "An incompatible Node.js version",
-          "when": "CLI is invoked",
-          "then": "A version error is printed",
-          "category": "EP",
-          "verified_by": "agent",
+          "id": "R2.2",
+          "behavior": "A version error is printed when CLI is invoked with an incompatible Node.js version",
           "verify": {
             "type": "assertion",
             "checks": ["Error message references Node.js version requirement"]
           }
         },
         {
-          "id": "R2-S3",
-          "given": "The CLI is installed globally",
-          "when": "hoyeon-cli is called without arguments",
-          "then": "Help text is printed",
-          "category": "BC",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R2.3",
+          "behavior": "Help text is printed when hoyeon-cli is called without arguments after being installed globally",
           "verify": {
             "type": "command",
             "run": "hoyeon-cli --help",
@@ -127,8 +98,8 @@
       "action": "Implement spec init command",
       "type": "work",
       "status": "pending",
+      "fulfills": ["R1"],
       "acceptance_criteria": {
-        "scenarios": ["R1-S1", "R1-S2", "R1-S3"],
         "checks": [
           { "type": "build", "run": "npm run build" }
         ]
@@ -140,8 +111,8 @@
       "type": "work",
       "status": "pending",
       "depends_on": ["T1"],
+      "fulfills": ["R2"],
       "acceptance_criteria": {
-        "scenarios": ["R2-S1", "R2-S2", "R2-S3"],
         "checks": [
           { "type": "static", "run": "npx tsc --noEmit" }
         ]

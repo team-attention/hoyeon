@@ -231,19 +231,19 @@ Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single 
   - `file_scope`: affected files from debugger
   - `steps`: write regression test (RED) → apply minimal fix (GREEN) → verify
   - `must_not_do`: minimal diff (<5%), no refactoring, no unrelated changes, no git commands, fix root cause not symptom
-  - `acceptance_criteria.scenarios`: list of scenario IDs from `requirements[].scenarios[].id` (verification-planner's Auto items map to machine scenarios)
+  - `fulfills`: requirement IDs from `requirements[].id` this task covers
   - `acceptance_criteria.checks`: automated static/build/lint checks if applicable
   - If debugger found **similar issues**: add T2 (`depends_on: [T1]`) to fix those locations — T2 must include all required task fields: `type: "work"`, `status: "pending"`, `must_not_do`, and `acceptance_criteria`
 - **constraints**: minimal diff rule, root cause targeting rule (both `verified_by: agent`)
 - **requirements**: Generate from debugger diagnosis. Each requirement describes a behavior that was broken:
   1. Run `hoyeon-cli spec guide requirements` to check field structure
-  2. Construct JSON with `requirements[]` (id, priority, behavior, scenarios)
-     - Convert debugger's reproduction steps → Given/When/Then for each scenario
+  2. Construct JSON with `requirements[]` (id, priority, behavior, sub[])
+     - Convert debugger's reproduction steps → behavior description for each sub-requirement
      - Use verification-planner's Auto items as `verify.run` commands
      - Run `hoyeon-cli spec guide verify` to check verify object structure (must be `{type, run}` object, not string)
-     - If debugger identified edge cases, add additional scenarios
+     - If debugger identified edge cases, add additional sub-requirements
   3. Merge via `hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)"`
-  - This enables Final Verify to check requirements scenarios, preventing regression
+  - This enables Final Verify to check requirement sub-requirements, preventing regression
 
 ### Step 2.3: Validate & Register
 
