@@ -17,24 +17,6 @@ You receive a `verify_plan` (JSON array) in your task description. Each entry ha
 - `env` — execution environment (`host` or `sandbox`)
 - Method-specific fields (see below)
 
-### Dynamic Verification (Quick Mode)
-
-When `verify_plan` is an **empty array `[]`**, you are in dynamic verification mode.
-Instead of executing pre-built scenarios, you must:
-
-1. **Read the task spec** — run `hoyeon-cli spec task {task_id} --get {spec_path}` to get action, steps, file_scope, and acceptance_criteria.checks
-2. **Read the requirements** — for each requirement linked to the task, understand the expected behavior
-3. **Inspect the code** — read files listed in `file_scope` to understand what was implemented (do NOT use git commands)
-4. **Generate verification checks** — for each requirement, derive concrete checks:
-   - For behavioral requirements: use `method: "agent"` with code review checks
-   - For testable requirements: use `method: "machine"` with runnable commands (build, lint, test)
-   - Also run all `acceptance_criteria.checks[]` from the task spec
-5. **Execute the checks** you generated, following the same method-specific rules below
-6. **Report results** using the same output format — use generated check descriptions as IDs (e.g., `"DV-1"`, `"DV-2"`)
-
-Do NOT skip verification just because verify_plan is empty. The purpose of dynamic mode is to verify based on actual implementation context rather than upfront scenarios.
-In dynamic mode, do NOT call `hoyeon-cli spec requirement` to record results (no scenario IDs exist). Just return the output JSON.
-
 ## Method-Specific Execution Rules
 
 ### method: "machine"

@@ -88,6 +88,39 @@ When `work_mode == "worktree"`, the orchestrator has already called `EnterWorktr
 Session CWD is inside the worktree — all tools (Read, Edit, Write, Bash, Glob, Grep) automatically
 operate there. No per-worker `cd` is needed. `spec_path` and `CONTEXT_DIR` are absolute paths.
 
+### Verify Auto-Pass Gate
+
+Before creating tasks, determine which tasks need independent verification.
+This follows the same pattern as Code Review auto-pass (section 2b).
+
+```
+function should_spawn_verifier(task):
+  """
+  Determines whether a task needs an independent Verifier agent.
+  When false, Worker Tier 1 checks + Final Verify provide sufficient coverage.
+  """
+  # Empty verify_plan (e.g. specify --quick) → no scenarios to verify
+  IF task.verify_plan is empty: return false
+
+  # Judgment-based or sandbox scenarios need independent eyes
+  has_judgment = task.verify_plan.some(e => e.method in ["agent", "sandbox"])
+  IF has_judgment: return true
+
+  # High-risk tasks always get full ceremony
+  IF task.risk == "high": return true
+
+  # Machine-only + low/medium risk → skip per-task verify, defer to Final Verify
+  return false
+```
+
+**When auto-pass fires:**
+- No `.V:Verify` TaskCreate for that task
+- DAG becomes: Worker → Commit (2-step instead of 3-step)
+- Log to audit: `"AUTO_PASS: Verify skipped for {task.id} — {reason}"`
+- Worker Tier 1 checks (build/lint/format) + Final Verify remain as safety net
+
+**User override**: If the spec contains `meta.force_verify: true`, all tasks get `.V:Verify` regardless of the gate.
+
 ### Task Creation (Both Modes)
 
 ```
@@ -96,23 +129,27 @@ operate there. No per-worker `cd` is needed. `spec_path` and `CONTEXT_DIR` are a
 # ═══════════════════════════════════════════════════
 
 # plan_json already has verify_plan per task (from Phase 0.2 formatSlim)
-# For each task with sandbox entries in verify_plan, read recipe files
+# Determine force_verify override
+force_verify = spec.meta.force_verify ?? false
 
+# For each task that needs verification, build descriptions
 FOR EACH task in plan (flattened):
   task_verify_plan = task.verify_plan  # from formatSlim output
+  needs_verify = force_verify OR (task.type != "verification" AND should_spawn_verifier(task))
 
-  # Collect sandbox recipe file paths (verifier reads them on demand — saves prompt tokens)
-  sandbox_subjects = unique(task_verify_plan.filter(e => e.env == "sandbox").map(e => e.subject))
-  sandbox_recipe_paths = ""
-  FOR EACH subject in sandbox_subjects:
-    sandbox_recipe_paths += "- {subject}: `${baseDir}/references/verify-recipes/{subject}.md`\n"
+  IF needs_verify:
+    # Collect sandbox recipe file paths (verifier reads them on demand — saves prompt tokens)
+    sandbox_subjects = unique(task_verify_plan.filter(e => e.env == "sandbox").map(e => e.subject))
+    sandbox_recipe_paths = ""
+    FOR EACH subject in sandbox_subjects:
+      sandbox_recipe_paths += "- {subject}: `${baseDir}/references/verify-recipes/{subject}.md`\n"
 
-  # Build description
-  verify_description[task.id] = VERIFIER_DESCRIPTION(
-    task.id,
-    JSON.stringify(task_verify_plan, null, 2),
-    sandbox_recipe_paths || "None — no sandbox scenarios for this task."
-  )
+    # Build description
+    verify_description[task.id] = VERIFIER_DESCRIPTION(
+      task.id,
+      JSON.stringify(task_verify_plan, null, 2),
+      sandbox_recipe_paths || "None — no sandbox scenarios for this task."
+    )
 
 # ═══════════════════════════════════════════════════
 # TURN 1: Create ALL tasks in PARALLEL (single message)
@@ -123,11 +160,16 @@ FOR EACH task in plan (flattened from rounds, excluding done):
                   description=WORKER_DESCRIPTION(task.id),
                   activeForm="{task.id}.1: Running Worker")
 
-  # Skip Verify for verification-type tasks (they ARE verification — no need to verify the verifier)
-  IF task.type != "verification":
+  # Verify Auto-Pass: skip .V:Verify when gate returns false
+  # Skip Verify for verification-type tasks (they ARE verification — TF dedup)
+  needs_verify = force_verify OR (task.type != "verification" AND should_spawn_verifier(task))
+  IF needs_verify:
     v  = TaskCreate(subject="{task.id}.V:Verify",
                     description=verify_description[task.id],
                     activeForm="{task.id}.V: Verifying scenarios")
+  ELSE:
+    log_to_audit("AUTO_PASS: Verify skipped for {task.id} — {auto_pass_reason(task)}")
+    v = null  # no verify task
 
   # Commit tasks only for worktree and branch-commit modes
   IF work_mode != "no-commit":
@@ -263,14 +305,8 @@ Each recipe contains step-by-step commands for that subject type (web, server, c
 
 ## Execution
 
-IF verify_plan is empty ([]):
-  You are in DYNAMIC VERIFICATION mode (quick mode — no upfront scenarios).
-  Follow the "Dynamic Verification" instructions in your agent system prompt:
-  read requirements via CLI, inspect code changes, generate and execute checks.
-
-ELSE:
-  Follow the verify_plan entries top-to-bottom.
-  For each entry, use the execution rules from your agent system prompt (machine/agent/sandbox/human).
+Follow the verify_plan entries top-to-bottom.
+For each entry, use the execution rules from your agent system prompt (machine/agent/sandbox/human).
 
 Record each result:
   hoyeon-cli spec requirement {entry.scenario} --status pass|fail|pending --task {task_id} {spec_path}
@@ -291,13 +327,13 @@ Record each result:
 # ═══════════════════════════════════════════════════
 
 IF work_mode != "no-commit":
-  # Worker → Verify → Commit chain (verification-type tasks: Worker → Commit directly, no Verify)
+  # Worker → Verify → Commit chain (or Worker → Commit when verify is auto-passed)
   FOR EACH task:
-    IF task.type == "verification":
-      TaskUpdate(taskId=w, addBlocks=[cm])
-    ELSE:
+    IF v is not null:  # verify task exists
       TaskUpdate(taskId=w, addBlocks=[v])
       TaskUpdate(taskId=v, addBlocks=[cm])
+    ELSE:  # verify auto-passed or verification-type task
+      TaskUpdate(taskId=w, addBlocks=[cm])
 
   # Cross-task dependencies (from spec.json depends_on)
   FOR EACH task WHERE task.depends_on is not empty:
@@ -323,27 +359,22 @@ IF work_mode != "no-commit":
     TaskUpdate(taskId=fv, addBlocks=[rp])
 
 ELSE:  # no-commit mode
-  # Worker → Verify chain (no commit)
-  # Verification-type tasks: Worker is the last step (no Verify)
+  # Worker → Verify chain (no commit), or Worker only when verify auto-passed
   FOR EACH task:
-    IF task.type != "verification":
+    IF v is not null:  # verify task exists
       TaskUpdate(taskId=w, addBlocks=[v])
 
   # Cross-task dependencies: last step → next Worker
-  # For verification-type tasks, Worker is the last step (no Verify)
+  # Last step is: verify (if exists), otherwise worker
   FOR EACH task WHERE task.depends_on is not empty:
     FOR EACH dep_id in task.depends_on:
-      IF task_ids[dep_id].type == "verification":
-        producer_last = task_ids[dep_id].worker
-      ELSE:
-        producer_last = task_ids[dep_id].verify
+      producer_last = task_ids[dep_id].verify ?? task_ids[dep_id].worker
       consumer_first = task_ids[task.id].worker
       TaskUpdate(taskId=producer_last, addBlocks=[consumer_first])
 
-  # For finalize chain: last step per task is Verify (non-verification) or Worker (verification)
+  # For finalize chain: last step per task is verify (if exists) or worker
   all_last = [
-    task_ids[T].verify IF task_ids[T].type != "verification"
-    ELSE task_ids[T].worker
+    task_ids[T].verify ?? task_ids[T].worker
     for each T
   ]
 
@@ -917,7 +948,7 @@ Details: {summary}
 7. **Per-task commit** — every task gets its own commit via git-master
 8. **Worker BLOCKED = scope fix** — when Worker reports BLOCKED, orchestrator creates a derived fix task via `spec derive --trigger scope_blocker`, dispatches it, then re-runs the original worker
 9. **Worker FAILED = immediate HALT** — no per-task retry. **Verifier FAILED = fix loop** — max 2 retries via spec derive → fix worker → re-verify
-10. **Scenario verification by independent Verifier** — Workers perform Tier 1 only (checks[]), Verifier agent handles scenario verification in separate context. must_not_do compliance checked at FV.
+10. **Verify Auto-Pass gate** — `should_spawn_verifier()` skips per-task `.V:Verify` for tasks with empty verify_plan, machine-only scenarios + low/medium risk. Workers perform Tier 1 (checks[]), Verifier agent handles scenario verification when spawned. must_not_do compliance checked at FV. Override: `meta.force_verify: true`.
 11. **Adaptation updates spec.json** — new tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on, re-plan automatically)
 12. **Background for parallel** — use `run_in_background: true` for round-parallel workers
 13. **work_mode governs git behavior** — `worktree`: uses `EnterWorktree` to switch session CWD into an isolated worktree (all tools automatically operate there); `branch-commit`: current branch with per-task commits; `no-commit`: current branch, no commits at all (no :Commit tasks, no Residual Commit)

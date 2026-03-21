@@ -27,9 +27,11 @@ validate_prompt: |
   Context files (learnings.json, issues.json) must exist if meta.type == "dev". audit.md must be populated if meta.type == "dev".
   Final Verify must run (all modes and types).
   Final report must be output.
-  Dedicated verifier agent (subagent_type=verifier) must run for each work task using verify_plan from CLI plan output.
+  Dedicated verifier agent (subagent_type=verifier) must run for tasks where should_spawn_verifier() returns true.
+  Verify Auto-Pass gate must skip .V:Verify for tasks with empty verify_plan, machine-only + low/medium risk.
   Sandbox scenarios must have inlined recipes in verifier description.
   Verification-type tasks must NOT get .V:Verify TaskCreate (TF dedup).
+  Auto-passed verify tasks must be logged to audit.
 ---
 
 # /execute — Spec-Driven Orchestrator
@@ -231,8 +233,10 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 ### dev mode (additional)
 - [ ] Follow ${baseDir}/references/dev.md completely for all dev-specific steps
 - [ ] verify_plan built from CLI `spec plan --format slim` output for each work task
-- [ ] Sandbox recipes inlined into verifier description from verify-recipes/{subject}.md
-- [ ] Dedicated verifier agent (subagent_type=verifier) ran for each work task (Worker → Verify → Commit chain)
+- [ ] Verify Auto-Pass gate (`should_spawn_verifier()`) evaluated for each task
+- [ ] Auto-passed tasks logged to audit (`AUTO_PASS: Verify skipped for {task.id}`)
+- [ ] Sandbox recipes inlined into verifier description from verify-recipes/{subject}.md (when verifier spawned)
+- [ ] Dedicated verifier agent (subagent_type=verifier) ran for tasks where gate returned true
 - [ ] Verification-type tasks skipped .V:Verify (TF dedup guard)
 - [ ] Verifier FAIL triggered fix loop (max 2 retries via spec derive)
 - [ ] Final Verify Tier 1 passed (gate for Tier 2)

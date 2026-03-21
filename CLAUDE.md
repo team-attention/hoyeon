@@ -121,7 +121,18 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.2.1)
+## Recent Changes (v1.2.2)
+
+- feat(execute): add Verify Auto-Pass gate (`should_spawn_verifier()`) to skip per-task `.V:Verify` for simple specs
+  - Empty verify_plan (specify --quick) → skip verify entirely
+  - Machine-only + low/medium risk → skip (Worker Tier 1 + Final Verify sufficient)
+  - Agent/sandbox scenarios or high risk → full independent Verifier (unchanged)
+  - Override: `meta.force_verify: true` forces full verify for all tasks
+  - Follows Code Review auto-pass pattern (dev.md Phase 0.5 conditional gate)
+- refactor(verifier): remove Dynamic Verification mode (empty verify_plan → skip instead of generate)
+- refactor(execute): simplify DAG dependency logic with null-coalescing (`v ?? worker` pattern)
+
+## Previous Changes (v1.2.1)
 
 - feat(cli): add `spec issue` subcommand — structured issues to context/issues.json (mirrors spec learning pattern)
 - refactor(cli): extract spec.json history[] to context/history.json via appendHistory() helper
