@@ -2,23 +2,38 @@
 
 **Who**: Orchestrator (AskUserQuestion), iterative interview loop
 **Output**: `context.decisions[]` (with `implications[]`), `context.assumptions[]`
-**Also**: Provisional requirements in session state only (NOT spec.json) — D7/D13
+**Also**: Provisional requirements in session state only (NOT spec.json) — D13
 **Merge**: `spec merge decisions`, `spec merge assumptions`
 **Gate**: `spec coverage --layer decisions` + gate-keeper via SendMessage
 **User trigger**: "proceed to planning" required (interactive mode)
 
-### Core Principle: "뭘 쓸래?" → "뭘 하고 싶어?"
+### Core Principle: Behavior First, Then Implementation
 
-L2 questions ask about **desired behavior**, not technology choices. Concrete scenarios force concrete answers. Technology follows from behavior — the agent derives technical implications post-decision.
+L2 asks two types of questions in sequence:
+
+1. **Behavior questions** — "이런 상황에서 뭐가 일어나야 해?" Scenario-based, concrete situations → concrete answers. These establish *what* the system does.
+2. **Implementation questions** — "이걸 어떻게 만들 건지 선택지가 있어." Architecture patterns, data structures, library choices, trade-offs. These establish *how* it's built.
+
+Behavior questions come first (they constrain implementation options). Implementation questions follow naturally — once we know "silent refresh on token expiry," the implementation question becomes "refresh token을 httpOnly cookie에 저장할지, memory에 저장할지?"
+
+**When to ask implementation questions:**
+- When L1 research reveals multiple viable approaches with meaningful trade-offs
+- When the behavior decision doesn't uniquely determine the implementation
+- When the choice affects maintainability, performance, or future extensibility
+- When builder preferences (greenfield) need explicit tech stack decisions
+
+**When NOT to ask implementation questions:**
+- When the behavior decision determines a single obvious implementation
+- When L1 research shows a dominant convention in the existing codebase (brownfield)
+- When the trade-off is purely technical with no user-visible impact (agent decides)
 
 ### Execution
 
 > **Mode Gate**:
-> - **Quick**: SKIP interview → L2.5 derivation only (derive implications from L0 goal + L1 research)
 > - **Autopilot**: Auto-decide → merge assumptions → L2.5 derivation
 > - **Interactive**: Scenario interview → post-decision implications → L2.5 derivation → merge decisions
 
-#### Quick / Autopilot → Assumptions
+#### Autopilot → Assumptions
 
 Apply Autopilot Decision Rules, then:
 
@@ -52,17 +67,70 @@ If merge fails → follow Merge Failure Recovery (SKILL.md).
 
 #### Interactive → Scenario Interview + Decisions
 
+##### Step 0: Decision Clarity Score (computed each round)
+
+After each round, the orchestrator evaluates the interview state across **5 clarity dimensions** and computes a composite Decision Clarity Score (0.0 ~ 1.0). This score drives question targeting, progress display, and termination decisions.
+
+**Clarity Dimensions:**
+
+| Dimension | Weight | What it measures | Question type |
+|-----------|--------|-----------------|---------------|
+| Core Behavior | 25% | How the system behaves in primary use cases. Happy path clarity | Behavior |
+| Scope Boundaries | 20% | What's in/out of scope. Non-goals, boundaries, actor coverage | Behavior |
+| Implementation Choices | 20% | Architecture patterns, libraries, data structures, API design, trade-offs between approaches | Implementation |
+| Error/Edge Cases | 20% | Failure modes, edge cases, degraded states, recovery strategies | Behavior |
+| Data/Auth Model | 15% | Data flow, storage schema, permissions, access control, state management | Mixed |
+
+> **Brownfield adjustment**: When L1 detects existing codebase, Implementation Choices auto-satisfies partially (existing patterns inferred). Weight redistributes: Core Behavior 30%, Scope 20%, Implementation 10%, Error 25%, Data 15%.
+
+**Scoring rules:**
+- Each dimension scored 0.0 ~ 1.0 by the orchestrator based on decisions made so far
+- Composite score = weighted sum of dimension scores
+- A dimension with **zero decisions** scores 0.0 (unknown unknown)
+- A dimension with decisions but **unresolved implications** scores partial (0.3 ~ 0.6)
+- A dimension with confirmed decisions and no pending implications scores high (0.7 ~ 1.0)
+
+**Thresholds:**
+
+| Composite Score | Meaning | Action |
+|----------------|---------|--------|
+| < 0.4 | High ambiguity | Must continue. Do not offer "proceed" option |
+| 0.4 ~ 0.6 | Moderate | Continue. Offer "proceed" but recommend against it |
+| 0.6 ~ 0.8 | Mostly clear | Offer "proceed" as viable option |
+| >= 0.8 | Ready | Auto-suggest "proceed to planning" |
+
+**Question targeting:** Each round, generate scenario questions for the **lowest-scoring dimension first**. If multiple dimensions tie, prioritize by weight (Core Behavior > Scope > Implementation > Error > Data).
+
+##### Step 0.5: Unknown/Unknown Detection
+
+Before generating questions each round, run an **unknown/unknown scan** — areas where the orchestrator suspects gaps exist but no decisions or questions have addressed them yet.
+
+**Detection heuristics:**
+1. **Zero-coverage dimensions** — any dimension at 0.0 is a known unknown. But what about topics *within* a dimension that haven't been considered at all?
+2. **Actor gap scan** — who interacts with the system? For each actor (end user, admin, external API, background job, scheduler, etc.), is there at least one decision about their experience? Undiscovered actors are unknown unknowns.
+3. **Lifecycle phase scan** — decisions often cluster around "happy runtime." Check: setup/onboarding? Error recovery? Data migration? Scaling? Shutdown/cleanup? Unaddressed phases are unknown unknowns.
+4. **Cross-decision tension probe** — for each pair of existing decisions, ask: "Could these conflict in a scenario we haven't considered?" Unexamined tensions are unknown unknowns.
+5. **Implication chain walk** — for each decision, follow the chain: "This forces us to also decide X" → "X forces Y" → ... If the chain has unexplored links, those are unknown unknowns.
+
+**When unknown unknowns are detected:**
+- Surface them in the mini-mirror under a dedicated `### Unknown Unknowns (detected)` section
+- Generate scenario questions that probe these areas in the next round
+- These questions take **priority over regular lowest-dimension questions** — unknown unknowns are more dangerous than known gaps
+
 ##### Step 1: Scenario-Based Questions (iterative)
 
 Ask about **behavior**, not technology. Frame every question as a concrete situation the user can picture.
 
 **Question rules:**
-- **2-3 questions per round** (fewer but richer than abstract questions), prioritized by importance
+- **2-3 questions per round** (fewer but richer than abstract questions), targeted at **lowest-scoring clarity dimension** (Step 0) or **detected unknown unknowns** (Step 0.5)
 - **Scenario format**: Present a concrete situation → ask what should happen
 - **Adaptive framing**: Match vocabulary to user's expertise (detected from L1 context and prior answers)
 - User can **skip** any question ("Agent decides") — but track skip rate as friction signal
-- **Internal completeness checklist** (invisible to user): scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior, builder preferences (tech stack). Ensure coverage across rounds.
-  - **Builder preferences**: When L1 detects a new project (no existing codebase), this category is unresolved. Generate scenario-based questions about tech stack choices (CSS approach, database, testing strategy, etc.) using the same scenario format as user-facing decisions. When L1 detects an existing codebase, this category is auto-satisfied from L1 research (existing tech stack inferred). Builder preference decisions are recorded in `context.decisions[]` with `"source": "builder"` to distinguish from user-facing decisions.
+- **Internal completeness checklist** (invisible to user): scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior, implementation choices. Maps to clarity dimensions — ensure coverage across rounds.
+  - **Implementation choices**: When L1 research reveals multiple viable approaches (architecture patterns, libraries, data structures, API design), generate trade-off questions. Frame implementation questions with concrete trade-offs, not abstract "which do you prefer?"
+  - **Greenfield**: Implementation choices are wide open — ask about tech stack, CSS approach, database, testing strategy, state management, deployment target, etc.
+  - **Brownfield**: Implementation choices are partially constrained by existing codebase. Only ask when L1 research reveals genuine forks (e.g., "existing code uses REST, but this feature could use WebSocket or SSE — which fits better?"). Auto-satisfy choices that are already determined by existing patterns.
+  - Implementation decisions are recorded in `context.decisions[]` with `"source": "builder"` to distinguish from behavior decisions.
 - **Infra-aware questions** (when Intent = Migration | Infrastructure): The standard checklist MUST also cover the items below. These are often missed in behavior-focused interviews but are critical for DB/infra changes:
   - Downtime tolerance: "서비스 중단 없이 배포 가능해야 하나요?" → constraint seed
   - Backward compatibility: "기존 API/스키마와 호환성 유지해야 하나요?" → constraint seed
@@ -98,6 +166,25 @@ AskUserQuestion(
 ```
 
 > A single scenario question can extract 2-3 decisions (auth method + refresh strategy + UX behavior) that abstract questions would need separately.
+
+**Question format — Implementation (trade-off-based):**
+```
+AskUserQuestion(
+  question: "We decided on silent token refresh. Now there's an implementation choice:\n\nRefresh tokens need to be stored somewhere on the client. Each option has different security/complexity trade-offs.",
+  options: [
+    { label: "httpOnly cookie (Recommended)", description: "Most secure — JS can't access it, immune to XSS. But requires same-origin or CORS setup, and adds CSRF protection overhead." },
+    { label: "In-memory only", description: "Safest from persistence attacks — token disappears on tab close. But user must re-login on every page refresh." },
+    { label: "localStorage", description: "Simplest to implement, persists across tabs/refreshes. But vulnerable to XSS — any injected script can steal tokens." },
+    { label: "Agent decides" }
+  ]
+)
+```
+
+> **Implementation question principles:**
+> - Always explain the **trade-off** (security vs complexity, performance vs simplicity, flexibility vs consistency)
+> - Show **why it matters** — not just "pick A or B" but "A gives you X at the cost of Y"
+> - Only ask when the behavior decision doesn't uniquely determine the implementation
+> - For brownfield: frame as "existing code does X, but we could also Y — which fits better?"
 
 ##### Step 2: Post-Decision Implication Derivation
 
@@ -158,49 +245,84 @@ After each round, show mini-mirror with **all decisions and implications visible
 ```markdown
 ## Interview Progress — Round N
 
+### Decision Clarity: 0.58 (threshold: 0.80)
+- Core Behavior:         0.7 ███████░░░  (2 decisions, 1 pending implication)
+- Scope Boundaries:      0.9 █████████░  ✓
+- Implementation Choices: 0.3 ███░░░░░░░  ← next target
+- Error/Edge Cases:      0.2 ██░░░░░░░░  ← next target
+- Data/Auth Model:       0.6 ██████░░░░
+
 ### Confirmed Decisions
-- D1: Silent refresh on token expiry ✓ (user)
+- D1: Silent refresh on token expiry ✓ (user) [behavior]
   → Refresh token storage required ✓ (deterministic)
   → Silent refresh before API calls ✓ (deterministic)
-  → httpOnly cookie storage ⏳ (pending — needs confirmation)
-- D2: PostgreSQL for primary data ✓ (user)
+- D2: PostgreSQL for primary data ✓ (user) [behavior]
   → Single-server deployment sufficient ✓ (context: <1k users from L1)
+- D3: httpOnly cookie for refresh token ✓ (user) [implementation]
+  → CSRF protection needed ✓ (deterministic)
 
 ### Agent-Derived (awaiting confirmation)
 - D1+D2 → "Token rotation on refresh" ⏳
   ← Rationale: security best practice for long-lived refresh tokens
   [Confirm] [Different approach]
 
-### Unresolved (???)
+### Unknown Unknowns (detected)
+- No decisions about error recovery when DB connection drops (lifecycle gap)
+- No decisions about admin/operator experience (actor gap)
+- D1+D3 tension: silent refresh with httpOnly cookie requires same-origin — what about API subdomain? (cross-decision tension)
+
+### Unresolved
 - Error handling strategy? (no scenario asked yet)
 - Concurrent editing behavior? (not discussed)
-
-### Completeness
-[████████░░] 4/6 categories covered (scope ✓, auth ✓, data ✓, perf ✓, errors ✗, UX ✗)
+- State management approach? (implementation choice needed)
 ```
 
 > **Key principle**: Every agent-derived implication is shown. Nothing is silently decided.
 > Provisional requirements are saved to session state via: `hoyeon-cli session set --sid $SESSION_ID --json '{"provisional_requirements": [...]}'`  (D13)
 
-Then ask:
+Then ask (options vary by clarity score):
 
 ```
+# When clarity < 0.4 (high ambiguity — no "proceed" option)
 AskUserQuestion(
-  question: "How should we proceed?",
-  header: "Interview Progress",
+  question: "Clarity score is {score} — key gaps remain in {lowest dimensions}. Let's continue.",
+  header: "Interview Progress — Round N",
   options: [
-    { label: "Continue interviewing", description: "Cover the unresolved items above" },
-    { label: "Enough, proceed to planning", description: "Use agent judgment for remaining gaps" }
+    { label: "Continue interviewing", description: "Cover the gaps above" },
+    { label: "Abort", description: "Stop specification process" }
+  ]
+)
+
+# When clarity 0.4 ~ 0.8 (moderate — "proceed" available but not recommended)
+AskUserQuestion(
+  question: "Clarity score is {score}. {unknown_unknowns_count} unknown unknowns detected. How should we proceed?",
+  header: "Interview Progress — Round N",
+  options: [
+    { label: "Continue interviewing", description: "Cover the gaps and unknown unknowns above" },
+    { label: "Enough, proceed to planning", description: "Use agent judgment for remaining gaps (clarity: {score})" },
+    { label: "Abort", description: "Stop specification process" }
+  ]
+)
+
+# When clarity >= 0.8 (ready — auto-suggest proceed)
+AskUserQuestion(
+  question: "Clarity score is {score} — all dimensions above threshold. Ready to proceed.",
+  header: "Interview Progress — Round N",
+  options: [
+    { label: "Proceed to planning (Recommended)", description: "All key decisions covered" },
+    { label: "Continue interviewing", description: "Dig deeper into specific areas" },
+    { label: "Abort", description: "Stop specification process" }
   ]
 )
 ```
 
 **Loop logic:**
-- **Pending implications exist** → auto-generate scenario questions for them (next round)
-- **"Continue interviewing"** → generate scenario questions for `???` items, loop back to Step 1
+- **Unknown unknowns detected** → prioritize unknown unknown probes over regular dimension questions
+- **Pending implications exist** → auto-generate scenario/implementation questions for them (next round)
+- **"Continue interviewing"** → run Step 0 (re-score) → Step 0.5 (unknown/unknown scan) → Step 1 (target lowest dimension)
 - **"Enough, proceed to planning"** → auto-confirm all `pending` implications, advance to L2.5
-- **Max 5 interview rounds** (circuit breaker). After round 5, auto-transition to L2.5.
-- **All `???` resolved + no `pending` implications** → auto-suggest "proceed to planning"
+- **Max 10 interview rounds** (circuit breaker). After round 7, show soft warning: "diminishing returns likely." After round 10, strongly recommend "proceed to planning" but still require user confirmation (per SKILL.md: user must explicitly trigger plan generation).
+- **Clarity >= 0.8 + no unknown unknowns** → auto-suggest "proceed to planning"
 
 > No separate step-back check here — the gate-keeper handles goal alignment review as part of the L2 gate.
 
@@ -220,11 +342,11 @@ After the interview completes, run a single agent pass that sees ALL decisions t
 5. If any `intent-dependent` implications found → show mini-mirror one final time for user confirmation
 6. Otherwise → advance to L2 gate
 
-> **Quick mode**: L2.5 runs on autopilot-derived decisions/assumptions. All implications auto-confirmed.
+> **Autopilot mode**: L2.5 runs on autopilot-derived decisions/assumptions. All implications auto-confirmed.
 
 #### L2.7: Constraints Derivation (non-interactive)
 
-> **Mode Gate**: Quick — SKIP. No constraints derived.
+> **Mode Gate**: Autopilot — constraints auto-derived from decisions and L1 research.
 
 After L2.5 cross-decision implications, derive constraints from decisions, user statements, and L1 research context.
 
@@ -296,27 +418,16 @@ AskUserQuestion(
 
 #### Decision Completeness Audit (triggered by "Challenge")
 
-When the user selects "Challenge", the orchestrator self-audits the current decision set across **two axes**:
+When the user selects "Challenge", the orchestrator runs a **deep version of Step 0/0.5** — the same heuristics used each round, but with two additional depth checks that are too expensive for every-round scanning:
 
-##### Axis 1: Breadth — "What other categories of decisions are missing entirely?"
+##### Standard checks (same as Step 0.5, run with full context)
 
-Decisions have orthogonal categories. A decision about data storage says nothing about error handling. The breadth axis finds categories with zero coverage.
+1-5. Run all Step 0.5 Unknown/Unknown Detection heuristics (actor gap, lifecycle phase, cross-decision tension, implication chain walk) — but with the full decision set post-interview, these often surface gaps that were invisible during iterative rounds.
 
-1. **Category gap scan** — compare decisions against the internal completeness checklist (scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior). Flag categories with **no decisions at all**.
-2. **Stakeholder/actor scan** — who interacts with the system? For each actor (end user, admin, external API, background job, etc.), is there at least one decision about their experience? Flag missing actors.
-3. **Lifecycle phase scan** — decisions often cluster around the "happy runtime" phase. Check: is there a decision for initial setup/onboarding? For error recovery? For data migration/cleanup? For scaling? Flag unaddressed lifecycle phases.
+##### Additional depth checks (Challenge-only)
 
-##### Axis 2: Depth — "Which existing decisions need to go one level deeper?"
-
-Each decision has downstream implications that may themselves require decisions. The depth axis follows these chains.
-
-4. **Implication chain walk** — for each existing decision, ask: "What else does this force us to decide?" Look for downstream decisions that were implicitly assumed but never explicitly made.
-5. **Failure mode scan** — for each decision, ask: "What happens when this goes wrong?" If the failure behavior was never decided, surface it.
-6. **Configuration/variation scan** — for each decision, ask: "Does this behave differently in different contexts?" (e.g., mobile vs desktop, first-time vs returning user, empty state vs full state). Flag unaddressed variations.
-
-##### Cross-axis check
-
-7. **Cross-decision tension check** — look for pairs of decisions (including newly proposed ones) that could conflict or create ambiguity when combined. Surface any unresolved tensions.
+6. **Failure mode scan** — for each decision, ask: "What happens when this goes wrong?" If the failure behavior was never decided, surface it.
+7. **Configuration/variation scan** — for each decision, ask: "Does this behave differently in different contexts?" (e.g., mobile vs desktop, first-time vs returning user, empty state vs full state). Flag unaddressed variations.
 
 **Output format** — present findings grouped by axis:
 
@@ -341,7 +452,7 @@ Then auto-generate scenario questions for the top gaps — **prioritize breadth 
 
 > **Circuit breaker**: Challenge can be selected at most **2 times** per L2 cycle. After 2 rounds, only Approve/Revise/Abort remain. This prevents infinite loops while allowing meaningful depth.
 
-> This approval is **mandatory** — even in autopilot mode, L2 decisions MUST be user-approved before gate-keeper runs. Decisions are the foundation for all downstream layers.
+> This approval is **mandatory** in interactive mode. In autopilot mode, decisions are auto-derived as assumptions and presented for approval at the L2 Approval gate (user can still Revise/Challenge). Decisions are the foundation for all downstream layers.
 
 ### L2 Gate
 
@@ -351,5 +462,5 @@ hoyeon-cli spec coverage .dev/specs/{name}/spec.json --layer decisions
 
 If exit code non-zero → gate failure. Handle per Gate Protocol.
 
-**Quick**: No gate. Auto-advance after L2.5 completes.
-**Standard**: Run coverage check + send decisions (with implications and constraints) to gate-keeper via SendMessage. PASS → advance to L3.
+**Autopilot**: Run coverage check only. Auto-advance if pass.
+**Interactive**: Run coverage check + send decisions (with implications and constraints) to gate-keeper via SendMessage. PASS → advance to L3.
