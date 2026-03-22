@@ -5,7 +5,7 @@ description: |
   Implementation worker agent. Handles code writing, bug fixes, and test writing.
   Only works on tasks delegated by Orchestrator (/dev.execute skill).
   Use this agent when you need to delegate implementation work during plan execution.
-model: sonnet
+model: opus
 allowed-tools:
   - Read
   - Grep

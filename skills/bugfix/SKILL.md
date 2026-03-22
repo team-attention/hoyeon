@@ -195,7 +195,7 @@ AskUserQuestion:
 
 ## Phase 2: SPEC GENERATION
 
-Convert diagnosis results into spec.json v5 format. spec.json is the standard format consumed by `/execute`, and serves as escalation context for `/specify` on failure.
+Convert diagnosis results into spec.json format. spec.json is the standard format consumed by `/execute`, and serves as escalation context for `/specify` on failure.
 
 ### Step 2.1: Initialize
 
@@ -228,12 +228,10 @@ Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single 
 - **context**: `request` (original bug description), `research` (debugger analysis summary), `assumptions` (from debugger), `decisions` (root cause location + rationale)
 - **tasks**: Single task (T1) with:
   - `action`: debugger's proposed fix
-  - `file_scope`: affected files from debugger
   - `steps`: write regression test (RED) → apply minimal fix (GREEN) → verify
   - `must_not_do`: minimal diff (<5%), no refactoring, no unrelated changes, no git commands, fix root cause not symptom
   - `fulfills`: requirement IDs from `requirements[].id` this task covers
-  - `acceptance_criteria.checks`: automated static/build/lint checks if applicable
-  - If debugger found **similar issues**: add T2 (`depends_on: [T1]`) to fix those locations — T2 must include all required task fields: `type: "work"`, `status: "pending"`, `must_not_do`, and `acceptance_criteria`
+  - If debugger found **similar issues**: add T2 (`depends_on: [T1]`) to fix those locations — T2 must include all required task fields: `type: "work"`, `status: "pending"`, `must_not_do`, and `fulfills`
 - **constraints**: minimal diff rule, root cause targeting rule (both `verified_by: agent`)
 - **requirements**: Generate from debugger diagnosis. Each requirement describes a behavior that was broken:
   1. Run `hoyeon-cli spec guide requirements` to check field structure

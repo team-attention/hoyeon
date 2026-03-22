@@ -330,8 +330,8 @@ Do NOT call merge per task (without `--append`, each call overwrites the previou
 hoyeon-cli spec guide tasks
 
 # 2. Construct JSON with all tasks in a single array
-#    Each task needs: id, action, type, status, file_scope, depends_on, tool, steps, must_not_do, acceptance_criteria, risk
-#    acceptance_criteria needs: scenarios (referencing requirement sub-requirement IDs), checks (type + run)
+#    Each task needs: id, action, type, status, depends_on, tool, steps, must_not_do, fulfills, risk
+#    Acceptance criteria = sub-req behaviors from fulfills[] (Worker reads requirements directly)
 
 # 3. Merge ALL tasks in one call via file-based passing
 cat > /tmp/spec-merge.json << 'EOF'
@@ -341,8 +341,8 @@ hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /t
 ```
 
 Map from plan:
-- Task Breakdown → `action`, `file_scope` (touch zone)
-- Done condition → `fulfills[]` (requirement IDs) + `acceptance_criteria.checks` (commands)
+- Task Breakdown → `action`, `steps` (implementation steps)
+- Done condition → `fulfills[]` (requirement IDs) → sub-req behaviors as acceptance criteria
 - Dependency DAG → `depends_on`
 - Agent Mapping → `tool` (from Phase 5 discovery result)
 

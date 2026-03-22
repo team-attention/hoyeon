@@ -94,19 +94,20 @@ Before creating tasks, determine which tasks need independent verification.
 This follows the same pattern as Code Review auto-pass (section 2b).
 
 ```
-function should_spawn_verifier(task):
+function should_spawn_verifier(task, requirements):
   """
   Determines whether a task needs an independent Verifier agent.
   When false, Worker Tier 1 checks + Final Verify provide sufficient coverage.
   """
-  # Non-empty verify_plan → verification needed
-  IF task.verify_plan is non-empty: return true
+  # Check if any sub-requirement in fulfills[] has a `verify` field
+  has_verify = ANY(
+    req.sub[].verify EXISTS
+    FOR req in requirements WHERE req.id IN task.fulfills
+  )
+  IF has_verify: return true
 
   # High-risk tasks always get full ceremony
   IF task.risk == "high": return true
-
-  # Medium-risk + broad file scope → get verification
-  IF task.risk == "medium" AND task.file_scope.length > 3: return true
 
   return false
 ```
@@ -208,8 +209,8 @@ Work in the current directory (session CWD — already set to worktree if applic
 
 ## Step 1: Read your task spec
 Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
-This returns JSON with: action, steps, file_scope, acceptance_criteria,
-must_not_do, inputs, outputs, references.
+This returns JSON with: action, steps, fulfills, depends_on,
+must_not_do, inputs (+ file_scope, acceptance_criteria if present in spec).
 
 ## Step 2: Resolve dependency inputs (if any)
 If your task has `inputs[].from_task`, fetch each dependency:
@@ -449,7 +450,7 @@ ELSE:
 ```
 
 **Which types can run in parallel:**
-- `:Worker` — YES (if touching disjoint files per spec file_scope)
+- `:Worker` — YES (if touching disjoint files per task scope)
 - `:Verify` — YES (read-only, no file conflicts)
 - `:Commit` — NO (git operations must be sequential)
 
@@ -712,7 +713,7 @@ Agent(
     The following files were created but are git-ignored.
     Read them directly and review for quality:
     {FOR EACH task in spec.tasks where status == "done":}
-    - {task.file_scope}
+    - {task.action} (files from task steps/summary)
 
     Check for:
     - Integration issues between tasks
@@ -779,7 +780,7 @@ ELSE:
     fv_attempt += 1
     fix_tasks = []
 
-    FOR EACH category in [constraints, acceptance_criteria, requirements, deliverables]:
+    FOR EACH category in [constraints, requirements, deliverables]:
       FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
         # Find the most relevant parent task (from failure context or last planned task)
         parent_task_id = failure.task_id ?? last_planned_task_id
@@ -819,7 +820,7 @@ ELSE:
 
   IF result.status != "VERIFIED":
     print("Final Verify failed after {fv_attempt} recovery attempt(s). HALT.")
-    FOR EACH category in [constraints, acceptance_criteria, requirements, deliverables]:
+    FOR EACH category in [constraints, requirements, deliverables]:
       FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
         print("  [{category}] {failure.description} — {failure.reason}")
     HALT
