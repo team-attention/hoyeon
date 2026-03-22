@@ -3,6 +3,7 @@ import { resolve, dirname } from 'path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import specSchemaV6 from '../../schemas/dev-spec-v6.schema.json' with { type: 'json' };
+import specSchemaV7 from '../../schemas/dev-spec-v7.schema.json' with { type: 'json' };
 
 import { writeState } from '../lib/state-io.js';
 
@@ -10,6 +11,7 @@ const SPEC_HELP = `
 Usage:
   hoyeon-cli spec init <name> --goal "..." <path>   Create a minimal valid spec.json
   hoyeon-cli spec merge <path> --json '{...}'       Deep-merge a JSON fragment into spec.json
+  hoyeon-cli spec merge <path> --stdin              Read JSON from stdin (heredoc-friendly)
                                                     --append: concatenate arrays
                                                     --patch:  ID-based merge (match by id, update in place)
   hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]  Schema validation + coverage checks
@@ -31,6 +33,8 @@ Usage:
   hoyeon-cli spec sandbox-tasks <path> [--json]     Auto-generate T_SANDBOX + T_SV tasks for sandbox sub-requirements
   hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
   hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to context/issues.json
+  hoyeon-cli spec derive-requirements <path>         Generate requirement stubs from decisions (source.ref auto-linked)
+  hoyeon-cli spec derive-tasks <path>                Generate task stubs from requirements (fulfills auto-linked)
   hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]  BM25 search across all specs
 
 Options:
@@ -54,7 +58,11 @@ Examples:
   hoyeon-cli spec sandbox-tasks ./spec.json
 `;
 
-function loadSchema() {
+function loadSchema(specDataOrVersion) {
+  const version = typeof specDataOrVersion === 'string'
+    ? specDataOrVersion
+    : specDataOrVersion?.meta?.schema_version;
+  if (version === 'v7') return specSchemaV7;
   return specSchemaV6;
 }
 
@@ -260,6 +268,16 @@ async function handleInit(args) {
     if (parsed.interaction) specData.meta.mode.interaction = parsed.interaction;
   }
 
+  // Add optional schema version
+  if (parsed.schema) {
+    const validSchemas = ['v6', 'v7'];
+    if (!validSchemas.includes(parsed.schema)) {
+      process.stderr.write(`Error: invalid --schema '${parsed.schema}'. Valid values: ${validSchemas.join(', ')}\n`);
+      process.exit(1);
+    }
+    specData.meta.schema_version = parsed.schema;
+  }
+
   validateSpec(specData);
   writeState(specPath, specData);
   appendHistory(specPath, { ts: now, type: 'spec_created' });
@@ -280,18 +298,34 @@ async function handleMerge(args) {
   if (!filePath) {
     process.stderr.write('Error: <path> is required\n');
     process.stderr.write('Usage: hoyeon-cli spec merge <path> --json \'{...}\' [--append]\n');
+    process.stderr.write('       hoyeon-cli spec merge <path> --stdin [--append]  (read JSON from stdin)\n');
     process.exit(1);
   }
 
-  if (!parsed.json) {
-    process.stderr.write('Error: --json \'{...}\' is required\n');
+  const useStdin = parsed.stdin === true;
+
+  let jsonStr;
+  if (useStdin) {
+    // Read JSON from stdin (supports heredoc piping)
+    const { readFileSync: readSync } = await import('fs');
+    try {
+      jsonStr = readSync('/dev/stdin', 'utf8');
+    } catch (err) {
+      process.stderr.write(`Error: failed to read stdin: ${err.message}\n`);
+      process.exit(1);
+    }
+  } else if (parsed.json) {
+    jsonStr = parsed.json;
+  } else {
+    process.stderr.write('Error: --json \'{...}\' or --stdin is required\n');
     process.stderr.write('Usage: hoyeon-cli spec merge <path> --json \'{...}\' [--append] [--patch]\n');
+    process.stderr.write('       hoyeon-cli spec merge <path> --stdin [--append] [--patch]\n');
     process.exit(1);
   }
 
   let fragment;
   try {
-    fragment = JSON.parse(parsed.json);
+    fragment = JSON.parse(jsonStr);
   } catch (err) {
     process.stderr.write(`Error: invalid JSON fragment: ${err.message}\n`);
     process.exit(1);
@@ -323,6 +357,20 @@ async function handleMerge(args) {
   }
 
   validateSpec(specData);
+
+  // --strict: run coverage checks after schema validation, fail before writing
+  const strict = parsed.strict === true;
+  if (strict) {
+    const gaps = runCoverageChecks(specData);
+    if (gaps.length > 0) {
+      process.stderr.write('Strict merge failed — coverage gaps found (spec NOT written):\n');
+      for (const g of gaps) {
+        process.stderr.write(`  [${g.layer}/${g.check}] ${g.message}\n`);
+      }
+      process.exit(1);
+    }
+  }
+
   writeState(specPath, specData);
   appendHistory(specPath, { ts: now, type: 'spec_updated', detail: `merged: ${mergedKeys}` });
 
@@ -330,6 +378,7 @@ async function handleMerge(args) {
   process.stdout.write(`  merged keys: ${mergedKeys}\n`);
   if (append) process.stdout.write('  mode: append (arrays concatenated)\n');
   if (patch) process.stdout.write('  mode: patch (ID-based merge)\n');
+  if (strict) process.stdout.write('  mode: strict (coverage verified)\n');
   process.exit(0);
 }
 
@@ -1089,12 +1138,17 @@ function runCoverageChecks(specData, layer) {
   // --- Check 1: source.ref integrity (decisions layer) ---
   if (runDecisions && decisionIds.size > 0) {
     for (const req of requirements) {
+      const sourceType = req.source?.type;
       const ref = req.source?.ref;
+      // goal/implicit/negative sources don't need ref — only decision/gap sources do
+      if (sourceType === 'goal' || sourceType === 'implicit' || sourceType === 'negative') {
+        continue;
+      }
       if (ref === undefined || ref === null) {
         gaps.push({
           layer: 'decisions',
           check: 'source.ref-integrity',
-          message: `requirement '${req.id}' has no source.ref (decisions exist — link required)`,
+          message: `requirement '${req.id}' has no source.ref (source.type='${sourceType || 'unset'}' — link required)`,
         });
       } else if (!decisionIds.has(ref)) {
         gaps.push({
@@ -1349,8 +1403,8 @@ async function handleCheck(args) {
  * Generate compact, LLM-friendly guide from the JSON Schema.
  * Resolves $ref, shows required/optional fields, types, enums, and minimal examples.
  */
-function generateGuide(section) {
-  const schema = loadSchema();
+function generateGuide(section, schemaVersion) {
+  const schema = loadSchema(schemaVersion);
   const defs = schema.$defs || {};
 
   const SECTIONS = {
@@ -1664,8 +1718,10 @@ function formatVerifyGuide(defs) {
 }
 
 async function handleGuide(args) {
-  const section = args[0];
-  const output = generateGuide(section);
+  const parsed = parseArgs(args);
+  const section = parsed._[0];
+  const schemaVersion = parsed.schema || undefined;
+  const output = generateGuide(section, schemaVersion);
   process.stdout.write(output + '\n');
   process.exit(0);
 }
@@ -1792,6 +1848,129 @@ async function handleDerive(args) {
 
   // Output created task ID as JSON
   process.stdout.write(JSON.stringify({ created: newId }) + '\n');
+  process.exit(0);
+}
+
+async function handleDeriveRequirements(args) {
+  const filePath = args[0];
+  if (!filePath) {
+    process.stderr.write('Error: <path> is required\n');
+    process.stderr.write('Usage: hoyeon-cli spec derive-requirements <path>\n');
+    process.exit(1);
+  }
+
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+
+  const decisions = specData.context?.decisions || [];
+  if (decisions.length === 0) {
+    process.stderr.write('Error: no decisions found in spec. Run L2 interview first.\n');
+    process.exit(1);
+  }
+
+  const goal = specData.context?.confirmed_goal || specData.meta?.goal || '';
+
+  // Generate requirement stubs: one from goal + one per decision
+  const requirements = [];
+  let idx = 1;
+
+  // R0 from goal
+  requirements.push({
+    id: `R0`,
+    behavior: `TODO — from goal: ${goal.slice(0, 80)}`,
+    priority: 1,
+    source: { type: 'goal' },
+    sub: [{ id: 'R0.1', behavior: 'TODO' }],
+  });
+
+  // One requirement per decision
+  for (const d of decisions) {
+    requirements.push({
+      id: `R${idx}`,
+      behavior: `TODO — from ${d.id}: ${d.decision.slice(0, 80)}`,
+      priority: 1,
+      source: { type: 'decision', ref: d.id },
+      sub: [{ id: `R${idx}.1`, behavior: 'TODO' }],
+    });
+    idx++;
+  }
+
+  specData.requirements = requirements;
+
+  const now = new Date().toISOString();
+  if (specData.meta) specData.meta.updated_at = now;
+
+  validateSpec(specData);
+  writeState(specPath, specData);
+  appendHistory(specPath, { ts: now, type: 'spec_updated', detail: `derive-requirements: ${requirements.length} stubs` });
+
+  process.stdout.write(`Derived ${requirements.length} requirements from ${decisions.length} decisions + goal\n`);
+  for (const r of requirements) {
+    process.stdout.write(`  ${r.id}: ${r.source.type}${r.source.ref ? ':' + r.source.ref : ''} → "${r.behavior.slice(0, 60)}..."\n`);
+  }
+  process.exit(0);
+}
+
+async function handleDeriveTasks(args) {
+  const filePath = args[0];
+  if (!filePath) {
+    process.stderr.write('Error: <path> is required\n');
+    process.stderr.write('Usage: hoyeon-cli spec derive-tasks <path>\n');
+    process.exit(1);
+  }
+
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+
+  const requirements = specData.requirements || [];
+  if (requirements.length === 0) {
+    process.stderr.write('Error: no requirements found. Run derive-requirements first.\n');
+    process.exit(1);
+  }
+
+  // Generate task stubs: one per requirement + TF
+  const tasks = [];
+  const workIds = [];
+
+  for (let i = 0; i < requirements.length; i++) {
+    const r = requirements[i];
+    const taskId = `T${i + 1}`;
+    workIds.push(taskId);
+    tasks.push({
+      id: taskId,
+      action: `TODO — implement ${r.id}: ${r.behavior.slice(0, 60)}`,
+      type: 'work',
+      status: 'pending',
+      depends_on: [],
+      fulfills: [r.id],
+      acceptance_criteria: { checks: [] },
+    });
+  }
+
+  // TF depends on all work tasks
+  tasks.push({
+    id: 'TF',
+    action: 'Full verification',
+    type: 'verification',
+    status: 'pending',
+    depends_on: workIds,
+    fulfills: [],
+    acceptance_criteria: { checks: [{ type: 'build', run: 'echo "TODO: add build command"' }] },
+  });
+
+  specData.tasks = tasks;
+
+  const now = new Date().toISOString();
+  if (specData.meta) specData.meta.updated_at = now;
+
+  validateSpec(specData);
+  writeState(specPath, specData);
+  appendHistory(specPath, { ts: now, type: 'tasks_changed', detail: `derive-tasks: ${tasks.length} stubs` });
+
+  process.stdout.write(`Derived ${tasks.length} tasks from ${requirements.length} requirements\n`);
+  for (const t of tasks) {
+    process.stdout.write(`  ${t.id}: fulfills=[${t.fulfills.join(',')}] "${t.action.slice(0, 60)}"\n`);
+  }
   process.exit(0);
 }
 
@@ -2665,6 +2844,10 @@ export default async function spec(args) {
     await handleIssue(args.slice(1));
   } else if (subcommand === 'search') {
     await handleSearch(args.slice(1));
+  } else if (subcommand === 'derive-requirements') {
+    await handleDeriveRequirements(args.slice(1));
+  } else if (subcommand === 'derive-tasks') {
+    await handleDeriveTasks(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown spec subcommand '${subcommand}'\n`);
     process.stderr.write(`Run 'hoyeon-cli spec --help' for usage.\n`);

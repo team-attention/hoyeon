@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dev-spec/v7",
+  "title": "dev-spec v7",
+  "description": "Simplified spec schema for specify-v2. No verify fields, no implications, no sandbox_capability. Focused on goal → decisions → requirements → tasks.",
+  "type": "object",
+  "required": ["meta", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "meta": { "$ref": "#/$defs/meta" },
+    "context": { "$ref": "#/$defs/context" },
+    "requirements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/requirement" }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/task" }
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/constraint" }
+    },
+    "external_dependencies": { "$ref": "#/$defs/externalDependencies" }
+  },
+  "$defs": {
+    "meta": {
+      "type": "object",
+      "required": ["name", "goal"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "goal": { "type": "string" },
+        "non_goals": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What this project is explicitly NOT trying to achieve"
+        },
+        "mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "interaction": {
+              "type": "string",
+              "enum": ["interactive", "autopilot"]
+            }
+          }
+        },
+        "type": {
+          "type": "string",
+          "enum": ["dev", "plain"]
+        },
+        "schema_version": {
+          "type": "string",
+          "enum": ["v7"],
+          "description": "Schema version. v7 = specify-v2 simplified schema."
+        },
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" },
+        "approved_by": { "type": "string" },
+        "approved_at": { "type": "string" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request": { "type": "string" },
+        "confirmed_goal": {
+          "type": "string",
+          "description": "Confirmed goal statement from mirror phase"
+        },
+        "research": {
+          "oneOf": [
+            { "type": "string" },
+            { "$ref": "#/$defs/researchFindings" }
+          ]
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "decision", "rationale"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "decision": { "type": "string" },
+              "rationale": { "type": "string" },
+              "assumed": {
+                "type": "boolean",
+                "default": false,
+                "description": "True if agent-decided (user skipped or autopilot mode)"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["resolved", "pending"],
+                "default": "resolved",
+                "description": "resolved = user answered, pending = user said 'I don't know' (needs investigation)"
+              }
+            }
+          }
+        },
+        "known_gaps": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Things that couldn't be decided yet"
+        }
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "required": ["id", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "rule": { "type": "string", "description": "Non-functional guardrail that must not be violated" }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "required": ["id", "behavior", "priority", "sub"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "behavior": { "type": "string" },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "sub": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/subRequirement" },
+          "description": "Sub-requirements decomposing this requirement into testable behaviors"
+        },
+        "source": {
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["goal", "decision", "gap", "implicit", "negative"]
+            },
+            "ref": {
+              "type": "string",
+              "description": "Reference ID (e.g. 'D3') pointing to a context entry"
+            }
+          }
+        }
+      }
+    },
+    "subRequirement": {
+      "type": "object",
+      "required": ["id", "behavior"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "behavior": { "type": "string", "description": "Concrete, testable behavior" }
+      }
+    },
+    "taskCheck": {
+      "type": "object",
+      "required": ["type", "run"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["static", "build", "lint", "format"]
+        },
+        "run": { "type": "string" }
+      }
+    },
+    "taskAcceptanceCriteria": {
+      "type": "object",
+      "required": ["checks"],
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/taskCheck" }
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": ["id", "action", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["work", "verification"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "done"],
+          "default": "pending"
+        },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "fulfills": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "acceptance_criteria": { "$ref": "#/$defs/taskAcceptanceCriteria" },
+        "started_at": { "type": "string" },
+        "completed_at": { "type": "string" },
+        "summary": { "type": "string" }
+      }
+    },
+    "externalDependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pre_work": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["action"],
+            "additionalProperties": false,
+            "properties": {
+              "action": { "type": "string" },
+              "blocking": { "type": "boolean" }
+            }
+          }
+        },
+        "post_work": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["action"],
+            "additionalProperties": false,
+            "properties": {
+              "action": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "researchFindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summary": { "type": "string" },
+        "patterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "start_line": { "type": "integer", "minimum": 1 },
+              "end_line": { "type": "integer", "minimum": 1 },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "structure": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "commands": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "typecheck": { "type": "string" },
+            "lint": { "type": "string" },
+            "test": { "type": "string" },
+            "build": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

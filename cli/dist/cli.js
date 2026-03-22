@@ -7736,7 +7736,9 @@ var dev_spec_v6_schema_default = {
       properties: {
         id: { type: "string" },
         behavior: { type: "string", description: "What this sub-requirement specifies \u2014 a concrete, testable behavior" },
-        verify: { $ref: "#/$defs/verify" }
+        verify: { $ref: "#/$defs/verify" },
+        status: { type: "string", enum: ["pass", "fail", "skipped"], description: "Verification result set by verifier or CLI" },
+        verified_by_task: { type: "string", description: "Task ID that verified this sub-requirement" }
       }
     },
     meta: {
@@ -8323,6 +8325,291 @@ var dev_spec_v6_schema_default = {
   }
 };
 
+// schemas/dev-spec-v7.schema.json
+var dev_spec_v7_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "dev-spec/v7",
+  title: "dev-spec v7",
+  description: "Simplified spec schema for specify-v2. No verify fields, no implications, no sandbox_capability. Focused on goal \u2192 decisions \u2192 requirements \u2192 tasks.",
+  type: "object",
+  required: ["meta", "tasks"],
+  additionalProperties: false,
+  properties: {
+    $schema: { type: "string" },
+    meta: { $ref: "#/$defs/meta" },
+    context: { $ref: "#/$defs/context" },
+    requirements: {
+      type: "array",
+      items: { $ref: "#/$defs/requirement" }
+    },
+    tasks: {
+      type: "array",
+      minItems: 1,
+      items: { $ref: "#/$defs/task" }
+    },
+    constraints: {
+      type: "array",
+      items: { $ref: "#/$defs/constraint" }
+    },
+    external_dependencies: { $ref: "#/$defs/externalDependencies" }
+  },
+  $defs: {
+    meta: {
+      type: "object",
+      required: ["name", "goal"],
+      additionalProperties: false,
+      properties: {
+        name: { type: "string" },
+        goal: { type: "string" },
+        non_goals: {
+          type: "array",
+          items: { type: "string" },
+          description: "What this project is explicitly NOT trying to achieve"
+        },
+        mode: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            interaction: {
+              type: "string",
+              enum: ["interactive", "autopilot"]
+            }
+          }
+        },
+        type: {
+          type: "string",
+          enum: ["dev", "plain"]
+        },
+        schema_version: {
+          type: "string",
+          enum: ["v7"],
+          description: "Schema version. v7 = specify-v2 simplified schema."
+        },
+        created_at: { type: "string" },
+        updated_at: { type: "string" },
+        approved_by: { type: "string" },
+        approved_at: { type: "string" }
+      }
+    },
+    context: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        request: { type: "string" },
+        confirmed_goal: {
+          type: "string",
+          description: "Confirmed goal statement from mirror phase"
+        },
+        research: {
+          oneOf: [
+            { type: "string" },
+            { $ref: "#/$defs/researchFindings" }
+          ]
+        },
+        decisions: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "decision", "rationale"],
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              decision: { type: "string" },
+              rationale: { type: "string" },
+              assumed: {
+                type: "boolean",
+                default: false,
+                description: "True if agent-decided (user skipped or autopilot mode)"
+              },
+              status: {
+                type: "string",
+                enum: ["resolved", "pending"],
+                default: "resolved",
+                description: "resolved = user answered, pending = user said 'I don't know' (needs investigation)"
+              }
+            }
+          }
+        },
+        known_gaps: {
+          type: "array",
+          items: { type: "string" },
+          description: "Things that couldn't be decided yet"
+        }
+      }
+    },
+    constraint: {
+      type: "object",
+      required: ["id", "rule"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        rule: { type: "string", description: "Non-functional guardrail that must not be violated" }
+      }
+    },
+    requirement: {
+      type: "object",
+      required: ["id", "behavior", "priority", "sub"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        behavior: { type: "string" },
+        priority: {
+          type: "integer",
+          minimum: 1,
+          maximum: 5
+        },
+        sub: {
+          type: "array",
+          minItems: 1,
+          items: { $ref: "#/$defs/subRequirement" },
+          description: "Sub-requirements decomposing this requirement into testable behaviors"
+        },
+        source: {
+          type: "object",
+          required: ["type"],
+          additionalProperties: false,
+          properties: {
+            type: {
+              type: "string",
+              enum: ["goal", "decision", "gap", "implicit", "negative"]
+            },
+            ref: {
+              type: "string",
+              description: "Reference ID (e.g. 'D3') pointing to a context entry"
+            }
+          }
+        }
+      }
+    },
+    subRequirement: {
+      type: "object",
+      required: ["id", "behavior"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        behavior: { type: "string", description: "Concrete, testable behavior" }
+      }
+    },
+    taskCheck: {
+      type: "object",
+      required: ["type", "run"],
+      additionalProperties: false,
+      properties: {
+        type: {
+          type: "string",
+          enum: ["static", "build", "lint", "format"]
+        },
+        run: { type: "string" }
+      }
+    },
+    taskAcceptanceCriteria: {
+      type: "object",
+      required: ["checks"],
+      additionalProperties: false,
+      properties: {
+        checks: {
+          type: "array",
+          items: { $ref: "#/$defs/taskCheck" }
+        }
+      }
+    },
+    task: {
+      type: "object",
+      required: ["id", "action", "type"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        action: { type: "string" },
+        type: {
+          type: "string",
+          enum: ["work", "verification"]
+        },
+        status: {
+          type: "string",
+          enum: ["pending", "in_progress", "done"],
+          default: "pending"
+        },
+        depends_on: {
+          type: "array",
+          items: { type: "string" }
+        },
+        fulfills: {
+          type: "array",
+          items: { type: "string" }
+        },
+        acceptance_criteria: { $ref: "#/$defs/taskAcceptanceCriteria" },
+        started_at: { type: "string" },
+        completed_at: { type: "string" },
+        summary: { type: "string" }
+      }
+    },
+    externalDependencies: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        pre_work: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["action"],
+            additionalProperties: false,
+            properties: {
+              action: { type: "string" },
+              blocking: { type: "boolean" }
+            }
+          }
+        },
+        post_work: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["action"],
+            additionalProperties: false,
+            properties: {
+              action: { type: "string" }
+            }
+          }
+        }
+      }
+    },
+    researchFindings: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+        patterns: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["path", "description"],
+            additionalProperties: false,
+            properties: {
+              path: { type: "string" },
+              start_line: { type: "integer", minimum: 1 },
+              end_line: { type: "integer", minimum: 1 },
+              description: { type: "string" }
+            }
+          }
+        },
+        structure: {
+          type: "array",
+          items: { type: "string" }
+        },
+        commands: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            typecheck: { type: "string" },
+            lint: { type: "string" },
+            test: { type: "string" },
+            build: { type: "string" }
+          }
+        }
+      }
+    }
+  }
+};
+
 // src/lib/state-io.js
 import fs from "fs";
 import path from "path";
@@ -8364,6 +8651,7 @@ var SPEC_HELP = `
 Usage:
   hoyeon-cli spec init <name> --goal "..." <path>   Create a minimal valid spec.json
   hoyeon-cli spec merge <path> --json '{...}'       Deep-merge a JSON fragment into spec.json
+  hoyeon-cli spec merge <path> --stdin              Read JSON from stdin (heredoc-friendly)
                                                     --append: concatenate arrays
                                                     --patch:  ID-based merge (match by id, update in place)
   hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]  Schema validation + coverage checks
@@ -8385,6 +8673,8 @@ Usage:
   hoyeon-cli spec sandbox-tasks <path> [--json]     Auto-generate T_SANDBOX + T_SV tasks for sandbox sub-requirements
   hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
   hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to context/issues.json
+  hoyeon-cli spec derive-requirements <path>         Generate requirement stubs from decisions (source.ref auto-linked)
+  hoyeon-cli spec derive-tasks <path>                Generate task stubs from requirements (fulfills auto-linked)
   hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]  BM25 search across all specs
 
 Options:
@@ -8407,7 +8697,9 @@ Examples:
   hoyeon-cli spec requirement R1-S1 --status pass --task T1 ./spec.json
   hoyeon-cli spec sandbox-tasks ./spec.json
 `;
-function loadSchema() {
+function loadSchema(specDataOrVersion) {
+  const version = typeof specDataOrVersion === "string" ? specDataOrVersion : specDataOrVersion?.meta?.schema_version;
+  if (version === "v7") return dev_spec_v7_schema_default;
   return dev_spec_v6_schema_default;
 }
 function printGuideHints(errors) {
@@ -8578,6 +8870,15 @@ async function handleInit(args) {
     if (parsed.depth) specData.meta.mode.depth = parsed.depth;
     if (parsed.interaction) specData.meta.mode.interaction = parsed.interaction;
   }
+  if (parsed.schema) {
+    const validSchemas = ["v6", "v7"];
+    if (!validSchemas.includes(parsed.schema)) {
+      process.stderr.write(`Error: invalid --schema '${parsed.schema}'. Valid values: ${validSchemas.join(", ")}
+`);
+      process.exit(1);
+    }
+    specData.meta.schema_version = parsed.schema;
+  }
   validateSpec(specData);
   writeState(specPath, specData);
   appendHistory(specPath, { ts: now, type: "spec_created" });
@@ -8599,16 +8900,31 @@ async function handleMerge(args) {
   if (!filePath) {
     process.stderr.write("Error: <path> is required\n");
     process.stderr.write("Usage: hoyeon-cli spec merge <path> --json '{...}' [--append]\n");
+    process.stderr.write("       hoyeon-cli spec merge <path> --stdin [--append]  (read JSON from stdin)\n");
     process.exit(1);
   }
-  if (!parsed.json) {
-    process.stderr.write("Error: --json '{...}' is required\n");
+  const useStdin = parsed.stdin === true;
+  let jsonStr;
+  if (useStdin) {
+    const { readFileSync: readSync } = await import("fs");
+    try {
+      jsonStr = readSync("/dev/stdin", "utf8");
+    } catch (err) {
+      process.stderr.write(`Error: failed to read stdin: ${err.message}
+`);
+      process.exit(1);
+    }
+  } else if (parsed.json) {
+    jsonStr = parsed.json;
+  } else {
+    process.stderr.write("Error: --json '{...}' or --stdin is required\n");
     process.stderr.write("Usage: hoyeon-cli spec merge <path> --json '{...}' [--append] [--patch]\n");
+    process.stderr.write("       hoyeon-cli spec merge <path> --stdin [--append] [--patch]\n");
     process.exit(1);
   }
   let fragment;
   try {
-    fragment = JSON.parse(parsed.json);
+    fragment = JSON.parse(jsonStr);
   } catch (err) {
     process.stderr.write(`Error: invalid JSON fragment: ${err.message}
 `);
@@ -8633,6 +8949,18 @@ async function handleMerge(args) {
     specData.meta.updated_at = now;
   }
   validateSpec(specData);
+  const strict = parsed.strict === true;
+  if (strict) {
+    const gaps = runCoverageChecks(specData);
+    if (gaps.length > 0) {
+      process.stderr.write("Strict merge failed \u2014 coverage gaps found (spec NOT written):\n");
+      for (const g of gaps) {
+        process.stderr.write(`  [${g.layer}/${g.check}] ${g.message}
+`);
+      }
+      process.exit(1);
+    }
+  }
   writeState(specPath, specData);
   appendHistory(specPath, { ts: now, type: "spec_updated", detail: `merged: ${mergedKeys}` });
   process.stdout.write(`Spec merged: ${specPath}
@@ -8641,6 +8969,7 @@ async function handleMerge(args) {
 `);
   if (append) process.stdout.write("  mode: append (arrays concatenated)\n");
   if (patch) process.stdout.write("  mode: patch (ID-based merge)\n");
+  if (strict) process.stdout.write("  mode: strict (coverage verified)\n");
   process.exit(0);
 }
 async function handleValidate(args) {
@@ -9271,12 +9600,16 @@ function runCoverageChecks(specData, layer) {
   const runTasks = !layer || layer === "tasks";
   if (runDecisions && decisionIds.size > 0) {
     for (const req of requirements) {
+      const sourceType = req.source?.type;
       const ref = req.source?.ref;
+      if (sourceType === "goal" || sourceType === "implicit" || sourceType === "negative") {
+        continue;
+      }
       if (ref === void 0 || ref === null) {
         gaps.push({
           layer: "decisions",
           check: "source.ref-integrity",
-          message: `requirement '${req.id}' has no source.ref (decisions exist \u2014 link required)`
+          message: `requirement '${req.id}' has no source.ref (source.type='${sourceType || "unset"}' \u2014 link required)`
         });
       } else if (!decisionIds.has(ref)) {
         gaps.push({
@@ -9484,8 +9817,8 @@ async function handleCheck(args) {
   process.stdout.write("Spec check passed: internal consistency OK\n");
   process.exit(0);
 }
-function generateGuide(section) {
-  const schema = loadSchema();
+function generateGuide(section, schemaVersion) {
+  const schema = loadSchema(schemaVersion);
   const defs = schema.$defs || {};
   const SECTIONS = {
     meta: { ref: "meta", desc: "Spec metadata (name, goal, mode, etc.)" },
@@ -9770,8 +10103,10 @@ function formatVerifyGuide(defs) {
   return lines.join("\n");
 }
 async function handleGuide(args) {
-  const section = args[0];
-  const output = generateGuide(section);
+  const parsed = parseArgs(args);
+  const section = parsed._[0];
+  const schemaVersion = parsed.schema || void 0;
+  const output = generateGuide(section, schemaVersion);
   process.stdout.write(output + "\n");
   process.exit(0);
 }
@@ -9857,6 +10192,107 @@ async function handleDerive(args) {
     detail: `derived from ${parsed.parent} via ${parsed.trigger}`
   });
   process.stdout.write(JSON.stringify({ created: newId }) + "\n");
+  process.exit(0);
+}
+async function handleDeriveRequirements(args) {
+  const filePath = args[0];
+  if (!filePath) {
+    process.stderr.write("Error: <path> is required\n");
+    process.stderr.write("Usage: hoyeon-cli spec derive-requirements <path>\n");
+    process.exit(1);
+  }
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+  const decisions = specData.context?.decisions || [];
+  if (decisions.length === 0) {
+    process.stderr.write("Error: no decisions found in spec. Run L2 interview first.\n");
+    process.exit(1);
+  }
+  const goal = specData.context?.confirmed_goal || specData.meta?.goal || "";
+  const requirements = [];
+  let idx = 1;
+  requirements.push({
+    id: `R0`,
+    behavior: `TODO \u2014 from goal: ${goal.slice(0, 80)}`,
+    priority: 1,
+    source: { type: "goal" },
+    sub: [{ id: "R0.1", behavior: "TODO" }]
+  });
+  for (const d of decisions) {
+    requirements.push({
+      id: `R${idx}`,
+      behavior: `TODO \u2014 from ${d.id}: ${d.decision.slice(0, 80)}`,
+      priority: 1,
+      source: { type: "decision", ref: d.id },
+      sub: [{ id: `R${idx}.1`, behavior: "TODO" }]
+    });
+    idx++;
+  }
+  specData.requirements = requirements;
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  if (specData.meta) specData.meta.updated_at = now;
+  validateSpec(specData);
+  writeState(specPath, specData);
+  appendHistory(specPath, { ts: now, type: "spec_updated", detail: `derive-requirements: ${requirements.length} stubs` });
+  process.stdout.write(`Derived ${requirements.length} requirements from ${decisions.length} decisions + goal
+`);
+  for (const r of requirements) {
+    process.stdout.write(`  ${r.id}: ${r.source.type}${r.source.ref ? ":" + r.source.ref : ""} \u2192 "${r.behavior.slice(0, 60)}..."
+`);
+  }
+  process.exit(0);
+}
+async function handleDeriveTasks(args) {
+  const filePath = args[0];
+  if (!filePath) {
+    process.stderr.write("Error: <path> is required\n");
+    process.stderr.write("Usage: hoyeon-cli spec derive-tasks <path>\n");
+    process.exit(1);
+  }
+  const specPath = resolve(filePath);
+  const specData = loadSpec(specPath);
+  const requirements = specData.requirements || [];
+  if (requirements.length === 0) {
+    process.stderr.write("Error: no requirements found. Run derive-requirements first.\n");
+    process.exit(1);
+  }
+  const tasks = [];
+  const workIds = [];
+  for (let i = 0; i < requirements.length; i++) {
+    const r = requirements[i];
+    const taskId = `T${i + 1}`;
+    workIds.push(taskId);
+    tasks.push({
+      id: taskId,
+      action: `TODO \u2014 implement ${r.id}: ${r.behavior.slice(0, 60)}`,
+      type: "work",
+      status: "pending",
+      depends_on: [],
+      fulfills: [r.id],
+      acceptance_criteria: { checks: [] }
+    });
+  }
+  tasks.push({
+    id: "TF",
+    action: "Full verification",
+    type: "verification",
+    status: "pending",
+    depends_on: workIds,
+    fulfills: [],
+    acceptance_criteria: { checks: [{ type: "build", run: 'echo "TODO: add build command"' }] }
+  });
+  specData.tasks = tasks;
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  if (specData.meta) specData.meta.updated_at = now;
+  validateSpec(specData);
+  writeState(specPath, specData);
+  appendHistory(specPath, { ts: now, type: "tasks_changed", detail: `derive-tasks: ${tasks.length} stubs` });
+  process.stdout.write(`Derived ${tasks.length} tasks from ${requirements.length} requirements
+`);
+  for (const t of tasks) {
+    process.stdout.write(`  ${t.id}: fulfills=[${t.fulfills.join(",")}] "${t.action.slice(0, 60)}"
+`);
+  }
   process.exit(0);
 }
 async function handleDrift(args) {
@@ -10570,6 +11006,10 @@ async function spec(args) {
     await handleIssue(args.slice(1));
   } else if (subcommand === "search") {
     await handleSearch(args.slice(1));
+  } else if (subcommand === "derive-requirements") {
+    await handleDeriveRequirements(args.slice(1));
+  } else if (subcommand === "derive-tasks") {
+    await handleDeriveTasks(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown spec subcommand '${subcommand}'
 `);
