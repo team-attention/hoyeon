@@ -901,9 +901,9 @@ TaskUpdate(taskId=rp, status="completed")
 
 ```
 .dev/specs/{name}/context/
-  learnings.json — structured learnings (workers write via hoyeon-cli spec learning)
-  issues.json   — structured issues (workers write via hoyeon-cli spec issue)
-  audit.md      — scope blockers, FV/CR events (orchestrator appends)
+  learnings.json — structured learnings (orchestrator creates empty [], workers append via hoyeon-cli spec learning)
+  issues.json   — structured issues (orchestrator creates empty [], workers append via hoyeon-cli spec issue)
+  audit.md      — scope blockers, FV/CR events (orchestrator creates empty, appends)
 ```
 
 ### Worker Context Instructions

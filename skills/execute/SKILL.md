@@ -24,7 +24,7 @@ allowed-tools:
 validate_prompt: |
   All tasks in spec.json must have status "done" at completion.
   hoyeon-cli spec check must pass (internal consistency).
-  Context files (learnings.json, issues.json) must exist if meta.type == "dev". audit.md must be populated if meta.type == "dev".
+  Context files (learnings.json, issues.json, audit.md) are created at init for meta.type == "dev".
   Final Verify must run (all modes and types).
   Final report must be output.
   Dedicated verifier agent (subagent_type=verifier) must run for tasks where should_spawn_verifier() returns true.
@@ -109,6 +109,8 @@ mkdir -p "$CONTEXT_DIR"
 
 **First run** (no context files):
 - Create `audit.md` (empty — orchestrator will append)
+- Create `learnings.json` with `[]` (empty array — workers append via CLI)
+- Create `issues.json` with `[]` (empty array — workers append via CLI)
 
 **Resume** (context files exist):
 - Read all three files into memory
@@ -223,7 +225,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 - [ ] spec.json found and validated
 - [ ] `hoyeon-cli spec plan` executed and shown to user
 - [ ] `meta.type` read (defaulted to "dev" if absent)
-- [ ] Context directory initialized (audit.md) — learnings.json and issues.json are created by CLI on first write
+- [ ] Context directory initialized (audit.md, learnings.json, issues.json)
 - [ ] Pre-work status logged explicitly (none/pass/fail)
 - [ ] TaskCreate entries created for all tasks + finalize steps (structure per mode reference)
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
