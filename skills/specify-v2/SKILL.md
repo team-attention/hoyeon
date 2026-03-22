@@ -3,7 +3,7 @@ name: specify-v2
 description: |
   Turn a goal into an implementation plan (spec.json v7).
   Simplified layer chain: L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Tasks.
-  No reviewer agents, no verify fields, no clarity scoring.
+  No reviewer agents, no verify fields. Evidence-based clarity scoring at L2.
   CLI validates schema+coverage at each layer. User approves at L2, L3, L4.
   Use when: "/specify", "specify", "plan this"
 allowed-tools:
