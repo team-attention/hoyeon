@@ -13,29 +13,76 @@ Output: `T1`...`Tn` (one per requirement) + `TF` (verification, depends on all).
 
 **Coverage is 100% from the start.** No orphan requirements, no missing fulfills.
 
-### Step 2: Customize tasks via --patch
+### Step 2: Restructure into Vertical Slices
 
-The scaffold is a **starting point**. The 1:1 requirement→task mapping is rarely the final structure. Freely reorganize:
+The scaffold is a **starting point**. Restructure into **vertical slices** — each task delivers a user-visible feature end-to-end (BE + FE + connection verification).
 
-- **Merge**: Combine related tasks — one task can `fulfills: ["R1", "R2", "R3"]`
-- **Split**: Break large tasks into smaller ones, distributing fulfills
-- **Add**: Insert setup/config tasks that don't fulfill specific requirements
-- **Reorder**: Add `depends_on` relationships for correct execution order
+#### Splitting Principle: Vertical Slice First
 
-**Maximize parallelism.** Tasks without `depends_on` run concurrently. Only add dependencies when tasks genuinely share files or outputs. The goal is a wide, shallow DAG — not a linear chain.
+A task = BE endpoint + FE UI + the connection between them.
+One task must **complete the interface internally** — the producer and consumer of an API live in the same task.
 
-- BAD: T1 → T2 → T3 → T4 (serial, slow)
-- GOOD: T1, T2, T3 run in parallel → T4 depends on T1 only → TF depends on all
+Horizontal splits (BE-only / FE-only) are allowed ONLY for **shared infrastructure**:
+- DB schema, common middleware, adapter patterns, shared utilities
+- These have no 1:1 mapping to a specific UI
 
-As long as `spec validate` passes (every requirement referenced by some task's fulfills), the structure is valid.
+```
+BAD (horizontal — interface mismatch risk):
+  T1: All backend APIs (projects CRUD + lyrics + generate + export)
+  T2: All frontend pages
+  → Parallel execution → schema mismatch between T1 and T2
 
-Run `hoyeon-cli spec guide tasks --schema v7` to check fields.
+GOOD (vertical slices):
+  T1: Scaffolding (DB, router, common config)           ← horizontal, infra
+  T2: Adapter pattern (ABC + Factory + rate limiter)     ← horizontal, infra
+  T3: Project creation flow (POST /projects + new page)  ← vertical slice
+  T4: Lyrics pipeline (WhisperX + LRC parser, internal)  ← BE-only service, no UI yet
+  T5: Sync editor (PATCH /projects/:id + editor UI + Save roundtrip) ← vertical slice
+  T6: Video generation + progress (BE pipeline + FE progress + WS)   ← vertical slice
+  T7: Preview + Export (BE composition + FE preview/export + download) ← vertical slice
+  TF: E2E journey verification
+```
+
+#### Parallelism Rule
+
+Two tasks can run in parallel ONLY when ALL three conditions hold:
+1. **No file overlap**: they don't modify the same files or directories
+2. **No interface dependency**: one's output is not the other's input
+3. **No model dependency**: they don't produce+consume the same DB table or API endpoint
+
+If any condition is violated → `depends_on` is mandatory.
+
+**Maximize parallelism** within these constraints — don't add false dependencies.
+The goal is a wide DAG of independent vertical slices, not a linear chain.
+
+```
+GOOD parallelism:
+  T3: Project creation flow     ]
+  T4: Lyrics pipeline (service) ] → parallel (no shared interface)
+  T5: Sync editor → depends_on: [T3, T4] (uses Project model + lyrics data)
+
+BAD parallelism:
+  T3: Backend project API  ]
+  T4: Frontend project UI  ] → parallel but SHARE the same API contract
+```
+
+#### When Horizontal Split Is Acceptable
+
+A task may be BE-only or FE-only when:
+- **Pure infrastructure**: DB models, adapter patterns, shared config (no UI counterpart)
+- **Internal service**: processing logic not yet exposed via API (e.g., WhisperX extraction)
+- **Pure UI component**: a component that calls an API already built and verified in a prior task
+
+In the third case, the task must have `depends_on` pointing to the task that built the API.
+
+### Step 3: Patch via merge
 
 ```bash
 hoyeon-cli spec merge .dev/specs/{name}/spec.json --stdin --patch << 'EOF'
 {"tasks": [
-  {"id": "T1", "action": "Implement login endpoint with JWT", "fulfills": ["R1"], "depends_on": []},
-  {"id": "TF", "action": "Full verification", "type": "verification", "depends_on": ["T1"]}
+  {"id": "T1", "action": "Scaffolding: DB + router + common config", "fulfills": ["R0"], "depends_on": []},
+  {"id": "T2", "action": "Project creation flow: POST /projects + new page + redirect", "fulfills": ["R1"], "depends_on": ["T1"]},
+  {"id": "TF", "action": "E2E journey verification", "type": "verification", "depends_on": ["T1", "T2"]}
 ]}
 EOF
 ```
@@ -43,8 +90,8 @@ EOF
 **Task rules:**
 - Every work task: `fulfills[]` linking to requirements
 - `depends_on[]` for ordering. No circular dependencies.
-- Behavioral acceptance = fulfills → sub-req behaviors (no separate AC field needed)
-- Build/lint/typecheck = Worker runs these automatically (natural language instruction)
+- Acceptance criteria = sub-req behaviors from `fulfills[]` (no separate AC field — Worker reads requirements directly)
+- Build/lint/typecheck = Worker runs these automatically
 - Agent may consolidate: merge T1+T2 into one task that fulfills both R1 and R2
 
 ### External Dependencies
@@ -93,11 +140,13 @@ Pre-work
 ────────────────────────────────────────
 {pre_work items or "(none)"}
 
-Tasks
+Tasks (DAG)
 ────────────────────────────────────────
-T1: {action} — pending
-T2: {action} — pending (depends: T1)
-TF: Full verification — pending (depends: all)
+T1: {action} [infra] — pending
+T2: {action} [vertical] — pending (depends: T1)
+T3: {action} [vertical] — pending (depends: T1)    ← parallel with T2
+T4: {action} [vertical] — pending (depends: T2, T3)
+TF: E2E journey verification — pending (depends: all)
 
 Post-work
 ────────────────────────────────────────
@@ -105,6 +154,29 @@ Post-work
 ```
 
 Run `hoyeon-cli spec plan` for DAG visualization.
+
+### TF: Verification Task
+
+TF is not a build re-check. It verifies **cross-slice user journeys** — the connections between vertical slices that no individual task tested.
+
+```json
+{
+  "id": "TF",
+  "action": "E2E journey verification",
+  "type": "verification",
+  "depends_on": ["T2", "T3", "T4", "T5"],
+  "steps": [
+    "Build: frontend build + backend tests",
+    "Happy path: Landing → New Project → upload + lyrics → Create → Sync Editor → edit → Save → Generate → progress → Preview → Export → download MP4",
+    "Failure + recovery: Generate → partial failure → Retry with edited prompt → success → Preview auto-refreshes"
+  ]
+}
+```
+
+**Journey rules:**
+- At least one happy-path journey that touches all vertical slice tasks
+- At least one failure/recovery journey if error handling is in scope
+- TF Worker reads all `fulfills[]` requirements from completed tasks and verifies sub-req behaviors
 
 ### Final Approval
 
