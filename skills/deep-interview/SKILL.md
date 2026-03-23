@@ -316,7 +316,7 @@ AskUserQuestion(
   question: "What would you like to do with these insights?",
   header: "Next step",
   options: [
-    { label: "Save insights", description: "Save to .dev/deep-interview/[topic]/insights.md" },
+    { label: "Save insights", description: "Save to .hoyeon/deep-interview/[topic]/insights.md" },
     { label: "Hand off to /specify", description: "Start planning with these insights as context" },
     { label: "Keep talking", description: "Continue the interview — return to probing" },
     { label: "Done", description: "End the interview" }
@@ -329,17 +329,17 @@ AskUserQuestion(
 #### Save insights
 Write the insights to file:
 ```
-Write(".dev/deep-interview/[topic-slug]/insights.md", insights_content)
+Write(".hoyeon/deep-interview/[topic-slug]/insights.md", insights_content)
 ```
 
 Use the **insights.md template** (see below). After saving, re-present the Next Steps question (without "Save insights").
 
 #### Hand off to /specify
-1. Save insights to `.dev/deep-interview/[topic-slug]/insights.md` (if not already saved)
+1. Save insights to `.hoyeon/deep-interview/[topic-slug]/insights.md` (if not already saved)
 2. Generate the handoff command:
 ```
 "Ready to plan. Run:
-/specify --context .dev/deep-interview/[topic-slug]/insights.md \"[1-line topic summary]\""
+/specify --context .hoyeon/deep-interview/[topic-slug]/insights.md \"[1-line topic summary]\""
 ```
 3. Stop
 
@@ -467,7 +467,7 @@ User: "/deep-interview I want to build a todo management CLI"
 16. Insights summary with all sections
 17. Next steps → User selects "Hand off to /specify"
 18. Save insights + generate:
-    /specify --context .dev/deep-interview/todo-cli/insights.md "Todo management CLI — local JSON-based CRUD + priorities/due dates/tags"
+    /specify --context .hoyeon/deep-interview/todo-cli/insights.md "Todo management CLI — local JSON-based CRUD + priorities/due dates/tags"
 ```
 
 ---

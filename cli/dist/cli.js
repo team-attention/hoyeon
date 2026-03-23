@@ -7854,14 +7854,14 @@ Usage:
   hoyeon-cli spec derive-tasks <path>                Generate task stubs from requirements (fulfills auto-linked)
   hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
   hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to context/issues.json
-  hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]  BM25 search across all specs
+  hoyeon-cli spec search "query" [--specs-dir .hoyeon/specs] [--limit 10] [--json]  BM25 search across all specs
 
 Options:
   --help, -h    Show this help message
 
 Examples:
-  hoyeon-cli spec init api-auth --goal "Add JWT auth" .dev/specs/api-auth/spec.json
-  hoyeon-cli spec merge .dev/specs/api-auth/spec.json --json '{"context":{"request":"Add auth"}}'
+  hoyeon-cli spec init api-auth --goal "Add JWT auth" .hoyeon/specs/api-auth/spec.json
+  hoyeon-cli spec merge .hoyeon/specs/api-auth/spec.json --json '{"context":{"request":"Add auth"}}'
   hoyeon-cli spec validate ./spec.json
   hoyeon-cli spec validate ./spec.json --layer decisions --json
   hoyeon-cli spec plan ./spec.json
@@ -9415,10 +9415,10 @@ async function handleSearch(args) {
   const query = parsed._[0];
   if (!query) {
     process.stderr.write("Error: search query is required\n");
-    process.stderr.write('Usage: hoyeon-cli spec search "query" [--specs-dir .dev/specs] [--limit 10] [--json]\n');
+    process.stderr.write('Usage: hoyeon-cli spec search "query" [--specs-dir .hoyeon/specs] [--limit 10] [--json]\n');
     process.exit(1);
   }
-  const specsDir = resolve(parsed["specs-dir"] || ".dev/specs");
+  const specsDir = resolve(parsed["specs-dir"] || ".hoyeon/specs");
   const limit = parseInt(parsed.limit || "10", 10);
   if (!existsSync(specsDir)) {
     process.stderr.write(`Error: specs directory not found: ${specsDir}
@@ -10179,7 +10179,7 @@ Options for 'set':
   --json '{...}'      Deep-merge JSON fragment into state
 
 Examples:
-  hoyeon-cli session set --sid abc123 --spec .dev/specs/foo/spec.json
+  hoyeon-cli session set --sid abc123 --spec .hoyeon/specs/foo/spec.json
   hoyeon-cli session set --sid abc123 --key tmp_dir --value /tmp/run-1
   hoyeon-cli session set --sid abc123 --json '{"rulph": {"round": 0}}'
   hoyeon-cli session get --sid abc123

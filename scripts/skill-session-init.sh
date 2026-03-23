@@ -65,7 +65,7 @@ fi
 [[ -z "$DETECTED_SKILL" ]] && exit 0
 
 # ── Spec path resolution is handled by each skill's Phase 0 ──
-# (execute reads arg → .dev/specs → state.json; specify creates at .dev/specs)
+# (execute reads arg → .hoyeon/specs → state.json; specify creates at .hoyeon/specs)
 # Hook does NOT write spec — skills register it via cli session set
 
 # ── Write session state ──

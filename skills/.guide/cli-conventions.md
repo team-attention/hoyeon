@@ -21,7 +21,7 @@ Always pass merge JSON via file to avoid zsh shell escaping issues:
 cat > /tmp/spec-merge.json << 'EOF'
 { ... }
 EOF
-hoyeon-cli spec merge .dev/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
 ```
 
 ### Merge flags
@@ -67,7 +67,7 @@ When writing merge instructions in SKILL.md:
 ```markdown
 1. Run `hoyeon-cli spec guide context` to check `decisions` field structure
 2. Construct JSON with `context.decisions[]` (id, decision, rationale, alternatives_rejected)
-3. Merge via `hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json "$(cat /tmp/spec-merge.json)"`
+3. Merge via `hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --append --json "$(cat /tmp/spec-merge.json)"`
 ```
 
 ### Example (bad — will break when schema changes)

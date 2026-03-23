@@ -60,7 +60,7 @@ SANDBOX TESTING:
    TODO {N}: {PASS|FAIL} — {teardown: SUCCESS|FAILED} — {brief summary}
    TODO {M}: {PASS|FAIL} — {teardown: SUCCESS|FAILED} — {brief summary}
    ...
-   Full report: .dev/specs/{name}/context/sandbox-report.md
+   Full report: .hoyeon/specs/{name}/context/sandbox-report.md
    {or "No sandbox testing performed"}
 
 FINAL VERIFICATION:

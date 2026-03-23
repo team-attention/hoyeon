@@ -146,7 +146,7 @@ After each round, merge that round's decisions immediately. Do NOT batch decisio
 Run `hoyeon-cli spec guide context --schema v7` to check field types, then:
 
 ```bash
-hoyeon-cli spec merge .dev/specs/{name}/spec.json --stdin --append << 'EOF'
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --append << 'EOF'
 {decisions array matching guide output — include status field}
 EOF
 ```
@@ -167,7 +167,7 @@ If no constraints: merge `"constraints": []` explicitly.
 If things couldn't be decided (pending decisions that need investigation):
 
 ```bash
-hoyeon-cli spec merge .dev/specs/{name}/spec.json --stdin --append << 'EOF'
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --append << 'EOF'
 {"context": {"known_gaps": ["Performance target TBD"]}}
 EOF
 ```
@@ -179,7 +179,7 @@ Present all decisions + constraints to user, then AskUserQuestion (Approve/Revis
 ### L2 Gate
 
 ```bash
-hoyeon-cli spec validate .dev/specs/{name}/spec.json --layer decisions
+hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer decisions
 ```
 
 Pass → advance to L3.

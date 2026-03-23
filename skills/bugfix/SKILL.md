@@ -55,10 +55,10 @@ Phase 3: EXECUTE ─────────────────────
 Phase 4: RESULT HANDLING (if HALT) ────────────────
   SIMPLE: retry (max 3) with stagnation detection → Phase 3
   COMPLEX: escalate immediately (execute already retried)
-  Circuit breaker → .dev/debug/{slug}.md → suggest /specify
+  Circuit breaker → .hoyeon/debug/{slug}.md → suggest /specify
 
 Phase 5: CLEANUP & REPORT ─────────────────────────
-  Save .dev/debug/{slug}.md → final summary
+  Save .hoyeon/debug/{slug}.md → final summary
 ```
 
 ## Adaptive Mode
@@ -294,7 +294,7 @@ When execute HALTs. Handling differs by severity.
 ```
 # Extract failure reason from execute's HALT output
 # or read from context dir's audit.md, issues.json
-CONTEXT_DIR = ".dev/specs/fix-{slug}/context"
+CONTEXT_DIR = ".hoyeon/specs/fix-{slug}/context"
 failure_reason = {execute HALT output or last triage result from audit.md}
 ```
 
@@ -382,9 +382,9 @@ Max attempts exceeded or COMPLEX mode HALT. Present escalation options to user.
 **First, save attempt records:**
 
 ```
-Bash: mkdir -p .dev/debug
+Bash: mkdir -p .hoyeon/debug
 
-Write to .dev/debug/{slug}.md:
+Write to .hoyeon/debug/{slug}.md:
   # Bugfix Report: {description}
   Date: {timestamp}
   Status: ESCALATED
@@ -414,7 +414,7 @@ AskUserQuestion:
   - "Switch to /specify (full planning)"
     → "spec.json and debug report are available:
        Spec: {SPEC_PATH}
-       Report: .dev/debug/{slug}.md
+       Report: .hoyeon/debug/{slug}.md
        /specify can reference this context for deeper analysis."
   - "Try once more"
     → attempt += 1, go to Phase 3 (no circuit breaker reset)
@@ -430,9 +430,9 @@ After execute completes successfully.
 ### Step 5.1: Save Debug Report
 
 ```
-Bash: mkdir -p .dev/debug
+Bash: mkdir -p .hoyeon/debug
 
-Write to .dev/debug/{slug}.md:
+Write to .hoyeon/debug/{slug}.md:
   # Bugfix Report: {description}
   Date: {timestamp}
   Status: RESOLVED
@@ -464,7 +464,7 @@ print("""
 **Severity**: {SIMPLE/COMPLEX}
 **Attempts**: {count}
 **Spec**: {SPEC_PATH}
-**Report**: .dev/debug/{slug}.md
+**Report**: .hoyeon/debug/{slug}.md
 """)
 ```
 
@@ -475,7 +475,7 @@ print("""
 ```
 /bugfix (diagnose + spec.json + execute)
    ↓ circuit breaker (SIMPLE: 3 failures, COMPLEX: execute HALT)
-   ↓ spec.json + .dev/debug/{slug}.md saved
+   ↓ spec.json + .hoyeon/debug/{slug}.md saved
 /specify (spec.json enrichment, leveraging existing diagnosis context)
    ↓
 /execute (enriched spec execution)

@@ -25,7 +25,7 @@ Then `AskUserQuestion`: "Does this match your intent?"
 Run `hoyeon-cli spec guide context --schema v7` and `spec guide meta --schema v7` to check fields, then:
 
 ```bash
-hoyeon-cli spec merge .dev/specs/{name}/spec.json --stdin << 'EOF'
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
 {constructed JSON matching guide output — confirmed_goal in context, non_goals in meta}
 EOF
 ```

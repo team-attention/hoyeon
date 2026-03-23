@@ -82,7 +82,7 @@ Read the target SKILL.md and identify:
 **From Markdown Body:**
 - SubAgents mentioned (`Task(subagent_type="...")`)
 - Skills called (`Skill("...")`)
-- Artifacts created (`.dev/drafts/`, `.dev/specs/`, etc.)
+- Artifacts created (`.hoyeon/drafts/`, `.hoyeon/specs/`, etc.)
 - Workflow steps and conditions
 
 ### Step 2.2: Build Expected Behavior Checklist
@@ -102,8 +102,8 @@ Create checklist from SKILL.md analysis:
 - [ ] Stop hook validates plan-reviewer approval
 
 ### Artifacts
-- [ ] Draft file created at .dev/drafts/{name}.md
-- [ ] Plan file created at .dev/specs/{name}.md
+- [ ] Draft file created at .hoyeon/drafts/{name}.md
+- [ ] Plan file created at .hoyeon/specs/{name}.md
 - [ ] Draft file deleted after OKAY
 
 ### Workflow
@@ -288,7 +288,7 @@ User: "Analyze session 3cc71c9f-d27a-4233-9dbc-c4f07ea6ec5b against .claude/skil
 1. Find session files
 2. Parse SKILL.md → Expected: Explore, gap-analyzer, plan-reviewer, hooks
 3. Analyze debug log → Extract actual calls
-4. Verify artifacts → Check .dev/
+4. Verify artifacts → Check .hoyeon/
 5. Compare → Build verification table
 6. Generate report → PASS/FAIL with details
 ```

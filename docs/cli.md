@@ -59,7 +59,7 @@ Fails if the file already exists (use `spec merge` to update an existing spec).
 **Example:**
 
 ```bash
-hoyeon-cli spec init api-auth --goal "Add JWT auth" .dev/specs/api-auth/spec.json
+hoyeon-cli spec init api-auth --goal "Add JWT auth" .hoyeon/specs/api-auth/spec.json
 hoyeon-cli spec init my-feature --goal "Build X" --type dev ./spec.json
 ```
 
@@ -649,7 +649,7 @@ Multiple update modes can be combined in a single call. Creates the session dire
 **Example:**
 
 ```bash
-hoyeon-cli session set --sid abc123 --spec .dev/specs/foo/spec.json
+hoyeon-cli session set --sid abc123 --spec .hoyeon/specs/foo/spec.json
 hoyeon-cli session set --sid abc123 --key tmp_dir --value /tmp/run-1
 hoyeon-cli session set --sid abc123 --json '{"rulph": {"round": 0}}'
 ```

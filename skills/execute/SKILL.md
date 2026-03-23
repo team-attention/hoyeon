@@ -58,7 +58,7 @@ SESSION_ID="[session ID from UserPromptSubmit hook]"
    spec_path = arg  (use as-is)
 
 2) IF arg is a feature name (e.g. "auth-login"):
-   spec_path = ".dev/specs/{arg}/spec.json"
+   spec_path = ".hoyeon/specs/{arg}/spec.json"
 
 3) No arg: session state (path registered by quick-plan, specify, etc.)
    hoyeon-cli session get --sid $SESSION_ID
@@ -99,7 +99,7 @@ plan.rounds = plan.rounds.filter(r => r.tasks.length > 0)
 ### 0.3 Init Context
 
 ```bash
-CONTEXT_DIR=".dev/specs/{name}/context"
+CONTEXT_DIR=".hoyeon/specs/{name}/context"
 mkdir -p "$CONTEXT_DIR"
 ```
 

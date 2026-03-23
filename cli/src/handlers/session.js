@@ -33,7 +33,7 @@ Options for 'set':
   --json '{...}'      Deep-merge JSON fragment into state
 
 Examples:
-  hoyeon-cli session set --sid abc123 --spec .dev/specs/foo/spec.json
+  hoyeon-cli session set --sid abc123 --spec .hoyeon/specs/foo/spec.json
   hoyeon-cli session set --sid abc123 --key tmp_dir --value /tmp/run-1
   hoyeon-cli session set --sid abc123 --json '{"rulph": {"round": 0}}'
   hoyeon-cli session get --sid abc123

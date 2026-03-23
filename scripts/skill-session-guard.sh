@@ -3,8 +3,8 @@
 #
 # Reads: ~/.hoyeon/{session_id}/state.json
 # Behavior per skill:
-#   - specify: DENY writes outside .dev/
-#   - execute: WARN on writes outside .dev/ (allow but message)
+#   - specify: DENY writes outside .hoyeon/
+#   - execute: WARN on writes outside .hoyeon/ (allow but message)
 #   - No session file: allow all
 
 set -euo pipefail
@@ -21,10 +21,10 @@ STATE_FILE="$HOME/.hoyeon/$SESSION_ID/state.json"
 SKILL=$(jq -r '.skill // empty' "$STATE_FILE")
 [[ -z "$SKILL" ]] && exit 0
 
-# .dev/ files always allowed
-[[ "$FILE_PATH" == *".dev/"* ]] && exit 0
+# .hoyeon/ files always allowed
+[[ "$FILE_PATH" == *".hoyeon/"* ]] && exit 0
 
-# Skill-specific behavior for files outside .dev/
+# Skill-specific behavior for files outside .hoyeon/
 case "$SKILL" in
   specify)
     cat << 'EOF'
@@ -33,7 +33,7 @@ case "$SKILL" in
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny"
   },
-  "systemMessage": "PLAN MODE: Code modification not allowed. During specify phase, only .dev/ paths are writable. Implementation happens after plan approval."
+  "systemMessage": "PLAN MODE: Code modification not allowed. During specify phase, only .hoyeon/ paths are writable. Implementation happens after plan approval."
 }
 EOF
     ;;

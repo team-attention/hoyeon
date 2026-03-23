@@ -746,7 +746,7 @@ TaskUpdate(taskId=rp, status="completed")
 ### File Structure
 
 ```
-.dev/specs/{name}/context/
+.hoyeon/specs/{name}/context/
   learnings.json — structured learnings (orchestrator creates empty [], workers append via hoyeon-cli spec learning)
   issues.json   — structured issues (orchestrator creates empty [], workers append via hoyeon-cli spec issue)
   audit.md      — scope blockers, FV/CR events (orchestrator creates empty, appends)

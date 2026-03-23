@@ -30,12 +30,12 @@ Before starting, run `hoyeon-cli spec guide full --schema v7` to see the complet
 1. **CLI is the writer** — `spec init`, `spec merge`, `spec validate`. Never hand-write spec.json.
 2. **Stdin merge** — Pass JSON via heredoc stdin. No temp files.
    ```bash
-   hoyeon-cli spec merge .dev/specs/{name}/spec.json --stdin << 'EOF'
+   hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
    {"context": {"decisions": [...]}}
    EOF
    ```
 3. **Guide before merge** — Run `hoyeon-cli spec guide <section> --schema v7` before constructing JSON. Guide output is the source of truth.
-4. **Validate at layer transitions** — `hoyeon-cli spec validate .dev/specs/{name}/spec.json` once per layer (before advancing), not after every merge.
+4. **Validate at layer transitions** — `hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json` once per layer (before advancing), not after every merge.
 5. **One merge per section** — Never merge multiple sections in parallel.
 6. **Merge failure** — Read error → run guide → fix JSON → retry (max 2). Don't retry with same JSON.
 7. **--append for arrays** — When adding to existing arrays (decisions). **No flag** for first-time writes.
@@ -58,14 +58,14 @@ Execute layers sequentially. Read each reference file just-in-time.
 
 ```bash
 hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v7 --interaction {interaction} \
-  .dev/specs/{name}/spec.json
+  .hoyeon/specs/{name}/spec.json
 ```
 
 `{name}` = kebab-case from goal. `{interaction}` = interactive (default) or autopilot (with `--autopilot` flag).
 
 ```bash
 SESSION_ID="[from UserPromptSubmit hook]"
-hoyeon-cli session set --sid $SESSION_ID --spec ".dev/specs/{name}/spec.json"
+hoyeon-cli session set --sid $SESSION_ID --spec ".hoyeon/specs/{name}/spec.json"
 ```
 
 ---
@@ -95,7 +95,7 @@ Autopilot mode: skip user approval (except Plan Summary at L4).
 
 ## Checklist Before Stopping
 
-- [ ] spec.json at `.dev/specs/{name}/spec.json`
+- [ ] spec.json at `.hoyeon/specs/{name}/spec.json`
 - [ ] `hoyeon-cli spec validate` passes
 - [ ] `context.confirmed_goal` populated
 - [ ] `meta.non_goals` populated (empty `[]` if none)

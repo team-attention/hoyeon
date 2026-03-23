@@ -241,7 +241,7 @@ AskUserQuestion(
   question: "What would you like to do with these insights?",
   header: "Next step",
   options: [
-    { label: "Save insights", description: "Save to .dev/discuss/[topic]/insights.md for future reference" },
+    { label: "Save insights", description: "Save to .hoyeon/discuss/[topic]/insights.md for future reference" },
     { label: "Hand off to /specify", description: "Start planning with these insights as context" },
     { label: "Keep talking", description: "Continue the discussion — return to probing" },
     { label: "Done", description: "End the discussion" }
@@ -254,17 +254,17 @@ AskUserQuestion(
 #### Save insights
 Write the insights to file:
 ```
-Write(".dev/discuss/[topic-slug]/insights.md", insights_content)
+Write(".hoyeon/discuss/[topic-slug]/insights.md", insights_content)
 ```
 
 Use the **insights.md template** (see below). After saving, re-present the Next Steps question (without "Save insights").
 
 #### Hand off to /specify
-1. Save insights to `.dev/discuss/[topic-slug]/insights.md` (if not already saved)
+1. Save insights to `.hoyeon/discuss/[topic-slug]/insights.md` (if not already saved)
 2. Generate the handoff command:
 ```
 "Ready to plan. Run:
-/specify --context .dev/discuss/[topic-slug]/insights.md \"[1-line topic summary]\""
+/specify --context .hoyeon/discuss/[topic-slug]/insights.md \"[1-line topic summary]\""
 ```
 3. Stop
 
@@ -372,7 +372,7 @@ User: "/discuss Should we rewrite the payment module in Rust?"
     - Open Question: Cost comparison of rewrite vs refactor
     - Maturity: Forming
 13. Next steps → User selects "Hand off to /specify"
-14. Save insights + generate: /specify --context .dev/discuss/payment-rewrite/insights.md "Improve payment module reliability"
+14. Save insights + generate: /specify --context .hoyeon/discuss/payment-rewrite/insights.md "Improve payment module reliability"
 ```
 
 ---

@@ -5,7 +5,7 @@
 ### Step 1: Scaffold from requirements
 
 ```bash
-hoyeon-cli spec derive-tasks .dev/specs/{name}/spec.json
+hoyeon-cli spec derive-tasks .hoyeon/specs/{name}/spec.json
 ```
 
 Auto-generates task stubs with `fulfills[]` correctly linked to every requirement.
@@ -78,7 +78,7 @@ In the third case, the task must have `depends_on` pointing to the task that bui
 ### Step 3: Patch via merge
 
 ```bash
-hoyeon-cli spec merge .dev/specs/{name}/spec.json --stdin --patch << 'EOF'
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --patch << 'EOF'
 {"tasks": [
   {"id": "T1", "action": "Scaffolding: DB + router + common config", "fulfills": ["R0"], "depends_on": []},
   {"id": "T2", "action": "Project creation flow: POST /projects + new page + redirect", "fulfills": ["R1"], "depends_on": ["T1"]},
@@ -103,7 +103,7 @@ If none: merge `{"external_dependencies": {"pre_work": [], "post_work": []}}`.
 ### L4 Gate
 
 ```bash
-hoyeon-cli spec validate .dev/specs/{name}/spec.json --layer tasks
+hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer tasks
 ```
 
 ### Plan Summary
@@ -111,7 +111,7 @@ hoyeon-cli spec validate .dev/specs/{name}/spec.json --layer tasks
 After gate passes, present the full plan:
 
 ```
-spec.json ready! .dev/specs/{name}/spec.json
+spec.json ready! .hoyeon/specs/{name}/spec.json
 
 Goal
 ────────────────────────────────────────

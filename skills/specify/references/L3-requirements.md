@@ -5,7 +5,7 @@
 ### Step 1: Scaffold from decisions
 
 ```bash
-hoyeon-cli spec derive-requirements .dev/specs/{name}/spec.json
+hoyeon-cli spec derive-requirements .hoyeon/specs/{name}/spec.json
 ```
 
 This auto-generates requirement stubs linked to every decision.
@@ -27,7 +27,7 @@ As long as `spec validate` passes at the L3 gate (every requirement has at least
 Run `hoyeon-cli spec guide requirements --schema v7` to check field types, then patch:
 
 ```bash
-hoyeon-cli spec merge .dev/specs/{name}/spec.json --stdin --patch << 'EOF'
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --patch << 'EOF'
 {"requirements": [
   {"id": "R1", "behavior": "User can log in with email and password", "sub": [
     {"id": "R1.1", "behavior": "POST /login with valid credentials returns 200 + JWT"},
@@ -100,7 +100,7 @@ Print ALL requirements and sub-requirements as text (show everything, do not tru
 ### L3 Gate
 
 ```bash
-hoyeon-cli spec validate .dev/specs/{name}/spec.json --layer requirements
+hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer requirements
 ```
 
 Pass → advance to L4.
