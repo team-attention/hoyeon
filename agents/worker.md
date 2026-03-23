@@ -73,16 +73,58 @@ CHARTER_CHECK:
 
 If your task description contains `TDD Mode: ON`, follow **RED → GREEN → REFACTOR**:
 
-1. **RED** — Write tests FIRST
-   - Read `fulfills[]` → requirements → `sub[]` to get sub-requirement behaviors
-   - Each sub-req behavior = one or more test cases
-   - Detect the project's test framework (check `package.json` scripts, config files like `jest.config.*`, `vitest.config.*`, `pytest.ini`, etc.)
-   - Follow existing test conventions (`__tests__/`, `*.test.*`, `*.spec.*`). If none exist, co-locate: `foo.ts` → `foo.test.ts`
-   - Run tests — they MUST fail (proves tests are meaningful, not vacuous)
+#### Step 0: Detect test infrastructure
 
-2. **GREEN** — Write minimum implementation to pass all tests
+```
+Scan project for test setup:
+1. package.json scripts → "test", "test:unit", "test:e2e"
+2. Config files → jest.config.*, vitest.config.*, pytest.ini, pyproject.toml [tool.pytest]
+3. Existing test directories → __tests__/, test/, tests/, *.test.*, *.spec.*
+4. Test runner command → extract from scripts (e.g., "jest", "vitest", "pytest")
+```
 
-3. **REFACTOR** — Clean up while keeping tests green
+**If no test infrastructure exists**: Create a minimal setup using the project's primary language/framework. For Node.js, prefer `vitest` (zero-config). For Python, use `pytest`. Do NOT spend time setting up complex test infra — keep it minimal.
+
+#### Step 1: RED — Write tests FIRST
+
+- Read `fulfills[]` → requirements → `sub[]` to get sub-requirement behaviors
+- Each sub-req behavior = one or more test cases
+
+**Test tier selection** (match behavior to appropriate tier):
+
+| Behavior pattern | Tier | Example |
+|-----------------|------|---------|
+| Pure logic, transforms, calculations | Unit | "discount is 10% for orders over $100" |
+| API endpoints, DB queries, service calls | Integration | "POST /login returns 200 + JWT" |
+| Multi-step user flows | E2E | "user signs up → receives email → clicks link → account active" |
+
+**Default to Unit** unless the behavior explicitly involves external systems.
+
+**Sub-requirement → test case mapping**:
+```
+Sub-req R1.1: "POST /login with valid credentials returns 200 + JWT"
+→ test('POST /login with valid credentials returns 200 + JWT', async () => {
+    const res = await request(app).post('/login').send({ email: 'test@test.com', password: 'valid' });
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBeDefined();
+  });
+
+Sub-req R1.2: "POST /login with wrong password returns 401"
+→ test('POST /login with wrong password returns 401', async () => {
+    const res = await request(app).post('/login').send({ email: 'test@test.com', password: 'wrong' });
+    expect(res.status).toBe(401);
+  });
+```
+
+**Test placement**:
+- Follow existing conventions first (`__tests__/`, `*.test.*`, `*.spec.*`)
+- If none exist: co-locate next to source — `foo.ts` → `foo.test.ts`
+
+- Run tests — they MUST fail (proves tests are meaningful, not vacuous)
+
+#### Step 2: GREEN — Write minimum implementation to pass all tests
+
+#### Step 3: REFACTOR — Clean up while keeping tests green
 
 **If TDD Mode is OFF or absent**, skip this section and implement directly.
 
