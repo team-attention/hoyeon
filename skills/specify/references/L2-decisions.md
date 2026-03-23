@@ -16,8 +16,8 @@ Read L1 research + confirmed_goal, then generate project-specific checkpoints pe
 | 1 | **Core Behavior** | 25% | Primary action, success outcome, main loop/flow |
 | 2 | **Scope Boundaries** | 20% | Out-of-scope items, actor coverage, platform |
 | 3 | **Error/Edge Cases** | 20% | Primary failure mode, recovery, edge case |
-| 4 | **Data Model** | 15% | State persistence, data flow, schema shape |
-| 5 | **Implementation** | 20% | Tech stack, delivery format, dependencies |
+| 4 | **Data Model** | 15% | State persistence, data flow, schema shape, API contract/payload format |
+| 5 | **Implementation** | 20% | Tech stack, delivery format, dependencies, service communication pattern, protocol choice |
 
 **Brownfield adjustment**: When L1 detects existing codebase, Implementation checkpoints auto-resolve from existing patterns. Redistribute weight: Core 30%, Scope 20%, Error 25%, Data 15%, Implementation 10%.
 
