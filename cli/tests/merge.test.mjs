@@ -200,6 +200,86 @@ test('nested array patch — requirements[] replaces via shallow object merge', 
   }
 });
 
+// Test 7b: merge sub-requirements with GWT fields
+test('merge requirements with GWT fields preserves given/when/then', () => {
+  const spec = createSpec(baseSpec());
+  try {
+    runMerge(spec.path, {
+      requirements: [{
+        id: 'R1', behavior: 'User authentication',
+        sub: [{
+          id: 'R1.1',
+          behavior: 'Valid login returns JWT',
+          given: 'A registered user with valid credentials',
+          when: 'POST /login with correct email and password',
+          then: 'Returns 200 with JWT in response body',
+        }],
+      }],
+    });
+    const result = spec.read();
+    const sub = result.requirements[0].sub[0];
+    assert.equal(sub.behavior, 'Valid login returns JWT');
+    assert.equal(sub.given, 'A registered user with valid credentials');
+    assert.equal(sub.when, 'POST /login with correct email and password');
+    assert.equal(sub.then, 'Returns 200 with JWT in response body');
+  } finally {
+    spec.cleanup();
+  }
+});
+
+// Test 7c: --patch on sub-requirements with GWT preserves unpatched GWT fields
+test('--patch on requirements preserves existing GWT fields on unpatched subs', () => {
+  const spec = createSpec(baseSpec({
+    requirements: [{
+      id: 'R1', behavior: 'Auth',
+      sub: [
+        {
+          id: 'R1.1', behavior: 'Login works',
+          given: 'valid creds', when: 'POST /login', then: '200 + JWT',
+        },
+        {
+          id: 'R1.2', behavior: 'Logout works',
+          given: 'active session', when: 'POST /logout', then: '204 no content',
+        },
+      ],
+    }],
+  }));
+  try {
+    // Patch R1 behavior only — sub[] should be preserved with GWT intact
+    runMerge(spec.path, {
+      requirements: [{ id: 'R1', behavior: 'Auth UPDATED' }],
+    }, ['--patch']);
+    const result = spec.read();
+    assert.equal(result.requirements[0].behavior, 'Auth UPDATED');
+    assert.equal(result.requirements[0].sub.length, 2, 'both subs preserved');
+    assert.equal(result.requirements[0].sub[0].given, 'valid creds', 'R1.1 given preserved');
+    assert.equal(result.requirements[0].sub[1].then, '204 no content', 'R1.2 then preserved');
+  } finally {
+    spec.cleanup();
+  }
+});
+
+// Test 7d: merge sub-requirements without GWT (behavior-only) still works
+test('merge sub-requirements without GWT fields still valid', () => {
+  const spec = createSpec(baseSpec());
+  try {
+    runMerge(spec.path, {
+      requirements: [{
+        id: 'R1', behavior: 'Health check',
+        sub: [{ id: 'R1.1', behavior: 'GET /health returns 200' }],
+      }],
+    });
+    const result = spec.read();
+    const sub = result.requirements[0].sub[0];
+    assert.equal(sub.behavior, 'GET /health returns 200');
+    assert.equal(sub.given, undefined, 'no given field');
+    assert.equal(sub.when, undefined, 'no when field');
+    assert.equal(sub.then, undefined, 'no then field');
+  } finally {
+    spec.cleanup();
+  }
+});
+
 // Test 8: history entries are written to external context/history.json
 test('history entries are append-only across multiple merges', () => {
   const spec = createSpec(baseSpec());
