@@ -7730,11 +7730,15 @@ var dev_spec_v7_schema_default = {
     },
     subRequirement: {
       type: "object",
+      description: "Sub-requirement with required behavior summary. Optionally uses Given/When/Then (GWT) format for structured precondition, action, and expected outcome.",
       required: ["id", "behavior"],
       additionalProperties: false,
       properties: {
         id: { type: "string" },
-        behavior: { type: "string", description: "Concrete, testable behavior" }
+        behavior: { type: "string", description: "Concrete, testable behavior (summary line, always required)" },
+        given: { type: "string", description: "Precondition or initial context (GWT format, optional)" },
+        when: { type: "string", description: "Action or trigger (GWT format, optional)" },
+        then: { type: "string", description: "Expected outcome or assertion (GWT format, optional)" }
       }
     },
     task: {
