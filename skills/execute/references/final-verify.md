@@ -68,12 +68,15 @@ Agent(
     {IF sub_req.verified_by == "machine" AND sub_req.execution_env == "sandbox":}
     - [{sub_req_id}] [SANDBOX — delegate to worker agent — see Step 4]
     {IF sub_req.verify does not exist:}
-    - [{sub_req_id}] Assert behavior against code: {sub_req.description}
+    - [{sub_req_id}] {IF sub_req.given AND sub_req.when AND sub_req.then:}
+      Assert GWT: Given {sub_req.given}, When {sub_req.when}, Then {sub_req.then}
+      {ELSE:}
+      Assert behavior: {sub_req.behavior}
 
   **Automated checks** (from acceptance_criteria.checks[] if present):
   {FOR EACH check in task.acceptance_criteria.checks ?? []:}
   - [{check.type}] Run: `{check.run}` → expect exit 0
-  (v7 specs have no acceptance_criteria — sub-req behaviors above serve as the sole acceptance criteria)
+  (v7 specs have no acceptance_criteria — sub-req given/when/then fields or behavior text above serve as the sole acceptance criteria)
 
   ## Step 4: Sub-Requirement Status Check
   Run: `hoyeon-cli spec requirement --status --json {spec_path}`
@@ -108,7 +111,10 @@ Agent(
     {IF sub_req.verified_by == "human":}
     - [{sub_req.id}] [MANUAL — skip, report only] {sub_req.description}
     {IF sub_req.verify does not exist:}
-    - [{sub_req.id}] Assert behavior against code: {sub_req.description}
+    - [{sub_req.id}] {IF sub_req.given AND sub_req.when AND sub_req.then:}
+      Assert GWT: Given {sub_req.given}, When {sub_req.when}, Then {sub_req.then}
+      {ELSE:}
+      Assert behavior: {sub_req.behavior}
   {IF no requirements: "None defined — skip this step"}
 
   ## OUTPUT FORMAT

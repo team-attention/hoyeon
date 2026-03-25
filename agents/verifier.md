@@ -23,6 +23,7 @@ You are an **independent Verifier**. You did NOT write the code you are verifyin
 You receive a `verify_plan` (JSON array) in your task description. Each entry has:
 - `sub_requirement` — the sub-requirement ID (e.g., `R1.1`)
 - `behavior` — what this sub-requirement specifies
+- `given`, `when`, `then` — (optional) structured Given/When/Then fields for more precise verification. When these fields are present, prefer them over `behavior` for assertions as they provide explicit pre-conditions, actions, and expected outcomes
 - `method` — one of: `command`, `assertion`, `instruction`
 - Method-specific fields (see below)
 
@@ -40,7 +41,8 @@ Route by `method` field:
 
 #### method: "assertion"
 - Read the relevant source code files independently (do not trust Worker claims)
-- Assess each item in the `checks[]` array
+- If `given`, `when`, `then` fields are present: verify that when the pre-condition (`given`) holds and the action (`when`) is performed, the expected outcome (`then`) is satisfied. This takes priority over `checks[]`
+- If no GWT fields: assess each item in the `checks[]` array
 - Each check must be conclusively true or false — no approximations
 - Record PASS only if ALL checks are confirmed true; otherwise FAIL
 

@@ -1219,7 +1219,7 @@ function generateGuide(section, schemaVersion) {
     requirements: { ref: 'requirement', desc: 'Requirements with sub-requirements (sub[] = behavioral acceptance criteria)', isArray: true },
     constraints: { ref: 'constraint', desc: 'Must-not-do / preserve constraints', isArray: true },
     external: { ref: 'externalDependencies', desc: 'Human-only pre/post-work dependencies' },
-    sub: { ref: 'subRequirement', desc: 'Sub-requirement (behavior = testable acceptance criterion)' },
+    sub: { ref: 'subRequirement', desc: 'Sub-requirement (behavior required; optional given/when/then for GWT format)' },
     merge: { ref: null, desc: 'Merge modes: replace (default), --append, --patch', custom: 'merge' },
   };
 
@@ -1661,7 +1661,13 @@ async function handleRequirement(args) {
 function handleRequirementStatusView(specData, useJson) {
   const requirements = specData.requirements || [];
   const requirementRows = requirements.map(req => {
-    const subs = (req.sub || []).map(sc => ({ id: sc.id, behavior: sc.behavior }));
+    const subs = (req.sub || []).map(sc => {
+      const entry = { id: sc.id, behavior: sc.behavior };
+      if (sc.given) entry.given = sc.given;
+      if (sc.when) entry.when = sc.when;
+      if (sc.then) entry.then = sc.then;
+      return entry;
+    });
     return { id: req.id, behavior: req.behavior, subs };
   });
 
@@ -1677,6 +1683,11 @@ function handleRequirementStatusView(specData, useJson) {
     lines.push(`${req.id}: ${req.behavior} (${scCount} sub${scCount !== 1 ? 's' : ''})`);
     for (const sc of req.subs) {
       lines.push(`  ${sc.id}: ${sc.behavior}`);
+      if (sc.given || sc.when || sc.then) {
+        if (sc.given) lines.push(`    Given: ${sc.given}`);
+        if (sc.when) lines.push(`    When: ${sc.when}`);
+        if (sc.then) lines.push(`    Then: ${sc.then}`);
+      }
     }
     lines.push('');
   }
@@ -1948,6 +1959,9 @@ async function handleSearch(args) {
       let text = req.behavior || '';
       for (const sr of (req.sub || [])) {
         text += ' ' + (sr.behavior || '');
+        if (sr.given) text += ' ' + sr.given;
+        if (sr.when) text += ' ' + sr.when;
+        if (sr.then) text += ' ' + sr.then;
       }
 
       docs.push({
@@ -1955,7 +1969,13 @@ async function handleSearch(args) {
         spec: specName,
         id: req.id,
         behavior: req.behavior,
-        subs: (req.sub || []).map(sr => ({ id: sr.id, behavior: sr.behavior })),
+        subs: (req.sub || []).map(sr => {
+          const entry = { id: sr.id, behavior: sr.behavior };
+          if (sr.given) entry.given = sr.given;
+          if (sr.when) entry.when = sr.when;
+          if (sr.then) entry.then = sr.then;
+          return entry;
+        }),
         text,
         tasks: Object.entries(reqsByTask).filter(([, reqs]) => reqs.includes(req.id)).map(([tid]) => tid)
       });
@@ -2064,6 +2084,11 @@ async function handleSearch(args) {
         process.stdout.write(`  behavior: ${r.behavior}\n`);
         for (const s of (r.subs || []).slice(0, 3)) {
           process.stdout.write(`  ${s.id}: ${s.behavior}\n`);
+          if (s.given || s.when || s.then) {
+            if (s.given) process.stdout.write(`    Given: ${s.given}\n`);
+            if (s.when) process.stdout.write(`    When: ${s.when}\n`);
+            if (s.then) process.stdout.write(`    Then: ${s.then}\n`);
+          }
         }
         if (r.subs?.length > 3) {
           process.stdout.write(`  ... and ${r.subs.length - 3} more sub-requirements\n`);

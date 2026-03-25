@@ -43,13 +43,49 @@ Do NOT over-engineer test setup. One command to install, one command to run.
 
 ### Step 1: Map sub-requirements to test cases
 
-Read `fulfills[]` → requirements → `sub[]`. Each sub-req behavior becomes one or more test cases.
+Read `fulfills[]` → requirements → `sub[]`. If a sub-req has GWT fields (`given`, `when`, `then`), use them as the primary test structure. Otherwise, derive test cases from the `behavior` field.
+
+**GWT-to-test mapping:**
+- `given` → **Arrange/Setup** — establish preconditions (test fixtures, state, mocks)
+- `when` → **Act** — execute the action under test
+- `then` → **Assert** — verify the expected outcome
+
+**Example: GWT sub-req → test case**
+
+Sub-req:
+```json
+{
+  "id": "R1.1",
+  "behavior": "Expired trial users are downgraded",
+  "given": "a user with plan 'pro_trial' and trial_ends_at in the past",
+  "when": "the trial expiration scheduler runs",
+  "then": "the user's plan is updated to 'free'"
+}
+```
+
+Test:
+```typescript
+test('expired trial users are downgraded to free', async () => {
+  // given: a user with plan 'pro_trial' and trial_ends_at in the past
+  await db.insert(users).values({
+    id: 'test-user', plan: 'pro_trial',
+    trial_ends_at: new Date('2020-01-01'),
+  });
+
+  // when: the trial expiration scheduler runs
+  await trialExpirationScheduler.run();
+
+  // then: the user's plan is updated to 'free'
+  const user = await db.select().from(users).where(eq(users.id, 'test-user'));
+  expect(user.plan).toBe('free');
+});
+```
 
 **Rule: One sub-req = one `test()` block minimum.** If a behavior has multiple assertions, group them in one test. If it has distinct paths (happy/error), split into separate tests.
 
 ### Step 2: Choose test tier
 
-Match the behavior to the right tier. **Default to Unit.**
+Match the sub-req's GWT scenario (or behavior, if no GWT) to the right tier. **Default to Unit.**
 
 | Behavior describes... | Tier | Tools |
 |----------------------|------|-------|

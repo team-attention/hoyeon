@@ -42,7 +42,7 @@ CHARTER_CHECK:
 - Clarity: {LOW | MEDIUM | HIGH}
 - Domain: implementation
 - Must NOT do: {top 3 constraints from task scope / must_not_do}
-- Success criteria: {fulfills → sub-req behaviors that must be satisfied}
+- Success criteria: {fulfills → sub-req GWT (given/when/then) or behaviors that must be satisfied}
 - Assumptions: {defaults applied when info is missing}
 ```
 
@@ -75,7 +75,7 @@ If your task description contains `TDD Mode: ON`:
 
 1. Read the full TDD guide: `skills/execute/references/tdd-guide.md`
 2. Follow **RED → GREEN → REFACTOR** as described in the guide
-3. Each sub-req behavior in `fulfills[]` must have at least one test case
+3. Each sub-req in `fulfills[]` must have at least one test case — use GWT fields (`given`/`when`/`then`) to structure tests when available, otherwise derive from `behavior`
 
 **If TDD Mode is OFF or absent**, skip this section and implement directly.
 
@@ -86,8 +86,9 @@ If your task description contains `TDD Mode: ON`:
 1. **Behavioral check** — `fulfills[]` → `requirements[].sub[]`
    - Look up each requirement ID in `fulfills[]`
    - For each requirement, iterate its `sub[]` array
-   - Each sub-requirement's `behavior` is an acceptance criterion
-   - Verify your implementation satisfies every sub-req behavior
+   - If GWT fields (`given`, `when`, `then`) are present on a sub-requirement, use them as the primary acceptance criteria — they define the exact precondition, action, and expected outcome
+   - Otherwise, fall back to the `behavior` field as the acceptance criterion
+   - Verify your implementation satisfies every sub-req's GWT scenario (or behavior)
 
 2. **Build/lint/typecheck** — Run the project's build, lint, and type-check commands
    - Find commands from package.json, Makefile, or project config
@@ -95,7 +96,7 @@ If your task description contains `TDD Mode: ON`:
 
 3. **Test pass (TDD mode only)** — Run the full test suite and confirm all tests pass
 
-**Completion condition**: All sub-requirement behaviors satisfied AND build/lint passes (AND tests pass in TDD mode)
+**Completion condition**: All sub-requirement GWT scenarios (or behaviors, if no GWT) satisfied AND build/lint passes (AND tests pass in TDD mode)
 
 ## Output Format
 
@@ -112,6 +113,9 @@ When work is complete, **always** report in the following JSON format:
     {
       "id": "R1.1",
       "behavior": "Auth middleware rejects unauthenticated requests",
+      "given": "a request without Authorization header",
+      "when": "the request hits the auth middleware",
+      "then": "respond with 401 Unauthorized",
       "status": "PASS",
       "detail": "Tested via npm test -- auth.test.ts"
     },
@@ -148,10 +152,12 @@ When work is complete, **always** report in the following JSON format:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `id` | ✅ | Sub-requirement ID from `requirements[].sub[].id` |
-| `behavior` | ✅ | Sub-requirement behavior text (= acceptance criterion) |
+| `behavior` | ✅ | Sub-requirement behavior text (summary) |
+| `given` | ❌ | Precondition from sub-req GWT (include if present on sub-req) |
+| `when` | ❌ | Action/trigger from sub-req GWT (include if present on sub-req) |
+| `then` | ❌ | Expected outcome from sub-req GWT (include if present on sub-req) |
 | `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
 | `detail` | ❌ | Evidence or reason for FAIL/SKIP |
-| `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
 | `reason` | ❌ | Reason for FAIL/SKIP |
 
 **Completion condition**: All `sub_requirement_results` entries are `PASS` AND all `checks` are `PASS`

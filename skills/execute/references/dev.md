@@ -175,7 +175,7 @@ Respect constraints.
 Do NOT run git commands — Orchestrator handles commits.
 
 ### Verification before reporting DONE
-1. **Behavioral check**: Look up `fulfills[]` → requirements → sub-requirements. Each sub-req behavior is an acceptance criterion. Verify your implementation satisfies all of them.
+1. **Behavioral check**: Look up `fulfills[]` → requirements → sub-requirements. Each sub-req's GWT fields (given/when/then) define the structured acceptance criterion when available; behavior serves as summary. Verify your implementation satisfies all of them.
 2. **Build/lint/typecheck**: Run the project's build, lint, and type-check commands to ensure nothing is broken. Find these from package.json, Makefile, or project config.
 3. **Test pass (TDD only)**: If TDD Mode is ON, run the test suite and confirm all tests pass.
 

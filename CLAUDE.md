@@ -126,6 +126,7 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - refactor(schema): v7-slim — remove acceptance_criteria, file_scope, priority, verify from spec schema
   - requirements: removed `priority`, `source` (only id, behavior, sub)
   - sub-requirements: removed `verify`, `status`, `verified_by_task` (only id, behavior)
+- feat(schema): add optional given/when/then (GWT) fields to sub-requirements for structured acceptance criteria
   - tasks: simplified to id, action, type, status, depends_on, fulfills (removed file_scope, acceptance_criteria, risk, origin, steps, inputs, outputs, etc.)
 - refactor(specify): delete legacy specify (v5), promote specify-v2 to specify
   - Simplified layer chain: L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Tasks
@@ -316,7 +317,7 @@ Available guide sections:
 | `hoyeon-cli spec guide context` | context fields (request, research, assumptions, decisions, confirmed_goal, known_gaps) |
 | `hoyeon-cli spec guide constraints` | constraints field structure (id, rule) |
 | `hoyeon-cli spec guide requirements` | requirements fields (id, behavior, sub[]) |
-| `hoyeon-cli spec guide sub` | sub-requirement fields (id, behavior) |
+| `hoyeon-cli spec guide sub` | Sub-requirement fields (id, behavior, given, when, then) |
 | `hoyeon-cli spec guide tasks` | task fields (id, action, type, status, depends_on, fulfills) |
 | `hoyeon-cli spec guide external` | external_dependencies (pre_work, post_work) |
 | `hoyeon-cli spec guide merge` | merge modes (replace vs `--append` vs `--patch`) |

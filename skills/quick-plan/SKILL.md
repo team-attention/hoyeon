@@ -265,8 +265,9 @@ Each task's "Done when" condition becomes a requirement with one sub-requirement
 
 Rules:
 - One requirement per task (R1 maps to T1, R2 to T2, etc.)
-- Each requirement has exactly one sub-requirement with `verified_by: "machine"` and a `verify.run` command derived from the task's done-when condition
-- If a task has no runnable verification (e.g., "review document"), use `verified_by: "human"` with `verify: {"type": "instruction", "ask": "..."}`
+- Each requirement has exactly one sub-requirement with id and behavior
+- When the done-when condition has clear precondition/action/outcome structure, add optional GWT fields (given, when, then)
+  - Example: `{ "id": "R1.1", "behavior": "Config file validates on load", "given": "Config file exists with valid YAML", "when": "Application starts", "then": "Config is parsed without errors" }`
 - Keep it minimal — no gap analysis, no multi-sub-requirement requirements
 
 > **⚠️ Merge Convention**: All `spec merge --json '...'` examples below show JSON inline for readability. In practice:
@@ -278,10 +279,11 @@ Rules:
 # 1. Check field structure
 hoyeon-cli spec guide requirements
 
-# 2. Construct JSON with requirements.id, requirements.behavior, requirements.priority, requirements.sub[]
-#    Each sub-requirement needs: id, behavior, verified_by, optional verify
-#    For machine-verified: verify.type="command", verify.run="{cmd}", verify.expect.exit_code=0
-#    For human-verified: verify.type="instruction", verify.ask="..."
+# 2. Construct JSON with requirements.id, requirements.behavior, requirements.sub[]
+#    Each sub-requirement needs: id, behavior
+#    Optional GWT fields: given (precondition), when (action), then (expected outcome)
+#    Example sub: { "id": "R1.1", "behavior": "Login rejects invalid credentials",
+#                   "given": "User is on login page", "when": "User submits wrong password", "then": "Error message shown and login denied" }
 
 # 3. Merge via file-based passing
 cat > /tmp/spec-merge.json << 'EOF'
@@ -331,7 +333,7 @@ hoyeon-cli spec guide tasks
 
 # 2. Construct JSON with all tasks in a single array
 #    Each task needs: id, action, type, status, depends_on, tool, steps, must_not_do, fulfills, risk
-#    Acceptance criteria = sub-req behaviors from fulfills[] (Worker reads requirements directly)
+#    Acceptance criteria = sub-req behaviors (+ GWT fields when available) from fulfills[] (Worker reads requirements directly)
 
 # 3. Merge ALL tasks in one call via file-based passing
 cat > /tmp/spec-merge.json << 'EOF'
@@ -342,7 +344,7 @@ hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /t
 
 Map from plan:
 - Task Breakdown → `action`, `steps` (implementation steps)
-- Done condition → `fulfills[]` (requirement IDs) → sub-req behaviors as acceptance criteria
+- Done condition → `fulfills[]` (requirement IDs) → sub-req behaviors (+ GWT fields when available) as acceptance criteria
 - Dependency DAG → `depends_on`
 - Agent Mapping → `tool` (from Phase 5 discovery result)
 
