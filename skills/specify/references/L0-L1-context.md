@@ -22,7 +22,7 @@ Then `AskUserQuestion`: "Does this match your intent?"
 
 ### Merge
 
-Run `hoyeon-cli spec guide context --schema v7` and `spec guide meta --schema v7` to check fields, then:
+Run `hoyeon-cli spec guide context --schema v1` and `spec guide meta --schema v1` to check fields, then:
 
 ```bash
 hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
@@ -74,7 +74,7 @@ hoyeon-cli spec search "[goal keywords]" --json --limit 5
 
 ### Merge
 
-Run `hoyeon-cli spec guide context --schema v7` to check fields, then merge research via `--stdin`.
+Run `hoyeon-cli spec guide context --schema v1` to check fields, then merge research via `--stdin`.
 
 ### Gate
 

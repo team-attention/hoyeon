@@ -243,7 +243,7 @@ If no new gaps → proceed to Unresolved Checkpoint Sweep → L2 Approval.
 
 After each round, merge that round's decisions immediately. Do NOT batch decisions to the end.
 
-Run `hoyeon-cli spec guide context --schema v7` to check field types, then:
+Run `hoyeon-cli spec guide context --schema v1` to check field types, then:
 
 ```bash
 hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --append << 'EOF'
@@ -259,7 +259,7 @@ Collect constraints naturally during the interview — things that must NOT be v
 
 Sources: user statements, L1 research findings, inversion probe answers.
 
-Run `hoyeon-cli spec guide constraints --schema v7`, then merge at L2 end.
+Run `hoyeon-cli spec guide constraints --schema v1`, then merge at L2 end.
 If no constraints: merge `"constraints": []` explicitly.
 
 ### Known Gaps

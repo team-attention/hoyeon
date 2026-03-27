@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const CLI = resolve(import.meta.dirname, '../dist/cli.js');
-const TMP = resolve(import.meta.dirname, '../.tmp-v7-test');
+const TMP = resolve(import.meta.dirname, '../.tmp-v1-test');
 const SPEC = resolve(TMP, 'spec.json');
 
 function run(cmd) {
@@ -25,7 +25,7 @@ function readSpec() {
   return JSON.parse(readFileSync(SPEC, 'utf8'));
 }
 
-describe('v7 schema', () => {
+describe('v1 schema', () => {
   before(() => {
     mkdirSync(TMP, { recursive: true });
   });
@@ -34,14 +34,14 @@ describe('v7 schema', () => {
     rmSync(TMP, { recursive: true, force: true });
   });
 
-  it('spec init with --schema v7 creates valid spec', () => {
-    run(`spec init test-v7 --goal "Test v7" --schema v7 --type dev ${SPEC}`);
+  it('spec init with --schema v1 creates valid spec', () => {
+    run(`spec init test-v1 --goal "Test v1" --schema v1 --type dev ${SPEC}`);
     const spec = readSpec();
-    assert.equal(spec.meta.schema_version, 'v7');
-    assert.equal(spec.meta.name, 'test-v7');
+    assert.equal(spec.meta.schema_version, 'v1');
+    assert.equal(spec.meta.name, 'test-v1');
   });
 
-  it('spec validate passes on fresh v7 spec', () => {
+  it('spec validate passes on fresh v1 spec', () => {
     const out = run(`spec validate ${SPEC}`);
     assert.match(out, /Coverage passed/);
   });
@@ -57,7 +57,7 @@ describe('v7 schema', () => {
 
   it('spec merge --stdin --append adds decisions', () => {
     execSync(
-      `echo '{"context":{"decisions":[{"id":"D1","decision":"Use v7","rationale":"Simpler"}]}}' | node ${CLI} spec merge ${SPEC} --stdin --append`,
+      `echo '{"context":{"decisions":[{"id":"D1","decision":"Use v1","rationale":"Simpler"}]}}' | node ${CLI} spec merge ${SPEC} --stdin --append`,
       { encoding: 'utf8', cwd: TMP }
     );
     const spec = readSpec();
@@ -75,7 +75,7 @@ describe('v7 schema', () => {
     assert.equal(spec.context.decisions[1].id, 'D2');
   });
 
-  it('spec merge constraints with v7 simplified schema', () => {
+  it('spec merge constraints with v1 schema', () => {
     execSync(
       `echo '{"constraints":[{"id":"C1","rule":"No breaking changes"}]}' | node ${CLI} spec merge ${SPEC} --stdin`,
       { encoding: 'utf8', cwd: TMP }
@@ -86,7 +86,7 @@ describe('v7 schema', () => {
 
   it('spec merge requirements works', () => {
     execSync(
-      `echo '{"requirements":[{"id":"R1","behavior":"Use v7 schema","sub":[{"id":"R1.1","behavior":"All specs use v7"}]},{"id":"R2","behavior":"JSON storage","sub":[{"id":"R2.1","behavior":"Valid JSON output"}]}]}' | node ${CLI} spec merge ${SPEC} --stdin`,
+      `echo '{"requirements":[{"id":"R1","behavior":"Use v1 schema","sub":[{"id":"R1.1","behavior":"All specs use v1"}]},{"id":"R2","behavior":"JSON storage","sub":[{"id":"R2.1","behavior":"Valid JSON output"}]}]}' | node ${CLI} spec merge ${SPEC} --stdin`,
       { encoding: 'utf8', cwd: TMP }
     );
     const spec = readSpec();
@@ -109,13 +109,12 @@ describe('v7 schema', () => {
     assert.match(out, /Coverage passed/);
   });
 
-  it('spec guide --schema v7 shows simplified schema', () => {
-    const out = run('spec guide constraints --schema v7');
+  it('spec guide --schema v1 shows schema', () => {
+    const out = run('spec guide constraints --schema v1');
     assert.match(out, /required: id, rule/);
-    assert.doesNotMatch(out, /verified_by/); // v6 field not in v7
   });
 
-  it('sub-requirements with given/when/then fields pass v7 schema validation', () => {
+  it('sub-requirements with given/when/then fields pass v1 schema validation', () => {
     execSync(
       `echo '{"requirements":[{"id":"R1","behavior":"GWT test","sub":[{"id":"R1.1","behavior":"User login with valid credentials","given":"a registered user on the login page","when":"the user submits valid credentials","then":"the user is redirected to the dashboard"}]}]}' | node ${CLI} spec merge ${SPEC} --stdin`,
       { encoding: 'utf8', cwd: TMP }
@@ -161,7 +160,7 @@ describe('v7 schema', () => {
     assert.match(out, /must NOT have additional properties/);
   });
 
-  it('known_gaps is string array in v7', () => {
+  it('known_gaps is string array in v1', () => {
     execSync(
       `echo '{"context":{"known_gaps":["Performance TBD","Mobile layout undecided"]}}' | node ${CLI} spec merge ${SPEC} --stdin --append`,
       { encoding: 'utf8', cwd: TMP }

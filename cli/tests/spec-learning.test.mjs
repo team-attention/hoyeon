@@ -49,7 +49,7 @@ function assert(condition, msg) {
 }
 
 const BASE_SPEC = {
-  meta: { name: 'test', goal: 'test', schema_version: 'v7' },
+  meta: { name: 'test', goal: 'test', schema_version: 'v1' },
   requirements: [
     { id: 'REQ-1', behavior: 'requirement one', sub: [{ id: 'REQ-1.1', behavior: 'sub one' }] },
     { id: 'REQ-2', behavior: 'requirement two', sub: [{ id: 'REQ-2.1', behavior: 'sub two' }] },

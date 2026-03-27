@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "dev-spec/v7",
-  "title": "dev-spec v7",
-  "description": "Simplified spec schema for specify-v2. No verify fields, no acceptance_criteria, no file_scope. Focused on goal → decisions → requirements (with sub-req behaviors as acceptance criteria) → tasks.",
+  "$id": "dev-spec/v1",
+  "title": "dev-spec v1",
+  "description": "Spec schema for specify. Focused on goal → decisions → requirements (with sub-req behaviors as acceptance criteria) → tasks.",
   "type": "object",
   "required": ["meta", "tasks"],
   "additionalProperties": false,
@@ -44,8 +44,8 @@
         },
         "schema_version": {
           "type": "string",
-          "enum": ["v7"],
-          "description": "Schema version. v7 = specify-v2 simplified schema."
+          "enum": ["v1"],
+          "description": "Schema version."
         }
       }
     },
@@ -69,6 +69,11 @@
               "rationale": { "type": "string" }
             }
           }
+        },
+        "research": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Key findings from L1 codebase/environment investigation"
         },
         "known_gaps": {
           "type": "array",

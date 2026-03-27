@@ -24,7 +24,7 @@ The scaffold is a **starting point, not a constraint**. The 1:1 decision→requi
 
 As long as `spec validate` passes at the L3 gate (every requirement has at least one sub-req), the structure is valid.
 
-Run `hoyeon-cli spec guide requirements --schema v7` to check field types, then patch:
+Run `hoyeon-cli spec guide requirements --schema v1` to check field types, then patch:
 
 ```bash
 hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --patch << 'EOF'

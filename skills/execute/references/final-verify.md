@@ -76,7 +76,7 @@ Agent(
   **Automated checks** (from acceptance_criteria.checks[] if present):
   {FOR EACH check in task.acceptance_criteria.checks ?? []:}
   - [{check.type}] Run: `{check.run}` → expect exit 0
-  (v7 specs have no acceptance_criteria — sub-req given/when/then fields or behavior text above serve as the sole acceptance criteria)
+  (v1 specs have no acceptance_criteria — sub-req given/when/then fields or behavior text above serve as the sole acceptance criteria)
 
   ## Step 4: Sub-Requirement Status Check
   Run: `hoyeon-cli spec requirement --status --json {spec_path}`

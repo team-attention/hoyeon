@@ -1,7 +1,7 @@
 ---
 name: specify
 description: |
-  Turn a goal into an implementation plan (spec.json v7).
+  Turn a goal into an implementation plan (spec.json v1).
   Simplified layer chain: L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Tasks.
   No reviewer agents, no verify fields. Evidence-based clarity scoring at L2.
   CLI validates schema+coverage at each layer. User approves at L2, L3, L4.
@@ -18,10 +18,10 @@ allowed-tools:
 
 # /specify — Spec Generator
 
-Generate a spec.json (v7 schema) through a structured derivation chain.
+Generate a spec.json (v1 schema) through a structured derivation chain.
 Each layer builds on the previous — no skipping, no out-of-order merges.
 
-Before starting, run `hoyeon-cli spec guide full --schema v7` to see the complete schema.
+Before starting, run `hoyeon-cli spec guide full --schema v1` to see the complete schema.
 
 ---
 
@@ -34,7 +34,7 @@ Before starting, run `hoyeon-cli spec guide full --schema v7` to see the complet
    {"context": {"decisions": [...]}}
    EOF
    ```
-3. **Guide before merge** — Run `hoyeon-cli spec guide <section> --schema v7` before constructing JSON. Guide output is the source of truth.
+3. **Guide before merge** — Run `hoyeon-cli spec guide <section> --schema v1` before constructing JSON. Guide output is the source of truth.
 4. **Validate at layer transitions** — `hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json` once per layer (before advancing), not after every merge.
 5. **One merge per section** — Never merge multiple sections in parallel.
 6. **Merge failure** — Read error → run guide → fix JSON → retry (max 2). Don't retry with same JSON.
@@ -57,7 +57,7 @@ Execute layers sequentially. Read each reference file just-in-time.
 ### Session Init (before L0)
 
 ```bash
-hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v7 --interaction {interaction} \
+hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v1 --interaction {interaction} \
   .hoyeon/specs/{name}/spec.json
 ```
 

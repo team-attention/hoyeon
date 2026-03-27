@@ -68,7 +68,7 @@ test('spec meta shows spec metadata', () => {
       name: 'my-test-spec',
       goal: 'Verify meta command output',
       type: 'dev',
-      schema_version: 'v7',
+      schema_version: 'v1',
     },
     tasks: [
       { id: 'T1', action: 'placeholder task', type: 'work', status: 'pending' },
@@ -83,7 +83,7 @@ test('spec meta shows spec metadata', () => {
     assert.equal(meta.name, 'my-test-spec', 'meta.name should match');
     assert.equal(meta.goal, 'Verify meta command output', 'meta.goal should match');
     assert.equal(meta.type, 'dev', 'meta.type should be dev');
-    assert.equal(meta.schema_version, 'v7', 'meta.schema_version should be v7');
+    assert.equal(meta.schema_version, 'v1', 'meta.schema_version should be v1');
   } finally {
     cleanup();
   }

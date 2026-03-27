@@ -7624,12 +7624,12 @@ var import_ajv_formats = __toESM(require_dist(), 1);
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
 import { resolve, dirname } from "path";
 
-// schemas/dev-spec-v7.schema.json
-var dev_spec_v7_schema_default = {
+// schemas/dev-spec-v1.schema.json
+var dev_spec_v1_schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "dev-spec/v7",
-  title: "dev-spec v7",
-  description: "Simplified spec schema for specify-v2. No verify fields, no acceptance_criteria, no file_scope. Focused on goal \u2192 decisions \u2192 requirements (with sub-req behaviors as acceptance criteria) \u2192 tasks.",
+  $id: "dev-spec/v1",
+  title: "dev-spec v1",
+  description: "Spec schema for specify. Focused on goal \u2192 decisions \u2192 requirements (with sub-req behaviors as acceptance criteria) \u2192 tasks.",
   type: "object",
   required: ["meta", "tasks"],
   additionalProperties: false,
@@ -7671,8 +7671,8 @@ var dev_spec_v7_schema_default = {
         },
         schema_version: {
           type: "string",
-          enum: ["v7"],
-          description: "Schema version. v7 = specify-v2 simplified schema."
+          enum: ["v1"],
+          description: "Schema version."
         }
       }
     },
@@ -7696,6 +7696,11 @@ var dev_spec_v7_schema_default = {
               rationale: { type: "string" }
             }
           }
+        },
+        research: {
+          type: "array",
+          items: { type: "string" },
+          description: "Key findings from L1 codebase/environment investigation"
         },
         known_gaps: {
           type: "array",
@@ -7877,7 +7882,7 @@ Examples:
   hoyeon-cli spec amend --reason fb-001 --spec ./spec.json
 `;
 function loadSchema() {
-  return dev_spec_v7_schema_default;
+  return dev_spec_v1_schema_default;
 }
 function printGuideHints(errors) {
   const sections = /* @__PURE__ */ new Set();
@@ -8042,8 +8047,8 @@ async function handleInit(args) {
     specData.meta.type = parsed.type;
   }
   if (parsed.schema) {
-    if (parsed.schema !== "v7") {
-      process.stderr.write(`Error: invalid --schema '${parsed.schema}'. Only 'v7' is supported.
+    if (parsed.schema !== "v1") {
+      process.stderr.write(`Error: invalid --schema '${parsed.schema}'. Only 'v1' is supported.
 `);
       process.exit(1);
     }
@@ -8851,7 +8856,7 @@ function generateGuide(section, schemaVersion) {
   const defs = schema.$defs || {};
   const SECTIONS = {
     meta: { ref: "meta", desc: "Spec metadata (name, goal, type, schema_version)" },
-    context: { ref: "context", desc: "Confirmed goal, decisions, known gaps" },
+    context: { ref: "context", desc: "Confirmed goal, research, decisions, known gaps" },
     tasks: { ref: "task", desc: "Task DAG (work items + verification)", isArray: true },
     requirements: { ref: "requirement", desc: "Requirements with sub-requirements (sub[] = behavioral acceptance criteria)", isArray: true },
     constraints: { ref: "constraint", desc: "Must-not-do / preserve constraints", isArray: true },
@@ -10649,7 +10654,7 @@ async function main() {
     process.exit(0);
   }
   if (args[0] === "--version") {
-    const version = true ? "1.3.1" : "dev";
+    const version = true ? "1.4.0" : "dev";
     process.stdout.write(`hoyeon-cli v${version}
 `);
     process.exit(0);

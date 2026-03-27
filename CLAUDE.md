@@ -121,9 +121,11 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.5.0)
+## Recent Changes (v1.4.0)
 
-- refactor(schema): v7-slim — remove acceptance_criteria, file_scope, priority, verify from spec schema
+- refactor(schema): rename dev-spec-v7 → dev-spec-v1, reset schema versioning
+- feat(schema): add optional `research` field to context (L1 investigation findings)
+- refactor(schema): slim — remove acceptance_criteria, file_scope, priority, verify from spec schema
   - requirements: removed `priority`, `source` (only id, behavior, sub)
   - sub-requirements: removed `verify`, `status`, `verified_by_task` (only id, behavior)
 - feat(schema): add optional given/when/then (GWT) fields to sub-requirements for structured acceptance criteria
@@ -132,25 +134,14 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
   - Simplified layer chain: L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Tasks
   - No reviewer agents, no verify fields. Evidence-based clarity scoring at L2
   - User approves at L2, L3, L4
-- refactor(execute,bugfix,quick-plan): v7 schema compatibility
+- refactor(specify): replace TeamCreate gate-keeper with per-layer Task(reviewer)
+- refactor(execute,bugfix,quick-plan): v1 schema compatibility
 - fix(execute): remove remaining acceptance_criteria and file_scope references
 - feat(execute): add `--tdd` flag for test-driven worker flow (RED-GREEN-REFACTOR)
 - refactor(execute): remove dead per-task verify pipeline (should_spawn_verifier, VERIFIER_DESCRIPTION, .V:Verify)
   - DAG simplified: Worker → Commit (2-step, no per-task verify)
   - Final Verify retained (holistic spec verification)
   - verifier.md agent and verify-recipes/ kept for future use
-
-## Previous Changes (v1.4.0)
-
-- refactor(specify): replace TeamCreate gate-keeper with per-layer Task(reviewer)
-  - Remove TeamCreate/SendMessage/TeamDelete from specify pipeline
-  - L2: Task(L2-reviewer), L3: Task(L3-reviewer) absorbs gate-keeper, L4: Task(L4-reviewer)
-  - Each reviewer gets fresh context per gate (no cross-layer state confusion)
-  - Structured reviewer return contract: PASS/NEEDS_FIX/BACKTRACK, max 3 calls (initial + 2 re-reviews)
-- refactor(specify): add L3-verify-writer step to L3 pipeline
-  - L3-deriver outputs requirements + sub-reqs WITHOUT verify fields
-  - Task(L3-verify-writer) adds verify fields based on sandbox capability
-  - L3 pipeline: deriver → verify-writer → reviewer (3-step)
 
 ## Previous Changes (v1.3.1)
 
@@ -314,7 +305,7 @@ Available guide sections:
 | Command | Shows |
 |---------|-------|
 | `hoyeon-cli spec guide meta` | meta fields (goal, non_goals, mode) |
-| `hoyeon-cli spec guide context` | context fields (request, research, assumptions, decisions, confirmed_goal, known_gaps) |
+| `hoyeon-cli spec guide context` | context fields (confirmed_goal, research, decisions, known_gaps) |
 | `hoyeon-cli spec guide constraints` | constraints field structure (id, rule) |
 | `hoyeon-cli spec guide requirements` | requirements fields (id, behavior, sub[]) |
 | `hoyeon-cli spec guide sub` | Sub-requirement fields (id, behavior, given, when, then) |

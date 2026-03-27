@@ -97,7 +97,7 @@ EOF
 ### External Dependencies
 
 Scan tasks and decisions for actions outside of code.
-Run `hoyeon-cli spec guide external --schema v7`, then merge.
+Run `hoyeon-cli spec guide external --schema v1`, then merge.
 If none: merge `{"external_dependencies": {"pre_work": [], "post_work": []}}`.
 
 ### L4 Gate

@@ -21,7 +21,7 @@ allowed-tools:
 Generate a scaffold spec.json through an architecture-focused derivation chain.
 Produces a complete development foundation that AI agents can extend consistently.
 
-Before starting, run `hoyeon-cli spec guide full --schema v7` to see the complete schema.
+Before starting, run `hoyeon-cli spec guide full --schema v1` to see the complete schema.
 
 ---
 
@@ -49,7 +49,7 @@ scaffold is specify's **architecture variant**. Same spec.json format, different
    {"context": {"decisions": [...]}}
    EOF
    ```
-3. **Guide before merge** — Run `hoyeon-cli spec guide <section> --schema v7` before constructing JSON.
+3. **Guide before merge** — Run `hoyeon-cli spec guide <section> --schema v1` before constructing JSON.
 4. **Validate at layer transitions** — `hoyeon-cli spec validate` once per layer.
 5. **One merge per section** — Never merge multiple sections in parallel.
 6. **--append for arrays** — When adding to existing arrays.
@@ -69,7 +69,7 @@ scaffold is specify's **architecture variant**. Same spec.json format, different
 ### Session Init (before L0)
 
 ```bash
-hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v7 --interaction {interaction} \
+hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v1 --interaction {interaction} \
   .hoyeon/specs/{name}/spec.json
 ```
 

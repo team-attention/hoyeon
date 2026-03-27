@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 
 import { resolve, dirname } from 'path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import specSchemaV7 from '../../schemas/dev-spec-v7.schema.json' with { type: 'json' };
+import specSchemaV1 from '../../schemas/dev-spec-v1.schema.json' with { type: 'json' };
 
 import { writeState } from '../lib/state-io.js';
 
@@ -46,7 +46,7 @@ Examples:
 `;
 
 function loadSchema() {
-  return specSchemaV7;
+  return specSchemaV1;
 }
 
 /**
@@ -243,10 +243,10 @@ async function handleInit(args) {
     specData.meta.type = parsed.type;
   }
 
-  // Add optional schema version (v7 only)
+  // Add optional schema version (v1 only)
   if (parsed.schema) {
-    if (parsed.schema !== 'v7') {
-      process.stderr.write(`Error: invalid --schema '${parsed.schema}'. Only 'v7' is supported.\n`);
+    if (parsed.schema !== 'v1') {
+      process.stderr.write(`Error: invalid --schema '${parsed.schema}'. Only 'v1' is supported.\n`);
       process.exit(1);
     }
     specData.meta.schema_version = parsed.schema;
@@ -1214,7 +1214,7 @@ function generateGuide(section, schemaVersion) {
 
   const SECTIONS = {
     meta: { ref: 'meta', desc: 'Spec metadata (name, goal, type, schema_version)' },
-    context: { ref: 'context', desc: 'Confirmed goal, decisions, known gaps' },
+    context: { ref: 'context', desc: 'Confirmed goal, research, decisions, known gaps' },
     tasks: { ref: 'task', desc: 'Task DAG (work items + verification)', isArray: true },
     requirements: { ref: 'requirement', desc: 'Requirements with sub-requirements (sub[] = behavioral acceptance criteria)', isArray: true },
     constraints: { ref: 'constraint', desc: 'Must-not-do / preserve constraints', isArray: true },
