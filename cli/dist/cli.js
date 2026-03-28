@@ -9094,11 +9094,9 @@ async function handleDeriveTasks(args) {
     process.exit(1);
   }
   const tasks = [];
-  const workIds = [];
   for (let i = 0; i < requirements.length; i++) {
     const r = requirements[i];
     const taskId = `T${i + 1}`;
-    workIds.push(taskId);
     tasks.push({
       id: taskId,
       action: `TODO \u2014 implement ${r.id}: ${r.behavior.slice(0, 60)}`,
@@ -9106,12 +9104,6 @@ async function handleDeriveTasks(args) {
       fulfills: [r.id]
     });
   }
-  tasks.push({
-    id: "TF",
-    action: "Full verification",
-    type: "verification",
-    depends_on: workIds
-  });
   specData.tasks = tasks;
   const now = (/* @__PURE__ */ new Date()).toISOString();
   validateSpec(specData);

@@ -137,7 +137,7 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - refactor(specify): replace TeamCreate gate-keeper with per-layer Task(reviewer)
 - refactor(execute,bugfix,quick-plan): v1 schema compatibility
 - fix(execute): remove remaining acceptance_criteria and file_scope references
-- feat(execute): add `--tdd` flag for test-driven worker flow (RED-GREEN-REFACTOR)
+- feat(execute): TDD is opt-in for dev workers (`--tdd` to enable), outside-in strategy (E2E first)
 - refactor(execute): remove dead per-task verify pipeline (should_spawn_verifier, VERIFIER_DESCRIPTION, .V:Verify)
   - DAG simplified: Worker → Commit (2-step, no per-task verify)
   - Final Verify retained (holistic spec verification)

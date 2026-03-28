@@ -85,18 +85,24 @@ test('expired trial users are downgraded to free', async () => {
 
 ### Step 2: Choose test tier
 
-Match the sub-req's GWT scenario (or behavior, if no GWT) to the right tier. **Default to Unit.**
+Match the sub-req's GWT scenario (or behavior, if no GWT) to the right tier. **Default to E2E (outside-in).**
 
-| Behavior describes... | Tier | Tools |
-|----------------------|------|-------|
-| Pure logic, transforms, formatting, calculations | **Unit** | Direct function calls |
-| Single API endpoint request/response | **Integration** | supertest, httpx, net/http/httptest |
-| Database read/write behavior | **Integration** | Real DB or test DB |
-| Middleware / auth guard in isolation | **Unit** | Direct middleware function call |
-| Multi-step user flow across pages | **E2E** | Playwright, Cypress |
-| UI component rendering/interaction | **Unit** (component) | Testing Library, jsdom |
+> **Strategy: Outside-In TDD** — Start from the highest tier that covers the behavior, then drill down only when needed. E2E tests catch integration issues early and verify real user flows. Add unit/integration tests only for complex logic that E2E alone cannot adequately cover.
 
-**When in doubt, go lower** — unit tests are faster, more reliable, and easier to write.
+**Tier selection priority** (try top-first, fall back only when inappropriate):
+
+| Priority | Tier | When to use | Tools |
+|----------|------|-------------|-------|
+| 1st | **E2E** | User-facing flows, API endpoints, multi-step interactions, DB read/write via API | Playwright, Cypress, supertest (full stack) |
+| 2nd | **Integration** | Internal service interactions not reachable via E2E, DB-only operations without API surface | supertest, httpx, real DB |
+| 3rd | **Unit** | Pure logic, transforms, calculations, complex algorithms where E2E feedback is too slow/coarse | Direct function calls |
+
+**When to drop down a tier:**
+- E2E → Integration: No UI or API endpoint exists for the behavior (internal service only)
+- E2E → Unit: Behavior is pure computation with many edge cases (e.g., date parsing, math)
+- Integration → Unit: No external dependencies involved, function is self-contained
+
+**When in doubt, go higher** — E2E tests verify real user experience and catch integration bugs that unit tests miss. See [VERIFICATION.md](../../../VERIFICATION.md) Tier 3 for E2E guidance.
 
 ### Step 3: Write the test file
 

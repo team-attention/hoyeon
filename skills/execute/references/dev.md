@@ -29,7 +29,7 @@ ELSE:
 
 ### TDD Mode
 
-`{tdd}` is resolved:
+`{tdd}` is resolved (default: **OFF**):
 
 ```
 IF --tdd flag present:
@@ -42,11 +42,11 @@ When `tdd = true`, Workers write tests BEFORE implementation (RED-GREEN-REFACTOR
 The `tdd` flag is passed to `WORKER_DESCRIPTION` so each Worker knows to use TDD flow.
 
 Examples:
-- `/execute` → reads `meta.mode.depth` from spec.json (set by specify)
-- `/execute --quick` → override to quick regardless of spec
-- `/execute --tdd` → Workers write tests first, then implement
-- `/execute --quick --tdd` → quick mode + TDD
-- `/execute my-feature` → reads mode from my-feature's spec.json
+- `/execute` → TDD OFF by default, reads `meta.mode.depth` from spec.json
+- `/execute --quick` → override to quick regardless of spec, TDD still OFF
+- `/execute --tdd` → Workers use TDD (RED-GREEN-REFACTOR)
+- `/execute --quick --tdd` → quick mode, with TDD
+- `/execute my-feature` → reads mode from my-feature's spec.json, TDD OFF
 
 ### Mode Variable
 

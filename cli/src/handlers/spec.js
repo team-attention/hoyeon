@@ -1481,14 +1481,12 @@ async function handleDeriveTasks(args) {
     process.exit(1);
   }
 
-  // Generate task stubs: one per requirement + TF
+  // Generate task stubs: one per requirement (no TF — Final Verify handles holistic verification)
   const tasks = [];
-  const workIds = [];
 
   for (let i = 0; i < requirements.length; i++) {
     const r = requirements[i];
     const taskId = `T${i + 1}`;
-    workIds.push(taskId);
     tasks.push({
       id: taskId,
       action: `TODO — implement ${r.id}: ${r.behavior.slice(0, 60)}`,
@@ -1496,14 +1494,6 @@ async function handleDeriveTasks(args) {
       fulfills: [r.id],
     });
   }
-
-  // TF depends on all work tasks
-  tasks.push({
-    id: 'TF',
-    action: 'Full verification',
-    type: 'verification',
-    depends_on: workIds,
-  });
 
   specData.tasks = tasks;
 

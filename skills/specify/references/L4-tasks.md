@@ -9,7 +9,7 @@ hoyeon-cli spec derive-tasks .hoyeon/specs/{name}/spec.json
 ```
 
 Auto-generates task stubs with `fulfills[]` correctly linked to every requirement.
-Output: `T1`...`Tn` (one per requirement) + `TF` (verification, depends on all).
+Output: `T1`...`Tn` (one per requirement). No separate TF task — Final Verify in the execute pipeline handles holistic verification.
 
 **Coverage is 100% from the start.** No orphan requirements, no missing fulfills.
 
@@ -40,7 +40,6 @@ GOOD (vertical slices):
   T5: Sync editor (PATCH /projects/:id + editor UI + Save roundtrip) ← vertical slice
   T6: Video generation + progress (BE pipeline + FE progress + WS)   ← vertical slice
   T7: Preview + Export (BE composition + FE preview/export + download) ← vertical slice
-  TF: E2E journey verification
 ```
 
 #### Parallelism Rule
@@ -51,6 +50,8 @@ Two tasks can run in parallel ONLY when ALL three conditions hold:
 3. **No model dependency**: they don't produce+consume the same DB table or API endpoint
 
 If any condition is violated → `depends_on` is mandatory.
+
+**File overlap check**: Before finalizing `depends_on`, mentally list the files each task will likely touch (routes, models, configs, shared modules). If two tasks touch the same file — even for independent changes (e.g., both add routes to the same router file) — they must be serialized via `depends_on`. Parallel workers editing the same file causes merge conflicts.
 
 **Maximize parallelism** within these constraints — don't add false dependencies.
 The goal is a wide DAG of independent vertical slices, not a linear chain.
@@ -81,8 +82,7 @@ In the third case, the task must have `depends_on` pointing to the task that bui
 hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --patch << 'EOF'
 {"tasks": [
   {"id": "T1", "action": "Scaffolding: DB + router + common config", "fulfills": ["R0"], "depends_on": []},
-  {"id": "T2", "action": "Project creation flow: POST /projects + new page + redirect", "fulfills": ["R1"], "depends_on": ["T1"]},
-  {"id": "TF", "action": "E2E journey verification", "type": "verification", "depends_on": ["T1", "T2"]}
+  {"id": "T2", "action": "Project creation flow: POST /projects + new page + redirect", "fulfills": ["R1"], "depends_on": ["T1"]}
 ]}
 EOF
 ```
@@ -93,6 +93,7 @@ EOF
 - Acceptance criteria = sub-req behaviors from `fulfills[]` (no separate AC field — Worker reads requirements directly)
 - Build/lint/typecheck = Worker runs these automatically
 - Agent may consolidate: merge T1+T2 into one task that fulfills both R1 and R2
+- **No TF task** — holistic cross-slice verification is handled by Final Verify in the execute pipeline
 
 ### External Dependencies
 
@@ -146,7 +147,6 @@ T1: {action} [infra] — pending
 T2: {action} [vertical] — pending (depends: T1)
 T3: {action} [vertical] — pending (depends: T1)    ← parallel with T2
 T4: {action} [vertical] — pending (depends: T2, T3)
-TF: E2E journey verification — pending (depends: all)
 
 Post-work
 ────────────────────────────────────────
@@ -154,29 +154,6 @@ Post-work
 ```
 
 Run `hoyeon-cli spec plan` for DAG visualization.
-
-### TF: Verification Task
-
-TF is not a build re-check. It verifies **cross-slice user journeys** — the connections between vertical slices that no individual task tested.
-
-```json
-{
-  "id": "TF",
-  "action": "E2E journey verification",
-  "type": "verification",
-  "depends_on": ["T2", "T3", "T4", "T5"],
-  "steps": [
-    "Build: frontend build + backend tests",
-    "Happy path: Landing → New Project → upload + lyrics → Create → Sync Editor → edit → Save → Generate → progress → Preview → Export → download MP4",
-    "Failure + recovery: Generate → partial failure → Retry with edited prompt → success → Preview auto-refreshes"
-  ]
-}
-```
-
-**Journey rules:**
-- At least one happy-path journey that touches all vertical slice tasks
-- At least one failure/recovery journey if error handling is in scope
-- TF Worker reads all `fulfills[]` requirements from completed tasks and verifies sub-req behaviors
 
 ### Final Approval
 

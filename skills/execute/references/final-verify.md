@@ -236,7 +236,7 @@ Per-task Verifiers check each task's sub-requirements independently. But they ca
 
 Launch up to 3 verification agents in parallel via `run_in_background: true`:
 
-**Agent A — Cross-task compatibility:**
+**Agent A — Cross-task compatibility + user journey:**
 ```
 Agent(subagent_type="worker", description="FV-Tier2: Cross-task compatibility",
   prompt="""
@@ -244,7 +244,10 @@ Agent(subagent_type="worker", description="FV-Tier2: Cross-task compatibility",
   are consumed by another task's inputs (check depends_on relationships):
   1. Verify data format and contract compatibility across the boundary
   2. Check tasks with overlapping file changes for coherent modifications (no conflicts)
-  3. Report any incompatibilities found
+  3. Trace the main user journey end-to-end across all vertical slice tasks
+     (e.g., the happy-path flow from first action to final output).
+     Verify each handoff between tasks works correctly.
+  4. Report any incompatibilities or broken handoffs found
 
   Output: {"status": "PASS"|"FAIL", "issues": [...]}
   """,

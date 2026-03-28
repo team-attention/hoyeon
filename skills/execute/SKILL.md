@@ -27,7 +27,7 @@ validate_prompt: |
   Context files (learnings.json, issues.json, audit.md) are created at init for meta.type == "dev".
   Final Verify must run (all modes and types).
   Final report must be output.
-  TDD mode (--tdd) must pass tdd flag to WORKER_DESCRIPTION when enabled.
+  TDD mode is OFF by default (--tdd to enable). tdd flag must be passed to WORKER_DESCRIPTION.
 ---
 
 # /execute — Spec-Driven Orchestrator
