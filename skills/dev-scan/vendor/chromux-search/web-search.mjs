@@ -122,6 +122,40 @@ const TWITTER_JS = (mc) => `JSON.stringify({
   }).filter(Boolean)
 })`;
 
+const THREADS_JS = (mc, bl) => `JSON.stringify({
+  site: "threads.net", url: location.href,
+  title: '',
+  comments: [...document.querySelectorAll('div[data-pressable-container="true"]')].slice(0, ${mc + 1}).map(el => {
+    const userLink = el.querySelector('a[href^="/@"]');
+    const username = userLink?.href?.match(/@([^/]+)/)?.[1] || '';
+    const text = el.innerText || '';
+    const lines = text.split('\\n').filter(l => l.trim());
+    // Pattern: username, time, [Author], body..., metrics (numbers at end)
+    const metricPattern = /^[\\d,.]+[KMB]?$/;
+    let bodyLines = [];
+    let metrics = [];
+    let skipHeader = true;
+    for (const line of lines) {
+      if (skipHeader && (line === username || /^\\d+[hdwmy]$/.test(line) || line === 'Author' || line === '·')) {
+        continue;
+      }
+      skipHeader = false;
+      if (metricPattern.test(line.trim())) {
+        metrics.push(line.trim());
+      } else if (line !== 'Translate') {
+        bodyLines.push(line);
+      }
+    }
+    const body = bodyLines.join(' ').trim().slice(0, ${bl});
+    if (!body) return null;
+    return {
+      author: username,
+      text: body.slice(0, 300),
+      likes: metrics[0] || '0'
+    };
+  }).filter(Boolean)
+})`;
+
 const GENERIC_JS = (bl) => `JSON.stringify({
   site: "generic", url: location.href,
   title: document.querySelector('h1')?.innerText?.trim() || document.title,
@@ -137,6 +171,7 @@ function extractorFor(url, mc, bl) {
   if (url.includes('lobste.rs')) return LOBSTERS_JS(mc);
   if (url.includes('reddit.com')) return REDDIT_JS(mc, bl);
   if (url.includes('x.com') || url.includes('twitter.com')) return TWITTER_JS(mc);
+  if (url.includes('threads.net') || url.includes('threads.com')) return THREADS_JS(mc, bl);
   return GENERIC_JS(bl);
 }
 
@@ -179,7 +214,7 @@ async function search(query, { site, count, time, enrich, maxComments, bodyLen }
       process.stderr.write(`[web-search] Enriching (${i + 1}/${results.length}): ${r.url}\n`);
       try {
         cx('open', es, r.url);
-        const wait = (r.url.includes('reddit.com') || r.url.includes('x.com')) ? '3000' : '1500';
+        const wait = (r.url.includes('reddit.com') || r.url.includes('x.com') || r.url.includes('threads.net') || r.url.includes('threads.com')) ? '3000' : '1500';
         cx('wait', es, wait);
         const content = JSON.parse(cx('eval', es, extractorFor(r.url, maxComments, bodyLen)));
         const empty = !content.body && (!content.comments || content.comments.length === 0);

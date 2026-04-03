@@ -25,6 +25,7 @@ Quickly understand **diverse perspectives** on technical topics:
 | Hacker News | Vendored hn-search.py (`python3`) — Algolia API, no key needed |
 | Dev.to | Vendored web-search.mjs (`chromux`) — Google `site:dev.to` + enrichment (article, comments) |
 | Lobsters | Vendored web-search.mjs (`chromux`) — Google `site:lobste.rs` + enrichment (article, comments) |
+| Threads | Vendored web-search.mjs (`chromux`) — Google `site:threads.net` + enrichment (posts, replies, likes) |
 | ProductHunt | Vendored ph-search.py (`python3`) — GraphQL API, requires `PRODUCT_HUNT_TOKEN` env var |
 
 ## Execution
@@ -133,6 +134,7 @@ Map the best variant from Step 1-2 to each platform's search behavior. **Store a
 | HN | `Q_HN` | `core` or `technical` | `core` (shorter) | Drop "vs" — Algolia full-text matches better without. |
 | Dev.to | `Q_DEVTO` | `opinion` or `versus` | `core` | Google `site:dev.to` — add context word (`comparison`/`review`/`guide`) for recall. |
 | Lobsters | `Q_LOBSTERS` | `core` | `core` (2 words max) | Google `site:lobste.rs` — simple terms. Small community, keep broad. |
+| Threads | `Q_THREADS` | `opinion` or `core` | `core` | Google `site:threads.net` — short-form posts. Similar to X/Twitter, concise queries work best. |
 | ProductHunt | `Q_PH` | `core` | — | Product names only. Drop generic words. **Only if PH relevant (see below).** |
 
 **ProductHunt relevance check** — PH is a product launch community. Only set `Q_PH` when the query involves **specific products, tools, or SaaS** (e.g. "Cursor", "Linear", "Supabase vs Firebase"). Skip PH when the topic is abstract/conceptual (e.g. "microservices best practices", "Rust async patterns", "tech layoffs").
@@ -148,6 +150,7 @@ Decomposition: `core`=`claude code codex`, `versus`=`claude code vs codex`, `opi
 | `Q_HN` | core | `claude code codex` |
 | `Q_DEVTO` | versus | `claude code vs codex comparison` |
 | `Q_LOBSTERS` | core | `claude code codex` |
+| `Q_THREADS` | opinion | `claude code vs codex` |
 | `Q_PH` | core | `claude code codex` |
 
 ### Step 1.5: Time Period
@@ -196,6 +199,7 @@ node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_REDDIT}" --site re
 node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_TWITTER}" --site x.com --time {TIME_SHORT} --count 5 --comments 5 --json > "$D/x.json" 2>"$D/x.err"
 node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_DEVTO}" --site dev.to --time {TIME_SHORT} --count 5 --comments 5 --body 300 --json > "$D/devto.json" 2>"$D/devto.err"
 node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_LOBSTERS}" --site lobste.rs --time {TIME_SHORT} --count 5 --comments 5 --json > "$D/lobsters.json" 2>"$D/lobsters.err"
+node skills/dev-scan/vendor/chromux-search/web-search.mjs "{Q_THREADS}" --site threads.net --time {TIME_SHORT} --count 5 --comments 5 --body 300 --json > "$D/threads.json" 2>"$D/threads.err"
 
 for f in "$D"/*.json; do echo "$(basename $f): $(wc -c < $f) bytes, $(python3 -c "import json,sys; d=json.load(open('$f')); print(len(d) if isinstance(d,list) else 'obj')" 2>/dev/null || echo '?') items"; done
 ```
@@ -244,6 +248,7 @@ for f in "$D"/*.json; do echo "$(basename $f): $(wc -c < $f) bytes, $(python3 -c
 | HN | hn-search.py | Algolia API, no key. Stories with points and top comments. |
 | Dev.to | web-search.mjs | Google `site:dev.to` + enrichment. Extracts: article body, author, tags, comments. |
 | Lobsters | web-search.mjs | Google `site:lobste.rs` + enrichment. Extracts: article body, author, tags, score, comments. |
+| Threads | web-search.mjs | Google `site:threads.net` + enrichment. Extracts: posts, author, replies, likes. Requires chromux login. |
 | ProductHunt | ph-search.py | GraphQL API, needs `PRODUCT_HUNT_TOKEN`. Only for product/tool queries. |
 
 ### Step 3: Synthesize & Present
@@ -252,7 +257,7 @@ for f in "$D"/*.json; do echo "$(basename $f): $(wc -c < $f) bytes, $(python3 -c
 
 #### 3-0. Comment-level Sentiment Tagging
 
-For every comment extracted from Reddit and X/Twitter (Google `site:` enriched results), tag sentiment:
+For every comment extracted from Reddit, X/Twitter, and Threads (Google `site:` enriched results), tag sentiment:
 
 | Tag | When to apply |
 |-----|---------------|
@@ -310,7 +315,7 @@ The report is designed for quick scanning AND decision-making — TL;DR first, d
 ## Sentiment Overview
 
 Positive ████████░░ 75% | Negative ██░░░░░░░░ 20% | Neutral █░░░░░░░░░ 5%
-Sources: Reddit N, X N, HN N, Dev.to N, Lobsters N
+Sources: Reddit N, X N, HN N, Dev.to N, Lobsters N, Threads N
 
 ---
 
