@@ -47,8 +47,7 @@ function should_auto_pass_code_review() → bool:
   diff_stat = Bash("git diff --stat main...HEAD")
   total_lines = parse_total_lines(diff_stat)
   dep_files_changed = Bash("git diff --name-only main...HEAD | grep -E '(package\\.json|Cargo\\.toml|go\\.mod|requirements\\.txt|pyproject\\.toml)'")
-  all_low_risk = plan.tasks.every(t => t.risk == "low")
-  return total_lines <= 200 AND dep_files_changed is empty AND all_low_risk
+  return total_lines <= 200 AND dep_files_changed is empty
 ```
 
 **When auto-pass fires:**
@@ -149,20 +148,19 @@ TDD Mode: {IF tdd: "ON" ELSE: "OFF"}
 
 ## Step 1: Read your task spec
 Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
-This returns JSON with: action, steps, fulfills, depends_on,
-must_not_do, inputs (+ file_scope, acceptance_criteria if present in spec).
+This returns JSON with: action, fulfills, depends_on, and other task fields.
 
-## Step 2: Resolve dependency inputs (if any)
-If your task has `inputs[].from_task`, fetch each dependency:
-Run: `hoyeon-cli spec task {from_task} --get {spec_path}`
-Use its `outputs` to understand what was produced.
+## Step 2: Resolve dependencies (if any)
+If your task has `depends_on`, check that those tasks are done:
+Run: `hoyeon-cli spec task {dep_id} --get {spec_path}`
+Review their `summary` to understand what was produced.
 
 ## Step 3: Read context files
 Read: {CONTEXT_DIR}/learnings.json — structured learnings from previous workers (if exists)
 Read: {CONTEXT_DIR}/issues.json — failed approaches to avoid (if exists)
 
 ## Step 4: Implement
-Follow the task action and steps from your task spec.
+Follow the task action from your task spec.
 If TDD Mode is ON, read `skills/execute/references/tdd-guide.md` and follow the TDD workflow (RED → GREEN → REFACTOR).
 Respect constraints.
 Do NOT run git commands — Orchestrator handles commits.
@@ -233,17 +231,17 @@ Run: `hoyeon-cli spec task {task.id} --get {spec_path}`
 Implement as described. After completing each:
   hoyeon-cli spec task {task.id} --status done --summary '...' {spec_path}
 
-## Step 2: Resolve dependency inputs (if any)
-If any task has `inputs[].from_task`, fetch each dependency:
-Run: `hoyeon-cli spec task {from_task} --get {spec_path}`
-Use its `outputs` to understand what was produced.
+## Step 2: Resolve dependency outputs (if any)
+If any task has `depends_on[]`, check completed dependency summaries for context:
+Run: `hoyeon-cli spec task {dep_task_id} --get {spec_path}`
+Use its `summary` field to understand what was produced.
 
 ## Step 3: Read context files
 Read: {CONTEXT_DIR}/learnings.json — structured learnings from previous workers (if exists)
 Read: {CONTEXT_DIR}/issues.json — failed approaches to avoid (if exists)
 
 ## Step 4: Implement
-Follow each task's action and steps from the task spec, in order.
+Follow each task's action from the task spec, in order.
 If TDD Mode is ON, read `skills/execute/references/tdd-guide.md` and follow the TDD workflow (RED → GREEN → REFACTOR).
 Respect constraints.
 Do NOT run git commands — Orchestrator handles commits.
@@ -688,10 +686,8 @@ Audit: {count} events
 ───────────────────────────────────────────────────
 MANUAL REVIEW (require human verification)
 ───────────────────────────────────────────────────
-{FOR EACH req in (spec.requirements ?? []):}
-{FOR EACH sub_req where verified_by == "human":}
-- {sub_req.id}: {sub_req.description}
-  Check: {sub_req.verify.ask}
+{List any sub-requirements that require manual/visual verification
+ based on their behavior description (e.g., UI appearance, UX flows)}
 
 {IF no manual items: "None"}
 
@@ -700,8 +696,7 @@ POST-WORK (human actions after completion)
 ───────────────────────────────────────────────────
 {post_work = spec.external_dependencies.post_work ?? []}
 {FOR EACH item in post_work:}
-- [{item.id ?? ''}] {item.dependency}: {item.action}
-  {IF item.command:} Run: `{item.command}`
+- {item.action}
 
 {IF no post_work: "None"}
 ═══════════════════════════════════════════════════

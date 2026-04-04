@@ -65,10 +65,10 @@ Phase 5: CLEANUP & REPORT ──────────────────
 
 Mode is never asked from the user. Auto-routes based on debugger's **Severity** assessment:
 
-| Severity | spec depth | Phase 1 | Phase 3 (execute) | Retry |
-|----------|-----------|---------|-------------------|-------|
-| **SIMPLE** | quick | debugger + verification-planner | worker → commit → final verify | bugfix-managed (max 3) |
-| **COMPLEX** | standard | + gap-analyzer | worker → verify → commit → code review → requirements | execute-internal (max 2), then escalate |
+| Severity | dispatch | verify | Phase 1 | Retry |
+|----------|---------|--------|---------|-------|
+| **SIMPLE** | direct | light | debugger + verification-planner | bugfix-managed (max 3) |
+| **COMPLEX** | agent | standard | + gap-analyzer | execute-internal (max 2), then escalate |
 
 ---
 
@@ -203,13 +203,10 @@ Convert diagnosis results into spec.json format. spec.json is the standard forma
 SPEC_DIR = "$HOME/.hoyeon/$SESSION_ID"
 SPEC_PATH = "$SPEC_DIR/spec.json"
 
-depth = "quick" for SIMPLE, "standard" for COMPLEX
-
 hoyeon-cli spec init fix-{slug} \
   --goal "Fix: {bug description}" \
   --type dev \
-  --depth {depth} \
-  --interaction autopilot \
+  --schema v1 \
   ${SPEC_PATH}
 ```
 
@@ -224,21 +221,19 @@ Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single 
 
 **What to include:**
 
-- **meta**: `non_goals` (no refactoring, no unrelated features), `deliverables` (debug report path)
-- **context**: `request` (original bug description), `research` (debugger analysis summary), `assumptions` (from debugger), `decisions` (root cause location + rationale)
+- **meta**: `non_goals` (no refactoring, no unrelated features)
+- **context**: `confirmed_goal` (original bug description), `research` (debugger analysis summary as string array), `decisions` (root cause location + rationale), `known_gaps` (from debugger's assumptions/unknowns)
 - **tasks**: Single task (T1) with:
-  - `action`: debugger's proposed fix
-  - `steps`: write regression test (RED) → apply minimal fix (GREEN) → verify
-  - `must_not_do`: minimal diff (<5%), no refactoring, no unrelated changes, no git commands, fix root cause not symptom
+  - `action`: debugger's proposed fix (include implementation steps: write regression test RED → apply minimal fix GREEN → verify. Include must-not-do constraints inline: minimal diff <5%, no refactoring, no unrelated changes, no git commands, fix root cause not symptom)
+  - `type`: `"work"`, `status`: `"pending"`
   - `fulfills`: requirement IDs from `requirements[].id` this task covers
-  - If debugger found **similar issues**: add T2 (`depends_on: [T1]`) to fix those locations — T2 must include all required task fields: `type: "work"`, `status: "pending"`, `must_not_do`, and `fulfills`
-- **constraints**: minimal diff rule, root cause targeting rule (both `verified_by: agent`)
+  - If debugger found **similar issues**: add T2 (`depends_on: ["T1"]`) to fix those locations — T2 must include `type: "work"`, `status: "pending"`, and `fulfills`
+- **constraints**: minimal diff rule, root cause targeting rule (id + rule)
 - **requirements**: Generate from debugger diagnosis. Each requirement describes a behavior that was broken:
   1. Run `hoyeon-cli spec guide requirements` to check field structure
-  2. Construct JSON with `requirements[]` (id, priority, behavior, sub[])
+  2. Construct JSON with `requirements[]` (id, behavior, sub[])
      - Convert debugger's reproduction steps → behavior description for each sub-requirement
-     - Use verification-planner's Auto items as `verify.run` commands
-     - Run `hoyeon-cli spec guide verify` to check verify object structure (must be `{type, run}` object, not string)
+     - Use optional GWT fields (given, when, then) when precondition/action/outcome is clear
      - If debugger identified edge cases, add additional sub-requirements
   3. Merge via `hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)"`
   - This enables Final Verify to check requirement sub-requirements, preventing regression
@@ -246,6 +241,14 @@ Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single 
 ### Step 2.3: Validate & Register
 
 ```bash
+# Set mode based on severity
+# SIMPLE → direct dispatch, light verify (one-shot fix)
+# COMPLEX → agent dispatch, standard verify (deeper verification)
+IF severity == "SIMPLE":
+  hoyeon-cli spec merge ${SPEC_PATH} --json '{"meta": {"mode": {"dispatch": "direct", "work": "no-commit", "verify": "light"}}}'
+ELIF severity == "COMPLEX":
+  hoyeon-cli spec merge ${SPEC_PATH} --json '{"meta": {"mode": {"dispatch": "agent", "work": "branch", "verify": "standard"}}}'
+
 hoyeon-cli spec validate ${SPEC_PATH}
 hoyeon-cli session set --sid $SESSION_ID --spec "$SPEC_PATH"
 ```
@@ -265,12 +268,9 @@ Skill("execute", args="${SPEC_PATH}")
 ```
 
 What execute handles:
-- Worker dispatch (self-read pattern)
-- Per-task verify (standard only)
-- Per-task commit (git-master)
-- Retry/Adaptation (standard only, max 2)
-- Code Review (standard only)
-- Final Verify (all modes — checks goal, constraints, AC, requirements, deliverables)
+- Worker dispatch (self-read pattern, mode set by meta.mode)
+- Round-level commit (git-master)
+- Verify recipe (light/standard/thorough based on meta.mode.verify)
 - Final report
 
 **Result judgment:**

@@ -70,17 +70,17 @@ FOR EACH round in plan.rounds:
   FOR EACH task in runnable (single message, run_in_background=true if len > 1):
     IF task.tool AND task.tool starts with "/":
       # Invoke as Skill
-      Skill(skill=task.tool, args=task.args ?? "")
+      Skill(skill=task.tool, args="")
     ELIF task.tool:
       # Invoke as Agent with specific subagent_type
       Agent(
         subagent_type=task.tool,
-        prompt=task.action + "\n\n" + (task.args ?? ""),
+        prompt=task.action,
         run_in_background=(len(runnable) > 1)
       )
     ELSE:
       # No tool specified — orchestrator handles directly
-      Execute task.action directly OR Agent(subagent_type="general-purpose", ...)
+      Execute task.action directly OR Agent(subagent_type="general-purpose", prompt=task.action)
 
   # Collect results (update both spec and Claude Code tracking)
   FOR EACH task in runnable:
@@ -159,7 +159,7 @@ POST-WORK (human actions after completion)
 ───────────────────────────────────────────────────
 {post_work = spec.external_dependencies.post_work ?? []}
 {FOR EACH item in post_work:}
-- [{item.id ?? ''}] {item.dependency}: {item.action}
+- {item.action}
 
 {IF no post_work: "None"}
 ═══════════════════════════════════════════════════

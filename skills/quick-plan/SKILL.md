@@ -28,7 +28,7 @@ validate_prompt: |
   Must NOT generate spec.json until user explicitly chooses "Execute".
   Must NOT: create teams or spawn agents during planning.
   spec.json must include requirements (one per task) with sub-requirements before tasks are merged.
-  spec.json must include context.assumptions (at least one assumption about the plan).
+  spec.json must include context.known_gaps (at least one assumption/gap about the plan).
   If any task has type: dev, spec.json must include context.research with commands and structure.
 ---
 
@@ -253,7 +253,7 @@ Determine the plan type based on task composition from Phase 5:
 - If **all tasks have `type: plain`** → use `--type plain` (lightweight skill-only pipeline)
 
 ```bash
-hoyeon-cli spec init {plan-name} --goal "{user's goal}" --type dev|plain --depth quick --interaction autopilot ${SPEC_PATH}
+hoyeon-cli spec init {plan-name} --goal "{user's goal}" --type dev|plain --schema v1 ${SPEC_PATH}
 ```
 
 `{plan-name}`: derive from user's goal (kebab-case, max 30 chars).
@@ -296,7 +296,7 @@ This ensures:
 - `fulfills[]` in tasks reference real requirement IDs for behavior verification
 - Final Verify in /execute can check requirement sub-requirements via fulfills → req.sub[]
 
-#### 9.2.7 Merge context and assumptions
+#### 9.2.7 Merge context
 
 Merge the context gathered during planning. Content is **type-aware**:
 
@@ -304,23 +304,25 @@ Merge the context gathered during planning. Content is **type-aware**:
 # 1. Check field structure
 hoyeon-cli spec guide context
 
-# 2. Construct JSON with context.request, context.assumptions (always required)
-#    IF any task has type: dev → also include context.research (summary, commands, structure)
-#    assumptions: at least one with id, belief, if_wrong, impact
+# 2. Construct JSON with context fields:
+#    - confirmed_goal: user's confirmed goal statement
+#    - decisions: key planning decisions (id, decision, rationale)
+#    - known_gaps: assumptions and unknowns as string array
+#    IF any task has type: dev → also include context.research (string array of key findings)
 
 # 3. Merge via file-based passing
 cat > /tmp/spec-merge.json << 'EOF'
-{ "context": { "request": "...", "assumptions": [...], "research": {...} } }
+{ "context": { "confirmed_goal": "...", "decisions": [...], "known_gaps": [...], "research": [...] } }
 EOF
 hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
 ```
 
-**Assumptions to always capture** (at minimum):
-- Task independence / overlap assumptions (e.g., "T1 and T2 have no file overlap")
-- Tool/skill availability assumptions (e.g., "existing test infra can be reused")
-- Scope assumptions (e.g., "no database migration needed")
+**known_gaps to always capture** (at minimum):
+- Task independence / overlap assumptions (e.g., "Assumes T1 and T2 have no file overlap")
+- Tool/skill availability assumptions (e.g., "Assumes existing test infra can be reused")
+- Scope assumptions (e.g., "Assumes no database migration needed")
 
-These assumptions give /execute triage context when things go wrong.
+These known_gaps give /execute triage context when things go wrong.
 
 #### 9.3 Merge tasks
 
@@ -332,7 +334,8 @@ Do NOT call merge per task (without `--append`, each call overwrites the previou
 hoyeon-cli spec guide tasks
 
 # 2. Construct JSON with all tasks in a single array
-#    Each task needs: id, action, type, status, depends_on, tool, steps, must_not_do, fulfills, risk
+#    Each task needs: id, action, type, status, depends_on, fulfills
+#    Optional: tool (dispatch hint for plain mode — skill name like /bugfix or agent subtype like worker)
 #    Acceptance criteria = sub-req behaviors (+ GWT fields when available) from fulfills[] (Worker reads requirements directly)
 
 # 3. Merge ALL tasks in one call via file-based passing
@@ -343,10 +346,10 @@ hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /t
 ```
 
 Map from plan:
-- Task Breakdown → `action`, `steps` (implementation steps)
+- Task Breakdown → `action` (include implementation steps inline in the action description)
 - Done condition → `fulfills[]` (requirement IDs) → sub-req behaviors (+ GWT fields when available) as acceptance criteria
 - Dependency DAG → `depends_on`
-- Agent Mapping → `tool` (from Phase 5 discovery result)
+- Agent Mapping → `tool` (from Phase 5 discovery, optional — used for plain mode dispatch)
 
 #### 9.3.5 Auto-generate sandbox tasks
 
