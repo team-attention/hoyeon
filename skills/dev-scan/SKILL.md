@@ -39,7 +39,8 @@ The only way to parallelize is within one shell invocation.
 ```bash
 mkdir -p /tmp/dev-scan-$$
 
-# Launch chromux in headless mode (no browser window) — skip if already running
+# Kill existing chromux instance (may be non-headless) and relaunch in headless mode
+chromux kill 2>/dev/null || true
 chromux launch default --headless 2>/dev/null || true
 
 node skills/dev-scan/vendor/chromux-search/web-search.mjs --check > /tmp/dev-scan-$$/web.txt 2>&1 &
