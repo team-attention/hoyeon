@@ -181,25 +181,39 @@ When auto-passed, log: `"code_review": {"status": "AUTO_PASS", "reason": "..."}`
 
 ## Step 4: Sandbox Verification (if sandbox_capability exists)
 
-> Runs real-environment verification for sub-requirements that require sandbox execution.
+> Runs real-environment verification using the `/qa` skill for systematic testing.
 
 ### Dispatch
 
 ```
 IF spec.context.sandbox_capability exists:
-  FOR EACH sub_req WHERE sub_req.execution_env == "sandbox":
-    Dispatch verification based on sandbox_capability.tools:
+  # Collect sandbox sub-requirements as QA test targets
+  sandbox_subs = spec.requirements.flatMap(r => r.sub)
+    .filter(s => s.execution_env == "sandbox")
 
-    "browser" → Agent(subagent_type="browser-explorer",
-      prompt="Verify: {sub_req.behavior}. GWT: Given {sub_req.given}, When {sub_req.when}, Then {sub_req.then}")
+  IF len(sandbox_subs) > 0:
+    # Build QA checklist from sub-requirements
+    qa_checklist = sandbox_subs.map(s =>
+      "- {s.id}: {s.behavior}" +
+      (s.given ? " | Given: {s.given}, When: {s.when}, Then: {s.then}" : "")
+    ).join("\n")
 
-    "terminal" → Agent(subagent_type="worker",
-      prompt="Verify via tmux-based CLI test: {sub_req.behavior}")
+    # Route to /qa skill based on sandbox tool type
+    qa_mode = ""
+    IF "browser" in sandbox_capability.tools:
+      qa_mode = "--browser"
+    ELIF "desktop" in sandbox_capability.tools:
+      qa_mode = "--computer"
 
-    "desktop" → Agent(subagent_type="worker",
-      prompt="Verify via screenshot: {sub_req.behavior}")
+    # Invoke /qa skill with spec-derived checklist
+    Skill("qa", args="{qa_mode} --tier standard")
+    # The /qa skill handles: plan → test → fix → verify loop
+    # Pass the checklist as context (print before invoking):
+    print("QA checklist from spec sub-requirements:")
+    print(qa_checklist)
+    print("URL/app: {determine from spec context or task outputs}")
 
-  Results aggregated into verify output.
+  Results from /qa aggregated into verify output.
 
 IF no sandbox_capability:
   # Sandbox sub-requirements cannot be verified automatically
