@@ -14,30 +14,6 @@ Create TaskCreate entries for all tasks + finalize steps. **Batch all in one tur
 
 ```
 # ═══════════════════════════════════════════════════
-# PRE-STEP: Build verify descriptions from CLI plan output
-# ═══════════════════════════════════════════════════
-
-# plan_json already has verify_plan per task (from Phase 0.2 formatSlim)
-# Only build verify descriptions for tasks that have non-empty verify_plan
-
-FOR EACH task in plan (flattened):
-  task_verify_plan = task.verify_plan  # from formatSlim output
-
-  IF task_verify_plan.length > 0:
-    # Collect sandbox recipes to inline
-    sandbox_subjects = unique(task_verify_plan.filter(e => e.env == "sandbox").map(e => e.subject))
-    sandbox_recipes = ""
-    FOR EACH subject in sandbox_subjects:
-      recipe_content = Read("${baseDir}/references/verify-recipes/{subject}.md")
-      sandbox_recipes += "### Recipe: {subject}\n{recipe_content}\n\n"
-
-    verify_description[task.id] = VERIFIER_DESCRIPTION(
-      task.id,
-      JSON.stringify(task_verify_plan, null, 2),
-      sandbox_recipes || "None — no sandbox scenarios for this task."
-    )
-
-# ═══════════════════════════════════════════════════
 # TURN 1: Create ALL tasks in PARALLEL (single message)
 # ═══════════════════════════════════════════════════
 
@@ -45,12 +21,6 @@ FOR EACH task in plan (flattened from rounds, excluding done):
   t = TaskCreate(subject="{task.id}: {task.action}",
                  description="Plain task {task.id}. Spec: {spec_path}",
                  activeForm="{task.id}: Running")
-
-  # Add Verify task only if verify_plan is non-empty
-  IF verify_description[task.id] exists:
-    v = TaskCreate(subject="{task.id}.V:Verify",
-                   description=verify_description[task.id],
-                   activeForm="{task.id}.V: Verifying scenarios")
 
 # Finalize tasks
 fv = TaskCreate(subject="Finalize:Final Verify",
@@ -65,29 +35,18 @@ rp = TaskCreate(subject="Finalize:Report",
 # TURN 2: Set up dependencies (single message)
 # ═══════════════════════════════════════════════════
 
-# Worker → Verify chain (for tasks with verify_plan)
-FOR EACH task WHERE verify_description[task.id] exists:
-  TaskUpdate(taskId=t, addBlocks=[v])
-
 # Chain tasks by round order — each round blocks the next
-# Use Verify as last step if it exists, otherwise the task itself
 FOR EACH consecutive round pair (round_n, round_n+1):
-  last_of_n = verify task if exists, else task itself
+  last_of_n = last task of round_n
   first_of_n+1 = first task of next round
   TaskUpdate(taskId=last_of_n, addBlocks=[first_of_n+1])
 
-# Finalize chain: last task/verify → Final Verify → Report
-TaskUpdate(taskId=last_task_or_verify, addBlocks=[fv])
+# Finalize chain: last task → Final Verify → Report
+TaskUpdate(taskId=last_task, addBlocks=[fv])
 TaskUpdate(taskId=fv, addBlocks=[rp])
 ```
 
 **Key rule**: NEVER create tasks one-by-one across multiple turns. All TaskCreate in Turn 1, all TaskUpdate in Turn 2.
-
-### Verifier Description Template
-
-Uses the same template as dev.md — see `${baseDir}/references/dev.md` section "Verifier Description Template" for `VERIFIER_DESCRIPTION(task_id, verify_plan_json, sandbox_recipes)`.
-
-The verifier agent is dispatched with `subagent_type="verifier"` (see `agents/verifier.md`).
 
 ---
 
@@ -121,36 +80,14 @@ FOR EACH round in plan.rounds:
       )
     ELSE:
       # No tool specified — orchestrator handles directly
-      # This includes: direct file edits, bash commands, research, or any work
-      # the orchestrator can do without delegation.
-      # If the task is complex enough, delegate to a general-purpose agent.
       Execute task.action directly OR Agent(subagent_type="general-purpose", ...)
 
   # Collect results (update both spec and Claude Code tracking)
   FOR EACH task in runnable:
     result = await task completion
     IF result indicates success:
-      Bash("hoyeon-cli spec task {task.id} --status in_progress {spec_path}")
+      Bash("hoyeon-cli spec task {task.id} --status done --summary '{result.summary}' {spec_path}")
       TaskUpdate(taskId=task.tracking_id, status="completed")
-
-      # Dispatch Verifier if this task has a verify_plan
-      IF verify_description[task.id] exists:
-        TaskUpdate(taskId=task.verify_tracking_id, status="in_progress")
-        Agent(
-          subagent_type="verifier",
-          description="Verify: {task.id}",
-          prompt=TaskGet(task.verify_tracking_id).description
-        )
-        # On VERIFIED → mark task done
-        IF verify_result.status == "VERIFIED":
-          Bash("hoyeon-cli spec task {task.id} --status done --summary '{result.summary}' {spec_path}")
-          TaskUpdate(taskId=task.verify_tracking_id, status="completed")
-        ELSE:
-          print("Verifier FAILED for {task.id}: {verify_result.failed_count} failures")
-          HALT
-      ELSE:
-        # No verify_plan — mark done immediately
-        Bash("hoyeon-cli spec task {task.id} --status done --summary '{result.summary}' {spec_path}")
     ELSE:
       print("Task {task.id} FAILED: {result.reason}")
       TaskUpdate(taskId=task.tracking_id, status="cancelled")
@@ -182,7 +119,7 @@ ELSE:
   fv_failures = []
   IF result.goal_alignment.status == "FAIL":
     fv_failures.append("[goal_alignment] GOAL MISALIGNMENT: {result.goal_alignment.reason}")
-  FOR EACH category in [constraints, acceptance_criteria, requirements, deliverables]:
+  FOR EACH category in [constraints, requirements, deliverables]:
     FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
       fv_failures.append("[{category}] {failure.description} — {failure.reason}")
 ```
@@ -218,16 +155,6 @@ FAILURES:
   {f}
 
 ───────────────────────────────────────────────────
-MANUAL REVIEW (require human verification)
-───────────────────────────────────────────────────
-{FOR EACH req in spec.requirements ?? []:}
-{FOR EACH scenario where verified_by == "human":}
-- {scenario.id}: {scenario.then}
-  Check: {scenario.verify.ask}
-
-{IF no manual items: "None"}
-
-───────────────────────────────────────────────────
 POST-WORK (human actions after completion)
 ───────────────────────────────────────────────────
 {post_work = spec.external_dependencies.post_work ?? []}
@@ -251,7 +178,7 @@ IF fv_failed:
 1. **Flexible dispatch** — orchestrator can handle tasks directly, via Skill, or via Agent
 2. **No git commits** — plain mode does not manage git operations
 3. **No code review** — no code-reviewer agent
-4. **Conditional per-task verify** — Verifier dispatched only for tasks with non-empty verify_plan (from CLI plan output). Tasks without scenarios skip verification.
+4. **No per-task verify** — Worker self-checks + Final Verify provide coverage
 5. **Final Verify required** — holistic spec verification always runs at the end
 6. **On failure → HALT** — no retry or adaptation flow
 
@@ -260,13 +187,9 @@ IF fv_failed:
 ## Checklist
 
 - [ ] All TaskCreate in single turn (Turn 1), all TaskUpdate in single turn (Turn 2)
-- [ ] verify_plan built from CLI plan output for tasks with scenarios
-- [ ] Sandbox recipes inlined into verifier description for sandbox scenarios
-- [ ] Verifier (subagent_type=verifier) dispatched for tasks with non-empty verify_plan
 - [ ] All tasks dispatched in DAG order from `plan.rounds`
 - [ ] Each task handled flexibly (direct work, Skill, or Agent)
 - [ ] Dual tracking: both spec (via `hoyeon-cli spec task`) and Claude Code (via TaskUpdate)
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
 - [ ] Final verify worker ran holistic spec verification
-- [ ] Manual items listed for human follow-up if present
 - [ ] Final report output

@@ -219,16 +219,16 @@ grep -A5 "Hooks: Model response:" debug.txt | grep -E '"ok":|"reason":'
 ### Draft File Operations
 ```bash
 # Pattern - draft creation
-grep "\.dev/drafts/" debug.txt | grep "written atomically"
+grep "\.hoyeon/drafts/" debug.txt | grep "written atomically"
 
 # Pattern - draft deletion (look for rm command)
-grep "rm.*\.dev/drafts/" debug.txt
+grep "rm.*\.hoyeon/drafts/" debug.txt
 ```
 
 ### Plan File Operations
 ```bash
 # Pattern - plan creation
-grep "\.dev/specs/" debug.txt | grep "written atomically"
+grep "\.hoyeon/specs/" debug.txt | grep "written atomically"
 ```
 
 ---
@@ -262,7 +262,7 @@ grep -E "(SubagentStart with query: reviewer|Prompt hook condition)" debug.txt
 grep "permissionDecision" debug.txt
 
 # 5. Check artifacts
-grep -E "(\.dev/drafts/|\.dev/specs/).*written atomically" debug.txt
+grep -E "(\.hoyeon/drafts/|\.hoyeon/specs/).*written atomically" debug.txt
 
 # 6. Final Stop hook result
 grep -A10 "Getting matching hook commands for Stop" debug.txt | tail -20

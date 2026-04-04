@@ -49,7 +49,7 @@ function assert(condition, msg) {
 }
 
 const BASE_SPEC = {
-  meta: { goal: 'test', mode: 'quick', schema_version: 'v5' },
+  meta: { goal: 'test', mode: 'quick', schema_version: 'v1' },
   context: {},
   constraints: [],
   requirements: [],

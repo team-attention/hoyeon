@@ -46,20 +46,27 @@ function assert(condition, msg) {
   }
 }
 
+function makeSpec(overrides = {}) {
+  return {
+    meta: { name: 'test', goal: 'test', type: 'dev' },
+    tasks: [{ id: 'T1', action: 'task one', type: 'work', status: 'pending' }],
+    ...overrides,
+  };
+}
+
 // ============================================================
 // Test 1: --patch updates existing item by ID, preserves others
 // ============================================================
 console.log('\nTest 1: --patch updates existing item by ID, preserves others');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+writeSpec(makeSpec({
   tasks: [
     { id: 'T1', action: 'task one', type: 'work', status: 'pending' },
     { id: 'T2', action: 'task two', type: 'work', status: 'pending' },
     { id: 'T3', action: 'task three', type: 'work', status: 'pending' },
   ],
-});
+}));
 
 run(`spec merge ${specPath} --patch --json '${JSON.stringify({
   tasks: [{ id: 'T2', action: 'task two UPDATED', status: 'done' }]
@@ -81,12 +88,7 @@ teardown();
 console.log('\nTest 2: --patch adds new item when ID not found');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [
-    { id: 'T1', action: 'task one', type: 'work', status: 'pending' },
-  ],
-});
+writeSpec(makeSpec());
 
 run(`spec merge ${specPath} --patch --json '${JSON.stringify({
   tasks: [{ id: 'T2', action: 'new task', type: 'work', status: 'pending' }]
@@ -101,121 +103,62 @@ assert(result2.tasks[1].action === 'new task', 'T2 has correct action');
 teardown();
 
 // ============================================================
-// Test 3: --patch on requirements (the original bug scenario)
+// Test 3: --patch on requirements preserves other requirements
 // ============================================================
 console.log('\nTest 3: --patch on requirements preserves other requirements');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+writeSpec(makeSpec({
   requirements: [
-    { id: 'R1', behavior: 'parsing', priority: 1, scenarios: [{ id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } }] },
-    { id: 'R2', behavior: 'scanning', priority: 1, scenarios: [{ id: 'R2-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test2', expect: { exit_code: 0 } } }] },
-    { id: 'R3', behavior: 'matching', priority: 1, scenarios: [{ id: 'R3-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test3', expect: { exit_code: 0 } } }] },
+    { id: 'R1', behavior: 'parsing', sub: [{ id: 'R1.1', behavior: 'sub one' }] },
+    { id: 'R2', behavior: 'scanning', sub: [{ id: 'R2.1', behavior: 'sub two' }] },
+    { id: 'R3', behavior: 'matching', sub: [{ id: 'R3.1', behavior: 'sub three' }] },
   ],
-});
+}));
 
-// AC Quality Gate fixes only R2 — with --patch, R1 and R3 should survive
 run(`spec merge ${specPath} --patch --json '${JSON.stringify({
-  requirements: [{ id: 'R2', behavior: 'scanning FIXED', priority: 2 }]
+  requirements: [{ id: 'R2', behavior: 'scanning FIXED' }]
 })}'`);
 
 const result3 = readSpec();
 assert(result3.requirements.length === 3, 'All 3 requirements preserved');
-assert(result3.requirements[0].id === 'R1', 'R1 preserved');
 assert(result3.requirements[0].behavior === 'parsing', 'R1 unchanged');
-assert(result3.requirements[1].id === 'R2', 'R2 preserved');
 assert(result3.requirements[1].behavior === 'scanning FIXED', 'R2 behavior updated');
-assert(result3.requirements[1].priority === 2, 'R2 priority updated');
-assert(result3.requirements[1].scenarios.length === 1, 'R2 scenarios preserved');
-assert(result3.requirements[2].id === 'R3', 'R3 preserved');
+assert(result3.requirements[2].behavior === 'matching', 'R3 unchanged');
 
 teardown();
 
 // ============================================================
-// Test 4: --patch with nested objects (scenarios inside requirements)
+// Test 4: --patch on constraints
 // ============================================================
-console.log('\nTest 4: --patch updates nested scenario within requirement');
+console.log('\nTest 4: --patch on constraints');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-  requirements: [
-    {
-      id: 'R1', behavior: 'parsing', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'old given', when: 'old when', then: 'old then', verified_by: 'human', verify: { type: 'instruction', ask: 'check it' } },
-        { id: 'R1-S2', given: 'keep', when: 'keep', then: 'keep', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-      ],
-    },
-  ],
-});
-
-// Update R1-S1: change verified_by and add execution_env (keep verify type compatible)
-run(`spec merge ${specPath} --patch --json '${JSON.stringify({
-  requirements: [{
-    id: 'R1',
-    scenarios: [
-      { id: 'R1-S1', verified_by: 'human', execution_env: 'host', verify: { type: 'instruction', ask: 'check it in browser' } },
-    ],
-  }],
-})}'`);
-
-const result4 = readSpec();
-assert(result4.requirements.length === 1, 'R1 still only requirement');
-const r1 = result4.requirements[0];
-// --patch now recursively merges nested arrays by ID too
-assert(r1.behavior === 'parsing', 'R1 behavior preserved');
-assert(r1.scenarios.length === 2, 'Both scenarios preserved after recursive patch');
-assert(r1.scenarios[0].id === 'R1-S1', 'R1-S1 still present');
-assert(r1.scenarios[0].verified_by === 'human', 'R1-S1 verified_by updated');
-assert(r1.scenarios[0].execution_env === 'host', 'R1-S1 execution_env added');
-assert(r1.scenarios[0].given === 'old given', 'R1-S1 given preserved');
-assert(r1.scenarios[0].when === 'old when', 'R1-S1 when preserved');
-assert(r1.scenarios[1].id === 'R1-S2', 'R1-S2 still present');
-assert(r1.scenarios[1].verified_by === 'machine', 'R1-S2 unchanged');
-
-teardown();
-
-// ============================================================
-// Test 5: --patch on constraints
-// ============================================================
-console.log('\nTest 5: --patch on constraints');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+writeSpec(makeSpec({
   constraints: [
-    { id: 'C1', type: 'must_not_do', rule: 'no recursion', verified_by: 'agent', verify: { type: 'assertion', checks: ['no recursion'] } },
-    { id: 'C2', type: 'must_not_do', rule: 'no score on deps', verified_by: 'agent', verify: { type: 'assertion', checks: ['no score'] } },
+    { id: 'C1', rule: 'no recursion' },
+    { id: 'C2', rule: 'no score on deps' },
   ],
-});
+}));
 
 run(`spec merge ${specPath} --patch --json '${JSON.stringify({
   constraints: [{ id: 'C1', rule: 'no recursion (UPDATED)' }]
 })}'`);
 
-const result5 = readSpec();
-assert(result5.constraints.length === 2, 'Both constraints preserved');
-assert(result5.constraints[0].rule === 'no recursion (UPDATED)', 'C1 updated');
-assert(result5.constraints[0].type === 'must_not_do', 'C1 type preserved');
-assert(result5.constraints[1].rule === 'no score on deps', 'C2 unchanged');
+const result4 = readSpec();
+assert(result4.constraints.length === 2, 'Both constraints preserved');
+assert(result4.constraints[0].rule === 'no recursion (UPDATED)', 'C1 updated');
+assert(result4.constraints[1].rule === 'no score on deps', 'C2 unchanged');
 
 teardown();
 
 // ============================================================
-// Test 6: --append and --patch are mutually exclusive
+// Test 5: --append and --patch are mutually exclusive
 // ============================================================
-console.log('\nTest 6: --append and --patch are mutually exclusive');
+console.log('\nTest 5: --append and --patch are mutually exclusive');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-});
+writeSpec(makeSpec());
 
 try {
   run(`spec merge ${specPath} --patch --append --json '${JSON.stringify({ tasks: [] })}'`);
@@ -227,535 +170,196 @@ try {
 teardown();
 
 // ============================================================
-// Test 7: without --patch, old behavior (replace) still works
+// Test 6: without --patch, old behavior (replace) still works
 // ============================================================
-console.log('\nTest 7: without --patch, array replacement still works');
+console.log('\nTest 6: without --patch, array replacement still works');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+writeSpec(makeSpec({
   tasks: [
     { id: 'T1', action: 'one', type: 'work', status: 'pending' },
     { id: 'T2', action: 'two', type: 'work', status: 'pending' },
   ],
-});
+}));
 
 run(`spec merge ${specPath} --json '${JSON.stringify({
   tasks: [{ id: 'T1', action: 'only one', type: 'work', status: 'pending' }]
 })}'`);
 
-const result7 = readSpec();
-assert(result7.tasks.length === 1, 'Array replaced (old behavior)');
-assert(result7.tasks[0].action === 'only one', 'Only T1 remains');
+const result6 = readSpec();
+assert(result6.tasks.length === 1, 'Array replaced (old behavior)');
+assert(result6.tasks[0].action === 'only one', 'Only T1 remains');
 
 teardown();
 
 // ============================================================
-// Test 8: --patch with items without id (appended)
+// Test 7: --patch with context.decisions appends new items
 // ============================================================
-console.log('\nTest 8: --patch with items without id field appends them');
+console.log('\nTest 7: --patch with context.decisions appends new items');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'one', type: 'work', status: 'pending' }],
+writeSpec(makeSpec({
   context: {
-    decisions: [
-      { id: 'D1', decision: 'first', rationale: 'r1' },
-    ],
+    decisions: [{ id: 'D1', decision: 'first', rationale: 'r1' }],
   },
-});
+}));
 
 run(`spec merge ${specPath} --patch --json '${JSON.stringify({
   context: { decisions: [{ id: 'D2', decision: 'second', rationale: 'r2' }] }
 })}'`);
 
-const result8 = readSpec();
-assert(result8.context.decisions.length === 2, 'D2 appended');
-assert(result8.context.decisions[0].decision === 'first', 'D1 preserved');
-assert(result8.context.decisions[1].decision === 'second', 'D2 added');
+const result7 = readSpec();
+assert(result7.context.decisions.length === 2, 'D2 appended');
+assert(result7.context.decisions[0].decision === 'first', 'D1 preserved');
+assert(result7.context.decisions[1].decision === 'second', 'D2 added');
 
 teardown();
 
 // ============================================================
-// Test 9: spec check detects broken scenario reference in AC
+// Test 8: --patch adds new sub-requirements without losing existing ones
 // ============================================================
-console.log('\nTest 9: spec check detects broken scenario reference in AC (v5 referential integrity)');
+console.log('\nTest 8: --patch adds new sub-requirements without losing existing ones');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
+writeSpec(makeSpec({
   requirements: [
     {
-      id: 'R1', behavior: 'parsing', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-      ],
-    },
-  ],
-  tasks: [
-    {
-      id: 'T1', action: 'implement', type: 'work', status: 'pending',
-      acceptance_criteria: {
-        scenarios: ['R1-S1', 'R1-S99'],  // R1-S99 does not exist
-        checks: [{ type: 'build', run: 'make build' }],
-      },
-    },
-  ],
-});
-
-try {
-  run(`spec check ${specPath}`);
-  assert(false, 'spec check should have failed on broken scenario ref');
-} catch (e) {
-  assert(e.stderr.includes("unknown scenario 'R1-S99'"), 'Error mentions the broken scenario ID');
-  assert(e.status !== 0, 'Exit code is non-zero');
-}
-
-teardown();
-
-// ============================================================
-// Test 10: spec check passes when all AC scenario refs are valid
-// ============================================================
-console.log('\nTest 10: spec check passes when all AC scenario refs are valid');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  requirements: [
-    {
-      id: 'R1', behavior: 'parsing', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'x', when: 'y', then: 'z', verified_by: 'agent', verify: { type: 'assertion', checks: ['output ok'] } },
-      ],
-    },
-  ],
-  tasks: [
-    {
-      id: 'T1', action: 'implement', type: 'work', status: 'pending',
-      acceptance_criteria: {
-        scenarios: ['R1-S1', 'R1-S2'],
-        checks: [{ type: 'build', run: 'make build' }],
-      },
-    },
-  ],
-});
-
-const checkOut = run(`spec check ${specPath}`);
-assert(checkOut.includes('check passed'), 'spec check passes with valid scenario refs');
-
-teardown();
-
-// ============================================================
-// Test 11: spec scenario <id> --get returns correct scenario JSON
-// ============================================================
-console.log('\nTest 11: spec scenario <id> --get returns correct scenario JSON');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-  requirements: [
-    {
-      id: 'R1', behavior: 'parsing', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'input provided', when: 'parse called', then: 'output returned', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'empty input', when: 'parse called', then: 'error thrown', verified_by: 'machine', verify: { type: 'command', run: 'test2', expect: { exit_code: 1 } } },
-      ],
-    },
-  ],
-});
-
-const out11 = run(`spec scenario R1-S1 --get ${specPath}`);
-const parsed11 = JSON.parse(out11);
-assert(parsed11.id === 'R1-S1', 'Returned scenario has correct id');
-assert(parsed11.given === 'input provided', 'Returned scenario has correct given field');
-assert(parsed11.when === 'parse called', 'Returned scenario has correct when field');
-assert(parsed11.then === 'output returned', 'Returned scenario has correct then field');
-
-teardown();
-
-// ============================================================
-// Test 12: spec scenario <id> --get with non-existent ID exits 1
-// ============================================================
-console.log('\nTest 12: spec scenario <id> --get with non-existent ID exits 1');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-  requirements: [
-    {
-      id: 'R1', behavior: 'parsing', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-      ],
-    },
-  ],
-});
-
-try {
-  run(`spec scenario NONEXISTENT --get ${specPath}`);
-  assert(false, 'Should have thrown for non-existent scenario ID');
-} catch (e) {
-  assert(e.status !== 0, 'Exit code is non-zero for missing scenario');
-  assert(e.stderr.includes("scenario 'NONEXISTENT' not found"), 'Error message contains missing scenario ID');
-}
-
-teardown();
-
-// ============================================================
-// Test 13: spec scenario <id> --get can find scenario in second requirement
-// ============================================================
-console.log('\nTest 13: spec scenario <id> --get finds scenario in second requirement');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-  requirements: [
-    {
-      id: 'R1', behavior: 'parsing', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+      id: 'R1', behavior: 'upload photo',
+      sub: [
+        { id: 'R1.1', behavior: 'valid photo saved' },
+        { id: 'R1.2', behavior: 'large photo resized' },
       ],
     },
     {
-      id: 'R2', behavior: 'scanning', priority: 2,
-      scenarios: [
-        { id: 'R2-S1', given: 'file exists', when: 'scan invoked', then: 'results emitted', verified_by: 'agent', verify: { type: 'assertion', checks: ['results not empty'] } },
-      ],
+      id: 'R2', behavior: 'view feed',
+      sub: [{ id: 'R2.1', behavior: 'posts shown' }],
     },
   ],
-});
+}));
 
-const out13 = run(`spec scenario R2-S1 --get ${specPath}`);
-const parsed13 = JSON.parse(out13);
-assert(parsed13.id === 'R2-S1', 'Found scenario from second requirement has correct id');
-assert(parsed13.given === 'file exists', 'Found scenario from second requirement has correct given field');
-
-teardown();
-
-// ============================================================
-// Test 14: spec requirement --status returns correct text output
-// ============================================================
-console.log('\nTest 14: spec requirement --status shows all scenarios with status');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-  requirements: [
-    {
-      id: 'R1', behavior: 'Login error handling', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', execution_env: 'host', status: 'pass', verified_by_task: 'T1', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'a', when: 'b', then: 'c', verified_by: 'agent', execution_env: 'sandbox', subject: 'web', verify: { type: 'assertion', checks: ['ok'] } },
-        { id: 'R1-S3', given: 'a', when: 'b', then: 'c', verified_by: 'human', verify: { type: 'instruction', ask: 'check' } },
-      ],
-    },
-  ],
-});
-
-const out14 = run(`spec requirement --status ${specPath}`);
-assert(out14.includes('R1'), 'output contains R1');
-assert(out14.includes('R1-S1'), 'output contains R1-S1');
-assert(out14.includes('pass'), 'output contains pass status');
-assert(out14.includes('pending'), 'output contains pending status');
-assert(out14.includes('Summary:'), 'output contains Summary line');
-assert(out14.includes('1 pass'), 'summary shows 1 pass');
-
-teardown();
-
-// ============================================================
-// Test 15: spec requirement --status --json returns valid JSON with summary
-// ============================================================
-console.log('\nTest 15: spec requirement --status --json returns valid JSON with summary');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-  requirements: [
-    {
-      id: 'R1', behavior: 'parsing', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', status: 'pass', verified_by_task: 'T1', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'a', when: 'b', then: 'c', verified_by: 'agent', verify: { type: 'assertion', checks: ['ok'] } },
-      ],
-    },
-  ],
-});
-
-const out15 = run(`spec requirement --status ${specPath} --json`);
-const parsed15 = JSON.parse(out15);
-assert(Array.isArray(parsed15.requirements), 'JSON has requirements array');
-assert(parsed15.summary !== undefined, 'JSON has summary object');
-assert(parsed15.summary.pass === 1, 'summary.pass = 1');
-assert(parsed15.summary.pending === 1, 'summary.pending = 1');
-assert(parsed15.requirements[0].id === 'R1', 'first requirement id = R1');
-assert(parsed15.requirements[0].scenarios.length === 2, 'R1 has 2 scenarios');
-assert(parsed15.requirements[0].scenarios[0].status === 'pass', 'R1-S1 status = pass');
-assert(parsed15.requirements[0].scenarios[0].verified_by_task === 'T1', 'R1-S1 verified_by_task = T1');
-
-teardown();
-
-// ============================================================
-// Test 16: spec requirement R1-S1 --status pass --task T1 updates scenario
-// ============================================================
-console.log('\nTest 16: spec requirement <id> --status pass --task T1 updates scenario');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-  requirements: [
-    {
-      id: 'R1', behavior: 'parsing', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'a', when: 'b', then: 'c', verified_by: 'agent', verify: { type: 'assertion', checks: ['ok'] } },
-      ],
-    },
-  ],
-});
-
-const out16 = run(`spec requirement R1-S1 --status pass --task T1 ${specPath}`);
-assert(out16.includes("R1-S1"), 'confirmation output mentions R1-S1');
-assert(out16.includes('pass'), 'confirmation output mentions pass');
-
-const result16 = readSpec();
-const sc16 = result16.requirements[0].scenarios[0];
-assert(sc16.status === 'pass', 'scenario status updated to pass');
-assert(sc16.verified_by_task === 'T1', 'verified_by_task set to T1');
-const sc16other = result16.requirements[0].scenarios[1];
-assert(!sc16other.status || sc16other.status !== 'pass', 'R1-S2 not affected');
-
-teardown();
-
-// ============================================================
-// Test 17: spec sandbox-tasks creates T_SANDBOX + T_SV tasks
-// ============================================================
-console.log('\nTest 17: spec sandbox-tasks creates T_SANDBOX + T_SV tasks');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [
-    { id: 'T1', action: 'implement feature', type: 'work', status: 'pending', acceptance_criteria: { scenarios: ['R1-S2'], checks: [] } },
-  ],
-  requirements: [
-    {
-      id: 'R1', behavior: 'feature', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'host output', verified_by: 'machine', execution_env: 'host', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'a', when: 'b', then: 'sandbox output', verified_by: 'agent', execution_env: 'sandbox', subject: 'web', verify: { type: 'assertion', checks: ['ok'] } },
-      ],
-    },
-  ],
-});
-
-const out17 = run(`spec sandbox-tasks ${specPath}`);
-assert(out17.includes('T_SANDBOX'), 'output mentions T_SANDBOX');
-assert(out17.includes('T_SV'), 'output mentions T_SV task');
-
-const result17 = readSpec();
-const taskIds17 = result17.tasks.map(t => t.id);
-assert(taskIds17.includes('T_SANDBOX'), 'T_SANDBOX task created in spec');
-assert(taskIds17.some(id => id.startsWith('T_SV')), 'T_SV task created in spec');
-
-const sandboxInfra = result17.tasks.find(t => t.id === 'T_SANDBOX');
-assert(sandboxInfra !== undefined, 'T_SANDBOX task found');
-assert(Array.isArray(sandboxInfra.depends_on), 'T_SANDBOX has depends_on');
-assert(sandboxInfra.depends_on.includes('T1'), 'T_SANDBOX depends on T1 (work task referencing sandbox scenario)');
-
-const svTask = result17.tasks.find(t => t.id.startsWith('T_SV'));
-assert(svTask !== undefined, 'T_SV task found');
-assert(svTask.depends_on.includes('T_SANDBOX'), 'T_SV depends on T_SANDBOX');
-assert(svTask.action.includes('R1-S2'), 'T_SV action mentions sandbox scenario id');
-
-teardown();
-
-// ============================================================
-// Test 18: spec sandbox-tasks skips if no sandbox scenarios
-// ============================================================
-console.log('\nTest 18: spec sandbox-tasks skips if no sandbox scenarios');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-  requirements: [
-    {
-      id: 'R1', behavior: 'parsing', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', execution_env: 'host', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-      ],
-    },
-  ],
-});
-
-const out18 = run(`spec sandbox-tasks ${specPath}`);
-assert(out18.includes('No sandbox scenarios'), 'output says no sandbox scenarios');
-
-const result18 = readSpec();
-assert(result18.tasks.length === 1, 'no new tasks added (still 1 task)');
-
-teardown();
-
-// ============================================================
-// Test 19: --patch adds new scenarios without losing existing ones (regression: scenario overwrite bug)
-// ============================================================
-console.log('\nTest 19: --patch adds new scenarios without losing existing ones');
-setup();
-
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
-  requirements: [
-    {
-      id: 'R1', behavior: 'upload photo', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'user logged in', when: 'upload valid photo', then: 'photo saved', category: 'HP', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'user logged in', when: 'upload 10MB photo', then: 'resize and save', category: 'EP', verified_by: 'machine', verify: { type: 'command', run: 'test2', expect: { exit_code: 0 } } },
-        { id: 'R1-S3', given: 'user offline', when: 'upload attempt', then: 'error shown', category: 'BC', verified_by: 'agent', verify: { type: 'assertion', checks: ['error visible'] } },
-      ],
-    },
-    {
-      id: 'R2', behavior: 'view feed', priority: 1,
-      scenarios: [
-        { id: 'R2-S1', given: 'posts exist', when: 'open feed', then: 'posts shown', category: 'HP', verified_by: 'machine', verify: { type: 'command', run: 'test3', expect: { exit_code: 0 } } },
-      ],
-    },
-  ],
-});
-
-// Add EP scenario to R1 — this was the exact bug: --patch replaced R1.scenarios with just [R1-S4]
 run(`spec merge ${specPath} --patch --json '${JSON.stringify({
   requirements: [{
     id: 'R1',
-    scenarios: [
-      { id: 'R1-S4', given: 'user banned', when: 'upload attempt', then: 'rejected', category: 'EP', verified_by: 'machine', verify: { type: 'command', run: 'test4', expect: { exit_code: 0 } } },
-    ],
+    sub: [{ id: 'R1.3', behavior: 'banned user rejected' }],
   }],
 })}'`);
 
-const result19 = readSpec();
-const r1_19 = result19.requirements.find(r => r.id === 'R1');
-const r2_19 = result19.requirements.find(r => r.id === 'R2');
+const result8 = readSpec();
+const r1_8 = result8.requirements.find(r => r.id === 'R1');
+const r2_8 = result8.requirements.find(r => r.id === 'R2');
 
-assert(result19.requirements.length === 2, 'Both requirements preserved');
-assert(r1_19.scenarios.length === 4, 'R1 now has 4 scenarios (3 original + 1 new)');
-assert(r1_19.scenarios.map(s => s.id).includes('R1-S1'), 'R1-S1 preserved');
-assert(r1_19.scenarios.map(s => s.id).includes('R1-S2'), 'R1-S2 preserved');
-assert(r1_19.scenarios.map(s => s.id).includes('R1-S3'), 'R1-S3 preserved');
-assert(r1_19.scenarios.map(s => s.id).includes('R1-S4'), 'R1-S4 added');
-assert(r1_19.behavior === 'upload photo', 'R1 behavior unchanged');
-assert(r2_19.scenarios.length === 1, 'R2 scenarios untouched');
+assert(result8.requirements.length === 2, 'Both requirements preserved');
+assert(r1_8.sub.length === 3, 'R1 now has 3 subs (2 original + 1 new)');
+assert(r1_8.sub.map(s => s.id).includes('R1.1'), 'R1.1 preserved');
+assert(r1_8.sub.map(s => s.id).includes('R1.2'), 'R1.2 preserved');
+assert(r1_8.sub.map(s => s.id).includes('R1.3'), 'R1.3 added');
+assert(r2_8.sub.length === 1, 'R2 subs untouched');
 
 teardown();
 
 // ============================================================
-// Test 20: --patch updates existing scenario fields without losing siblings
+// Test 9: spec sub <id> --get returns correct sub-requirement JSON
 // ============================================================
-console.log('\nTest 20: --patch updates existing scenario fields without losing siblings');
+console.log('\nTest 9: spec sub <id> --get returns correct sub-requirement JSON');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [{ id: 'T1', action: 'x', type: 'work', status: 'pending' }],
+writeSpec(makeSpec({
   requirements: [
     {
-      id: 'R1', behavior: 'login', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'valid creds', when: 'submit', then: 'logged in', category: 'HP', verified_by: 'human', verify: { type: 'instruction', ask: 'check login' } },
-        { id: 'R1-S2', given: 'invalid creds', when: 'submit', then: 'error shown', category: 'EP', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+      id: 'R1', behavior: 'parsing',
+      sub: [
+        { id: 'R1.1', behavior: 'input parsed correctly' },
+        { id: 'R1.2', behavior: 'empty input returns error' },
       ],
     },
   ],
-});
+}));
 
-// Convert R1-S1 from human to agent (H→S conversion) — change verified_by, verify, add env
+const out9 = run(`spec sub R1.1 --get ${specPath}`);
+const parsed9 = JSON.parse(out9);
+assert(parsed9.id === 'R1.1', 'Returned sub has correct id');
+assert(parsed9.behavior === 'input parsed correctly', 'Returned sub has correct behavior');
+
+teardown();
+
+// ============================================================
+// Test 10: --patch merge with GWT sub-requirements preserves given/when/then
+// ============================================================
+console.log('\nTest 10: --patch merge with GWT sub-requirements preserves given/when/then');
+setup();
+
+writeSpec(makeSpec({
+  requirements: [
+    {
+      id: 'R1', behavior: 'user authentication',
+      sub: [
+        { id: 'R1.1', behavior: 'login with valid credentials' },
+      ],
+    },
+  ],
+}));
+
 run(`spec merge ${specPath} --patch --json '${JSON.stringify({
   requirements: [{
     id: 'R1',
-    scenarios: [{
-      id: 'R1-S1',
-      verified_by: 'agent',
-      execution_env: 'sandbox',
-      subject: 'web',
-      verify: { type: 'assertion', checks: ['login redirect observed'] },
+    sub: [{
+      id: 'R1.2',
+      behavior: 'login with invalid credentials rejected',
+      given: 'a user on the login page',
+      when: 'the user submits invalid credentials',
+      then: 'an error message is displayed',
     }],
   }],
 })}'`);
 
-const result20 = readSpec();
-const r1_20 = result20.requirements[0];
-assert(r1_20.scenarios.length === 2, 'Both scenarios preserved');
-
-const s1_20 = r1_20.scenarios.find(s => s.id === 'R1-S1');
-assert(s1_20.verified_by === 'agent', 'R1-S1 verified_by updated to agent');
-assert(s1_20.execution_env === 'sandbox', 'R1-S1 execution_env added');
-assert(s1_20.subject === 'web', 'R1-S1 subject added');
-assert(s1_20.given === 'valid creds', 'R1-S1 given preserved (not in patch)');
-assert(s1_20.when === 'submit', 'R1-S1 when preserved');
-assert(s1_20.then === 'logged in', 'R1-S1 then preserved');
-assert(s1_20.category === 'HP', 'R1-S1 category preserved');
-assert(s1_20.verify.type === 'assertion', 'R1-S1 verify type updated');
-
-const s2_20 = r1_20.scenarios.find(s => s.id === 'R1-S2');
-assert(s2_20.verified_by === 'machine', 'R1-S2 completely untouched');
-assert(s2_20.category === 'EP', 'R1-S2 category untouched');
+const result10 = readSpec();
+const r1_10 = result10.requirements.find(r => r.id === 'R1');
+assert(r1_10.sub.length === 2, 'R1 has 2 subs after patch');
+assert(r1_10.sub[0].id === 'R1.1', 'R1.1 preserved');
+assert(r1_10.sub[0].given === undefined, 'R1.1 has no given (behavior-only)');
+const gwt = r1_10.sub.find(s => s.id === 'R1.2');
+assert(gwt !== undefined, 'R1.2 added via patch');
+assert(gwt.behavior === 'login with invalid credentials rejected', 'R1.2 behavior preserved');
+assert(gwt.given === 'a user on the login page', 'R1.2 given preserved after merge');
+assert(gwt.when === 'the user submits invalid credentials', 'R1.2 when preserved after merge');
+assert(gwt.then === 'an error message is displayed', 'R1.2 then preserved after merge');
 
 teardown();
 
 // ============================================================
-// Test 21: --patch deep merge on task acceptance_criteria.scenarios preserves existing refs
+// Test 11: --patch updates existing GWT sub-requirement fields
 // ============================================================
-console.log('\nTest 21: --patch on task AC scenarios appends new refs');
+console.log('\nTest 11: --patch updates existing GWT sub-requirement fields');
 setup();
 
-writeSpec({
-  meta: { name: 'test', goal: 'test', created_at: new Date().toISOString(), type: 'dev' },
-  tasks: [
-    {
-      id: 'T1', action: 'implement', type: 'work', status: 'pending',
-      acceptance_criteria: {
-        scenarios: ['R1-S1', 'R1-S2'],
-        checks: [{ type: 'build', run: 'make build' }],
-      },
-    },
-  ],
+writeSpec(makeSpec({
   requirements: [
     {
-      id: 'R1', behavior: 'test', priority: 1,
-      scenarios: [
-        { id: 'R1-S1', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S2', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
-        { id: 'R1-S3', given: 'a', when: 'b', then: 'c', verified_by: 'machine', verify: { type: 'command', run: 'test', expect: { exit_code: 0 } } },
+      id: 'R1', behavior: 'data export',
+      sub: [
+        {
+          id: 'R1.1', behavior: 'export CSV',
+          given: 'user has data',
+          when: 'user clicks export',
+          then: 'CSV file is downloaded',
+        },
       ],
     },
   ],
-});
+}));
 
-// Add R1-S3 to T1's AC scenarios — AC.scenarios is a string[] (no id), so patch appends
 run(`spec merge ${specPath} --patch --json '${JSON.stringify({
-  tasks: [{
-    id: 'T1',
-    acceptance_criteria: {
-      scenarios: ['R1-S3'],
-    },
+  requirements: [{
+    id: 'R1',
+    sub: [{ id: 'R1.1', behavior: 'export CSV with headers', then: 'CSV file with headers is downloaded' }],
   }],
 })}'`);
 
-const result21 = readSpec();
-const t1_21 = result21.tasks[0];
-assert(t1_21.acceptance_criteria.scenarios.length === 3, 'AC scenarios has 3 refs (2 original + 1 appended)');
-assert(t1_21.acceptance_criteria.scenarios.includes('R1-S1'), 'R1-S1 still in AC');
-assert(t1_21.acceptance_criteria.scenarios.includes('R1-S2'), 'R1-S2 still in AC');
-assert(t1_21.acceptance_criteria.scenarios.includes('R1-S3'), 'R1-S3 added to AC');
-assert(t1_21.acceptance_criteria.checks.length === 1, 'AC checks preserved');
+const result11 = readSpec();
+const r1_11 = result11.requirements.find(r => r.id === 'R1');
+assert(r1_11.sub.length === 1, 'Still 1 sub after update');
+assert(r1_11.sub[0].behavior === 'export CSV with headers', 'behavior updated');
+assert(r1_11.sub[0].then === 'CSV file with headers is downloaded', 'then field updated');
 
 teardown();
 

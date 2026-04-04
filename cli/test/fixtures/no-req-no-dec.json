@@ -2,7 +2,7 @@
   "meta": {
     "name": "no-req-no-dec-test",
     "goal": "Test that new checks pass trivially when no requirements and no decisions exist",
-    "schema_version": "v5"
+    "schema_version": "v6"
   },
   "requirements": [],
   "decisions": [],

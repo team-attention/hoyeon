@@ -55,10 +55,10 @@ Phase 3: EXECUTE ─────────────────────
 Phase 4: RESULT HANDLING (if HALT) ────────────────
   SIMPLE: retry (max 3) with stagnation detection → Phase 3
   COMPLEX: escalate immediately (execute already retried)
-  Circuit breaker → .dev/debug/{slug}.md → suggest /specify
+  Circuit breaker → .hoyeon/debug/{slug}.md → suggest /specify
 
 Phase 5: CLEANUP & REPORT ─────────────────────────
-  Save .dev/debug/{slug}.md → final summary
+  Save .hoyeon/debug/{slug}.md → final summary
 ```
 
 ## Adaptive Mode
@@ -195,7 +195,7 @@ AskUserQuestion:
 
 ## Phase 2: SPEC GENERATION
 
-Convert diagnosis results into spec.json v5 format. spec.json is the standard format consumed by `/execute`, and serves as escalation context for `/specify` on failure.
+Convert diagnosis results into spec.json format. spec.json is the standard format consumed by `/execute`, and serves as escalation context for `/specify` on failure.
 
 ### Step 2.1: Initialize
 
@@ -228,22 +228,20 @@ Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single 
 - **context**: `request` (original bug description), `research` (debugger analysis summary), `assumptions` (from debugger), `decisions` (root cause location + rationale)
 - **tasks**: Single task (T1) with:
   - `action`: debugger's proposed fix
-  - `file_scope`: affected files from debugger
   - `steps`: write regression test (RED) → apply minimal fix (GREEN) → verify
   - `must_not_do`: minimal diff (<5%), no refactoring, no unrelated changes, no git commands, fix root cause not symptom
-  - `acceptance_criteria.scenarios`: list of scenario IDs from `requirements[].scenarios[].id` (verification-planner's Auto items map to machine scenarios)
-  - `acceptance_criteria.checks`: automated static/build/lint checks if applicable
-  - If debugger found **similar issues**: add T2 (`depends_on: [T1]`) to fix those locations — T2 must include all required task fields: `type: "work"`, `status: "pending"`, `must_not_do`, and `acceptance_criteria`
+  - `fulfills`: requirement IDs from `requirements[].id` this task covers
+  - If debugger found **similar issues**: add T2 (`depends_on: [T1]`) to fix those locations — T2 must include all required task fields: `type: "work"`, `status: "pending"`, `must_not_do`, and `fulfills`
 - **constraints**: minimal diff rule, root cause targeting rule (both `verified_by: agent`)
 - **requirements**: Generate from debugger diagnosis. Each requirement describes a behavior that was broken:
   1. Run `hoyeon-cli spec guide requirements` to check field structure
-  2. Construct JSON with `requirements[]` (id, priority, behavior, scenarios)
-     - Convert debugger's reproduction steps → Given/When/Then for each scenario
+  2. Construct JSON with `requirements[]` (id, priority, behavior, sub[])
+     - Convert debugger's reproduction steps → behavior description for each sub-requirement
      - Use verification-planner's Auto items as `verify.run` commands
      - Run `hoyeon-cli spec guide verify` to check verify object structure (must be `{type, run}` object, not string)
-     - If debugger identified edge cases, add additional scenarios
+     - If debugger identified edge cases, add additional sub-requirements
   3. Merge via `hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)"`
-  - This enables Final Verify to check requirements scenarios, preventing regression
+  - This enables Final Verify to check requirement sub-requirements, preventing regression
 
 ### Step 2.3: Validate & Register
 
@@ -296,7 +294,7 @@ When execute HALTs. Handling differs by severity.
 ```
 # Extract failure reason from execute's HALT output
 # or read from context dir's audit.md, issues.json
-CONTEXT_DIR = ".dev/specs/fix-{slug}/context"
+CONTEXT_DIR = ".hoyeon/specs/fix-{slug}/context"
 failure_reason = {execute HALT output or last triage result from audit.md}
 ```
 
@@ -384,9 +382,9 @@ Max attempts exceeded or COMPLEX mode HALT. Present escalation options to user.
 **First, save attempt records:**
 
 ```
-Bash: mkdir -p .dev/debug
+Bash: mkdir -p .hoyeon/debug
 
-Write to .dev/debug/{slug}.md:
+Write to .hoyeon/debug/{slug}.md:
   # Bugfix Report: {description}
   Date: {timestamp}
   Status: ESCALATED
@@ -416,7 +414,7 @@ AskUserQuestion:
   - "Switch to /specify (full planning)"
     → "spec.json and debug report are available:
        Spec: {SPEC_PATH}
-       Report: .dev/debug/{slug}.md
+       Report: .hoyeon/debug/{slug}.md
        /specify can reference this context for deeper analysis."
   - "Try once more"
     → attempt += 1, go to Phase 3 (no circuit breaker reset)
@@ -432,9 +430,9 @@ After execute completes successfully.
 ### Step 5.1: Save Debug Report
 
 ```
-Bash: mkdir -p .dev/debug
+Bash: mkdir -p .hoyeon/debug
 
-Write to .dev/debug/{slug}.md:
+Write to .hoyeon/debug/{slug}.md:
   # Bugfix Report: {description}
   Date: {timestamp}
   Status: RESOLVED
@@ -466,7 +464,7 @@ print("""
 **Severity**: {SIMPLE/COMPLEX}
 **Attempts**: {count}
 **Spec**: {SPEC_PATH}
-**Report**: .dev/debug/{slug}.md
+**Report**: .hoyeon/debug/{slug}.md
 """)
 ```
 
@@ -477,7 +475,7 @@ print("""
 ```
 /bugfix (diagnose + spec.json + execute)
    ↓ circuit breaker (SIMPLE: 3 failures, COMPLEX: execute HALT)
-   ↓ spec.json + .dev/debug/{slug}.md saved
+   ↓ spec.json + .hoyeon/debug/{slug}.md saved
 /specify (spec.json enrichment, leveraging existing diagnosis context)
    ↓
 /execute (enriched spec execution)

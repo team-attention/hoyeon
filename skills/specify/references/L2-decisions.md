@@ -1,354 +1,326 @@
-## L2: Decisions
+## L2: Decisions + Constraints
 
-**Who**: Orchestrator (AskUserQuestion), iterative interview loop
-**Output**: `context.decisions[]` (with `implications[]`), `context.assumptions[]`
-**Also**: Provisional requirements in session state only (NOT spec.json) — D7/D13
-**Merge**: `spec merge decisions`, `spec merge assumptions`
-**Gate**: `spec coverage --layer decisions` + gate-keeper via SendMessage
-**User trigger**: "proceed to planning" required (interactive mode)
+**Output**: `context.decisions[]`, `constraints[]`, `context.known_gaps[]`
 
-### Core Principle: "뭘 쓸래?" → "뭘 하고 싶어?"
+### Step 0: Checkpoint Generation (runs once at L2 start)
 
-L2 questions ask about **desired behavior**, not technology choices. Concrete scenarios force concrete answers. Technology follows from behavior — the agent derives technical implications post-decision.
+Read L1 research + confirmed_goal, then generate project-specific checkpoints per dimension.
 
-### Execution
+**Checkpoint count** — scale by project complexity inferred from L1.
 
-> **Mode Gate**:
-> - **Quick**: SKIP interview → L2.5 derivation only (derive implications from L0 goal + L1 research)
-> - **Autopilot**: Auto-decide → merge assumptions → L2.5 derivation
-> - **Interactive**: Scenario interview → post-decision implications → L2.5 derivation → merge decisions
+Classify by **signal count** (not delivery format — a "playground" can still be Medium):
 
-#### Quick / Autopilot → Assumptions
+| Signal | Examples |
+|--------|----------|
+| External resource loading | GLTF, API calls, CDN assets, DB |
+| 3+ independent subsystems | physics + rendering + input + AI |
+| State machine / multi-stage flow | level progression, wizard, pipeline |
+| Async resources | model loading, network, workers |
+| Multi-actor interaction | admin + user, client + server |
+| Data schema design | custom DB schema, complex state shape |
 
-Apply Autopilot Decision Rules, then:
+- **Simple** (0-1 signals) → 2-3 per dimension
+- **Medium** (2-3 signals) → 4-5 per dimension
+- **Complex** (4+ signals) → 6-8 per dimension
 
-Follow the Mandatory Merge Protocol (SKILL.md):
-
-```bash
-# STEP 1: GUIDE (MANDATORY)
-hoyeon-cli spec guide context
-
-# STEP 2+3: CONSTRUCT + WRITE
-cat > /tmp/spec-merge.json << 'EOF'
-{
-  "context": {
-    "assumptions": [
-      {"id": "A1", "belief": "...", "if_wrong": "...", "impact": "low|medium|high"}
-    ]
-  }
-}
-EOF
-
-# STEP 4: MERGE (--append for array addition)
-hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
-
-# STEP 5: VERIFY
-hoyeon-cli spec validate .dev/specs/{name}/spec.json
+Output complexity classification with evidence before generating checkpoints:
+```
+Complexity: Medium (3 signals)
+- External resource loading: GLTF model via GLTFLoader
+- 3+ subsystems: physics, rendering, input, collision
+- State machine: stage progression with Game Over flow
 ```
 
-If merge fails → follow Merge Failure Recovery (SKILL.md).
+| # | Dimension | Weight | Example checkpoints |
+|---|-----------|--------|-------------------|
+| 1 | **Core Behavior** | 25% | Primary action, success outcome, main loop/flow |
+| 2 | **Scope Boundaries** | 20% | Out-of-scope items, actor coverage, platform |
+| 3 | **Error/Edge Cases** | 20% | Primary failure mode, recovery, edge case |
+| 4 | **Data Model** | 15% | State persistence, data flow, schema shape, API contract/payload format |
+| 5 | **Implementation** | 20% | Tech stack, delivery format, dependencies, service communication pattern, protocol choice |
 
-4. Proceed to L2.5 Derivation Step
+**Brownfield adjustment**: When L1 detects existing codebase, Implementation checkpoints auto-resolve from existing patterns. Redistribute weight: Core 30%, Scope 20%, Error 25%, Data 15%, Implementation 10%.
 
-#### Interactive → Scenario Interview + Decisions
+**L1 Auto-Resolve**: Before generating questions, check each checkpoint against L1 research. If L1 already answers it → mark resolved, record as decision with `assumed: true`. These count toward the score.
 
-##### Step 1: Scenario-Based Questions (iterative)
+Output the checkpoint table (visible to user):
 
-Ask about **behavior**, not technology. Frame every question as a concrete situation the user can picture.
+```
+## L2 Checkpoints (auto-generated from L1)
+
+### Core Behavior (25%) — 0/3 resolved
+- [ ] Primary user action defined
+- [ ] Success/failure outcome clear
+- [ ] Main loop or flow defined
+
+### Scope Boundaries (20%) — 1/3 resolved
+- [x] Platform decided (L1: web browser, Canvas) <- auto-resolved
+- [ ] Explicit out-of-scope items
+- [ ] Actor coverage
+
+... (all dimensions)
+```
+
+### Interview Loop (score-driven)
+
+Each round:
+1. **Score** — compute coverage per dimension (see 3-state scoring below)
+2. **Target** — pick lowest-scoring dimension(s) for next questions
+3. **Ask** — 2 scenario questions targeting those checkpoints
+4. **Resolve** — classify answer depth, merge decisions (see 3-state resolution)
+5. **Scan** — detect unknown/unknowns (structured 3-tier check)
+6. **Display** — show scoreboard + next action
 
 **Question rules:**
-- **2-3 questions per round** (fewer but richer than abstract questions), prioritized by importance
-- **Scenario format**: Present a concrete situation → ask what should happen
-- **Adaptive framing**: Match vocabulary to user's expertise (detected from L1 context and prior answers)
-- User can **skip** any question ("Agent decides") — but track skip rate as friction signal
-- **Internal completeness checklist** (invisible to user): scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior. Ensure coverage across rounds.
-- **Infra-aware questions** (when Intent = Migration | Infrastructure): The standard checklist MUST also cover the items below. These are often missed in behavior-focused interviews but are critical for DB/infra changes:
-  - Downtime tolerance: "서비스 중단 없이 배포 가능해야 하나요?" → constraint seed
-  - Backward compatibility: "기존 API/스키마와 호환성 유지해야 하나요?" → constraint seed
-  - Environment variables / secrets: "새로 필요한 환경변수나 시크릿이 있나요?" → external_dependencies seed
-  - Rollback strategy: "문제 생기면 어떻게 되돌리나요?" → constraint seed + task step
-  - Pre-deployment manual steps: "코드 배포 전에 수동으로 해야 할 게 있나요?" (e.g., DB extension activation, infra provisioning) → external_dependencies.pre_work seed
-  - Post-deployment actions: "배포 후 실행해야 할 스크립트나 확인 사항이 있나요?" → external_dependencies.post_work seed
-  These answers feed into L2.7 (Constraints) and L4.5 (External Dependencies) — capture them as provisional constraints/external_deps in session state.
+- Frame as concrete situations, not abstract choices
+- User can skip ("Agent decides") → checkpoint marked resolved, `assumed: true`
+- User says "I don't know" → checkpoint stays unresolved, add to `known_gaps`
+- After each round: merge decisions, show scoreboard
+
+#### 3-State Checkpoint Resolution (Step 4)
+
+Answers are classified into 3 states, not binary resolved/unresolved:
+
+| State | Score weight | When |
+|-------|-------------|------|
+| **resolved** | 1.0 | Answer contains a **discriminator**: number, threshold, named actor, explicit behavior, or condition/exception |
+| **provisional** | 0.5 | Answer lacks discriminators (short, vague, single option with no detail) |
+| **unresolved** | 0.0 | No answer yet, or "I don't know" |
+
+**After classifying as provisional**, check if the checkpoint is **high-impact** (Core Behavior or Error/Edge dimension):
+- YES → ask ONE follow-up probing the most likely edge case, then re-classify
+- NO → keep provisional, move on (re-evaluate at round end or Unresolved Sweep)
+
+```
+Example:
+Q: "게임 오버 후 어떻게 되나요?"
+A: "재시작 버튼" → no discriminator → provisional
+   → Core Behavior (high-impact) → follow-up:
+   "재시작하면 링/점수가 리셋되나요, 스테이지 처음부터인가요?"
+A2: "전부 리셋, 스테이지 1부터" → discriminator (explicit behavior) → resolved
+```
+
+**Composite score** uses weighted states: `(1.0 × resolved + 0.5 × provisional + 0.0 × unresolved) / total`
+
+**Question format — RIGHT (scenario):**
+```
+AskUserQuestion(
+  question: "A user's token expires while filling a form. They click Submit. What should happen?",
+  options: [
+    { label: "Silent refresh + retry", description: "Transparent re-auth" },
+    { label: "Redirect to login", description: "Interrupts but simpler" },
+    { label: "Agent decides" }
+  ]
+)
+```
 
 **Question format — WRONG (abstract):**
 ```
-AskUserQuestion(
-  question: "How should authentication be handled?",
-  options: [
-    { label: "JWT (Recommended)", description: "Stateless, scalable" },
-    { label: "Session-based", description: "Simpler, server-side state" },
-    { label: "Agent decides" }
-  ]
-)
+AskUserQuestion(question: "How should authentication work?", ...)
 ```
 
-**Question format — RIGHT (scenario-based):**
+### Unknown/Unknown Detection (runs after step 4 each round)
+
+Structured 3-tier check on every NEW decision merged this round. Not a vague "scan" — execute each tier mechanically.
+
+#### Tier 1: Actor Check (always run)
+
+1. List all actors implied by ALL decisions so far (user, admin, external API, scheduler, etc.)
+2. Any actor with 0 decisions covering their behavior? → add checkpoint to **Scope Boundaries**
+
 ```
-AskUserQuestion(
-  question: "A user's access token expires while they're filling out a long form. When they click Submit, what should happen?",
-  options: [
-    { label: "Silent refresh + retry (Recommended)", description: "Use refresh token to get new access token, resubmit transparently. Requires refresh token storage." },
-    { label: "Redirect to login, preserve form", description: "Show login page, restore form data after re-auth. Simpler but interrupts flow." },
-    { label: "Redirect to login, lose form", description: "Simplest. Acceptable if forms are short." },
-    { label: "Agent decides" }
-  ]
-)
-```
-
-> A single scenario question can extract 2-3 decisions (auth method + refresh strategy + UX behavior) that abstract questions would need separately.
-
-##### Step 2: Post-Decision Implication Derivation
-
-After user answers each round, the orchestrator derives implications from the decision + L1 research context.
-
-**Three implication types:**
-1. **Deterministic** — always true given the decision. E.g., "JWT → tokens have expiry." Auto-set `status: "confirmed"`.
-2. **Context-dependent** — true given decision + project context. E.g., "JWT + SPA → client-side token storage needed." Auto-set `status: "confirmed"`.
-3. **Intent-dependent** — depends on user preference, agent cannot determine. E.g., "Refresh token storage: httpOnly cookie or localStorage?" Set `status: "pending"`.
-
-**Rules:**
-- Deterministic and context-dependent implications are auto-confirmed (no extra questions)
-- Intent-dependent implications become **the next round's scenario questions** (auto-trigger)
-- When uncertain whether an implication is deterministic or intent-dependent, default to `pending` (ask, don't assume)
-
-After derivation, merge decisions WITH implications. Follow the Mandatory Merge Protocol (SKILL.md):
-
-```bash
-# STEP 1: GUIDE (MANDATORY)
-hoyeon-cli spec guide context
-
-# STEP 2+3: CONSTRUCT + WRITE — decisions[] with implications[]
-cat > /tmp/spec-merge.json << 'EOF'
-{
-  "context": {
-    "decisions": [
-      {
-        "id": "D1",
-        "decision": "Silent refresh + retry on token expiry",
-        "rationale": "Preserves form data, seamless UX. User explicitly chose this over redirect.",
-        "alternatives_rejected": [
-          { "option": "Redirect to login", "reason": "Interrupts user flow, may lose form data" }
-        ],
-        "implications": [
-          { "implication": "Refresh token storage mechanism required", "type": "deterministic", "status": "confirmed" },
-          { "implication": "Need silent token refresh before API calls", "type": "deterministic", "status": "confirmed" },
-          { "implication": "Store refresh token in httpOnly cookie", "type": "context-dependent", "status": "pending", "conditional_on": "D2" }
-        ]
-      }
-    ]
-  }
-}
-EOF
-
-# STEP 4: MERGE (--append for adding to existing decisions array)
-hoyeon-cli spec merge .dev/specs/{name}/spec.json --append --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
-
-# STEP 5: VERIFY
-hoyeon-cli spec validate .dev/specs/{name}/spec.json
+Decisions: D1 (player collision), D2 (goal ring), D3 (WASD controls)
+Actors: player ✓ (D1,D2,D3), game system ✓ (D1,D2), camera ✗ (0 decisions)
+→ Add checkpoint: "Camera behavior during gameplay (follow, fixed, user-controlled?)"
 ```
 
-If merge fails → follow Merge Failure Recovery (SKILL.md).
+#### Tier 2: Implication Check (always run)
 
-##### Step 3: Mini-Mirror Progress Check (iterative loop)
+For each NEW decision, ask: "This decision also requires deciding ___"
 
-After each round, show mini-mirror with **all decisions and implications visible**. Nothing is hidden.
+1. State the implication concretely (not "maybe something about X")
+2. Check if any existing decision already covers it
+3. If uncovered → add checkpoint to the relevant dimension
 
-```markdown
+```
+D4: "Use GLTF models via GLTFLoader"
+→ Implies: asset sourcing strategy (where to get models?)
+→ Implies: loading failure fallback (what if GLTF fails to load?)
+→ Existing decisions: none cover this → add 2 checkpoints
+```
+
+#### Tier 3: Pair Tension Check (conditional — high-risk decisions only)
+
+Only run for decisions involving these high-interaction domains:
+- Physics / collision / movement
+- Concurrency / sync / multiplayer
+- Permissions / roles / access control
+- Performance / security / reliability constraints
+
+For qualifying decisions: cross with each existing decision and ask:
+"If both are simultaneously true, what edge case arises?"
+
+```
+D1 (collision = ring scatter + invincibility) × D3 (full free movement at high speed)
+→ "At very high speed, collision detection may miss obstacles entirely (tunneling)"
+→ Add checkpoint to Error/Edge: "High-speed collision detection reliability"
+```
+
+Skip Tier 3 entirely if no decisions touch the high-interaction domains listed above.
+
+#### When detected
+
+Add new checkpoint → relevant dimension → score recalculated → may force more questions.
+
+Output detection results visibly:
+```
+## Round 2 — Unknown/Unknown Detection
+
+Tier 1 (Actor): camera (0 decisions) → +1 checkpoint to Scope
+Tier 2 (Implication): D4 implies asset sourcing → +1 checkpoint to Implementation
+Tier 3 (Pair): D1×D3 high-speed tunneling → +1 checkpoint to Error/Edge
+
+Error/Edge score: 1/4 → 0.25 (was 1/3 → 0.33)
+```
+
+### Scoreboard (shown after each round)
+
+```
 ## Interview Progress — Round N
 
-### Confirmed Decisions
-- D1: Silent refresh on token expiry ✓ (user)
-  → Refresh token storage required ✓ (deterministic)
-  → Silent refresh before API calls ✓ (deterministic)
-  → httpOnly cookie storage ⏳ (pending — needs confirmation)
-- D2: PostgreSQL for primary data ✓ (user)
-  → Single-server deployment sufficient ✓ (context: <1k users from L1)
+| Dimension | R | P | U | Total | Score | Status |
+|-----------|---|---|---|-------|-------|--------|
+| Core Behavior | 2 | 1 | 0 | 3 | 0.83 | |
+| Scope | 1 | 0 | 2 | 3 | 0.33 | <- next |
+| Error/Edge | 0 | 0 | 4 | 4 | 0.00 | <- next |
+| Data Model | 1 | 0 | 1 | 2 | 0.50 | |
+| Implementation | 2 | 0 | 0 | 2 | 1.00 | done |
 
-### Agent-Derived (awaiting confirmation)
-- D1+D2 → "Token rotation on refresh" ⏳
-  ← Rationale: security best practice for long-lived refresh tokens
-  [Confirm] [Different approach]
+R=resolved(1.0) P=provisional(0.5) U=unresolved(0.0)
+**Composite: 0.53** (threshold: 0.80, floor: 0.60/dim)
+Unknown/Unknowns: 1 pending
 
-### Unresolved (???)
-- Error handling strategy? (no scenario asked yet)
-- Concurrent editing behavior? (not discussed)
-
-### Completeness
-[████████░░] 4/6 categories covered (scope ✓, auth ✓, data ✓, perf ✓, errors ✗, UX ✗)
+### Decisions so far
+- D1: ... (resolved)
+- D2: ... (provisional — needs discriminator)
+...
 ```
 
-> **Key principle**: Every agent-derived implication is shown. Nothing is silently decided.
-> Provisional requirements are saved to session state via: `hoyeon-cli session set --sid $SESSION_ID --json '{"provisional_requirements": [...]}'`  (D13)
+### Termination
 
-Then ask:
+Proceed requires ALL conditions met (AND):
 
-```
-AskUserQuestion(
-  question: "How should we proceed?",
-  header: "Interview Progress",
-  options: [
-    { label: "Continue interviewing", description: "Cover the unresolved items above" },
-    { label: "Enough, proceed to planning", description: "Use agent judgment for remaining gaps" }
-  ]
-)
-```
+| Condition | Check |
+|-----------|-------|
+| composite >= 0.80 | Weighted average across dimensions |
+| **every dimension >= 0.60** | Per-dimension floor — no single dimension left half-empty |
+| unknowns == 0 | All unknown/unknowns resolved |
 
-**Loop logic:**
-- **Pending implications exist** → auto-generate scenario questions for them (next round)
-- **"Continue interviewing"** → generate scenario questions for `???` items, loop back to Step 1
-- **"Enough, proceed to planning"** → auto-confirm all `pending` implications, advance to L2.5
-- **Max 5 interview rounds** (circuit breaker). After round 5, auto-transition to L2.5.
-- **All `???` resolved + no `pending` implications** → auto-suggest "proceed to planning"
+| State | Action |
+|-------|--------|
+| Any condition unmet | Must continue. "Proceed" button NOT shown in options |
+| All conditions met | Inversion Probe → Unresolved Sweep → L2 Approval |
+| round >= 7 | Soft warning: "diminishing returns likely" |
+| round >= 10 | Circuit breaker. Strongly recommend proceed |
 
-> No separate step-back check here — the gate-keeper handles goal alignment review as part of the L2 gate.
+**Per-dimension floor effect**: With 2 checkpoints, 1/2 = 0.50 < 0.60 → blocked (must resolve both). With 3 checkpoints, 2/3 = 0.67 >= 0.60 → passes. This prevents high-composite scores from masking under-explored dimensions.
 
-#### L2.5: Implication Derivation Step (non-interactive)
+**User override**: If the user types "proceed" as free text (not via button) at any point, honor it regardless of score. The button is hidden below thresholds, but explicit user intent is always respected.
 
-After the interview completes, run a single agent pass that sees ALL decisions together and derives **cross-decision implications** invisible during the interview.
+### Inversion Probe (triggered when composite first reaches >= 0.80)
 
-**Why L2.5 exists**: During the interview, decisions arrive one at a time. Cross-decision implications ("JWT + microservices → token forwarding between services") only become visible when all decisions are present.
+Two questions:
 
-**Execution:**
-1. Read all `context.decisions[]` from spec.json
-2. Read L1 research context and provisional requirements from session state
-3. For each pair/group of decisions, derive cross-decision implications:
-   - Type 1+2 (deterministic, context-dependent): auto-add to relevant decision's `implications[]`
-   - Type 3 (intent-dependent): flag for user confirmation in mini-mirror
-4. Merge via `hoyeon-cli spec merge .dev/specs/{name}/spec.json --patch --json "$(cat /tmp/spec-merge.json)"`
-5. If any `intent-dependent` implications found → show mini-mirror one final time for user confirmation
-6. Otherwise → advance to L2 gate
+1. **Inversion**: "Given the decisions so far, what scenario could cause this to fail even if every individual requirement is met correctly?"
+2. **Implication**: "You decided [most impactful decision]. Does that also mean [likely consequence]?"
 
-> **Quick mode**: L2.5 runs on autopilot-derived decisions/assumptions. All implications auto-confirmed.
+If inversion reveals new gaps → add checkpoints → score may drop below 0.80 → continue interviewing.
+If no new gaps → proceed to Unresolved Checkpoint Sweep → L2 Approval.
 
-#### L2.7: Constraints Derivation (non-interactive)
+**Edge case**: If L1 auto-resolves push score >= 0.80 at Step 0 (before any user questions), Inversion Probe fires immediately as a safety gate before skipping the interview entirely. This is intentional — it validates that L1's auto-resolved decisions are sufficient.
 
-> **Mode Gate**: Quick — SKIP. No constraints derived.
+### Merge Decisions (incremental — runs in Interview Loop step 4)
 
-After L2.5 cross-decision implications, derive constraints from decisions, user statements, and L1 research context.
+After each round, merge that round's decisions immediately. Do NOT batch decisions to the end.
 
-**Constraints are non-functional guardrails** — things that must NOT be violated during implementation. Unlike requirements (what the system does), constraints define boundaries (what the system must not break).
-
-**Derivation sources:**
-1. **User statements** — explicit constraints from interview (e.g., "기존 로직에 영향가면 안되고" → backward compatibility constraint)
-2. **Decision implications** — each decision may have constraint implications (e.g., "fire-and-forget embedding" → "pipeline must not block on embedding failure")
-3. **L1 research** — infrastructure limits discovered during context scan (e.g., connection pool size, API rate limits, read-only filesystem)
-4. **Intent-based** — Migration/Infrastructure intents auto-derive:
-   - Migration: "migration must be idempotent", "migration must be reversible (down migration path)"
-   - Infrastructure: "no service downtime during deployment", "backward compatible with existing clients"
-5. **Infra interview seeds** — provisional constraints captured during L2 infra-aware interview questions
-
-**Merge constraints.** Follow the Mandatory Merge Protocol (SKILL.md):
+Run `hoyeon-cli spec guide context --schema v1` to check field types, then:
 
 ```bash
-# STEP 1: GUIDE (MANDATORY) — verify constraint field types
-hoyeon-cli spec guide constraints
-
-# STEP 2+3: CONSTRUCT + WRITE
-# ⚠️ verify must be {type, run} OBJECT, not a string
-cat > /tmp/spec-merge.json << 'EOF'
-{
-  "constraints": [
-    {
-      "id": "C1",
-      "type": "operational|security|compatibility|performance",
-      "rule": "Embedding generation must not block the summarization pipeline",
-      "verified_by": "machine|agent|human",
-      "verify": {"type": "assertion", "run": "npm test -- --grep pipeline"}
-    }
-  ]
-}
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --append << 'EOF'
+{decisions array matching guide output — include status field}
 EOF
-
-# STEP 4: MERGE
-hoyeon-cli spec merge .dev/specs/{name}/spec.json --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
-
-# STEP 5: VERIFY
-hoyeon-cli spec validate .dev/specs/{name}/spec.json
 ```
 
-If merge fails → follow Merge Failure Recovery (SKILL.md).
+Use `--append` to add to existing decisions array. First round uses no flag (initial write).
 
-> If no constraints are derivable (rare for standard mode), merge `"constraints": []` explicitly and note in the L5 summary. An empty constraints section is better than a missing one.
+### Constraints
 
-### L2 User Approval (mandatory before gate)
+Collect constraints naturally during the interview — things that must NOT be violated.
 
-Before running the gate, present ALL decisions to the user for explicit approval:
+Sources: user statements, L1 research findings, inversion probe answers.
 
-```
-AskUserQuestion(
-  question: "L2 decisions are ready. Please review and approve before proceeding:\n\n{FOR EACH d in decisions: D{d.id}: {d.decision}\n}{FOR EACH c in constraints: C{c.id}: [{c.type}] {c.rule}\n}",
-  header: "L2 Decision Approval",
-  options: [
-    { label: "Approve all", description: "Decisions look good — proceed to L3" },
-    { label: "Revise", description: "I want to change or add decisions" },
-    { label: "Challenge", description: "Think harder — what decisions are we missing?" },
-    { label: "Abort", description: "Stop specification process" }
-  ]
-)
-```
+Run `hoyeon-cli spec guide constraints --schema v1`, then merge at L2 end.
+If no constraints: merge `"constraints": []` explicitly.
 
-- **Approve all** → proceed to L2 Gate
-- **Revise** → user provides corrections, orchestrator merges changes, re-present for approval (loop until approved)
-- **Challenge** → orchestrator runs Decision Completeness Audit (see below), proposes additional decisions, re-present for approval
-- **Abort** → stop
+### Known Gaps
 
-#### Decision Completeness Audit (triggered by "Challenge")
+If things couldn't be decided (pending decisions that need investigation):
 
-When the user selects "Challenge", the orchestrator self-audits the current decision set across **two axes**:
-
-##### Axis 1: Breadth — "What other categories of decisions are missing entirely?"
-
-Decisions have orthogonal categories. A decision about data storage says nothing about error handling. The breadth axis finds categories with zero coverage.
-
-1. **Category gap scan** — compare decisions against the internal completeness checklist (scope boundaries, error/edge cases, data model, auth/permissions, performance constraints, UX behavior). Flag categories with **no decisions at all**.
-2. **Stakeholder/actor scan** — who interacts with the system? For each actor (end user, admin, external API, background job, etc.), is there at least one decision about their experience? Flag missing actors.
-3. **Lifecycle phase scan** — decisions often cluster around the "happy runtime" phase. Check: is there a decision for initial setup/onboarding? For error recovery? For data migration/cleanup? For scaling? Flag unaddressed lifecycle phases.
-
-##### Axis 2: Depth — "Which existing decisions need to go one level deeper?"
-
-Each decision has downstream implications that may themselves require decisions. The depth axis follows these chains.
-
-4. **Implication chain walk** — for each existing decision, ask: "What else does this force us to decide?" Look for downstream decisions that were implicitly assumed but never explicitly made.
-5. **Failure mode scan** — for each decision, ask: "What happens when this goes wrong?" If the failure behavior was never decided, surface it.
-6. **Configuration/variation scan** — for each decision, ask: "Does this behave differently in different contexts?" (e.g., mobile vs desktop, first-time vs returning user, empty state vs full state). Flag unaddressed variations.
-
-##### Cross-axis check
-
-7. **Cross-decision tension check** — look for pairs of decisions (including newly proposed ones) that could conflict or create ambiguity when combined. Surface any unresolved tensions.
-
-**Output format** — present findings grouped by axis:
-
-```markdown
-## Challenge Results — {N} potential gaps found
-
-### Breadth Gaps (missing decision categories)
-- Error handling: No decision on what happens when [X] fails
-- Performance: No decision on pagination/caching strategy
-- Actor gap: No decisions about admin/operator experience
-
-### Depth Gaps (existing decisions need deeper choices)
-- D1 implies [Y], but we never decided [Z]
-- D2: what's the fallback when this fails? (not addressed)
-- D3: behaves differently on mobile vs desktop? (not addressed)
-
-### Tensions
-- D1 + D3 may conflict when [scenario] — needs resolution
+```bash
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --append << 'EOF'
+{"context": {"known_gaps": ["Performance target TBD"]}}
+EOF
 ```
 
-Then auto-generate scenario questions for the top gaps — **prioritize breadth gaps first** (a missing category is a bigger blind spot than a missing sub-decision), then depth gaps. Max 3 questions per challenge round. After the user answers, merge new decisions and re-present for approval.
+### Unresolved Checkpoint Sweep (runs before L2 Approval)
 
-> **Circuit breaker**: Challenge can be selected at most **2 times** per L2 cycle. After 2 rounds, only Approve/Revise/Abort remain. This prevents infinite loops while allowing meaningful depth.
+After Inversion Probe, before presenting approval to user:
 
-> This approval is **mandatory** — even in autopilot mode, L2 decisions MUST be user-approved before gate-keeper runs. Decisions are the foundation for all downstream layers.
+1. Scan all checkpoints — collect any still **unresolved** or **provisional**
+2. Append each to `known_gaps[]`:
+   - Unresolved: `"L2 unresolved: {dimension} — {checkpoint description}"`
+   - Provisional: `"L2 provisional: {dimension} — {checkpoint description} (answer: {user's answer})"`
+3. Merge via `spec merge --stdin --append`
+
+```bash
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --append << 'EOF'
+{"context": {"known_gaps": [
+  "L2 unresolved: Data Model — Level/stage data format",
+  "L2 provisional: Core Behavior — Character movement model (answer: 'free movement' — no physics detail)"
+]}}
+EOF
+```
+
+This ensures no incomplete checkpoint is silently dropped. L3 can reference these gaps when deriving requirements.
+
+### L2 Approval
+
+Present all decisions + constraints to user. Then spawn **L2-reviewer** before user approval:
+
+```
+Task(subagent_type="general-purpose", prompt="""
+You are an L2 clarity reviewer. Given:
+- The checkpoint table with scores
+- All merged decisions
+- The complexity classification
+
+Check:
+1. Is complexity classification correct? Count signals from decisions.
+2. Any dimension below 0.70 that should have more checkpoints?
+3. Any decision that is too vague to derive requirements from?
+4. Any cross-decision tension not caught by Unknown/Unknown detection?
+
+Return: PASS or NEEDS_FIX with specific issues.
+""")
+```
+
+- **PASS** → present AskUserQuestion (Approve/Revise/Abort) to user
+- **NEEDS_FIX** → address issues (add checkpoints, re-interview, clarify decisions), then re-run reviewer (max 2 retries)
 
 ### L2 Gate
 
 ```bash
-hoyeon-cli spec coverage .dev/specs/{name}/spec.json --layer decisions
+hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer decisions
 ```
 
-If exit code non-zero → gate failure. Handle per Gate Protocol.
-
-**Quick**: No gate. Auto-advance after L2.5 completes.
-**Standard**: Run coverage check + send decisions (with implications and constraints) to gate-keeper via SendMessage. PASS → advance to L3.
+Pass → advance to L3.

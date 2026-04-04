@@ -33,12 +33,8 @@ test('spec guide requirements shows field documentation', () => {
     `stdout should show "behavior" field, got: ${stdout}`,
   );
   assert.ok(
-    stdout.includes('priority'),
-    `stdout should show "priority" field, got: ${stdout}`,
-  );
-  assert.ok(
-    stdout.includes('scenarios'),
-    `stdout should show "scenarios" field, got: ${stdout}`,
+    stdout.includes('sub'),
+    `stdout should show "sub" field, got: ${stdout}`,
   );
 });
 
@@ -72,8 +68,7 @@ test('spec meta shows spec metadata', () => {
       name: 'my-test-spec',
       goal: 'Verify meta command output',
       type: 'dev',
-      schema_version: 'v5',
-      created_at: '2026-01-01T00:00:00.000Z',
+      schema_version: 'v1',
     },
     tasks: [
       { id: 'T1', action: 'placeholder task', type: 'work', status: 'pending' },
@@ -88,7 +83,7 @@ test('spec meta shows spec metadata', () => {
     assert.equal(meta.name, 'my-test-spec', 'meta.name should match');
     assert.equal(meta.goal, 'Verify meta command output', 'meta.goal should match');
     assert.equal(meta.type, 'dev', 'meta.type should be dev');
-    assert.equal(meta.schema_version, 'v5', 'meta.schema_version should be v5');
+    assert.equal(meta.schema_version, 'v1', 'meta.schema_version should be v1');
   } finally {
     cleanup();
   }

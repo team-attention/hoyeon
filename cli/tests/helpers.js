@@ -19,7 +19,7 @@ const CLI_PATH = join(__dirname, '..', 'dist', 'cli.js');
 
 /**
  * Load a fixture file from tests/fixtures/<name>.
- * @param {string} name - fixture filename (e.g. 'valid-v5.json')
+ * @param {string} name - fixture filename (e.g. 'merge-base.json')
  * @returns {object} parsed JSON object
  */
 export function loadFixture(name) {

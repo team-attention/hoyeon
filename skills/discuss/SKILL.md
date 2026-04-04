@@ -118,6 +118,9 @@ Craft a tailored opening question based on the context signals:
 | "Should we do X?" question | "What happens if we don't do X at all?" |
 | Comparison (A vs B) | "What would make A clearly better than B for your case?" |
 | Feeling of doubt | "What specifically feels wrong about the current approach?" |
+| Concept learning ("이해하고 싶어", "그려지지 않아", "핵심이 뭐야?", "왜 필요해?") | "X에 대해 지금 어느 정도 알고 있어? 어떤 맥락에서 이해하고 싶어진 거야?" |
+
+**Concept learning principle**: When the context signal is concept learning, do NOT provide knowledge first. Start by understanding what the user already knows and where their first friction point is. Address one friction at a time — never explain the full structure at once.
 
 Ask the opening question in natural language. Do NOT use `AskUserQuestion` for probes.
 
@@ -143,6 +146,38 @@ AskUserQuestion(
   multiSelect: true
 )
 ```
+
+### 2.1b Concept Learning Directions (Conditional)
+
+> Only when the context signal from Stage 1.5 is **concept learning**.
+> Replace the default 2.1 options with friction-based directions:
+
+```
+AskUserQuestion(
+  question: "Where are you stuck?",
+  header: "Friction type",
+  options: [
+    { label: "Can't visualize it", description: "감이 안 와 — need analogies, examples, or diagrams" },
+    { label: "Don't see why it exists", description: "왜 필요한지 — explore what breaks without it" },
+    { label: "Feels scattered", description: "정리가 안 돼 — restructure the pieces deductively" },
+    { label: "Not sure it's correct", description: "이게 맞아? — cross-check against external sources" },
+    { label: "Want to own it", description: "내 말로 하고 싶어 — rephrase in your own words" }
+  ],
+  multiSelect: true
+)
+```
+
+**Friction → Operation mapping** (guides your Socratic probes):
+
+| Friction | Blocked question | Operation |
+|----------|-----------------|-----------|
+| Can't visualize | What is it? (form) | Analogy, example, diagram |
+| Don't see connections | What is it? (form) | Map relationships between elements |
+| Feels scattered | What is it? (form) | Deductive restructuring |
+| Don't see why it exists | Why does it exist? (purpose) | Counterfactual exploration ("without X, what breaks?") |
+| Not sure it's correct | Is it true? (validity) | External source comparison |
+| Feels contradictory | Is it true? (validity) | Resolve the contradiction point |
+| Want to own it | Do I own it? (ownership) | Support self-verbalization |
 
 ### 2.2 Socratic Dialogue
 
@@ -232,6 +267,26 @@ Present the summary directly in the conversation:
 | **Forming** | Problem is clear, direction is emerging, but key decisions are unresolved |
 | **Solid** | Problem, approach, and key tradeoffs are well-understood; ready for planning |
 
+### 3.1b Crystallization (Concept Learning Only)
+
+> Only when the context signal from Stage 1.5 was **concept learning**.
+
+After the insights summary, guide the user through crystallization:
+
+1. **Seed sentence**: Ask the user to compress their understanding into one sentence
+   - "Can you capture the core of X in a single sentence?"
+   - If the user struggles, offer a draft and let them refine it
+
+2. **Completion tests** (run all 4):
+   - **Expand**: "Can you unpack that seed sentence back into its full structure?"
+   - **Counterfactual**: "If X didn't exist, what would break?"
+   - **Variable manipulation**: "If you increase/decrease [key variable], what changes?"
+   - **Restate**: "Say it again in completely different words"
+
+3. **Result**:
+   - All 4 pass → Add the seed sentence to the insights summary under `### Seed`
+   - Any fail → Identify which friction remains, return to Stage 2 with that specific friction
+
 ### 3.2 Next Steps
 
 Use `AskUserQuestion` to determine what happens next:
@@ -241,7 +296,7 @@ AskUserQuestion(
   question: "What would you like to do with these insights?",
   header: "Next step",
   options: [
-    { label: "Save insights", description: "Save to .dev/discuss/[topic]/insights.md for future reference" },
+    { label: "Save insights", description: "Save to .hoyeon/discuss/[topic]/insights.md for future reference" },
     { label: "Hand off to /specify", description: "Start planning with these insights as context" },
     { label: "Keep talking", description: "Continue the discussion — return to probing" },
     { label: "Done", description: "End the discussion" }
@@ -254,17 +309,17 @@ AskUserQuestion(
 #### Save insights
 Write the insights to file:
 ```
-Write(".dev/discuss/[topic-slug]/insights.md", insights_content)
+Write(".hoyeon/discuss/[topic-slug]/insights.md", insights_content)
 ```
 
 Use the **insights.md template** (see below). After saving, re-present the Next Steps question (without "Save insights").
 
 #### Hand off to /specify
-1. Save insights to `.dev/discuss/[topic-slug]/insights.md` (if not already saved)
+1. Save insights to `.hoyeon/discuss/[topic-slug]/insights.md` (if not already saved)
 2. Generate the handoff command:
 ```
 "Ready to plan. Run:
-/specify --context .dev/discuss/[topic-slug]/insights.md \"[1-line topic summary]\""
+/specify --context .hoyeon/discuss/[topic-slug]/insights.md \"[1-line topic summary]\""
 ```
 3. Stop
 
@@ -295,6 +350,9 @@ Stop.
 
 ## Open Questions & Unknowns
 - [Unresolved question 1]
+
+## Seed (concept learning only)
+> [One-sentence seed that can reconstruct the full understanding]
 
 ## Maturity
 [Exploratory | Forming | Solid] — [1-line justification]
@@ -337,6 +395,10 @@ The following do NOT count as turns:
 
 # Vague exploration
 /discuss I feel like our API design is off but I can't pinpoint why
+
+# Concept learning (triggers Crig friction-based flow)
+/discuss I want to understand how event sourcing works
+/discuss 이벤트 소싱이 그려지지 않아
 ```
 
 ---
@@ -372,7 +434,7 @@ User: "/discuss Should we rewrite the payment module in Rust?"
     - Open Question: Cost comparison of rewrite vs refactor
     - Maturity: Forming
 13. Next steps → User selects "Hand off to /specify"
-14. Save insights + generate: /specify --context .dev/discuss/payment-rewrite/insights.md "Improve payment module reliability"
+14. Save insights + generate: /specify --context .hoyeon/discuss/payment-rewrite/insights.md "Improve payment module reliability"
 ```
 
 ---

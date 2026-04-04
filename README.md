@@ -35,7 +35,7 @@ Hoyeon's job is to find what you haven't said.
                "Which components need variants?"   ← scope clarified
                "Persist where? How?"               ← decision forced
                     │
-  Result:      3 requirements, 7 scenarios, 4 tasks — all with verify commands
+  Result:      3 requirements, 8 sub-requirements, 4 tasks — all linked
 ```
 
 This is not just process. It's built on three beliefs about how AI coding should work.
@@ -49,12 +49,12 @@ Most AI tools jump straight to tasks — "create file X, edit function Y." But t
 Hoyeon starts from **goals** and derives downward through a layer chain:
 
 ```
-Goal → Decisions → Requirements → Scenarios → Tasks
+Goal → Decisions → Requirements → Sub-requirements → Tasks
 ```
 
-Requirements are refined from multiple angles before a single line of code is written. Interviewers probe assumptions. Gap analyzers find what's missing. UX reviewers check user impact. Tradeoff analyzers weigh alternatives. Each perspective sharpens the requirements until they're precise enough to generate verifiable scenarios.
+Requirements are refined from multiple angles before a single line of code is written. Interviewers probe assumptions. Gap analyzers find what's missing. UX reviewers check user impact. Tradeoff analyzers weigh alternatives. Each perspective sharpens the requirements until they're precise enough to generate verifiable sub-requirements.
 
-The chain is directional: **requirements produce tasks, never the reverse.** If requirements change, scenarios and tasks are re-derived. This is why Hoyeon can recover from mid-execution blockers — the requirements are still valid, only the tasks need adjustment.
+The chain is directional: **requirements produce tasks, never the reverse.** If requirements change, sub-requirements and tasks are re-derived. This is why Hoyeon can recover from mid-execution blockers — the requirements are still valid, only the tasks need adjustment.
 
 ### 2. Determinism by design
 
@@ -68,7 +68,7 @@ Three mechanisms enforce this:
 
 - **CLI-enforced structure** — `hoyeon-cli` validates every merge to `spec.json`. Field names, types, required relationships — all checked programmatically before the LLM ever sees the data. The CLI doesn't suggest structure; it **rejects** invalid structure.
 
-- **Derivation chain as contract** — Goal → Decisions → Requirements → Scenarios → Tasks are linked. Each layer references the one above it. A scenario traces to a requirement. A task traces to scenarios. If the chain breaks, the gate blocks. This means: **if you have valid requirements, the system will produce a result** — deterministically routed, even if the LLM's individual outputs vary.
+- **Derivation chain as contract** — Goal → Decisions → Requirements → Sub-requirements → Tasks are linked. Each layer references the one above it. A sub-requirement traces to a requirement. A task traces to requirements via `fulfills`. If the chain breaks, the gate blocks. This means: **if you have valid requirements, the system will produce a result** — deterministically routed, even if the LLM's individual outputs vary.
 
 The LLM does the creative work. The system ensures it stays on rails.
 
@@ -76,19 +76,16 @@ The LLM does the creative work. The system ensures it stays on rails.
 
 > *If a human has to check it, the system failed to automate it.*
 
-Every scenario in `spec.json` carries a `verified_by` classification:
+Every sub-requirement in `spec.json` is a testable behavioral statement:
 
 ```json
 {
-  "given": "user clicks dark mode toggle",
-  "when": "toggle is activated",
-  "then": "theme switches to dark",
-  "verified_by": "machine",
-  "verify": { "type": "command", "run": "npm test -- --grep 'dark mode'" }
+  "id": "R1.1",
+  "behavior": "Clicking dark mode toggle switches theme to dark"
 }
 ```
 
-The system pushes everything toward `machine` verification. AC Quality Gate reviews each scenario and suggests converting `human` items to `machine` where possible. Multi-model code review (Codex + Gemini + Claude) runs independently and synthesizes a consensus verdict. Independent verifiers check Definition of Done in isolated contexts to eliminate self-verification bias.
+Sub-requirements serve as acceptance criteria. Workers verify their own implementation against sub-requirement behaviors (with optional `--tdd` for test-first workflow). Multi-model code review (Codex + Gemini + Claude) runs independently and synthesizes a consensus verdict.
 
 Human review is reserved for what machines genuinely can't judge — UX feel, business logic correctness, naming decisions. Everything else runs automatically, every time, without asking.
 
@@ -117,7 +114,7 @@ This is **cross-spec compounding**. A lesson learned in one project surfaces as 
 Three mechanisms make this work:
 
 - **`spec learning`** — Workers record structured learnings during execution, auto-mapped to the requirements and tasks that produced them
-- **`spec search`** — BM25 search across all specs: requirements, scenarios, constraints, and learnings. What you learned in project A informs what you ask in project B
+- **`spec search`** — BM25 search across all specs: requirements, sub-requirements, constraints, and learnings. What you learned in project A informs what you ask in project B
 - **Compounding loop** — Each /specify session starts by searching past learnings. More projects → richer search results → more complete requirements → fewer surprises during execution → better learnings → the cycle continues
 
 The result: **the tenth project you run through Hoyeon is meaningfully better than the first** — not because the LLM improved, but because the knowledge base did.
@@ -133,7 +130,7 @@ These aren't aspirations. They're enforced by the architecture — the CLI rejec
 ```
 You:  /specify "add dark mode toggle to settings page"
 
-  Hoyeon interviews you (scenario-based):
+  Hoyeon interviews you (decision-based):
   ├─ "User opens the app at night — should it auto-detect OS dark mode or require a manual toggle?"
   ├─ "User switches to dark mode mid-session — should charts/images also invert?"
   └─ derives implications: CSS variables needed, localStorage for persistence, prefers-color-scheme media query
@@ -144,15 +141,14 @@ You:  /specify "add dark mode toggle to settings page"
   └─ ux-reviewer flags potential regression
 
   → spec.json generated:
-    3 requirements, 7 scenarios, 4 tasks — all with verify commands
+    3 requirements, 8 sub-requirements, 4 tasks — all linked
 
 You:  /execute
 
   Hoyeon orchestrates:
-  ├─ Worker agents implement each task in parallel
-  ├─ Verifier agents independently check scenarios per task
+  ├─ Worker agents implement each task in parallel (--tdd: tests first)
   ├─ Code review: Codex + Gemini + Claude (multi-model consensus)
-  └─ Final Verify: goal + constraints + AC — holistic check
+  └─ Final Verify: goal + constraints + sub-requirements — holistic check
 
   → Done. Every file change traced to a requirement.
 ```
@@ -163,13 +159,13 @@ You:  /execute
 ```
 /specify → Interview exposed hidden assumptions
            → Agents researched codebase in parallel
-           → Layer-by-layer derivation: L0→L1→L2→L3→L4→L5
+           → Layer-by-layer derivation: L0→L1→L2→L3→L4
            → Each layer gated by CLI validation + agent review
 
 /execute → Orchestrator read spec.json, dispatched parallel workers
-           → Independent verifiers checked each scenario mechanically
+           → Workers self-verify against sub-requirement behaviors (--tdd: test-first)
            → Multi-model code review synthesized verdict
-           → Final Verify checked goal, constraints, AC holistically
+           → Final Verify checked goal, constraints, sub-requirements holistically
            → Atomic commits with full traceability
 ```
 
@@ -188,13 +184,13 @@ Six layers. Each derived from the one before it. Each gated before the next begi
    ↓  ◇ gate         is the goal clear?
   L1: Context        codebase analysis, UX review, docs research
    ↓  ◇ gate         is the context sufficient?
-  L2: Decisions      scenario interview → implications derivation (L2.5)
+  L2: Decisions      decision interview → implications derivation (L2.5)
    ↓  ◇ gate         are decisions justified?
-  L3: Requirements   R1: "Toggle switches theme" → scenarios + verify
-   ↓  ◇ gate         are requirements complete? (AC Quality Gate)
-  L4: Tasks          T1: "Add toggle component" → file_scope, AC
+  L3: Requirements   R1: "Toggle switches theme" → sub-requirements
+   ↓  ◇ gate         are requirements complete?
+  L4: Tasks          T1: "Add toggle component" → fulfills, depends_on
    ↓  ◇ gate         do tasks cover all requirements?
-  L5: Review         plan-reviewer + step-back gate-keeper
+  Plan Approval      summary + user confirmation → /execute
 ```
 
 Each gate has two checks:
@@ -212,20 +208,18 @@ Nothing advances without passing both. The chain is only as strong as its weakes
   "meta": { "goal": "...", "mode": { "depth": "standard" } },
   "context": { "research": {}, "decisions": [{ "implications": [] }], "assumptions": [] },
   "requirements": [{
+    "id": "R1",
     "behavior": "Toggle switches between light and dark theme",
-    "scenarios": [{
-      "given": "user is on settings page",
-      "when": "user clicks dark mode toggle",
-      "then": "theme switches to dark mode",
-      "verified_by": "machine",
-      "verify": { "type": "command", "run": "npm test -- --grep 'dark mode'" }
+    "sub": [{
+      "id": "R1.1",
+      "behavior": "Clicking toggle in settings page switches to dark mode"
     }]
   }],
-  "tasks": [{ "id": "T1", "action": "...", "acceptance_criteria": {} }]
+  "tasks": [{ "id": "T1", "action": "...", "fulfills": ["R1"] }]
 }
 ```
 
-The chain of evidence: **requirement → scenario → verify command → pass/fail**. From intent to proof.
+The chain of evidence: **requirement → sub-requirement → task (fulfills) → done**. From intent to proof.
 
 ---
 
@@ -256,7 +250,7 @@ The orchestrator reads `spec.json` and dispatches parallel worker agents:
   └─────────────────────────────────────────────────────┘
 ```
 
-Workers implement, then independent Verifier agents execute each scenario's `verify_plan` mechanically — no judgment, no bypass. Sandbox scenarios get inlined recipes (web, server, CLI, database).
+Workers implement, then independent Verifier agents check each task's sub-requirements — no judgment, no bypass.
 
 ### The Spec Is Alive
 
@@ -296,7 +290,7 @@ The key insight: **requirements don't change during execution — only tasks do.
     L1: Context        ← locked
     L2: Decisions      ← locked
     L3: Requirements   ← locked
-    L3: Scenarios      ← locked (verify commands run as-is)
+    L3: Sub-reqs       ← locked (behavioral acceptance criteria)
 
   Adaptable during execution:
     L4: Tasks          ← can grow (append-only, depth-1)
@@ -319,9 +313,9 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 | **Debugger** | Traces bugs to root causes, not symptoms | *"Is this the cause, or a symptom?"* |
 | **Code Reviewer** | Multi-model consensus (Codex + Gemini + Claude) | *"Would three experts ship this?"* |
 | **Worker** | Implements with spec precision | *"Does this match the requirement?"* |
-| **Verifier** | Independent scenario verification per task | *"Does the code match every scenario?"* |
+| **Verifier** | Independent sub-requirement verification per task | *"Does the code satisfy every sub-requirement?"* |
 | **Ralph Verifier** | Independent, context-isolated DoD check | *"Is it actually done?"* |
-| **Plan Reviewer** | Validates spec completeness and quality | *"Does the plan cover the goal?"* |
+| **Gate-Keeper** | Validates layer transitions for drift, gaps, and conflicts | *"Is this layer ready to advance?"* |
 | **External Researcher** | Investigates libraries and best practices | *"What evidence do we actually have?"* |
 
 <details>
@@ -336,14 +330,12 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 | Debugger | Root cause analysis with bug classification |
 | Code Reviewer | Multi-model review: Codex + Gemini + Claude → SHIP/NEEDS_FIXES |
 | Worker | Task implementation with spec-driven self-verification |
-| Verifier | Independent scenario verification using verify_plan (mechanical, no bypass) |
+| Verifier | Independent sub-requirement verification (mechanical, no bypass) |
 | Ralph Verifier | Independent DoD verification in isolated context |
-| Plan Reviewer | Spec quality review: goal alignment, coverage, granularity |
 | External Researcher | Library research and best practice investigation via web |
 | Docs Researcher | Internal documentation and architecture decision search |
 | Code Explorer | Fast read-only codebase search and pattern finding |
 | Git Master | Atomic commit enforcement with project style detection |
-| AC Quality Gate | Acceptance criteria validation (iterative, max 5 rounds) |
 | Phase2 Stepback | Scope drift and blind spot detection before planning |
 | Verification Planner | Test strategy design (Auto/Agent/Manual classification) |
 | Value Assessor | Positive impact and goal alignment evaluation |
@@ -357,23 +349,25 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 
 ## Commands
 
-24 skills — slash commands you invoke inside Claude Code.
+28 skills — slash commands you invoke inside Claude Code.
 
 | Category | What you're doing | Skills |
 |----------|------------------|--------|
 | **Understand** | Derive requirements, generate specs | `/specify` `/quick-plan` `/discuss` `/deep-interview` `/mirror` |
 | **Research** | Analyze codebase, find references, scan communities | `/deep-research` `/dev-scan` `/reference-seek` `/google-search` `/browser-work` |
 | **Decide** | Evaluate tradeoffs, multi-perspective review | `/council` `/tribunal` `/tech-decision` `/stepback` |
-| **Build** | Execute specs, fix bugs, iterate | `/execute` `/ralph` `/rulph` `/bugfix` `/ultrawork` |
-| **Reflect** | Verify changes, extract learnings | `/check` `/compound` `/scope` `/issue` |
+| **Build** | Execute specs, fix bugs, iterate | `/execute` `/ralph` `/rulph` `/bugfix` `/ultrawork` `/scaffold` |
+| **Test** | QA test applications, verify changes | `/qa` `/check` `/scope` |
+| **Reflect** | Extract learnings, analyze sessions | `/compound` `/issue` `/skill-session-analyzer` |
 
 <details>
 <summary><strong>Key commands explained</strong></summary>
 
 | Command | What It Does |
 |---------|--------------|
-| `/specify` | Layer-based interview → spec.json derivation (L0→L5) with gate-keepers |
-| `/execute` | Spec-driven parallel agent dispatch + multi-model review + Final Verify |
+| `/specify` | Layer-based interview → spec.json derivation (L0→L4) with gate-keepers |
+| `/execute` | Spec-driven orchestration with 3-axis config (dispatch: direct/agent/team, verify: light/standard/thorough) |
+| `/qa` | Systematic QA testing — browser (chromux/CDP) or computer (MCP computer-use) mode |
 | `/ultrawork` | Full pipeline: specify → execute in one command |
 | `/bugfix` | Root cause diagnosis → auto-generated spec → execute (adaptive routing) |
 | `/ralph` | Iterative loop with DoD — keeps going until independently verified |
@@ -389,17 +383,18 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 
 ## Under the Hood
 
-**24 skills · 21 agents · 18 hooks**
+**28 skills · 21 agents · 18 hooks**
 
 ```
 .claude/
 ├── skills/
-│   ├── specify/       Layer-based spec derivation (L0→L5)
+│   ├── specify/       Layer-based spec derivation (L0→L4)
 │   ├── execute/       Spec-driven parallel orchestration
 │   ├── bugfix/        Root cause → spec → execute pipeline
 │   ├── council/       Multi-perspective deliberation
 │   ├── tribunal/      3-agent adversarial review
-│   └── ...            19 more skills
+│   ├── qa/            Systematic QA testing (browser + computer)
+│   └── ...            22 more skills
 ├── agents/
 │   ├── interviewer    Socratic questioning
 │   ├── debugger       Root cause analysis
@@ -416,11 +411,10 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 
 **Key internals:**
 
-- **Derivation Chain** — L0→L5 with merge checkpoints + gate-keeper teams at each transition
-- **Quality Gates** — AC Quality Gate validates acceptance criteria iteratively (max 5 rounds)
+- **Derivation Chain** — L0→L4 with merge checkpoints + gate-keeper teams at each transition
 - **Multi-Model Review** — Codex + Gemini + Claude run independent reviews, synthesize SHIP/NEEDS_FIXES verdict
 - **Hook System** — 18 hooks automate pipeline transitions, guard writes, enforce gates, recover from failures
-- **Verify Pipeline** — CLI builds verify_plan per task; dedicated Verifier agents execute scenarios with inlined sandbox recipes
+- **Verify Pipeline** — Dedicated Verifier agents check sub-requirements per task independently
 - **Self-Improvement** — Scope blockers → derived fix tasks at runtime (append-only, depth-1, circuit breaker)
 - **Ralph Loop** — DoD-based iteration with Stop hook re-injection + independent context-isolated verification
 

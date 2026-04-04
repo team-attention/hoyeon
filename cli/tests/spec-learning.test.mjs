@@ -49,18 +49,15 @@ function assert(condition, msg) {
 }
 
 const BASE_SPEC = {
-  meta: { goal: 'test', mode: 'quick', schema_version: 'v5' },
-  context: {},
-  constraints: [],
-  requirements: [],
-  tasks: [
-    { id: 'T1', action: 'task one', type: 'dev', status: 'pending',
-      acceptance_criteria: { scenarios: ['REQ-1-S1', 'REQ-1-S2'], checks: [] } },
-    { id: 'T2', action: 'task two', type: 'dev', status: 'pending',
-      acceptance_criteria: { scenarios: ['REQ-2-S1'], checks: [] } },
+  meta: { name: 'test', goal: 'test', schema_version: 'v1' },
+  requirements: [
+    { id: 'REQ-1', behavior: 'requirement one', sub: [{ id: 'REQ-1.1', behavior: 'sub one' }] },
+    { id: 'REQ-2', behavior: 'requirement two', sub: [{ id: 'REQ-2.1', behavior: 'sub two' }] },
   ],
-  acceptance_criteria: { scenarios: [], checks: [] },
-  external_dependencies: { pre_work: [], post_work: [] },
+  tasks: [
+    { id: 'T1', action: 'task one', type: 'work', status: 'pending', fulfills: ['REQ-1'] },
+    { id: 'T2', action: 'task two', type: 'work', status: 'pending', fulfills: ['REQ-2'] },
+  ],
 };
 
 // ============================================================
@@ -81,7 +78,7 @@ assert(l1[0].problem === 'p1', 'problem preserved');
 assert(l1[0].cause === 'c1', 'cause preserved');
 assert(l1[0].rule === 'r1', 'rule preserved');
 assert(JSON.stringify(l1[0].tags) === '["a"]', 'tags preserved');
-assert(JSON.stringify(l1[0].requirements) === '["REQ-1"]', 'requirements auto-mapped from scenarios');
+assert(JSON.stringify(l1[0].requirements) === '["REQ-1"]', 'requirements auto-mapped from fulfills');
 assert(l1[0].created_at, 'created_at exists');
 
 teardown();
@@ -101,7 +98,7 @@ assert(l2.length === 1, 'one learning added via stdin');
 assert(l2[0].id === 'L1', 'id is L1');
 assert(l2[0].task === 'T2', 'task is T2');
 assert(l2[0].problem === 'stdin-p', 'problem from stdin');
-assert(JSON.stringify(l2[0].requirements) === '["REQ-2"]', 'requirements auto-mapped for T2');
+assert(JSON.stringify(l2[0].requirements) === '["REQ-2"]', 'requirements auto-mapped from fulfills for T2');
 
 teardown();
 

@@ -2,7 +2,7 @@
   "meta": {
     "name": "valid-source-ref-test",
     "goal": "Test source.ref referential integrity passes when all refs are valid",
-    "schema_version": "v5"
+    "schema_version": "v6"
   },
   "decisions": [
     {
@@ -20,14 +20,10 @@
         "type": "decision",
         "ref": "D1"
       },
-      "scenarios": [
+      "sub": [
         {
-          "id": "R1-S1",
-          "given": "A valid spec with source.ref pointing to D1",
-          "when": "spec check is run",
-          "then": "Exits 0",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R1.1",
+          "behavior": "Exits 0 when spec check is run on a spec with valid source.ref pointing to D1",
           "verify": {
             "type": "command",
             "run": "node dist/cli.js spec check test/fixtures/valid-source-ref.json",
@@ -43,8 +39,8 @@
       "action": "Implement source.ref check",
       "type": "work",
       "status": "pending",
+      "fulfills": ["R1"],
       "acceptance_criteria": {
-        "scenarios": ["R1-S1"],
         "checks": []
       }
     }

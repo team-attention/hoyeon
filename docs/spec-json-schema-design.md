@@ -85,7 +85,7 @@ state.json  (mutable — progress status)
 ### File Layout
 
 ```
-.dev/specs/{spec-name}/
+.hoyeon/specs/{spec-name}/
 ├── spec.json              ← Contract (Coordinator-owned)
 ├── state.json             ← Status (Worker/Observer, via cli)
 ├── feedback/
@@ -329,7 +329,7 @@ When extending, add to this table and update JSON Schema as well.
       { "path": "cli/src/handlers/stop-evaluate.js", "description": "Unified evaluation handler" },
       { "path": ".claude/settings.json", "description": "Stop hook registration update" }
     ],
-    "derived_from": ".dev/specs/stop-router/PLAN.md",
+    "derived_from": ".hoyeon/specs/stop-router/PLAN.md",
     "created_at": "2026-03-04T10:00:00Z",
     "updated_at": "2026-03-05T00:00:00Z"
   },

@@ -92,7 +92,7 @@ This will halt the current phase and await further instructions.
 
 ## State Tracking
 
-The hook tracks progress in `.dev/state.local.json`:
+The hook tracks progress in `.hoyeon/state.local.json`:
 ```json
 {
   "session-id": {

@@ -41,7 +41,6 @@ test('spec init creates a valid spec.json with correct defaults', () => {
     assert.equal(specData.meta.name, 'test-project', 'meta.name should match');
     assert.equal(specData.meta.goal, 'Test goal for init', 'meta.goal should match');
     assert.equal(specData.meta.type, 'dev', 'meta.type should be dev');
-    assert.ok(specData.meta.created_at, 'meta.created_at should be set');
     assert.ok(Array.isArray(specData.tasks), 'spec should have tasks array');
     assert.ok(specData.tasks.length > 0, 'spec should have at least one task');
   } finally {
@@ -74,36 +73,11 @@ test('spec init sets name and goal correctly in the output file', () => {
 });
 
 // ============================================================
-// Test 3: spec init with --depth quick sets depth in meta.mode
-// ============================================================
-test('spec init with --depth quick sets depth in meta.mode', () => {
-  const tmpDir = mkdtempSync(join(tmpdir(), 'hoyeon-cli-init-test-'));
-  const specPath = join(tmpDir, 'spec.json');
-
-  try {
-    const { status } = runCli([
-      'spec', 'init', 'quick-project',
-      '--goal', 'Quick spec test',
-      '--depth', 'quick',
-      specPath,
-    ]);
-
-    assert.equal(status, 0, 'exit code should be 0');
-
-    const specData = JSON.parse(readFileSync(specPath, 'utf8'));
-    assert.ok(specData.meta.mode, 'meta.mode should be set when --depth is given');
-    assert.equal(specData.meta.mode.depth, 'quick', 'meta.mode.depth should be "quick"');
-  } finally {
-    rmSync(tmpDir, { recursive: true, force: true });
-  }
-});
-
-// ============================================================
-// Test 4: spec task --get retrieves task by ID as JSON
+// Test 3: spec task --get retrieves task by ID as JSON
 // ============================================================
 test('spec task --get retrieves task by ID as JSON', () => {
   const { path, cleanup } = createTempSpec({
-    meta: { name: 'test', goal: 'test goal', created_at: new Date().toISOString() },
+    meta: { name: 'test', goal: 'test goal' },
     tasks: [
       {
         id: 'T1',
@@ -139,7 +113,7 @@ test('spec task --get retrieves task by ID as JSON', () => {
 // ============================================================
 test('spec task --status updates task status and persists to file', () => {
   const { path, cleanup } = createTempSpec({
-    meta: { name: 'test', goal: 'test goal', created_at: new Date().toISOString() },
+    meta: { name: 'test', goal: 'test goal' },
     tasks: [
       {
         id: 'T1',

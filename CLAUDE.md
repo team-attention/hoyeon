@@ -90,7 +90,7 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
   3. `CLAUDE.md` — add entry to the Active Hooks table above
 - A hook script that is not registered in settings will **not fire** — creating the file alone is not enough
 - Run `hoyeon-cli settings validate` to verify all hook paths are correct after changes
-- See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for additional hook behavior gotchas
+- Hook behavior gotchas are documented in commit history and session learnings
 
 ## Git Branching & Release
 
@@ -121,7 +121,71 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.2.1)
+## Recent Changes (v1.5.0)
+
+- feat(execute): add 3-axis configuration model (dispatch/work/verify) with AskUserQuestion
+  - dispatch: direct (orchestrator-direct) | agent (worker subagents with grouping) | team (TeamCreate persistent workers)
+  - work: worktree | branch | no-commit (unchanged from v1.4.0)
+  - verify: light (build check) | standard (spec-based FV) | thorough (CR + cross-task + sandbox)
+- feat(execute): add DIRECT dispatch mode — orchestrator executes tasks directly without subagents
+- feat(execute): add TEAM dispatch mode — TeamCreate with claim-based persistent workers, verify/fix stage loop
+- refactor(execute): AGENT mode (dev.md) — add task grouping by module, round-level commit (replaces per-task commit)
+- refactor(execute): split Final Verify into 3 verify recipes (verify-light.md, verify-standard.md, verify-thorough.md)
+- feat(execute): add sandbox auto-detection in Phase 0.4 (moved from specify)
+- feat(execute): add plan analysis in Phase 0.3 (parallelism, groupable tasks, solo candidates)
+- refactor(execute): replace meta.mode.depth with meta.mode.dispatch + meta.mode.verify
+- feat(cli): add dispatch, work, verify fields to meta.mode schema
+
+## Previous Changes (v1.4.0)
+
+- refactor(schema): rename dev-spec-v7 → dev-spec-v1, reset schema versioning
+- feat(schema): add optional `research` field to context (L1 investigation findings)
+- refactor(schema): slim — remove acceptance_criteria, file_scope, priority, verify from spec schema
+  - requirements: removed `priority`, `source` (only id, behavior, sub)
+  - sub-requirements: removed `verify`, `status`, `verified_by_task` (only id, behavior)
+- feat(schema): add optional given/when/then (GWT) fields to sub-requirements for structured acceptance criteria
+  - tasks: simplified to id, action, type, status, depends_on, fulfills (removed file_scope, acceptance_criteria, risk, origin, steps, inputs, outputs, etc.)
+- refactor(specify): delete legacy specify (v5), promote specify-v2 to specify
+  - Simplified layer chain: L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Tasks
+  - No reviewer agents, no verify fields. Evidence-based clarity scoring at L2
+  - User approves at L2, L3, L4
+- refactor(specify): replace TeamCreate gate-keeper with per-layer Task(reviewer)
+- refactor(execute,bugfix,quick-plan): v1 schema compatibility
+- fix(execute): remove remaining acceptance_criteria and file_scope references
+- feat(execute): TDD is opt-in for dev workers (`--tdd` to enable), outside-in strategy (E2E first)
+- refactor(execute): remove dead per-task verify pipeline (should_spawn_verifier, VERIFIER_DESCRIPTION, .V:Verify)
+  - DAG simplified: Worker → Commit (2-step, no per-task verify)
+  - Final Verify retained (holistic spec verification)
+  - verifier.md agent and verify-recipes/ kept for future use
+
+## Previous Changes (v1.3.1)
+
+- refactor(specify): replace 3-agent L3 workshop with Task-based derive+review pipeline
+  - Remove L3-user-advocate, L3-requirement-writer, L3-devil's-advocate from TeamCreate
+  - L3 now uses Task(L3-deriver) + Task(L3-reviewer) with max 3 reviewer cycles
+  - Remove --workshop/--no-workshop flags (single path for all decision counts)
+  - Rename L3-workshop.md → L3-requirements.md
+
+## Previous Changes (v1.3.0)
+
+- feat(schema): v6 schema — replace scenarios with sub-requirements (id, behavior, optional verify)
+- refactor(specify): single mode (no quick/standard), --workshop flag for optional 3-agent L3
+- refactor(execute): risk-based should_spawn_verifier (remove empty verify_plan gate)
+- refactor(agents): verifier single mode with verify/no-verify paths, simplified ac-quality-gate
+- refactor(cli): v6 validation routing, sub-requirement coverage/check/search support
+
+## Previous Changes (v1.2.2)
+
+- feat(execute): add Verify Auto-Pass gate (`should_spawn_verifier()`) to skip per-task `.V:Verify` for simple specs
+  - Empty verify_plan (specify --quick) → skip verify entirely
+  - Machine-only + low/medium risk → skip (Worker Tier 1 + Final Verify sufficient)
+  - Agent/sandbox scenarios or high risk → full independent Verifier (unchanged)
+  - Override: `meta.force_verify: true` forces full verify for all tasks
+  - Follows Code Review auto-pass pattern (dev.md Phase 0.5 conditional gate)
+- refactor(verifier): remove Dynamic Verification mode (empty verify_plan → skip instead of generate)
+- refactor(execute): simplify DAG dependency logic with null-coalescing (`v ?? worker` pattern)
+
+## Previous Changes (v1.2.1)
 
 - feat(cli): add `spec issue` subcommand — structured issues to context/issues.json (mirrors spec learning pattern)
 - refactor(cli): extract spec.json history[] to context/history.json via appendHistory() helper
@@ -154,8 +218,8 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 
 - refactor(specify): replace phase-based specify with layer-based derivation chain (L0-L5)
   - L0:Goal → L1:Context → L2:Decisions → L3:Requirements+Scenarios → L4:Tasks → L5:Review
-  - Each layer has merge checkpoint (CLI) + gate-keeper (step-back via agent team)
-  - Team-mode gate-keepers replace single-agent phase2-stepback
+  - Each layer has merge checkpoint (CLI) + per-layer Task(reviewer)
+  - Per-layer Task(reviewer) replaces single-agent phase2-stepback
   - Spec coverage CLI gates at each layer transition
 - refactor(execute): remove per-task :Verify, simplify to Worker→Commit pipeline
   - Worker self-check + Final Verify replaces triple verification
@@ -256,13 +320,11 @@ Available guide sections:
 | Command | Shows |
 |---------|-------|
 | `hoyeon-cli spec guide meta` | meta fields (goal, non_goals, mode) |
-| `hoyeon-cli spec guide context` | context fields (request, research, assumptions, decisions, confirmed_goal, known_gaps) |
-| `hoyeon-cli spec guide constraints` | constraints field structure (id, type, rule, verified_by, verify) |
-| `hoyeon-cli spec guide requirements` | requirements fields (id, behavior, priority, source, scenarios) |
-| `hoyeon-cli spec guide scenario` | scenario fields (id, given, when, then, verified_by, execution_env, verify) |
-| `hoyeon-cli spec guide verify` | verify object structure (`{type, run}` — NOT a string) |
-| `hoyeon-cli spec guide tasks` | task fields (id, action, type, status, risk, file_scope, etc.) |
-| `hoyeon-cli spec guide acceptance-criteria` | AC fields (scenarios refs + checks) |
+| `hoyeon-cli spec guide context` | context fields (confirmed_goal, research, decisions, known_gaps) |
+| `hoyeon-cli spec guide constraints` | constraints field structure (id, rule) |
+| `hoyeon-cli spec guide requirements` | requirements fields (id, behavior, sub[]) |
+| `hoyeon-cli spec guide sub` | Sub-requirement fields (id, behavior, given, when, then) |
+| `hoyeon-cli spec guide tasks` | task fields (id, action, type, status, depends_on, fulfills) |
 | `hoyeon-cli spec guide external` | external_dependencies (pre_work, post_work) |
 | `hoyeon-cli spec guide merge` | merge modes (replace vs `--append` vs `--patch`) |
 
@@ -270,7 +332,7 @@ Available guide sections:
 - **File-based JSON passing** — write JSON to `/tmp/spec-merge.json` via heredoc (`<< 'EOF'`), pass via `--json "$(cat /tmp/spec-merge.json)"`. Never pass JSON directly as CLI argument (zsh glob expansion corrupts `[`, `{`, `$`)
 - **One merge per section** — call `spec merge` once per top-level key. Never merge multiple sections in parallel
 - **`--append` for arrays** — use when adding to existing arrays (decisions, assumptions, known_gaps)
-- **`--patch` for nested updates** — use when updating specific items within arrays (e.g., adding scenarios to existing requirements)
+- **`--patch` for nested updates** — use when updating specific items within arrays (e.g., adding sub-requirements to existing requirements)
 
 ## CLI spec learning, issue & search Reference
 
@@ -292,7 +354,7 @@ EOF
 # Also supports: --json '{"type":"blocker","description":"..."}'
 ```
 
-**Search** — BM25 search across all specs (requirements, scenarios, constraints, learnings):
+**Search** — BM25 search across all specs (requirements, sub-requirements, constraints, learnings):
 ```bash
 hoyeon-cli spec search "sqlite fts5"                    # human-readable output
 hoyeon-cli spec search "auth redirect" --json --limit 5  # JSON for agents
@@ -300,7 +362,7 @@ hoyeon-cli spec search "empty cart" --specs-dir .dev/specs
 ```
 
 **History** — Spec mutation history is automatically written to `context/history.json` (not in spec.json).
-All `spec merge`, `spec task`, `spec derive`, `spec scenario`, and `spec sandbox-tasks` commands append entries automatically.
+All `spec merge`, `spec task`, `spec derive`, `spec sub`, and `spec sandbox-tasks` commands append entries automatically.
 
 ## Testing Strategy
 
@@ -308,4 +370,4 @@ See [VERIFICATION.md](VERIFICATION.md) for the 4-Tier Testing Model (Unit → In
 
 ## Lessons Learned
 
-See [docs/learnings/lessons-learned.md](docs/learnings/lessons-learned.md) for hook/tool behavior gotchas discovered during development.
+Hook/tool behavior gotchas are documented in commit history and session learnings.

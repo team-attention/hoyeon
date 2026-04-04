@@ -35,7 +35,7 @@ Hoyeon 的工作就是找到你没说出来的东西。
                "哪些组件需要主题变体?"           ← 明确范围
                "持久化存储在哪里? 怎么存?"        ← 迫使决策
                     │
-  结果:        3 条需求, 7 个场景, 4 个任务 — 全部附带验证命令
+  结果:        3 条需求, 8 个子需求, 4 个任务 — 全部关联
 ```
 
 这不仅仅是流程，而是基于三个关于 AI 编程应如何运作的信念。
@@ -49,12 +49,12 @@ Hoyeon 的工作就是找到你没说出来的东西。
 Hoyeon 从**目标**开始，沿着层级链向下推导:
 
 ```
-Goal → Decisions → Requirements → Scenarios → Tasks
+Goal → Decisions → Requirements → Sub-requirements → Tasks
 ```
 
-在写下任何一行代码之前，需求会从多个角度被反复打磨。访谈者追问假设，差距分析器发现遗漏，UX 审查员检查用户影响，权衡分析器评估替代方案。每个视角都在磨砺需求，直到它们足够精确，能够生成可验证的场景。
+在写下任何一行代码之前，需求会从多个角度被反复打磨。访谈者追问假设，差距分析器发现遗漏，UX 审查员检查用户影响，权衡分析器评估替代方案。每个视角都在磨砺需求，直到它们足够精确，能够生成可验证的子需求。
 
-推导链具有方向性: **需求产出任务，绝不反向。**如果需求变更，场景和任务会被重新推导。这就是 Hoyeon 能从执行中途的阻塞中恢复的原因——需求依然有效，只有任务需要调整。
+推导链具有方向性: **需求产出任务，绝不反向。**如果需求变更，子需求和任务会被重新推导。这就是 Hoyeon 能从执行中途的阻塞中恢复的原因——需求依然有效，只有任务需要调整。
 
 ### 2. 确定性设计
 
@@ -68,7 +68,7 @@ Goal → Decisions → Requirements → Scenarios → Tasks
 
 - **CLI 强制结构** — `hoyeon-cli` 验证每次对 `spec.json` 的合并。字段名、类型、必需关系——全部在 LLM 看到数据之前由程序检查。CLI 不是建议结构，而是**拒绝**无效结构。
 
-- **推导链即契约** — Goal → Decisions → Requirements → Scenarios → Tasks 相互关联。每一层引用其上一层。场景追溯到需求。任务追溯到场景。链条断裂，关卡阻拦。这意味着: **只要你拥有有效的需求，系统就会产出结果**——确定性地路由，即使 LLM 的单次输出有所不同。
+- **推导链即契约** — Goal → Decisions → Requirements → Sub-requirements → Tasks 相互关联。每一层引用其上一层。子需求追溯到需求。任务通过 `fulfills` 追溯到需求。链条断裂，关卡阻拦。这意味着: **只要你拥有有效的需求，系统就会产出结果**——确定性地路由，即使 LLM 的单次输出有所不同。
 
 LLM 负责创造性工作。系统确保它不偏离轨道。
 
@@ -76,19 +76,16 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
 
 > *如果需要人来检查，说明系统未能完成自动化。*
 
-`spec.json` 中的每个场景都带有 `verified_by` 分类:
+`spec.json` 中的每个子需求都是可测试的行为声明:
 
 ```json
 {
-  "given": "user clicks dark mode toggle",
-  "when": "toggle is activated",
-  "then": "theme switches to dark",
-  "verified_by": "machine",
-  "verify": { "type": "command", "run": "npm test -- --grep 'dark mode'" }
+  "id": "R1.1",
+  "behavior": "Clicking dark mode toggle switches theme to dark"
 }
 ```
 
-系统将一切推向 `machine` 验证。AC Quality Gate 审查每个场景，并在可能时建议将 `human` 项转换为 `machine`。多模型代码审查 (Codex + Gemini + Claude) 独立运行并综合出共识裁定。独立验证者在隔离上下文中检查完成定义，以消除自验证偏差。
+子需求充当验收标准。Worker 根据子需求行为自行验证实现（可选 `--tdd` 启用测试先行工作流）。多模型代码审查 (Codex + Gemini + Claude) 独立运行并综合出共识裁定。
 
 人工审查仅保留给机器确实无法判断的事项——UX 体验、业务逻辑正确性、命名决策。其他一切自动运行，每次都如此，无需询问。
 
@@ -117,7 +114,7 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
 三个机制使这一切成为可能：
 
 - **`spec learning`** — Worker 在执行过程中记录结构化学习，自动映射到产生它们的需求和任务
-- **`spec search`** — 跨所有规格的 BM25 搜索：需求、场景、约束和学习记录。在项目 A 中学到的东西会影响项目 B 中提出的问题
+- **`spec search`** — 跨所有规格的 BM25 搜索：需求、子需求、约束和学习记录。在项目 A 中学到的东西会影响项目 B 中提出的问题
 - **复合循环** — 每次 /specify 会话都从搜索过去的学习记录开始。更多项目 → 更丰富的搜索结果 → 更完整的需求 → 执行中更少的意外 → 更好的学习 → 循环继续
 
 结果：**通过 Hoyeon 运行的第十个项目明显优于第一个**——不是因为 LLM 改进了，而是因为知识库增长了。
@@ -133,7 +130,7 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
 ```
 你:  /specify "add dark mode toggle to settings page"
 
-  Hoyeon 对你进行访谈 (基于场景):
+  Hoyeon 对你进行访谈 (基于决策):
   ├─ "用户在夜间打开应用——应该自动检测系统深色模式，还是需要手动切换?"
   ├─ "用户在使用中切换到深色模式——图表/图片也应该反转吗?"
   └─ 推导出隐含要求: 需要 CSS 变量, localStorage 持久化, prefers-color-scheme 媒体查询
@@ -144,15 +141,14 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
   └─ ux-reviewer 标记潜在回归
 
   → 生成 spec.json:
-    3 条需求, 7 个场景, 4 个任务 — 全部附带验证命令
+    3 条需求, 8 个子需求, 4 个任务 — 全部关联
 
 你:  /execute
 
   Hoyeon 编排执行:
-  ├─ Worker 智能体并行实现每个任务
-  ├─ Verifier 智能体独立验证每个任务的场景
+  ├─ Worker 智能体并行实现每个任务 (--tdd: 测试先行)
   ├─ 代码审查: Codex + Gemini + Claude (多模型共识)
-  └─ Final Verify: 目标 + 约束 + AC — 整体检查
+  └─ Final Verify: 目标 + 约束 + 子需求 — 整体检查
 
   → 完成。每个文件变更都可追溯到需求。
 ```
@@ -163,13 +159,13 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
 ```
 /specify → 访谈暴露了隐藏的假设
            → 智能体并行研究代码库
-           → 逐层推导: L0→L1→L2→L3→L4→L5
+           → 逐层推导: L0→L1→L2→L3→L4
            → 每层由 CLI 验证 + 智能体审查把关
 
 /execute → 编排器读取 spec.json，分派并行 Worker
-           → 独立 Verifier 机械式检查每个场景
+           → Worker 根据子需求行为自行验证 (--tdd: 测试先行)
            → 多模型代码审查综合裁定
-           → Final Verify 整体检查目标、约束、AC
+           → Final Verify 整体检查目标、约束、子需求
            → 原子提交，完整可追溯
 ```
 
@@ -188,13 +184,13 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
    ↓  ◇ gate         目标是否清晰?
   L1: Context        代码库分析, UX 审查, 文档研究
    ↓  ◇ gate         上下文是否充分?
-  L2: Decisions      场景访谈 → 隐含要求推导 (L2.5)
+  L2: Decisions      决策访谈 → 隐含要求推导 (L2.5)
    ↓  ◇ gate         决策是否有依据?
-  L3: Requirements   R1: "Toggle switches theme" → 场景 + 验证
-   ↓  ◇ gate         需求是否完整? (AC Quality Gate)
-  L4: Tasks          T1: "Add toggle component" → file_scope, AC
+  L3: Requirements   R1: "Toggle switches theme" → 子需求
+   ↓  ◇ gate         需求是否完整?
+  L4: Tasks          T1: "Add toggle component" → fulfills, depends_on
    ↓  ◇ gate         任务是否覆盖所有需求?
-  L5: Review         plan-reviewer + step-back gate-keeper
+  Plan Approval      summary + user confirmation → /execute
 ```
 
 每个关卡包含两项检查:
@@ -212,20 +208,18 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
   "meta": { "goal": "...", "mode": { "depth": "standard" } },
   "context": { "research": {}, "decisions": [{ "implications": [] }], "assumptions": [] },
   "requirements": [{
+    "id": "R1",
     "behavior": "Toggle switches between light and dark theme",
-    "scenarios": [{
-      "given": "user is on settings page",
-      "when": "user clicks dark mode toggle",
-      "then": "theme switches to dark mode",
-      "verified_by": "machine",
-      "verify": { "type": "command", "run": "npm test -- --grep 'dark mode'" }
+    "sub": [{
+      "id": "R1.1",
+      "behavior": "Clicking toggle in settings page switches to dark mode"
     }]
   }],
-  "tasks": [{ "id": "T1", "action": "...", "acceptance_criteria": {} }]
+  "tasks": [{ "id": "T1", "action": "...", "fulfills": ["R1"] }]
 }
 ```
 
-证据链: **需求 → 场景 → 验证命令 → 通过/失败**。从意图到证明。
+证据链: **需求 → 子需求 → 任务 (fulfills) → 完成**。从意图到证明。
 
 ---
 
@@ -256,7 +250,7 @@ LLM 负责创造性工作。系统确保它不偏离轨道。
   └─────────────────────────────────────────────────────┘
 ```
 
-Worker 负责实现，独立 Verifier 智能体机械执行每个场景的 `verify_plan` — 无判断，不可绕过。沙箱场景内联提供执行菜谱（web、server、CLI、database）。
+Worker 负责实现，独立 Verifier 智能体检查每个任务的子需求 — 无判断，不可绕过。
 
 ### 规格是活的
 
@@ -296,7 +290,7 @@ Worker 负责实现，独立 Verifier 智能体机械执行每个场景的 `veri
     L1: Context        ← 锁定
     L2: Decisions      ← 锁定
     L3: Requirements   ← 锁定
-    L3: Scenarios      ← 锁定 (验证命令原样运行)
+    L3: Sub-reqs       ← 锁定 (行为级验收标准)
 
   执行过程中可适应:
     L4: Tasks          ← 可增长 (只追加, 深度 1)
@@ -321,7 +315,7 @@ Worker 负责实现，独立 Verifier 智能体机械执行每个场景的 `veri
 | **Worker** | 按规格精确实现 | *"这符合需求吗?"* |
 | **Verifier** | 每任务独立场景验证 | *"代码与所有场景一致吗?"* |
 | **Ralph Verifier** | 独立的、上下文隔离的完成定义检查 | *"真的完成了吗?"* |
-| **Plan Reviewer** | 验证规格的完整性和质量 | *"计划覆盖目标了吗?"* |
+| **Gate-Keeper** | 验证层级转换的漂移、差距和冲突 | *"该层级是否准备好推进?"* |
 | **External Researcher** | 调研库和最佳实践 | *"我们实际有什么证据?"* |
 
 <details>
@@ -336,14 +330,12 @@ Worker 负责实现，独立 Verifier 智能体机械执行每个场景的 `veri
 | Debugger | 带 bug 分类的根因分析 |
 | Code Reviewer | 多模型审查: Codex + Gemini + Claude → SHIP/NEEDS_FIXES |
 | Worker | 基于规格驱动的自验证任务实现 |
-| Verifier | 基于 verify_plan 的独立场景验证（机械执行，不可绕过） |
+| Verifier | 独立子需求验证（机械执行，不可绕过） |
 | Ralph Verifier | 隔离上下文中的独立完成定义验证 |
-| Plan Reviewer | 规格质量审查: 目标对齐、覆盖度、粒度 |
 | External Researcher | 通过网络调研库和最佳实践 |
 | Docs Researcher | 内部文档和架构决策搜索 |
 | Code Explorer | 快速只读代码库搜索和模式发现 |
 | Git Master | 带项目风格检测的原子提交执行 |
-| AC Quality Gate | 验收标准验证 (迭代式, 最多 5 轮) |
 | Phase2 Stepback | 规划前的范围偏移和盲点检测 |
 | Verification Planner | 测试策略设计 (Auto/Agent/Manual 分类) |
 | Value Assessor | 正面影响和目标对齐评估 |
@@ -372,7 +364,7 @@ Worker 负责实现，独立 Verifier 智能体机械执行每个场景的 `veri
 
 | 命令 | 功能 |
 |------|------|
-| `/specify` | 基于层级的访谈 → spec.json 推导 (L0→L5)，配合 gate-keeper |
+| `/specify` | 基于层级的访谈 → spec.json 推导 (L0→L4)，配合 gate-keeper |
 | `/execute` | 规格驱动的并行智能体调度 + 多模型审查 + Final Verify |
 | `/ultrawork` | 完整流水线: 一条命令完成 specify → execute |
 | `/bugfix` | 根因诊断 → 自动生成规格 → 执行 (自适应路由) |
@@ -394,7 +386,7 @@ Worker 负责实现，独立 Verifier 智能体机械执行每个场景的 `veri
 ```
 .claude/
 ├── skills/
-│   ├── specify/       基于层级的规格推导 (L0→L5)
+│   ├── specify/       基于层级的规格推导 (L0→L4)
 │   ├── execute/       规格驱动的并行编排
 │   ├── bugfix/        根因 → 规格 → 执行流水线
 │   ├── council/       多视角审议
@@ -416,11 +408,10 @@ Worker 负责实现，独立 Verifier 智能体机械执行每个场景的 `veri
 
 **核心内部机制:**
 
-- **推导链** — L0→L5，每层转换时有合并检查点 + gate-keeper 团队
-- **质量关卡** — AC Quality Gate 迭代验证验收标准 (最多 5 轮)
+- **推导链** — L0→L4，每层转换时有合并检查点 + gate-keeper 团队
 - **多模型审查** — Codex + Gemini + Claude 独立审查，综合产出 SHIP/NEEDS_FIXES 裁定
 - **钩子系统** — 18 个钩子自动化流水线流转、守护写入、执行关卡、故障恢复
-- **验证流水线** — CLI 为每个任务构建 verify_plan；专用 Verifier 智能体使用内联沙箱菜谱执行场景
+- **验证流水线** — 专用 Verifier 智能体独立检查每个任务的子需求
 - **自改进** — 范围阻塞 → 运行时衍生修复任务 (只追加, 深度 1, 熔断器)
 - **Ralph 循环** — 基于 DoD 的迭代，Stop 钩子重注入 + 独立上下文隔离验证
 

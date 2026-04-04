@@ -6,7 +6,7 @@ Rules are **tools for catching cascading impacts of changes**. They encode the k
 
 ## Structure
 
-Each rule file lives in the `.dev/rules/` directory. It declares graph edges via YAML frontmatter and contains checklist content in the markdown body.
+Each rule file lives in the `.hoyeon/rules/` directory. It declares graph edges via YAML frontmatter and contains checklist content in the markdown body.
 
 ```yaml
 ---

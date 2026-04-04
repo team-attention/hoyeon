@@ -77,7 +77,7 @@ Project root: {project_root}"
 ### Step 1B: /check Skill
 
 After the three parallel agents complete, invoke the `/check` skill via Skill tool.
-This runs the full rule-based verification against `.dev/rules/` to surface any
+This runs the full rule-based verification against `.hoyeon/rules/` to surface any
 cascading change requirements or rule violations in the affected area.
 
 ```
@@ -87,7 +87,7 @@ Skill("check")
 Wait for /check to complete. Its PASS/WARN results feed into Phase 2 as
 `check_results`.
 
-**Skip condition**: If `.dev/rules/` does not exist, skip Step 1B and proceed
+**Skip condition**: If `.hoyeon/rules/` does not exist, skip Step 1B and proceed
 directly to Phase 2 (note "no rules configured" in the report).
 
 ## Phase 2: Deep Analysis (Parallel)

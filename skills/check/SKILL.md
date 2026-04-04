@@ -4,7 +4,7 @@ context: fork
 description: |
   This skill should be used when the user wants to verify their changes
   before pushing, or update the project's rule checklists.
-  Phase 1: validate changed files against .dev/rules/ checklists and report
+  Phase 1: validate changed files against .hoyeon/rules/ checklists and report
   PASS/WARN. Phase 2 (conditional): propose rule additions when unmatched
   patterns are detected. Essential before git push.
   Trigger phrases: "check", "checklist", "verify changes", "what did I miss",
@@ -16,9 +16,9 @@ description: |
 
 # Check — Change Verification + Rule Evolution
 
-> Analyze git diff against `.dev/rules/` to catch missed cascading changes, then propose rule updates when new unmatched patterns are detected.
+> Analyze git diff against `.hoyeon/rules/` to catch missed cascading changes, then propose rule updates when new unmatched patterns are detected.
 
-**Prerequisite**: The project must have a `.dev/rules/` directory containing rule files with YAML frontmatter. If `.dev/rules/` does not exist, guide the user to create it: `mkdir -p .dev/rules`, then help them write their first rule file following `${baseDir}/references/rules-authoring.md`.
+**Prerequisite**: The project must have a `.hoyeon/rules/` directory containing rule files with YAML frontmatter. If `.hoyeon/rules/` does not exist, guide the user to create it: `mkdir -p .hoyeon/rules`, then help them write their first rule file following `${baseDir}/references/rules-authoring.md`.
 
 **Two-phase structure:**
 - **Phase 1** (always): Validate changes — produce PASS/WARN results
@@ -41,7 +41,7 @@ Deduplicate and store as `CHANGED_FILES`.
 
 ### 2. Build Rule Graph and Match
 
-Read YAML frontmatter from all `.dev/rules/*.md` files to construct the rule graph. Refer to `references/rules-authoring.md` ("Structure" section) for the frontmatter schema.
+Read YAML frontmatter from all `.hoyeon/rules/*.md` files to construct the rule graph. Refer to `references/rules-authoring.md` ("Structure" section) for the frontmatter schema.
 
 **Matching order:**
 1. Glob-match each file in `CHANGED_FILES` against every rule's `triggers` patterns

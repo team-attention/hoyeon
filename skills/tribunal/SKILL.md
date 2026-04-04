@@ -236,7 +236,7 @@ AskUserQuestion(
 
 ```bash
 # Review a plan
-/tribunal .dev/specs/auth-feature/PLAN.md
+/tribunal .hoyeon/specs/auth-feature/PLAN.md
 
 # Review a PR
 /tribunal --pr 421

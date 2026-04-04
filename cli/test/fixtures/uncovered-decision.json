@@ -2,7 +2,7 @@
   "meta": {
     "name": "uncovered-decision-test",
     "goal": "Test decision coverage check detects decisions not referenced by any requirement",
-    "schema_version": "v5"
+    "schema_version": "v6"
   },
   "decisions": [
     {
@@ -25,14 +25,10 @@
         "type": "decision",
         "ref": "D1"
       },
-      "scenarios": [
+      "sub": [
         {
-          "id": "R1-S1",
-          "given": "A spec with D2 uncovered",
-          "when": "spec check is run",
-          "then": "Exits 1 naming uncovered decision D2",
-          "verified_by": "machine",
-          "execution_env": "host",
+          "id": "R1.1",
+          "behavior": "Exits 1 naming uncovered decision D2 when spec check is run on a spec with D2 uncovered",
           "verify": {
             "type": "command",
             "run": "node dist/cli.js spec check test/fixtures/uncovered-decision.json",
@@ -48,8 +44,8 @@
       "action": "Implement decision coverage check",
       "type": "work",
       "status": "pending",
+      "fulfills": ["R1"],
       "acceptance_criteria": {
-        "scenarios": ["R1-S1"],
         "checks": []
       }
     }

@@ -60,7 +60,7 @@ SANDBOX TESTING:
    TODO {N}: {PASS|FAIL} — {teardown: SUCCESS|FAILED} — {brief summary}
    TODO {M}: {PASS|FAIL} — {teardown: SUCCESS|FAILED} — {brief summary}
    ...
-   Full report: .dev/specs/{name}/context/sandbox-report.md
+   Full report: .hoyeon/specs/{name}/context/sandbox-report.md
    {or "No sandbox testing performed"}
 
 FINAL VERIFICATION:
@@ -95,9 +95,9 @@ ISSUES:
 ## Section Guide
 
 - **AUTO**: Machine-verified items — acceptance criteria checked with deterministic commands (test -f, npm test, tsc --noEmit, etc.). Pull from each `:Verify` worker's `acceptance_criteria.results[]` where `verified_by == "machine"`.
-- **AGENT**: Agent-verified items — checked by agents asserting behavior (verified_by: "agent"). Pull from `:Verify` worker results where `verified_by == "agent"`.
-- **MANUAL**: Judgment-required items that agents cannot verify — UX quality, design review, naming conventions, documentation clarity, manual integration testing. Pull from scenarios where `verified_by == "human"`, plus any `side_effects.suspicious_passes` from verify workers.
-- **SKIPPED**: Sandbox scenarios that could not run — `execution_env == "sandbox"` but sandbox was unavailable or timed out. Pull from Final Verify sandbox_scenarios results where `status == "SKIPPED"`.
+- **AGENT**: Agent-verified items — checked by agents asserting behavior via GWT-based assertions (given/when/then) when available, falling back to behavior summary. Pull from `:Verify` worker results where `verified_by == "agent"`.
+- **MANUAL**: Judgment-required items that agents cannot verify — UX quality, design review, naming conventions, documentation clarity, manual integration testing. Pull from sub-requirements where `verified_by == "human"`, plus any `side_effects.suspicious_passes` from verify workers.
+- **SKIPPED**: Sandbox sub-requirements that could not run — `execution_env == "sandbox"` but sandbox was unavailable or timed out. Pull from Final Verify sub_requirement_status results where `status == "SKIPPED"`.
 - **ADAPTATIONS MADE**: Dynamic plan changes made during execution — tasks added/modified/removed from original plan due to discovered dependencies, blockers, or scope changes. Pull from context/audit.md (filter for "Adapt" entries). Shows the difference between what was planned vs what was actually executed.
 - **SANDBOX TESTING**: Summary of sandbox infrastructure tests run during verification. Pull from `context/sandbox-report.md`. Shows per-TODO sandbox results and teardown status. If no sandbox was used, print "No sandbox testing performed". If teardown FAILED for any TODO, flag it in POST-WORK.
 - **FINAL VERIFICATION**: Post-review integration verification results. Pull from `context/audit.md` (filter for "Final Verification" entries). Shows the status of project-level acceptance command re-runs after Code Review. In quick mode, print "SKIPPED (quick mode)". If FAILED and unresolved, flag failed commands in POST-WORK.
