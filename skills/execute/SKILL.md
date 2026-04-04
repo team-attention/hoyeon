@@ -21,11 +21,14 @@ allowed-tools:
   - AskUserQuestion
   - EnterWorktree
   - ExitWorktree
+  - TeamCreate
+  - TeamDelete
+  - SendMessage
 validate_prompt: |
   All tasks in spec.json must have status "done" at completion.
   hoyeon-cli spec check must pass (internal consistency).
   Context files (learnings.json, issues.json, audit.md) are created at init for meta.type == "dev".
-  Final Verify must run (all modes and types).
+  Verify recipe must run (all modes and types).
   Final report must be output.
   TDD mode is OFF by default (--tdd to enable). tdd flag must be passed to WORKER_DESCRIPTION.
 ---
@@ -38,7 +41,7 @@ All task data comes from spec.json via `hoyeon-cli spec plan`.
 
 ## Core Principles
 
-1. **DELEGATE** — In dev mode, all work goes to worker agents. In plain mode, the orchestrator may handle tasks directly or delegate. You only use Read, Grep, Glob, Bash (for orchestration), and Task tools for coordination.
+1. **DELEGATE** — In agent/team mode, all work goes to worker agents. In direct mode, the orchestrator executes tasks itself. In plain mode, the orchestrator may handle tasks directly or delegate. You only use Read, Grep, Glob, Bash (for orchestration), and Task tools for coordination.
 2. **PARALLELIZE** — Run all unblocked tasks within a round simultaneously via `run_in_background: true`.
 3. **spec.json is truth** — Task status and progress flow through `hoyeon-cli spec` commands.
 4. **Context flows forward** — Workers write learnings/issues to shared context files. Next workers read them.
@@ -96,23 +99,155 @@ FOR EACH round in plan.rounds:
 plan.rounds = plan.rounds.filter(r => r.tasks.length > 0)
 ```
 
-### 0.3 Init Context
+### 0.3 Plan Analysis
 
-```bash
-CONTEXT_DIR=".hoyeon/specs/{name}/context"
-mkdir -p "$CONTEXT_DIR"
+Analyze the execution plan to generate recommendations for the user.
+
+```
+parallel_tasks = count tasks in round 1 (or largest round)
+total_tasks = plan.total_tasks
+solo_candidates = tasks where action implies single-file change (config, rename, simple edit)
+groupable = find tasks touching same directory/module (no dependency between them)
+
+Print analysis:
+  ═══ ANALYSIS ═══
+  Tasks: {total_tasks} | Rounds: {plan.total_rounds} | Max parallelism: {parallel_tasks}
+  Solo candidates: {solo_candidates or "none"}
+  Groupable: {groupable or "none"}
 ```
 
-**First run** (no context files):
-- Create `audit.md` (empty — orchestrator will append)
-- Create `learnings.json` with `[]` (empty array — workers append via CLI)
-- Create `issues.json` with `[]` (empty array — workers append via CLI)
+### 0.4 Sandbox Detection
 
-**Resume** (context files exist):
-- Read all three files into memory
-- Determine progress from spec.json task statuses (not files)
+Auto-detect sandbox capabilities from the project and system (no user question).
 
-### 0.4 Confirm Pre-work (Human Actions)
+```
+tools = []
+
+# --- Project-level detection (config files) ---
+IF Glob("playwright.config.*") OR Glob("cypress.config.*"):
+  tools.push("browser")
+IF Glob("docker-compose.*") OR Glob("Dockerfile"):
+  tools.push("terminal")
+IF any desktop testing setup detected:
+  tools.push("desktop")
+
+# --- System-level detection (runtime tools) ---
+IF "browser" not in tools:
+  chromux_ok = Bash("chromux --check 2>/dev/null; echo $?").trim() == "0"
+  IF chromux_ok:
+    tools.push("browser")  # real Chrome via CDP (chromux)
+
+IF "desktop" not in tools:
+  # Check for computer-use MCP (Anthropic built-in — not in config files)
+  # Use ToolSearch to probe for mcp__computer tools at runtime
+  computer_use_tools = ToolSearch("computer")
+  IF any result name starts with "mcp__" AND contains "computer":
+    tools.push("desktop")  # Anthropic computer use MCP
+
+IF len(tools) > 0:
+  sandbox_capability = {tools: tools, scaffold_required: false}
+  Bash("hoyeon-cli spec merge {spec_path} --json '{\"context\": {\"sandbox_capability\": ...}}'")
+  print("Sandbox detected: {tools}")
+ELSE:
+  print("No sandbox capability detected")
+```
+
+### 0.5 Configuration
+
+#### Resolve from CLI flags first
+
+```
+dispatch = --dispatch flag ?? null
+work = --work flag ?? null
+verify = --verify flag ?? null
+```
+
+#### Recommendations
+
+```
+recommend_dispatch =
+  IF total_tasks <= 2 AND all solo_candidates: "Direct"
+  ELIF total_tasks >= 3 AND parallel_tasks >= 3: "Team"
+  ELSE: "Agent"
+
+recommend_verify =
+  IF total_tasks <= 2: "Light"
+  ELIF total_tasks >= 5 OR any task touches auth/crypto/security: "Thorough"
+  ELSE: "Standard"
+```
+
+#### AskUserQuestion (skip if CLI flag provided)
+
+```
+IF dispatch is null:
+  dispatch = AskUserQuestion(
+    question: "Dispatch mode?",
+    options: [
+      { label: "Direct", description: "Orchestrator executes directly, no subagents" },
+      { label: "Agent", description: "Worker subagents with task grouping" },
+      { label: "Team", description: "TeamCreate persistent workers, claim-based" }
+    ]
+    # Mark recommended with "(Recommended)" in label
+  )
+
+IF work is null:
+  work = AskUserQuestion(
+    question: "Work mode?",
+    options: [
+      { label: "Worktree", description: ".worktrees/{name} branch, commit per round" },
+      { label: "Branch + Commit", description: "Current branch, commit per round" },
+      { label: "No Commit", description: "Current branch, no commits" }
+    ]
+  )
+
+IF verify is null:
+  verify = AskUserQuestion(
+    question: "Verify depth?",
+    options: [
+      { label: "Light", description: "Build/lint + spec check only" },
+      { label: "Standard", description: "Full spec verification (goal, constraints, sub-reqs)" },
+      { label: "Thorough", description: "Standard + Code Review + cross-task + sandbox" }
+    ]
+    # If no sandbox detected: add "(no sandbox)" to Thorough description
+  )
+```
+
+#### Save to spec.json
+
+```bash
+Bash("hoyeon-cli spec merge {spec_path} --json '{\"meta\": {\"mode\": {\"dispatch\": \"{dispatch}\", \"work\": \"{work}\", \"verify\": \"{verify}\"}}}'")
+```
+
+#### Worktree setup (only if work == "worktree")
+
+```
+IF work == "Worktree":
+  spec_name = basename(dirname(spec_path))  # e.g. "auth-login"
+
+  # Convert paths to absolute BEFORE entering worktree (CWD will change)
+  spec_path = Bash("realpath {spec_path}").trim()
+  CONTEXT_DIR = Bash("realpath {CONTEXT_DIR}").trim()
+
+  # Use EnterWorktree to switch session CWD into the worktree
+  EnterWorktree(name=spec_name)
+  # Session CWD is now inside the worktree — all tools (Read, Edit, Write, Bash, Glob, Grep)
+  # automatically operate in the worktree. No per-worker "cd" needed.
+
+  print("Entered worktree: {spec_name}")
+  print("spec_path (absolute): {spec_path}")
+  print("CONTEXT_DIR (absolute): {CONTEXT_DIR}")
+ELSE:
+  # No worktree — work in current directory
+```
+
+**Variables forwarded to reference files:**
+- `dispatch`: `"direct"` | `"agent"` | `"team"`
+- `work`: `"worktree"` | `"branch-commit"` | `"no-commit"`
+- `verify`: `"light"` | `"standard"` | `"thorough"`
+- `spec_path`: absolute path (always — worktree mode converts it)
+- `CONTEXT_DIR`: absolute path (always — worktree mode converts it)
+
+### 0.6 Confirm Pre-work (Human Actions)
 
 Pre-work items are **human tasks** that must be completed before execution begins.
 
@@ -137,72 +272,61 @@ ELSE:
     IF answer == "Abort": HALT
 ```
 
-### 0.5 Work Mode Selection
+### 0.7 Init Context
 
-Ask the user how they want to work. This determines git branching and commit behavior.
-
-```
-work_mode = AskUserQuestion(
-  question: "How do you want to work?",
-  options: [
-    { label: "Worktree", description: "Create .worktrees/{spec-name} branch, commit per task" },
-    { label: "Branch + Commit", description: "Work on current branch, commit per task" },
-    { label: "No Commit", description: "Work on current branch, no commits (just apply changes)" }
-  ]
-)
+```bash
+CONTEXT_DIR=".hoyeon/specs/{name}/context"
+mkdir -p "$CONTEXT_DIR"
 ```
 
-**Worktree mode setup:**
+**First run** (no context files):
+- Create `audit.md` (empty — orchestrator will append)
+- Create `learnings.json` with `[]` (empty array — workers append via CLI)
+- Create `issues.json` with `[]` (empty array — workers append via CLI)
 
-```
-IF work_mode == "Worktree":
-  spec_name = basename(dirname(spec_path))  # e.g. "auth-login"
-
-  # Convert paths to absolute BEFORE entering worktree (CWD will change)
-  spec_path = Bash("realpath {spec_path}").trim()
-  CONTEXT_DIR = Bash("realpath {CONTEXT_DIR}").trim()
-
-  # Use EnterWorktree to switch session CWD into the worktree
-  EnterWorktree(name=spec_name)
-  # Session CWD is now inside the worktree — all tools (Read, Edit, Write, Bash, Glob, Grep)
-  # automatically operate in the worktree. No per-worker "cd" needed.
-
-  print("Entered worktree: {spec_name}")
-  print("spec_path (absolute): {spec_path}")
-  print("CONTEXT_DIR (absolute): {CONTEXT_DIR}")
-ELSE:
-  # No worktree — work in current directory
-```
-
-**Variables forwarded to dev.md / plain.md:**
-- `work_mode`: `"worktree"` | `"branch-commit"` | `"no-commit"`
-- `spec_path`: absolute path (always — worktree mode converts it)
-- `CONTEXT_DIR`: absolute path (always — worktree mode converts it)
+**Resume** (context files exist):
+- Read all three files into memory
+- Determine progress from spec.json task statuses (not files)
 
 ---
 
-## Meta.type Routing
+## Dispatch Routing
 
-After Phase 0, route based on `meta_type`:
+After Phase 0, route based on `dispatch` mode:
 
-### meta.type == "dev" (or absent)
+### dispatch == "direct"
+
+```
+Read: ${baseDir}/references/direct.md
+Follow ALL instructions for direct execution.
+```
+
+### dispatch == "agent"
 
 ```
 Read: ${baseDir}/references/dev.md
-Follow ALL instructions in dev.md for task execution, verification, and finalization.
+Follow ALL instructions in dev.md for agent-based execution with grouping.
 ```
 
 dev.md owns: Worker/Commit chain, adaptation, code-review,
-Final Verify, WORKER_DESCRIPTION, TDD mode, and mode selection (quick/standard).
+verify recipe, WORKER_DESCRIPTION, TDD mode, and mode selection (quick/standard).
 
-### meta.type == "plain"
+### dispatch == "team"
 
 ```
-Read: ${baseDir}/references/plain.md
-Follow ALL instructions in plain.md for task execution and finalization.
+Read: ${baseDir}/references/team.md
+Follow ALL instructions for team-based execution.
 ```
 
-plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
+### meta.type == "plain" (override)
+
+```
+IF meta.type == "plain":
+  Read: ${baseDir}/references/plain.md
+  (plain mode ignores dispatch selection — has its own flexible dispatch)
+```
+
+plain.md owns: flexible dispatch (direct/Skill/Agent), verify recipe, and report.
 
 ---
 
@@ -214,6 +338,8 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 4. **Background for parallel** — use `run_in_background: true` for round-parallel workers
 5. **Context files (dev only)** — in dev mode, workers write to learnings.json / issues.json via CLI; orchestrator appends to audit.md. Plain mode does not use context files.
 6. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli spec plan` to rebuild task state
+7. **Dispatch mode, work mode, and verify depth saved to spec.json meta.mode**
+8. **Verify depth routes to verify-light.md, verify-standard.md, or verify-thorough.md**
 
 ## Checklist Before Stopping
 
@@ -221,6 +347,11 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 - [ ] spec.json found and validated
 - [ ] `hoyeon-cli spec plan` executed and shown to user
 - [ ] `meta.type` read (defaulted to "dev" if absent)
+- [ ] Plan analysis ran (parallelism, solo candidates, groupable)
+- [ ] Sandbox detection ran (Phase 0.4)
+- [ ] Dispatch mode selected and routed correctly
+- [ ] Verify depth selected and routed correctly
+- [ ] `meta.mode` saved to spec.json (dispatch, work, verify)
 - [ ] Context directory initialized (audit.md, learnings.json, issues.json)
 - [ ] Pre-work status logged explicitly (none/pass/fail)
 - [ ] TaskCreate entries created for all tasks + finalize steps (structure per mode reference)
@@ -228,12 +359,22 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), Final Verify, and report.
 - [ ] `hoyeon-cli spec check` passes at end
 - [ ] Final report output
 
-### dev mode (additional)
-- [ ] Follow ${baseDir}/references/dev.md completely for all dev-specific steps
+### dispatch == "agent" (additional)
+- [ ] Follow ${baseDir}/references/dev.md completely for all agent-specific steps
 - [ ] Worker descriptions use WORKER_DESCRIPTION template with tdd flag
 - [ ] Worker BLOCKED status handled (scope fix derived task + re-worker)
-- [ ] Final Verify ran (holistic spec verification)
-- [ ] Final Verify Tier 2 ran in standard mode (cross-task compatibility, sub-requirement coverage, constraint audit)
+- [ ] Verify recipe ran (holistic spec verification)
+
+### dispatch == "team" (additional)
+- [ ] Follow ${baseDir}/references/team.md completely for all team-specific steps
+- [ ] TeamCreate used with persistent workers
+- [ ] Claim-based task assignment verified
+- [ ] Verify recipe ran (holistic spec verification)
+
+### dispatch == "direct" (additional)
+- [ ] Follow ${baseDir}/references/direct.md completely for all direct-specific steps
+- [ ] Orchestrator executed tasks without subagents
+- [ ] Verify recipe ran (holistic spec verification)
 
 ### plain mode (additional)
 - [ ] Follow ${baseDir}/references/plain.md completely for all plain-specific steps

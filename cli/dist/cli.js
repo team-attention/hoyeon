@@ -7673,6 +7673,32 @@ var dev_spec_v1_schema_default = {
           type: "string",
           enum: ["v1"],
           description: "Schema version."
+        },
+        mode: {
+          type: "object",
+          additionalProperties: false,
+          description: "Execution configuration axes. Replaces legacy 'depth' field.",
+          properties: {
+            dispatch: {
+              type: "string",
+              enum: ["direct", "agent", "team"],
+              description: "How tasks are dispatched: direct (orchestrator-direct), agent (worker subagents with grouping), team (TeamCreate persistent workers)"
+            },
+            work: {
+              type: "string",
+              enum: ["worktree", "branch", "no-commit"],
+              description: "Git work mode: worktree, branch, or no-commit"
+            },
+            verify: {
+              type: "string",
+              enum: ["light", "standard", "thorough"],
+              description: "Verification depth: light (build check), standard (spec-based FV), thorough (CR + cross-task + sandbox)"
+            },
+            depth: {
+              type: "string",
+              description: "Deprecated \u2014 use dispatch + verify instead. Kept for backward compatibility."
+            }
+          }
         }
       }
     },
@@ -8877,7 +8903,7 @@ function generateGuide(section, schemaVersion) {
   const schema = loadSchema(schemaVersion);
   const defs = schema.$defs || {};
   const SECTIONS = {
-    meta: { ref: "meta", desc: "Spec metadata (name, goal, type, schema_version)" },
+    meta: { ref: "meta", desc: "Spec metadata (name, goal, type, schema_version, mode with dispatch/work/verify)" },
     context: { ref: "context", desc: "Confirmed goal, research, decisions, known gaps" },
     tasks: { ref: "task", desc: "Task DAG (work items + verification)", isArray: true },
     requirements: { ref: "requirement", desc: "Requirements with sub-requirements (sub[] = behavioral acceptance criteria)", isArray: true },

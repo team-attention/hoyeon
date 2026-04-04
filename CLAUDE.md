@@ -121,7 +121,22 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.4.0)
+## Recent Changes (v1.5.0)
+
+- feat(execute): add 3-axis configuration model (dispatch/work/verify) with AskUserQuestion
+  - dispatch: direct (orchestrator-direct) | agent (worker subagents with grouping) | team (TeamCreate persistent workers)
+  - work: worktree | branch | no-commit (unchanged from v1.4.0)
+  - verify: light (build check) | standard (spec-based FV) | thorough (CR + cross-task + sandbox)
+- feat(execute): add DIRECT dispatch mode — orchestrator executes tasks directly without subagents
+- feat(execute): add TEAM dispatch mode — TeamCreate with claim-based persistent workers, verify/fix stage loop
+- refactor(execute): AGENT mode (dev.md) — add task grouping by module, round-level commit (replaces per-task commit)
+- refactor(execute): split Final Verify into 3 verify recipes (verify-light.md, verify-standard.md, verify-thorough.md)
+- feat(execute): add sandbox auto-detection in Phase 0.4 (moved from specify)
+- feat(execute): add plan analysis in Phase 0.3 (parallelism, groupable tasks, solo candidates)
+- refactor(execute): replace meta.mode.depth with meta.mode.dispatch + meta.mode.verify
+- feat(cli): add dispatch, work, verify fields to meta.mode schema
+
+## Previous Changes (v1.4.0)
 
 - refactor(schema): rename dev-spec-v7 → dev-spec-v1, reset schema versioning
 - feat(schema): add optional `research` field to context (L1 investigation findings)

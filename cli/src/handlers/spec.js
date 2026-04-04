@@ -1236,7 +1236,7 @@ function generateGuide(section, schemaVersion) {
   const defs = schema.$defs || {};
 
   const SECTIONS = {
-    meta: { ref: 'meta', desc: 'Spec metadata (name, goal, type, schema_version)' },
+    meta: { ref: 'meta', desc: 'Spec metadata (name, goal, type, schema_version, mode with dispatch/work/verify)' },
     context: { ref: 'context', desc: 'Confirmed goal, research, decisions, known gaps' },
     tasks: { ref: 'task', desc: 'Task DAG (work items + verification)', isArray: true },
     requirements: { ref: 'requirement', desc: 'Requirements with sub-requirements (sub[] = behavioral acceptance criteria)', isArray: true },

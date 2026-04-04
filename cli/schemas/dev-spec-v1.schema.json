@@ -46,6 +46,32 @@
           "type": "string",
           "enum": ["v1"],
           "description": "Schema version."
+        },
+        "mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Execution configuration axes. Replaces legacy 'depth' field.",
+          "properties": {
+            "dispatch": {
+              "type": "string",
+              "enum": ["direct", "agent", "team"],
+              "description": "How tasks are dispatched: direct (orchestrator-direct), agent (worker subagents with grouping), team (TeamCreate persistent workers)"
+            },
+            "work": {
+              "type": "string",
+              "enum": ["worktree", "branch", "no-commit"],
+              "description": "Git work mode: worktree, branch, or no-commit"
+            },
+            "verify": {
+              "type": "string",
+              "enum": ["light", "standard", "thorough"],
+              "description": "Verification depth: light (build check), standard (spec-based FV), thorough (CR + cross-task + sandbox)"
+            },
+            "depth": {
+              "type": "string",
+              "description": "Deprecated — use dispatch + verify instead. Kept for backward compatibility."
+            }
+          }
         }
       }
     },
