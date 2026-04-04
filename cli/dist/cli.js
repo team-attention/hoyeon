@@ -8121,7 +8121,7 @@ async function handleMerge(args) {
   if (useStdin) {
     const { readFileSync: readSync } = await import("fs");
     try {
-      jsonStr = readSync("/dev/stdin", "utf8");
+      jsonStr = readSync(0, "utf8");
     } catch (err) {
       process.stderr.write(`Error: failed to read stdin: ${err.message}
 `);
@@ -9333,7 +9333,7 @@ async function handleLearning(args) {
       parsed._.unshift(parsed.stdin);
     }
     try {
-      jsonStr = readFileSync("/dev/stdin", "utf8").trim();
+      jsonStr = readFileSync(0, "utf8").trim();
     } catch (err) {
       process.stderr.write(`Error: failed to read stdin: ${err.message}
 `);
@@ -9416,7 +9416,7 @@ async function handleIssue(args) {
       parsed._.unshift(parsed.stdin);
     }
     try {
-      jsonStr = readFileSync("/dev/stdin", "utf8").trim();
+      jsonStr = readFileSync(0, "utf8").trim();
     } catch (err) {
       process.stderr.write(`Error: failed to read stdin: ${err.message}
 `);

@@ -280,7 +280,7 @@ async function handleMerge(args) {
     // Read JSON from stdin (supports heredoc piping)
     const { readFileSync: readSync } = await import('fs');
     try {
-      jsonStr = readSync('/dev/stdin', 'utf8');
+      jsonStr = readSync(0, 'utf8');
     } catch (err) {
       process.stderr.write(`Error: failed to read stdin: ${err.message}\n`);
       process.exit(1);
@@ -1740,7 +1740,7 @@ async function handleLearning(args) {
       parsed._.unshift(parsed.stdin);
     }
     try {
-      jsonStr = readFileSync('/dev/stdin', 'utf8').trim();
+      jsonStr = readFileSync(0, 'utf8').trim();
     } catch (err) {
       process.stderr.write(`Error: failed to read stdin: ${err.message}\n`);
       process.exit(1);
@@ -1842,7 +1842,7 @@ async function handleIssue(args) {
       parsed._.unshift(parsed.stdin);
     }
     try {
-      jsonStr = readFileSync('/dev/stdin', 'utf8').trim();
+      jsonStr = readFileSync(0, 'utf8').trim();
     } catch (err) {
       process.stderr.write(`Error: failed to read stdin: ${err.message}\n`);
       process.exit(1);
