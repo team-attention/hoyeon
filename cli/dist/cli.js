@@ -7691,8 +7691,8 @@ var dev_spec_v1_schema_default = {
             },
             verify: {
               type: "string",
-              enum: ["light", "standard", "thorough"],
-              description: "Verification depth: light (build check), standard (spec-based FV), thorough (CR + cross-task + sandbox)"
+              enum: ["light", "standard", "thorough", "ralph"],
+              description: "Verification depth: light (build check), standard (spec-based FV), thorough (CR + cross-task + sandbox), ralph (standard + persistent DoD loop)"
             },
             depth: {
               type: "string",

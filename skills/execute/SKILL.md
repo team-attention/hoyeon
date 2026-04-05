@@ -206,7 +206,8 @@ IF verify is null:
     options: [
       { label: "Light", description: "Build/lint + spec check only" },
       { label: "Standard", description: "Full spec verification (goal, constraints, sub-reqs)" },
-      { label: "Thorough", description: "Standard + Code Review + cross-task + sandbox" }
+      { label: "Thorough", description: "Standard + Code Review + cross-task + sandbox" },
+      { label: "Ralph", description: "Standard verify + persistent DoD loop until all sub-reqs pass" }
     ]
     # If no sandbox detected: add "(no sandbox)" to Thorough description
   )
@@ -216,6 +217,15 @@ IF verify is null:
 
 ```bash
 Bash("hoyeon-cli spec merge {spec_path} --json '{\"meta\": {\"mode\": {\"dispatch\": \"{dispatch}\", \"work\": \"{work}\", \"verify\": \"{verify}\"}}}'")
+```
+
+#### Save dispatch to session state
+
+```bash
+# Stop hook uses this to skip blocking when team workers are running
+STATE_FILE="$HOME/.hoyeon/$CLAUDE_SESSION_ID/state.json"
+IF file_exists(STATE_FILE):
+  Bash("jq --arg d '{dispatch}' '.dispatch = $d' $STATE_FILE > $STATE_FILE.tmp && mv $STATE_FILE.tmp $STATE_FILE")
 ```
 
 #### Worktree setup (only if work == "worktree")
@@ -243,7 +253,7 @@ ELSE:
 **Variables forwarded to reference files:**
 - `dispatch`: `"direct"` | `"agent"` | `"team"`
 - `work`: `"worktree"` | `"branch-commit"` | `"no-commit"`
-- `verify`: `"light"` | `"standard"` | `"thorough"`
+- `verify`: `"light"` | `"standard"` | `"thorough"` | `"ralph"`
 - `spec_path`: absolute path (always — worktree mode converts it)
 - `CONTEXT_DIR`: absolute path (always — worktree mode converts it)
 
@@ -339,7 +349,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), verify recipe, and report
 5. **Context files (dev only)** — in dev mode, workers write to learnings.json / issues.json via CLI; orchestrator appends to audit.md. Plain mode does not use context files.
 6. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli spec plan` to rebuild task state
 7. **Dispatch mode, work mode, and verify depth saved to spec.json meta.mode**
-8. **Verify depth routes to verify-light.md, verify-standard.md, or verify-thorough.md**
+8. **Verify depth routes to verify-light.md, verify-standard.md, verify-thorough.md, or verify-ralph.md**
 
 ## Checklist Before Stopping
 
