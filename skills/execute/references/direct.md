@@ -96,6 +96,11 @@ FOR EACH task in plan (dependency order, excluding done):
   #    Follow task_spec.action.
   #    Respect constraints from spec.
   #    Do NOT spawn any Agent or Task.
+  #
+  #    Code quality — avoid AI expression patterns:
+  #    - No comments restating code, no catch-rethrow without context
+  #    - No assign-then-return, no defensive over-checking for type-guaranteed values
+  #    - No single-use helpers, no vacuous JSDoc, no leftover debug code
   IMPLEMENT(task_spec)
 
   # 5. Verify before marking done
@@ -169,6 +174,8 @@ ELIF verify_depth == "standard":
   Read: ${baseDir}/references/verify-standard.md
 ELIF verify_depth == "thorough":
   Read: ${baseDir}/references/verify-thorough.md
+ELIF verify_depth == "ralph":
+  Read: ${baseDir}/references/verify-ralph.md
 
 Follow the verify recipe instructions.
 ```

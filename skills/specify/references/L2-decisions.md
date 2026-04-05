@@ -243,6 +243,8 @@ If no new gaps → proceed to Unresolved Checkpoint Sweep → L2 Approval.
 
 After each round, merge that round's decisions immediately. Do NOT batch decisions to the end.
 
+**Rationale must include rejected alternatives**: When writing the `rationale` field, mention alternatives that were considered and why they were rejected (e.g., `"REST over GraphQL (team unfamiliar) and gRPC (browser incompatible)"`). This prevents workers from re-evaluating already-rejected approaches during execution.
+
 Run `hoyeon-cli spec guide context --schema v1` to check field types, then:
 
 ```bash
@@ -309,6 +311,7 @@ Check:
 2. Any dimension below 0.70 that should have more checkpoints?
 3. Any decision that is too vague to derive requirements from?
 4. Any cross-decision tension not caught by Unknown/Unknown detection?
+5. Steelman test: For the most impactful decision, construct the strongest possible argument AGAINST the chosen option (not a strawman — the real reason a smart person would disagree). If this counterargument is not addressed in the decision's rationale, flag it as NEEDS_FIX.
 
 Return: PASS or NEEDS_FIX with specific issues.
 """)

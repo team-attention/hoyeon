@@ -121,7 +121,7 @@ IF ALL agents report PASS:
 
 ## Step 3: Code Review (Tier 3)
 
-> Multi-model cross-review of the complete diff.
+> Cross-cutting review of the complete diff.
 > Maps to the existing Code Review step in dev.md.
 
 ### Dispatch

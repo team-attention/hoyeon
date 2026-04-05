@@ -147,7 +147,7 @@ You:  /execute
 
   Hoyeon orchestrates:
   ├─ Worker agents implement each task in parallel (--tdd: tests first)
-  ├─ Code review: Codex + Gemini + Claude (multi-model consensus)
+  ├─ Code review: cross-cutting integration review
   └─ Final Verify: goal + constraints + sub-requirements — holistic check
 
   → Done. Every file change traced to a requirement.
@@ -164,7 +164,7 @@ You:  /execute
 
 /execute → Orchestrator read spec.json, dispatched parallel workers
            → Workers self-verify against sub-requirement behaviors (--tdd: test-first)
-           → Multi-model code review synthesized verdict
+           → Code review caught cross-cutting issues
 ```
 
 意図から証明まで、チェーンが走り抜けました。すべての導出が検証済みです。
@@ -394,7 +394,7 @@ You:  /execute
 │   ├── interviewer    Socratic questioning
 │   ├── debugger       Root cause analysis
 │   ├── worker         Task implementation
-│   ├── code-reviewer  Multi-model consensus
+│   ├── code-reviewer  Cross-cutting review
 │   └── ...            17 more agents
 ├── scripts/           18 hook scripts
 │   ├── session        Lifecycle management

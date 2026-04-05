@@ -147,7 +147,7 @@ You:  /execute
 
   Hoyeon orchestrates:
   ├─ Worker agents implement each task in parallel (--tdd: tests first)
-  ├─ Code review: Codex + Gemini + Claude (multi-model consensus)
+  ├─ Code review: cross-cutting integration review
   └─ Final Verify: goal + constraints + sub-requirements — holistic check
 
   → Done. Every file change traced to a requirement.
@@ -396,7 +396,7 @@ You:  /execute
 │   ├── interviewer    소크라테스식 질문
 │   ├── debugger       근본 원인 분석
 │   ├── worker         태스크 구현
-│   ├── code-reviewer  다중 모델 합의
+│   ├── code-reviewer  교차 검토
 │   └── ...            17개 추가 에이전트
 ├── scripts/           18개 훅 스크립트
 │   ├── session        라이프사이클 관리

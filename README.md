@@ -85,7 +85,7 @@ Every sub-requirement in `spec.json` is a testable behavioral statement:
 }
 ```
 
-Sub-requirements serve as acceptance criteria. Workers verify their own implementation against sub-requirement behaviors (with optional `--tdd` for test-first workflow). Multi-model code review (Codex + Gemini + Claude) runs independently and synthesizes a consensus verdict.
+Sub-requirements serve as acceptance criteria. Workers verify their own implementation against sub-requirement behaviors (with optional `--tdd` for test-first workflow). Code review runs independently, catching cross-cutting integration issues that per-task verification misses.
 
 Human review is reserved for what machines genuinely can't judge — UX feel, business logic correctness, naming decisions. Everything else runs automatically, every time, without asking.
 
@@ -147,7 +147,7 @@ You:  /execute
 
   Hoyeon orchestrates:
   ├─ Worker agents implement each task in parallel (--tdd: tests first)
-  ├─ Code review: Codex + Gemini + Claude (multi-model consensus)
+  ├─ Code review: cross-cutting integration review
   └─ Final Verify: goal + constraints + sub-requirements — holistic check
 
   → Done. Every file change traced to a requirement.
@@ -164,7 +164,7 @@ You:  /execute
 
 /execute → Orchestrator read spec.json, dispatched parallel workers
            → Workers self-verify against sub-requirement behaviors (--tdd: test-first)
-           → Multi-model code review synthesized verdict
+           → Code review caught cross-cutting issues
            → Final Verify checked goal, constraints, sub-requirements holistically
            → Atomic commits with full traceability
 ```
@@ -311,7 +311,7 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 | **UX Reviewer** | Guards the user's experience | *"Would a human enjoy this?"* |
 | **Tradeoff Analyzer** | Weighs every option's cost | *"What are you giving up?"* |
 | **Debugger** | Traces bugs to root causes, not symptoms | *"Is this the cause, or a symptom?"* |
-| **Code Reviewer** | Multi-model consensus (Codex + Gemini + Claude) | *"Would three experts ship this?"* |
+| **Code Reviewer** | Cross-cutting integration review | *"Would an expert ship this?"* |
 | **Worker** | Implements with spec precision | *"Does this match the requirement?"* |
 | **Verifier** | Independent sub-requirement verification per task | *"Does the code satisfy every sub-requirement?"* |
 | **Ralph Verifier** | Independent, context-isolated DoD check | *"Is it actually done?"* |
@@ -399,7 +399,7 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 │   ├── interviewer    Socratic questioning
 │   ├── debugger       Root cause analysis
 │   ├── worker         Task implementation
-│   ├── code-reviewer  Multi-model consensus
+│   ├── code-reviewer  Cross-cutting review
 │   └── ...            17 more agents
 ├── scripts/           18 hook scripts
 │   ├── session        Lifecycle management

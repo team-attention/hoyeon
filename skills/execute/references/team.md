@@ -172,6 +172,16 @@ Follow the task action from your task spec.
 Respect constraints.
 Do NOT run git commands -- lead handles commits.
 
+### Code quality: avoid AI expression patterns
+Do NOT produce these patterns in your implementation:
+- Comments that restate what the code already says (e.g., `// increment counter` above `counter++`)
+- Catch-rethrow blocks that add no context (`catch(e) { throw e }`)
+- Assign to variable only to immediately return (`const result = foo(); return result;`)
+- Null checks for values already guaranteed by types or framework validation
+- Helper functions called exactly once — inline them
+- JSDoc/docstrings that add no information beyond the function signature
+- Leftover console.log, debugger statements, or TODO comments
+
 ### Verification before reporting DONE
 1. **Behavioral check**: Look up fulfills[] -> requirements -> sub-requirements.
    Each sub-req's GWT fields (given/when/then) define structured acceptance criteria
@@ -314,6 +324,7 @@ Read the verify recipe:
   light    -> ${baseDir}/references/verify-light.md
   standard -> ${baseDir}/references/verify-standard.md
   thorough -> ${baseDir}/references/verify-thorough.md
+  ralph    -> ${baseDir}/references/verify-ralph.md
 
 # In TEAM mode, ALWAYS spawn a dedicated verifier (fresh context, no pollution from implementation work):
 Agent(

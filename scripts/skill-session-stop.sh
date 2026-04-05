@@ -41,6 +41,13 @@ case "$SKILL" in
     ;;
 esac
 
+# ── Execute: skip block for team dispatch (workers run in background) ──
+
+DISPATCH=$(jq -r '.dispatch // "direct"' "$STATE_FILE")
+if [[ "$DISPATCH" == "team" ]]; then
+  exit 0
+fi
+
 # ── Execute: check spec.json via cli ──
 
 SPEC_PATH="$CWD/$SPEC_REL"

@@ -44,7 +44,7 @@ All task data comes from spec.json via `hoyeon-cli spec plan`.
 1. **DELEGATE** — In agent/team mode, all work goes to worker agents. In direct mode, the orchestrator executes tasks itself. In plain mode, the orchestrator may handle tasks directly or delegate. You only use Read, Grep, Glob, Bash (for orchestration), and Task tools for coordination.
 2. **PARALLELIZE** — Run all unblocked tasks within a round simultaneously via `run_in_background: true`.
 3. **spec.json is truth** — Task status and progress flow through `hoyeon-cli spec` commands.
-4. **Context flows forward** — Workers write learnings/issues to shared context files. Next workers read them.
+4. **Context flows forward** — Workers write learnings/issues to shared context files. In agent mode, after each round the orchestrator collects DONE summaries into `round-summaries.json`. Next-round workers read all context files including prior round summaries.
 
 ---
 
@@ -206,7 +206,8 @@ IF verify is null:
     options: [
       { label: "Light", description: "Build/lint + spec check only" },
       { label: "Standard", description: "Full spec verification (goal, constraints, sub-reqs)" },
-      { label: "Thorough", description: "Standard + Code Review + cross-task + sandbox" }
+      { label: "Thorough", description: "Standard + Code Review + cross-task + sandbox" },
+      { label: "Ralph", description: "Standard verify + persistent DoD loop until all sub-reqs pass" }
     ]
     # If no sandbox detected: add "(no sandbox)" to Thorough description
   )
@@ -216,6 +217,15 @@ IF verify is null:
 
 ```bash
 Bash("hoyeon-cli spec merge {spec_path} --json '{\"meta\": {\"mode\": {\"dispatch\": \"{dispatch}\", \"work\": \"{work}\", \"verify\": \"{verify}\"}}}'")
+```
+
+#### Save dispatch to session state
+
+```bash
+# Stop hook uses this to skip blocking when team workers are running
+STATE_FILE="$HOME/.hoyeon/$CLAUDE_SESSION_ID/state.json"
+IF file_exists(STATE_FILE):
+  Bash("jq --arg d '{dispatch}' '.dispatch = $d' $STATE_FILE > $STATE_FILE.tmp && mv $STATE_FILE.tmp $STATE_FILE")
 ```
 
 #### Worktree setup (only if work == "worktree")
@@ -243,7 +253,7 @@ ELSE:
 **Variables forwarded to reference files:**
 - `dispatch`: `"direct"` | `"agent"` | `"team"`
 - `work`: `"worktree"` | `"branch-commit"` | `"no-commit"`
-- `verify`: `"light"` | `"standard"` | `"thorough"`
+- `verify`: `"light"` | `"standard"` | `"thorough"` | `"ralph"`
 - `spec_path`: absolute path (always — worktree mode converts it)
 - `CONTEXT_DIR`: absolute path (always — worktree mode converts it)
 
@@ -339,7 +349,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), verify recipe, and report
 5. **Context files (dev only)** — in dev mode, workers write to learnings.json / issues.json via CLI; orchestrator appends to audit.md. Plain mode does not use context files.
 6. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli spec plan` to rebuild task state
 7. **Dispatch mode, work mode, and verify depth saved to spec.json meta.mode**
-8. **Verify depth routes to verify-light.md, verify-standard.md, or verify-thorough.md**
+8. **Verify depth routes to verify-light.md, verify-standard.md, verify-thorough.md, or verify-ralph.md**
 
 ## Checklist Before Stopping
 
@@ -352,7 +362,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), verify recipe, and report
 - [ ] Dispatch mode selected and routed correctly
 - [ ] Verify depth selected and routed correctly
 - [ ] `meta.mode` saved to spec.json (dispatch, work, verify)
-- [ ] Context directory initialized (audit.md, learnings.json, issues.json)
+- [ ] Context directory initialized (audit.md, learnings.json, issues.json, round-summaries.json)
 - [ ] Pre-work status logged explicitly (none/pass/fail)
 - [ ] TaskCreate entries created for all tasks + finalize steps (structure per mode reference)
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)

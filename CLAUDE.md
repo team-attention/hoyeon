@@ -121,7 +121,17 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.5.1)
+## Recent Changes (v1.5.2)
+
+- feat(execute): add verify-ralph mode — spec-based verification + persistent DoD loop until all sub-requirements pass
+- feat(execute): skip session stop blocking for team dispatch mode (workers run in background)
+- feat(execute): add round context propagation and bounded worker retry
+- feat(specify): add steelman counterargument to L2-reviewer checklist
+- feat(specify,execute): add rejected alternatives guidance to L2 decision rationale
+- feat(execute): add anti-slop checks to workers and code-reviewer
+- refactor(code-reviewer): simplify to Claude-only review, remove multi-model orchestration
+
+## Previous Changes (v1.5.1)
 
 - refactor(bugfix): remove SIMPLE/COMPLEX branching — always run full investigation pipeline
   - Always dispatch: debugger + verification-planner + gap-analyzer (all parallel)

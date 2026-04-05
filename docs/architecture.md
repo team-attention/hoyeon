@@ -126,7 +126,7 @@ The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) th
 |-------|------|
 | `worker` | Implementation agent; handles code writing, bug fixes, and test writing |
 | `code-explorer` | Read-only codebase search specialist; finds files, patterns, and relationships |
-| `code-reviewer` | Multi-model code reviewer (Gemini, Codex, Claude in parallel) |
+| `code-reviewer` | Cross-cutting code reviewer for integration issues and hidden bugs |
 | `debugger` | Root cause analysis specialist; traces bugs backward through call stacks |
 | `git-master` | Git commit specialist; enforces atomic commits and detects project style |
 | `verification-planner` | Builds verification strategy with A-items (Agent), H-items (Human), S-items (Sandbox) |
@@ -191,7 +191,7 @@ The `/ralph` skill uses the Stop hook to re-inject prompts into the session. Whe
 
 ### Multi-Model Parallel Review
 
-Several skills (council, code-reviewer, rulph, tribunal) dispatch the same artifact to multiple models (Claude, Codex, Gemini) in parallel, then synthesize the results. This provides diverse perspectives and reduces single-model blind spots.
+Several skills (council, rulph, tribunal) dispatch the same artifact to multiple models (Claude, Codex, Gemini) in parallel, then synthesize the results. This provides diverse perspectives and reduces single-model blind spots.
 
 ### Validate-on-Complete
 
