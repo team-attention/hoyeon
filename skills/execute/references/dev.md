@@ -158,6 +158,9 @@ Review their `summary` to understand what was produced.
 ## Step 3: Read context files
 Read: {CONTEXT_DIR}/learnings.json — structured learnings from previous workers (if exists)
 Read: {CONTEXT_DIR}/issues.json — failed approaches to avoid (if exists)
+Read: {CONTEXT_DIR}/round-summaries.json — previous round results (if exists)
+  Focus on tasks that modified files related to your scope.
+  These are architectural decisions you must respect — do NOT contradict them.
 
 ## Step 4: Implement
 Follow the task action from your task spec.
@@ -239,6 +242,9 @@ Use its `summary` field to understand what was produced.
 ## Step 3: Read context files
 Read: {CONTEXT_DIR}/learnings.json — structured learnings from previous workers (if exists)
 Read: {CONTEXT_DIR}/issues.json — failed approaches to avoid (if exists)
+Read: {CONTEXT_DIR}/round-summaries.json — previous round results (if exists)
+  Focus on tasks that modified files related to your scope.
+  These are architectural decisions you must respect — do NOT contradict them.
 
 ## Step 4: Implement
 Follow each task's action from the task spec, in order.
@@ -414,7 +420,36 @@ FOR EACH round in execution_order:
     # Sequential — dispatch single worker
     dispatch(round_workers[0])
 
-  # After all workers in round complete → round-level commit
+  # After all workers in round complete → collect round summary (DONE only)
+  round_summary = {
+    round: round,
+    completed_at: now(),
+    tasks: []
+  }
+  FOR EACH w in round_workers:
+    raw_output = TaskOutput(w.id)
+    worker_output = try_parse(raw_output) ?? {status: "FAILED", summary: "No parseable output", files_modified: []}
+    
+    # Only propagate DONE results as forward context — FAILED/BLOCKED may mislead
+    IF worker_output.status == "DONE":
+      round_summary.tasks.push({
+        task_ids: w.task_ids,
+        status: worker_output.status,
+        summary: worker_output.summary,
+        files_modified: worker_output.files_modified ?? [],
+        key_decisions: extract_decisions(worker_output.summary)  # heuristic: first 2 sentences
+      })
+
+  # Append to round-summaries.json (accumulates across rounds)
+  summaries_path = "{CONTEXT_DIR}/round-summaries.json"
+  IF NOT exists(summaries_path):
+    Write(summaries_path, "[]")
+  existing = JSON.parse(Read(summaries_path))
+  existing.push(round_summary)
+  Write(summaries_path, JSON.stringify(existing, null, 2))
+  log_to_audit("ROUND {round} COMPLETE: {len(round_summary.tasks)} tasks, files: {round_summary.tasks.flatMap(t => t.files_modified)}")
+
+  # Round-level commit
   IF work_mode != "no-commit":
     round_commit = round_commits[round]
     Agent(
@@ -546,8 +581,46 @@ ELIF result.status == "BLOCKED":
   TaskUpdate(taskId=taskId, status="completed")  # original worker done (blocked)
 
 ELIF result.status == "FAILED":
-  log_to_audit("Worker FAILED for {task_ids}, HALT")
-  HALT
+  # Bounded retry: check if retry task already exists (compaction-safe)
+  existing_retry = TaskList().find(t => t.subject.includes("{task_ids[0]}.retry:Worker"))
+  is_retry = existing_retry != null
+
+  IF NOT is_retry:
+    log_to_audit("Worker FAILED for {task_ids} — dispatching retry")
+
+    # Record failure as issue so retry worker knows what to avoid (all tasks in group)
+    FOR EACH tid in task_ids:
+      escaped_summary = JSON_escape(result.summary ?? "unknown error")
+      Bash("""hoyeon-cli spec issue --task {tid} --stdin {spec_path} << 'EOF'
+{"type": "failed_approach", "description": "Worker failed: {escaped_summary}. Avoid this approach on retry."}
+EOF""")
+
+    # Create retry task with distinct subject (makes retry detection compaction-safe)
+    retry_w = TaskCreate(
+      subject="{task_ids[0]}.retry:Worker — retry after failure",
+      description=TaskGet(task.id).description,
+      activeForm="{task_ids[0]}: Retrying")
+    TaskUpdate(taskId=retry_w, status="in_progress")
+    Agent(
+      subagent_type="worker",
+      description="Retry: {task_ids}",
+      prompt=TaskGet(retry_w).description,
+      run_in_background=true
+    )
+  ELSE:
+    log_to_audit("Worker FAILED for {task_ids} after retry — escalating to user")
+    AskUserQuestion(
+      question: "Worker failed for {task_ids} after retry. How to proceed?",
+      options: [
+        { label: "Skip", description: "Mark as skipped, continue with remaining tasks" },
+        { label: "Abort", description: "Stop execution entirely" }
+      ]
+    )
+    IF answer == "Abort": HALT
+    ELSE:
+      FOR EACH tid in task_ids:
+        Bash("hoyeon-cli spec task {tid} --status done --summary 'Skipped after failed retry' {spec_path}")
+      TaskUpdate(taskId=taskId, status="completed")
 ```
 
 ---
@@ -713,18 +786,20 @@ TaskUpdate(taskId=rp, status="completed")
 
 ```
 .hoyeon/specs/{name}/context/
-  learnings.json — structured learnings (orchestrator creates empty [], workers append via hoyeon-cli spec learning)
-  issues.json   — structured issues (orchestrator creates empty [], workers append via hoyeon-cli spec issue)
-  audit.md      — scope blockers, verify events (orchestrator creates empty, appends)
+  learnings.json      — structured learnings (orchestrator creates empty [], workers append via hoyeon-cli spec learning)
+  issues.json         — structured issues (orchestrator creates empty [], workers append via hoyeon-cli spec issue)
+  audit.md            — scope blockers, verify events (orchestrator creates empty, appends)
+  round-summaries.json — per-round completion summaries (orchestrator creates empty [], appends after each round)
 ```
 
 ### Worker Context Instructions
 
 Worker descriptions (WORKER_DESCRIPTION / GROUPED_WORKER_DESCRIPTION) include context file read and update instructions.
-Workers self-read `{CONTEXT_DIR}/learnings.json` and `{CONTEXT_DIR}/issues.json` directly,
+Workers self-read `{CONTEXT_DIR}/learnings.json`, `{CONTEXT_DIR}/issues.json`, and `{CONTEXT_DIR}/round-summaries.json` directly,
 and write their findings via CLI after completing work.
 
-The orchestrator does NOT read these files — only workers do.
+The orchestrator does NOT read learnings.json or issues.json — only workers do.
+The orchestrator DOES write round-summaries.json (after each round) and audit.md.
 
 ### Orchestrator Audit Log
 
@@ -753,7 +828,7 @@ Details: {summary}
 7. **Task grouping** — related tasks (same module/directory) are grouped into a single worker to reduce agent count. Tasks with dependencies on each other cannot be grouped.
 8. **Round-level commit** — instead of per-task commits, all changes from a round are committed together via a single git-master dispatch after all workers in that round complete.
 9. **Worker BLOCKED = scope fix** — when Worker reports BLOCKED, orchestrator creates a derived fix task via `spec derive --trigger scope_blocker`, dispatches it, then re-runs the original worker
-10. **Worker FAILED = immediate HALT** — no per-task retry. Workers perform Tier 1 checks (build/lint/typecheck). TDD mode adds test-first workflow.
+10. **Worker FAILED = bounded retry (max 1)** — first failure records issue via `spec issue`, then retries. Second failure escalates to user (Skip/Abort). Workers perform Tier 1 checks (build/lint/typecheck). TDD mode adds test-first workflow.
 11. **Adaptation updates spec.json** — new tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on, re-plan automatically)
 12. **Background for parallel** — use `run_in_background: true` for round-parallel workers
 13. **work_mode governs git behavior** — `worktree`: uses `EnterWorktree` to switch session CWD into an isolated worktree (all tools automatically operate there); `branch-commit`: current branch with round-level commits; `no-commit`: current branch, no commits at all (no :Commit tasks, no Residual Commit)
@@ -771,7 +846,8 @@ Details: {summary}
 - [ ] Orchestrator does NOT Read spec.json or context files during dispatch
 - [ ] Round-level commits used (not per-task commits)
 - [ ] Worker BLOCKED status handled (scope fix derived task + re-worker)
-- [ ] Worker FAILED → immediate HALT
+- [ ] Worker FAILED → bounded retry (max 1), then escalate to user
+- [ ] Round summaries collected after each round (round-summaries.json)
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
 - [ ] `hoyeon-cli spec check` passes at end
 - [ ] Residual commit handled

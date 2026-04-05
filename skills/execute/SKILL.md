@@ -44,7 +44,7 @@ All task data comes from spec.json via `hoyeon-cli spec plan`.
 1. **DELEGATE** — In agent/team mode, all work goes to worker agents. In direct mode, the orchestrator executes tasks itself. In plain mode, the orchestrator may handle tasks directly or delegate. You only use Read, Grep, Glob, Bash (for orchestration), and Task tools for coordination.
 2. **PARALLELIZE** — Run all unblocked tasks within a round simultaneously via `run_in_background: true`.
 3. **spec.json is truth** — Task status and progress flow through `hoyeon-cli spec` commands.
-4. **Context flows forward** — Workers write learnings/issues to shared context files. Next workers read them.
+4. **Context flows forward** — Workers write learnings/issues to shared context files. In agent mode, after each round the orchestrator collects DONE summaries into `round-summaries.json`. Next-round workers read all context files including prior round summaries.
 
 ---
 
@@ -352,7 +352,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), verify recipe, and report
 - [ ] Dispatch mode selected and routed correctly
 - [ ] Verify depth selected and routed correctly
 - [ ] `meta.mode` saved to spec.json (dispatch, work, verify)
-- [ ] Context directory initialized (audit.md, learnings.json, issues.json)
+- [ ] Context directory initialized (audit.md, learnings.json, issues.json, round-summaries.json)
 - [ ] Pre-work status logged explicitly (none/pass/fail)
 - [ ] TaskCreate entries created for all tasks + finalize steps (structure per mode reference)
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
