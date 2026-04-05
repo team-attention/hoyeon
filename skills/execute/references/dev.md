@@ -162,6 +162,9 @@ Read: {CONTEXT_DIR}/round-summaries.json — previous round results (if exists)
   Focus on tasks that modified files related to your scope.
   These are architectural decisions you must respect — do NOT contradict them.
 
+Also read spec decisions: each decision's `rationale` includes rejected alternatives.
+Do NOT revisit rejected approaches unless you find concrete evidence that the rejection reason no longer applies.
+
 ## Step 4: Implement
 Follow the task action from your task spec.
 If TDD Mode is ON, read `skills/execute/references/tdd-guide.md` and follow the TDD workflow (RED → GREEN → REFACTOR).
@@ -255,6 +258,9 @@ Read: {CONTEXT_DIR}/issues.json — failed approaches to avoid (if exists)
 Read: {CONTEXT_DIR}/round-summaries.json — previous round results (if exists)
   Focus on tasks that modified files related to your scope.
   These are architectural decisions you must respect — do NOT contradict them.
+
+Also read spec decisions: each decision's `rationale` includes rejected alternatives.
+Do NOT revisit rejected approaches unless you find concrete evidence that the rejection reason no longer applies.
 
 ## Step 4: Implement
 Follow each task's action from the task spec, in order.
