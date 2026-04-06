@@ -121,7 +121,17 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.5.2)
+## Recent Changes (v1.5.3)
+
+- feat(execute): restructure verify pipeline to 4-tier progressive gate (Tier 0→1→2→3)
+  - verify-light: Tier 0 with toolchain auto-detection, CWD subshell rule
+  - verify-standard: Tier 0 + Tier 1 with 3-state (PASS/FAIL/UNCERTAIN), VERIFIED_WITH_GAPS at >30%
+  - verify-thorough: Tier 0+1+2+3 with qa-verifier dispatch for runtime verification
+- feat(qa): add qa-verifier agent — universal QA verification (browser/cli/desktop/shell)
+- fix(execute): VERIFIED_WITH_GAPS handled as soft pass in dev.md, team.md, plain.md (CR-002)
+- fix(execute): chromux --check → chromux ps in sandbox-detection (command didn't exist)
+
+## Previous Changes (v1.5.2)
 
 - feat(execute): add verify-ralph mode — spec-based verification + persistent DoD loop until all sub-requirements pass
 - feat(execute): skip session stop blocking for team dispatch mode (workers run in background)

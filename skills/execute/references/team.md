@@ -345,7 +345,11 @@ TaskUpdate(taskId=verify_task, owner="verifier-1", status="in_progress")
 ## Phase 1.6: Fix Stage (on verify failure)
 
 ```
-IF verify result == FAIL:
+IF verify result == VERIFIED_WITH_GAPS:
+  log_to_audit("VERIFIED_WITH_GAPS: uncertain sub-reqs detected, proceeding as soft pass")
+  TaskUpdate(taskId=verify_task, status="completed")
+
+ELIF verify result == FAIL:
   fix_attempt = 0
   MAX_FIX_LOOPS = 3
 
@@ -380,11 +384,13 @@ IF verify result == FAIL:
     # After all fix tasks done -> re-verify
     verify_result = run_verify(verify_tier)
 
-    IF verify_result == PASS:
+    IF verify_result == PASS OR verify_result == VERIFIED_WITH_GAPS:
+      IF verify_result == VERIFIED_WITH_GAPS:
+        log_to_audit("VERIFIED_WITH_GAPS: uncertain sub-reqs detected after fix")
       TaskUpdate(taskId=verify_task, status="completed")
       BREAK
 
-  IF verify_result != PASS:
+  IF verify_result != PASS AND verify_result != VERIFIED_WITH_GAPS:
     log_to_audit("HALT: Verify failed after {MAX_FIX_LOOPS} fix attempts")
     HALT
 ```

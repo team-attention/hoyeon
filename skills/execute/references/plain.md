@@ -109,7 +109,9 @@ Read: ${baseDir}/references/final-verify.md
 Follow the usage instructions to dispatch the verification worker.
 Provide spec_path and parsed spec JSON.
 
-IF result.status == "VERIFIED":
+IF result.status == "VERIFIED" OR result.status == "VERIFIED_WITH_GAPS":
+  IF result.status == "VERIFIED_WITH_GAPS":
+    log_to_audit("VERIFIED_WITH_GAPS: uncertain sub-reqs detected, proceeding as soft pass")
   TaskUpdate(taskId=fv, status="completed")
   # proceed to report
 ELSE:

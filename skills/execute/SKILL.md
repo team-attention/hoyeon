@@ -118,39 +118,17 @@ Print analysis:
 
 ### 0.4 Sandbox Detection
 
-Auto-detect sandbox capabilities from the project and system (no user question).
+Auto-detect sandbox capabilities from the project and system via 3-tier detection.
 
 ```
-tools = []
-
-# --- Project-level detection (config files) ---
-IF Glob("playwright.config.*") OR Glob("cypress.config.*"):
-  tools.push("browser")
-IF Glob("docker-compose.*") OR Glob("Dockerfile"):
-  tools.push("terminal")
-IF any desktop testing setup detected:
-  tools.push("desktop")
-
-# --- System-level detection (runtime tools) ---
-IF "browser" not in tools:
-  chromux_ok = Bash("chromux --check 2>/dev/null; echo $?").trim() == "0"
-  IF chromux_ok:
-    tools.push("browser")  # real Chrome via CDP (chromux)
-
-IF "desktop" not in tools:
-  # Check for computer-use MCP (Anthropic built-in — not in config files)
-  # Use ToolSearch to probe for mcp__computer tools at runtime
-  computer_use_tools = ToolSearch("computer")
-  IF any result name starts with "mcp__" AND contains "computer":
-    tools.push("desktop")  # Anthropic computer use MCP
-
-IF len(tools) > 0:
-  sandbox_capability = {tools: tools, scaffold_required: false}
-  Bash("hoyeon-cli spec merge {spec_path} --json '{\"context\": {\"sandbox_capability\": ...}}'")
-  print("Sandbox detected: {tools}")
-ELSE:
-  print("No sandbox capability detected")
+Read: ${baseDir}/references/sandbox-detection.md
+Follow ALL instructions for tiered detection, reporting, and install recommendations.
 ```
+
+Detection tiers: (1) project config files → (2) system CLI tools → (3) MCP tool probing.
+Tier 3 (MCP) is critical — skipping it causes false negatives (e.g., computer-use MCP miss).
+
+Install recommendations are shown only when `verify == "thorough"` AND tools are missing.
 
 ### 0.5 Configuration
 

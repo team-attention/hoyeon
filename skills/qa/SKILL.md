@@ -1,10 +1,10 @@
 ---
 name: qa
 description: |
-  Systematically QA test any application — web apps, native macOS apps, Electron apps, mobile
-  simulators, or anything on screen. Two modes: browser (chromux/CDP, fast, DOM-level) and
-  computer (MCP computer-use, screenshot + pixel clicks, any app). Auto-selects mode or
-  accepts --browser / --computer override.
+  Systematically QA test any application — web apps, native macOS apps, Electron apps, CLI tools,
+  interactive REPLs, or anything on screen. Three modes: browser (chromux/CDP, fast, DOM-level),
+  computer (MCP computer-use, screenshot + pixel clicks, any app), and cli (tmux, send-keys +
+  capture-pane for interactive terminals). Auto-selects mode or accepts --browser / --computer / --cli override.
   Use when asked to "qa", "QA", "test this site", "test this app", "find bugs",
   "test and fix", "fix what's broken", "dogfood", "exploratory test", "bug hunt",
   "QA this app", "사이트 테스트", "앱 테스트", "브라우저 QA", "화면 보고 테스트해줘",
@@ -59,8 +59,8 @@ You are a QA engineer AND a bug-fix engineer. Test applications like a real user
 
 | Parameter | Default | Override example |
 |-----------|---------|-----------------|
-| Target | (required) | URL, app name, or "current branch" |
-| Mode | auto-detect | `--browser`, `--computer` |
+| Target | (required) | URL, app name, CLI command, or "current branch" |
+| Mode | auto-detect | `--browser`, `--computer`, `--cli` |
 | Tier | Standard | `--quick`, `--exhaustive` |
 | Report-only | false | `--report-only` (no fixes) |
 | Output dir | `.qa-reports/` | `Output to /tmp/qa` |
@@ -74,8 +74,10 @@ You are a QA engineer AND a bug-fix engineer. Test applications like a real user
 | On feature branch, no URL | **browser** (diff-aware) | Verify branch changes locally |
 | Native app name (Slack, Notes, Figma) | **computer** | Not a web app |
 | Electron app | **computer** | Desktop app, even if web-based |
+| CLI command, REPL, or interactive terminal | **cli** | Needs tmux send-keys + capture-pane |
 | `--browser` flag | **browser** | User override |
 | `--computer` flag | **computer** | User override |
+| `--cli` flag | **cli** | User override |
 | Ambiguous | AskUserQuestion | Let user decide |
 
 ### 0.3 Setup Mode
@@ -83,6 +85,8 @@ You are a QA engineer AND a bug-fix engineer. Test applications like a real user
 **Browser mode:** Read `references/browser-mode.md` for chromux setup and interaction patterns.
 
 **Computer mode:** Read `references/computer-mode.md` for MCP computer-use setup and interaction patterns.
+
+**CLI mode:** Read `references/cli-mode.md` for tmux setup and interaction patterns.
 
 ### 0.4 Clean Working Tree (if fixing code)
 

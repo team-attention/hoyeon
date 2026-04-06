@@ -113,7 +113,7 @@
           "properties": {
             "tools": {
               "type": "array",
-              "items": { "type": "string", "enum": ["browser", "terminal", "desktop"] }
+              "items": { "type": "string", "enum": ["browser", "terminal", "desktop", "cli"] }
             },
             "scaffold_required": { "type": "boolean" }
           }

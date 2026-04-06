@@ -1,6 +1,6 @@
 {
   "name": "@team-attention/hoyeon-cli",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "type": "module",
   "description": "Developer CLI for managing dev workflow state",
   "bin": {

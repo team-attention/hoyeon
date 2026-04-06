@@ -7740,7 +7740,7 @@ var dev_spec_v1_schema_default = {
           properties: {
             tools: {
               type: "array",
-              items: { type: "string", enum: ["browser", "terminal", "desktop"] }
+              items: { type: "string", enum: ["browser", "terminal", "desktop", "cli"] }
             },
             scaffold_required: { type: "boolean" }
           }
@@ -10710,7 +10710,7 @@ async function main() {
     process.exit(0);
   }
   if (args[0] === "--version") {
-    const version = true ? "1.5.2" : "dev";
+    const version = true ? "1.5.3" : "dev";
     process.stdout.write(`hoyeon-cli v${version}
 `);
     process.exit(0);
