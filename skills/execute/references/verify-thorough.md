@@ -64,25 +64,8 @@ Agent(subagent_type="worker", description="Tier 2: Sub-requirement coverage",
   run_in_background=true)
 ```
 
-**Agent C — Code review (conditional):**
-```
-# Auto-pass when ALL true:
-#   - Total diff ≤ 200 lines
-#   - No new dependencies added
-#   - All tasks are low risk
-IF auto_pass_conditions_met:
-  cr_result = {"status": "AUTO_PASS", "reason": "..."}
-ELSE:
-  Agent(subagent_type="code-reviewer",
-    description="Tier 2: Code review",
-    prompt="""
-    Review the complete diff for this spec.
-    Spec path: {spec_path}
-    Focus on: correctness, edge cases, security, API consistency.
-    Output: "SHIP" or "NEEDS_FIXES" with list of issues
-    """,
-    run_in_background=true)
-```
+**Code review**: Already executed in verify-standard (Tier 0+1+CR). The result is available
+in `standard_result.code_review`. Do NOT re-run code review here — use the existing result.
 
 ### Result aggregation
 
@@ -230,7 +213,7 @@ ELSE:
     "status": "PASS",
     "cross_task": { "status": "PASS", "issues": [] },
     "coverage": { "status": "PASS", "uncovered": [] },
-    "code_review": { "status": "SHIP" | "AUTO_PASS", "issues": [] }
+    "code_review": "from standard_result.code_review (not re-run)"
   },
   "tier3": {
     "status": "PASS" | "FAIL" | "SKIPPED",
