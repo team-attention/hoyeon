@@ -47,7 +47,7 @@ These enable ad-hoc QA without project configuration.
 # --- Browser ---
 IF "browser" not in tools:
   # Priority order: chromux (best for Claude Code) → playwright CLI → npx fallback
-  chromux_ok = Bash("command -v chromux >/dev/null 2>&1 && chromux --check 2>/dev/null; echo $?").trim() == "0"
+  chromux_ok = Bash("command -v chromux >/dev/null 2>&1 && chromux ps 2>/dev/null; echo $?").trim() == "0"
   IF chromux_ok:
     tools.push("browser")
     browser_source = "chromux (system)"
@@ -184,7 +184,7 @@ IF len(tools) < 4 AND verify == "thorough":
     IF choice == "chromux":
       Bash("npm i -g chromux")
       # Re-check
-      chromux_ok = Bash("chromux --check 2>/dev/null; echo $?").trim() == "0"
+      chromux_ok = Bash("chromux ps 2>/dev/null; echo $?").trim() == "0"
       IF chromux_ok: tools.push("browser")
 
     ELIF choice == "playwright":

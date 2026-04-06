@@ -685,7 +685,9 @@ Follow verify recipe instructions.
 On completion:
 
 ```
-IF result.status == "VERIFIED":
+IF result.status == "VERIFIED" OR result.status == "VERIFIED_WITH_GAPS":
+  IF result.status == "VERIFIED_WITH_GAPS":
+    log_to_audit("VERIFIED_WITH_GAPS: {result.tier1.counts.uncertain} sub-reqs unverifiable from code")
   TaskUpdate(taskId=fv, status="completed")
 ELSE:
   # Classify failures — goal misalignment is unrecoverable
@@ -725,7 +727,9 @@ ELSE:
     # Re-run verify
     result = dispatch_verify_worker()
 
-    IF result.status == "VERIFIED":
+    IF result.status == "VERIFIED" OR result.status == "VERIFIED_WITH_GAPS":
+      IF result.status == "VERIFIED_WITH_GAPS":
+        log_to_audit("VERIFIED_WITH_GAPS: {result.tier1.counts.uncertain} sub-reqs unverifiable from code")
       TaskUpdate(taskId=fv, status="completed")
       BREAK
 
@@ -733,7 +737,7 @@ ELSE:
       print("GOAL MISALIGNMENT after verify fix — cannot auto-fix. HALT.")
       HALT
 
-  IF result.status != "VERIFIED":
+  IF result.status != "VERIFIED" AND result.status != "VERIFIED_WITH_GAPS":
     print("Verify failed after {fv_attempt} recovery attempt(s). HALT.")
     FOR EACH failure in result.failures:
       print("  {failure.description} — {failure.reason}")

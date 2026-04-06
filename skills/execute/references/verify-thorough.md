@@ -1,41 +1,34 @@
-# Verify Thorough — Full Verification + Code Review + Cross-task
+# Verify Thorough — Tier 0 + Tier 1 + Tier 2 + Tier 3: Full Progressive Verification
 
-Comprehensive verification: standard checks + code review + cross-task compatibility + sandbox.
+Comprehensive verification: mechanical gate → semantic analysis → integration review → runtime QA.
+Each tier gates the next — fail early, save cost.
 
 **Consumers**: `/execute` (TEAM mode or explicit `--verify thorough`), high-risk specs.
 
 ---
 
-## Prerequisites
+## Tier 0 + Tier 1: Mechanical + Semantic (prerequisite)
 
-Run verify-standard first. If standard fails, fix before proceeding to thorough.
-Read: `${baseDir}/references/verify-standard.md` and execute it first.
-
-## Step 1: Standard Verification (prerequisite)
-
-Execute verify-standard.md fully. Must pass before continuing.
+Execute verify-standard first. Read `${baseDir}/references/verify-standard.md`.
 
 ```
-result = dispatch_verify_standard(spec_path)
-IF result.status == "FAILED":
+standard_result = execute_verify_standard(spec_path)
+IF standard_result.status == "FAILED":
   # Handle via verify-standard recovery pattern
-  # Do NOT proceed to Step 2 until standard passes
-  HALT or FIX
+  # Do NOT proceed to Tier 2 until Tier 0+1 passes
+  HALT or FIX (per verify-standard rules)
+
+# Collect UNCERTAIN items from Tier 1 — these go to Tier 3
+uncertain_items = standard_result.tier1.sub_requirements
+  .filter(s => s.status == "UNCERTAIN")
 ```
 
 ---
 
-## Step 2: Cross-task Compatibility (Tier 2)
+## Tier 2: Integration Verification
 
-> Catches issues that pass standard verification but fail in integration —
-> when individual tasks work in isolation but break when combined.
-
-### Why this step exists
-
-Per-task workers check each task's sub-requirements independently. But they cannot catch:
-- Task A outputs JWT tokens, Task B expects session cookies (format mismatch)
-- Task A and Task B both modified the same utility file with conflicting changes
-- A requirement has no sub-requirements with status "pass" (coverage gap)
+> Catches issues that individual verification misses: cross-task conflicts,
+> code quality problems, and regression risks.
 
 ### Dispatch (parallel agents)
 
@@ -43,15 +36,13 @@ Launch up to 3 verification agents in parallel via `run_in_background: true`:
 
 **Agent A — Cross-task compatibility + user journey:**
 ```
-Agent(subagent_type="worker", description="Verify-Thorough: Cross-task compatibility",
+Agent(subagent_type="worker", description="Tier 2: Cross-task compatibility",
   prompt="""
   Read spec at {spec_path}. For each pair of tasks where one task's outputs
   are consumed by another task's inputs (check depends_on relationships):
   1. Verify data format and contract compatibility across the boundary
-  2. Check tasks with overlapping file changes for coherent modifications (no conflicts)
+  2. Check tasks with overlapping file changes for coherent modifications
   3. Trace the main user journey end-to-end across all vertical slice tasks
-     (e.g., the happy-path flow from first action to final output).
-     Verify each handoff between tasks works correctly.
   4. Report any incompatibilities or broken handoffs found
 
   Output: {"status": "PASS"|"FAIL", "issues": [...]}
@@ -61,221 +52,212 @@ Agent(subagent_type="worker", description="Verify-Thorough: Cross-task compatibi
 
 **Agent B — Sub-requirement coverage audit:**
 ```
-Agent(subagent_type="worker", description="Verify-Thorough: Sub-requirement coverage",
+Agent(subagent_type="worker", description="Tier 2: Sub-requirement coverage",
   prompt="""
   Read spec at {spec_path}. Check ALL requirements[].sub[]:
-  1. Every sub-requirement should have status: pass or pending (human)
-  2. Flag any sub-requirement with status: fail or no status recorded
-  3. Flag any requirement where zero sub-requirements have status: pass
+  1. Every sub-requirement should have a corresponding implementation
+  2. Flag any requirement where no sub-requirement was verified as PASS in Tier 1
+  3. Check for orphaned code (implementation not traced to any sub-requirement)
 
-  Output: {"status": "PASS"|"FAIL", "uncovered": [...], "failed": [...]}
+  Output: {"status": "PASS"|"FAIL", "uncovered": [...], "orphaned": [...]}
   """,
   run_in_background=true)
 ```
 
-**Agent C — Constraint + must_not_do audit:**
+**Agent C — Code review (conditional):**
 ```
-Agent(subagent_type="worker", description="Verify-Thorough: Constraint audit",
-  prompt="""
-  Read spec at {spec_path}.
-  1. Read all constraints[]. For each, verify implementation respects it
-  2. Read all tasks[].must_not_do[]. Verify no task violated its constraints
-  3. If must_not_do includes "Do not run git commands", check git log for violations
-
-  Output: {"status": "PASS"|"FAIL", "violations": [...]}
-  """,
-  run_in_background=true)
+# Auto-pass when ALL true:
+#   - Total diff ≤ 200 lines
+#   - No new dependencies added
+#   - All tasks are low risk
+IF auto_pass_conditions_met:
+  cr_result = {"status": "AUTO_PASS", "reason": "..."}
+ELSE:
+  Agent(subagent_type="code-reviewer",
+    description="Tier 2: Code review",
+    prompt="""
+    Review the complete diff for this spec.
+    Spec path: {spec_path}
+    Focus on: correctness, edge cases, security, API consistency.
+    Output: "SHIP" or "NEEDS_FIXES" with list of issues
+    """,
+    run_in_background=true)
 ```
 
 ### Result aggregation
 
 ```
-Wait for all 3 agents to complete.
+Wait for all agents to complete.
 
 IF ANY agent reports FAIL:
-  log_to_audit("VERIFY_THOROUGH_TIER2 FAILED: {agent}: {issues}")
-
-  # Create fix tasks (same pattern as verify-standard fix loop)
   FOR EACH failure:
     derive_result = Bash("""hoyeon-cli spec derive \
       --parent {related_task_id} \
       --source verify-thorough \
-      --trigger cross_verification \
+      --trigger integration_verification \
       --action "Fix: {failure.description}" \
-      --reason "Thorough cross-task: {failure.reason}" \
+      --reason "Tier 2: {failure.reason}" \
       {spec_path}""")
     dispatch_fix(derive_result, spec_path)
 
-  # Re-run cross-task checks (max 1 retry)
+  # Re-run Tier 2 (max 2 retries total)
+  tier2_attempt = tier2_attempt ?? 0
   IF tier2_attempt >= 2:
-    HALT with cross-task failure report
+    HALT with integration failure report
   tier2_attempt += 1
-  # Re-dispatch all 3 agents
 
 IF ALL agents report PASS:
-  log_to_audit("VERIFY_THOROUGH_TIER2 PASS")
-  → Proceed to Step 3
+  → Proceed to Tier 3
 ```
 
 ---
 
-## Step 3: Code Review (Tier 3)
+## Tier 3: Runtime Verification
 
-> Cross-cutting review of the complete diff.
-> Maps to the existing Code Review step in dev.md.
-
-### Dispatch
-
-```
-Agent(subagent_type="code-reviewer",
-  description="Code review for verify-thorough",
-  prompt="""
-  Review the complete diff for this spec.
-  Spec path: {spec_path}
-
-  Focus on:
-  - Correctness and edge cases
-  - Performance implications
-  - Security concerns
-  - API contract consistency
-
-  Output: "SHIP" or "NEEDS_FIXES" with list of issues
-  """)
-```
-
-### Result handling
-
-```
-IF result == "SHIP":
-  → Proceed to Step 4
-
-IF result == "NEEDS_FIXES":
-  # Create fix tasks from review feedback
-  FOR EACH fix in result.fixes:
-    derive_result = Bash("""hoyeon-cli spec derive \
-      --parent {related_task_id} \
-      --source verify-thorough \
-      --trigger code_review \
-      --action "CR fix: {fix.description}" \
-      --reason "Code review: {fix.reason}" \
-      {spec_path}""")
-    dispatch_fix(derive_result, spec_path)
-
-  # Re-review (max 1 round)
-  IF cr_attempt >= 2:
-    HALT with code review failure report
-  cr_attempt += 1
-  # Re-dispatch code-reviewer
-```
-
-### Auto-pass conditions
-
-Code Review is SKIPPED (auto-pass) when ALL of the following are true:
-- Total diff is <= 200 lines changed
-- No new dependencies added (package.json, go.mod, Cargo.toml, etc.)
-- All tasks are low risk
-
-When auto-passed, log: `"code_review": {"status": "AUTO_PASS", "reason": "..."}`.
-
----
-
-## Step 4: Sandbox Verification (if sandbox_capability exists)
-
-> Runs real-environment verification using the `/qa` skill for systematic testing.
+> Executes sub-requirements' Given/When/Then clauses using real tools.
+> Also resolves UNCERTAIN items from Tier 1 that couldn't be determined from code alone.
 
 ### Dispatch
 
 ```
-IF spec.context.sandbox_capability exists AND len(sandbox_capability.tools) > 0:
+# Collect QA candidates: GWT sub-reqs + Tier 1 UNCERTAIN items
+gwt_subs = spec.requirements.flatMap(r => r.sub)
+  .filter(s => s.given AND s.when AND s.then)
 
-  # Collect ALL sub-requirements as QA candidates (no execution_env filter — v1 schema
-  # doesn't have this field). Every sub-req with a GWT is a potential QA target.
-  all_subs = spec.requirements.flatMap(r => r.sub)
-    .filter(s => s.given AND s.when AND s.then)
+# UNCERTAIN items from Tier 1 are added even if they lack full GWT
+# (qa-verifier will attempt shell/code-based verification)
+# Dedup: combine both lists, remove items whose id already appeared earlier
+seen_ids = set()
+qa_candidates = []
+FOR EACH item IN (gwt_subs + uncertain_items):
+  IF item.id NOT IN seen_ids:
+    seen_ids.add(item.id)
+    qa_candidates.append(item)
 
-  IF len(all_subs) > 0:
-    # Build QA checklist from sub-requirements
-    qa_checklist = all_subs.map(s =>
+IF len(qa_candidates) == 0:
+  print("No runtime verification candidates — Tier 3 skipped")
+  → tier3.status = "SKIPPED"
+ELSE:
+  # Pre-classify by method (keyword signals in GWT)
+  #   browser: URL, localhost, http, "page", "button", "form", "click"
+  #   cli:     "run command", "CLI", "REPL", "interactive", "terminal"
+  #   desktop: app name, "window", "tray", "native", "Electron", "menu bar"
+  #   shell:   everything else (API, curl, file, exit code, docker, database)
+
+  groups = classify_by_method(qa_candidates)
+
+  # Dispatch qa-verifier per method group (parallel)
+  agents = []
+  FOR EACH method, subs IN groups:
+    checklist = subs.map(s =>
       "- {s.id}: {s.behavior} | Given: {s.given}, When: {s.when}, Then: {s.then}"
     ).join("\n")
 
-    # Route to /qa skill based on sandbox tool type
-    qa_mode = ""
-    IF "browser" in sandbox_capability.tools:
-      # Verify browser binary is actually usable before routing
-      browser_ready = false
-      IF Bash("chromux --check 2>/dev/null; echo $?").trim() == "0":
-        qa_mode = "--browser"
-        browser_ready = true
-      ELIF Bash("npx playwright test --list 2>/dev/null; echo $?").trim() == "0":
-        qa_mode = "--browser"
-        browser_ready = true
+    agents.append(
+      Agent(subagent_type="qa-verifier",
+        description="Tier 3: QA verify {method} ({len(subs)} sub-reqs)",
+        run_in_background=true,
+        prompt="""
+        Verify the following sub-requirements using **{method}** tools.
+        The method has been pre-classified by the orchestrator — use {method}
+        for all items below. Do NOT re-classify to a different method.
 
-      IF NOT browser_ready:
-        # Browser detected but binary missing — ask to install
-        AskUserQuestion(
-          question: "Browser sandbox detected but browser binary not installed. Install now?",
-          options: [
-            { label: "Install chromium (Recommended)", description: "npx playwright install chromium (~150MB)" },
-            { label: "Skip sandbox", description: "Skip browser QA — verify only via code review" }
-          ]
-        )
-        IF answer == "Install chromium":
-          Bash("npx playwright install chromium")
-          qa_mode = "--browser"
-          browser_ready = true
-        # ELSE: fall through to desktop/cli check
+        Spec path: {spec_path}
 
-    IF qa_mode == "" AND "desktop" in sandbox_capability.tools:
-      qa_mode = "--computer"
-    IF qa_mode == "" AND "cli" in sandbox_capability.tools:
-      qa_mode = "--cli"
+        Sub-requirements to verify:
+        {checklist}
 
-    IF qa_mode != "":
-      # Invoke /qa skill with spec-derived checklist
-      print("QA checklist from spec sub-requirements:")
-      print(qa_checklist)
-      print("URL/app: {determine from spec context or task outputs}")
-      Skill("qa", args="{qa_mode} --tier standard")
-      # Results from /qa aggregated into verify output.
-    ELSE:
-      print("Sandbox tools detected but no usable QA mode — marking as MANUAL REVIEW")
+        Reference file for {method}:
+        - Browser: skills/qa/references/browser-mode.md
+        - CLI: skills/qa/references/cli-mode.md
+        - Desktop: skills/qa/references/computer-mode.md
+        (Read only the one matching your assigned method.)
 
-IF NOT spec.context.sandbox_capability OR len(sandbox_capability.tools) == 0:
-  print("No sandbox capability — sandbox verification skipped")
-  # Report as MANUAL REVIEW items
+        Report PASS/FAIL/SKIP per sub-requirement with evidence.
+        Do NOT fix any code — report only.
+        """))
+
+  # Wait and merge results
+  results = wait_all(agents)
+  merged = merge_qa_results(results)
+
+  IF merged.fail > 0:
+    FOR EACH failed_item in merged.failed_items:
+      derive_result = Bash("""hoyeon-cli spec derive \
+        --parent {related_task_id} \
+        --source verify-thorough \
+        --trigger runtime_verification \
+        --action "Fix: {failed_item.sub_req_id} — {failed_item.actual}" \
+        --reason "Tier 3 runtime: {failed_item.behavior} failed" \
+        {spec_path}""")
+      dispatch_fix(derive_result, spec_path)
+
+    # Re-run failed groups only (max 2 retries total)
+    tier3_attempt = tier3_attempt ?? 0
+    IF tier3_attempt >= 2:
+      HALT with runtime verification failure report
+    tier3_attempt += 1
+
+  IF merged.fail == 0:
+    log_to_audit("VERIFY_THOROUGH_TIER3 PASS")
 ```
 
 ---
 
-## Output Format
+## Output Format (combined all tiers)
 
 ```json
 {
   "status": "VERIFIED" | "FAILED",
-  "standard": {
+  "tier0": {
+    "status": "VERIFIED",
+    "checks": [
+      {"name": "build", "status": "PASS", "detail": "..."},
+      {"name": "test", "status": "PASS", "detail": "5 passed"}
+    ]
+  },
+  "tier1": {
     "status": "VERIFIED",
     "goal_alignment": { "status": "PASS", "reason": "..." },
-    "constraints": { "pass": 0, "fail": 0, "results": [] },
-    "sub_requirement_status": { "pass": 0, "fail": 0, "pending": 0, "skipped": 0, "results": [] },
-    "requirements": { "pass": 0, "fail": 0, "skipped_human": 0, "results": [] },
-    "deliverables": { "pass": 0, "fail": 0, "results": [] }
+    "constraints": { "pass": 2, "fail": 0, "results": [] },
+    "sub_requirements": [
+      { "id": "R1.1", "status": "PASS", "reason": "...", "test_coverage": true },
+      { "id": "R2.1", "status": "UNCERTAIN", "reason": "no test, runtime-dependent" }
+    ],
+    "counts": { "pass": 8, "fail": 0, "uncertain": 2 }
   },
-  "cross_task": {
-    "status": "PASS" | "FAIL",
-    "compatibility": { "status": "PASS", "issues": [] },
-    "coverage": { "status": "PASS", "uncovered": [], "failed": [] },
-    "constraints": { "status": "PASS", "violations": [] }
+  "tier2": {
+    "status": "PASS",
+    "cross_task": { "status": "PASS", "issues": [] },
+    "coverage": { "status": "PASS", "uncovered": [] },
+    "code_review": { "status": "SHIP" | "AUTO_PASS", "issues": [] }
   },
-  "code_review": {
-    "status": "SHIP" | "NEEDS_FIXES" | "AUTO_PASS",
-    "issues": [],
-    "reason": "..."
-  },
-  "sandbox": {
-    "status": "PASS" | "SKIPPED",
-    "results": [],
-    "skipped_reason": "..."
+  "tier3": {
+    "status": "PASS" | "FAIL" | "SKIPPED",
+    "tested": 10,
+    "pass": 9,
+    "fail": 0,
+    "skip": 1,
+    "methods": { "browser": 4, "cli": 4, "shell": 2 },
+    "resolved_uncertain": [
+      { "id": "R2.1", "was": "UNCERTAIN", "now": "PASS", "method": "cli", "evidence": "..." }
+    ],
+    "results": [
+      { "sub_req_id": "R1.1", "method": "browser", "status": "PASS", "evidence": "..." }
+    ]
   }
 }
+```
+
+---
+
+## Progressive Gate Summary
+
+```
+Tier 0 FAIL → HALT (don't waste $$ on broken build)
+Tier 1 FAIL → fix + retry max 2, then HALT
+Tier 1 UNCERTAIN → collect, pass to Tier 3
+Tier 2 FAIL → fix + retry max 1, then HALT
+Tier 3 FAIL → fix + retry max 1, then HALT
+Tier 3 resolves Tier 1 UNCERTAIN → final status
 ```

@@ -1,115 +1,82 @@
-# Verify Standard — Spec-Based Holistic Verification
+# Verify Standard — Tier 0 + Tier 1: Mechanical + Semantic
 
-Full verification against spec.json: goal alignment, constraints, sub-requirements, deliverables.
+Spec-based verification: mechanical gate first, then semantic analysis per sub-requirement.
 
-**Consumers**: `/execute` (AGENT/TEAM mode default), `/check`, `/ralph`, or any skill needing spec-level verification.
+**Consumers**: `/execute` (AGENT/TEAM mode default), `/check`, `/ralph`.
 
 ---
 
-## Usage
+## Tier 0: Mechanical Gate (prerequisite)
 
-The caller must provide `{spec_path}` and `{spec}` (parsed JSON).
-Dispatch as a worker agent — read-only, no file modifications.
+Execute the same checks as verify-light. Read `${baseDir}/references/verify-light.md`.
 
 ```
-spec = Read(spec_path) → parse JSON
+tier0_result = execute_verify_light(spec_path)
+IF tier0_result.status == "FAILED":
+  # Mechanical gate failed — do NOT proceed to Tier 1
+  # Return tier0 result with added context
+  HALT
+```
 
-Agent(
-  subagent_type="worker",
-  description="Spec-based holistic verification",
+**No tests found** is a PASS with warning — it does not block Tier 1.
+
+---
+
+## Tier 1: Semantic Verification
+
+Dispatch a single verification agent. Read-only — no file modifications.
+
+### Dispatch
+
+```
+Agent(subagent_type="worker",
+  description="Tier 1: Semantic verification",
   prompt="""
-  ## TASK
-  You are a VERIFICATION worker.
-  Read the FULL spec and verify the implementation holistically.
-  DO NOT modify any files. Only READ and RUN verification commands.
+  You are a VERIFICATION worker. Read the spec and source code to verify
+  each sub-requirement. DO NOT modify any files. Only READ and RUN commands.
 
   Spec path: {spec_path}
 
   ## Step 1: Goal Alignment
+
   - Goal: {spec.meta.goal}
   - Non-goals: {spec.meta.non_goals ?? "None"}
-  - Deliverables: {spec.meta.deliverables ?? "None"}
   - Check: Does the implementation achieve the goal?
   - Check: Does it avoid non-goals?
-  - Check: Do all deliverable files exist?
   Report: PASS or FAIL with reason.
 
   ## Step 2: Constraints
+
   {FOR EACH constraint in spec.constraints ?? []:}
-  - [{constraint.id}] {constraint.rule} (type: {constraint.type})
-    verified_by: {constraint.verified_by}
-    {IF constraint.verified_by == "machine":}
-    Run: `{constraint.verify.run}` → expect exit {constraint.verify.expect.exit_code}
-    {IF constraint.verified_by == "agent":}
-    Assert: {constraint.verify.checks}
-    {IF constraint.verified_by == "human":}
-    [MANUAL — skip, report only] {constraint.rule}
-  {IF no constraints: "None defined — skip this step"}
+  - [{constraint.id}] {constraint.rule}
+    Verify the implementation respects this constraint.
+  {IF no constraints: "None defined — skip."}
 
-  ## Step 3: Acceptance Criteria (all tasks)
-  {FOR EACH task in spec.tasks where status == "done":}
-  ### {task.id}: {task.action}
+  ## Step 3: Per Sub-requirement Verification
 
-  **Sub-requirement checks** (from task.fulfills[]):
-  {FOR EACH req_id in task.fulfills ?? []:}
-    Look up req_id in spec.requirements[] to find the requirement, then iterate its sub[] items.
-    {IF sub_req.verify exists AND sub_req.verified_by == "machine" AND sub_req.execution_env != "sandbox":}
-    - [{sub_req_id}] Run: `{sub_req.verify.run}` → expect exit {sub_req.verify.expect.exit_code}
-    {IF sub_req.verify exists AND sub_req.verified_by == "agent":}
-    - [{sub_req_id}] Assert: {sub_req.verify.checks}
-    {IF sub_req.verified_by == "human":}
-    - [{sub_req_id}] [MANUAL — skip, report only] {sub_req.then}
-    {IF sub_req.verified_by == "machine" AND sub_req.execution_env == "sandbox":}
-    - [{sub_req_id}] [SANDBOX — skip in standard mode, see verify-thorough.md]
-    {IF sub_req.verify does not exist:}
-    - [{sub_req_id}] {IF sub_req.given AND sub_req.when AND sub_req.then:}
-      Assert GWT: Given {sub_req.given}, When {sub_req.when}, Then {sub_req.then}
-      {ELSE:}
-      Assert behavior: {sub_req.behavior}
+  For EACH sub-requirement in spec.requirements[].sub[], evaluate independently:
 
-  **Automated checks** (from acceptance_criteria.checks[] if present):
-  {FOR EACH check in task.acceptance_criteria.checks ?? []:}
-  - [{check.type}] Run: `{check.run}` → expect exit 0
-  (v1 specs have no acceptance_criteria — sub-req given/when/then fields or behavior text above serve as the sole acceptance criteria)
+  1. Read source code related to this sub-requirement
+  2. Check if an existing test covers this sub-requirement
+  3. If the sub-req has given/when/then, trace the logic through the code
+  4. Assign ONE of three statuses:
 
-  ## Step 4: Sub-Requirement Status Check
-  Run: `hoyeon-cli spec requirement --status --json {spec_path}`
+     PASS — code clearly implements this, or a passing test covers it
+     FAIL — code contradicts this, or a failing test disproves it
+     UNCERTAIN — cannot determine from code alone. Use ONLY when:
+       - No test exists for this sub-req AND logic has conditional branches
+       - Sub-req involves UI rendering that code reading can't confirm
+       - Sub-req depends on runtime state (DB content, env vars, external API)
+       - Related code file not found
 
-  Parse the JSON output:
-  - If summary.fail > 0 → report each failed sub-requirement with its id, status, and details
-  - If any sandbox sub-requirement has status "pending" → mark as SKIPPED with reason "sandbox verification deferred to verify-thorough"
-  - Human sub-requirements with status "pending" → expected, mark as MANUAL REVIEW
-  - All machine/agent sub-requirements should be "pass" — any "pending" ones were missed
-
-  Include sub_requirement_status in the output:
-  ```json
-  "sub_requirement_status": {
-    "pass": N, "fail": N, "pending": N, "skipped": N,
-    "results": [
-      {"sub_requirement_id": "R1-SR1", "status": "pass", "task": "T1"},
-      {"sub_requirement_id": "R1-SR2", "status": "pass", "task": "T_SV1"},
-      {"sub_requirement_id": "R1-SR3", "status": "pending", "reason": "human review"}
-    ]
+  For each sub-req, output:
+  {
+    "id": "{sub_req.id}",
+    "status": "PASS" | "FAIL" | "UNCERTAIN",
+    "reason": "specific evidence from code",
+    "test_coverage": true | false,
+    "files_checked": ["path1", "path2"]
   }
-  ```
-
-  ## Step 5: Requirements Sub-Requirements
-  {FOR EACH req in spec.requirements ?? []:}
-  ### {req.id}: {req.behavior}
-  {FOR EACH sub_req in req.sub ?? []:}
-    {IF sub_req.verify exists AND sub_req.verified_by == "machine" AND (sub_req.execution_env == "host" OR !sub_req.execution_env):}
-    - [{sub_req.id}] Description: {sub_req.description}
-      Run: `{sub_req.verify.run}` → expect exit {sub_req.verify.expect.exit_code}
-    {IF sub_req.verify exists AND sub_req.verified_by == "agent":}
-    - [{sub_req.id}] Assert: {sub_req.verify.checks}
-    {IF sub_req.verified_by == "human":}
-    - [{sub_req.id}] [MANUAL — skip, report only] {sub_req.description}
-    {IF sub_req.verify does not exist:}
-    - [{sub_req.id}] {IF sub_req.given AND sub_req.when AND sub_req.then:}
-      Assert GWT: Given {sub_req.given}, When {sub_req.when}, Then {sub_req.then}
-      {ELSE:}
-      Assert behavior: {sub_req.behavior}
-  {IF no requirements: "None defined — skip this step"}
 
   ## OUTPUT FORMAT
   ```json
@@ -120,98 +87,122 @@ Agent(
       "reason": "..."
     },
     "constraints": {
-      "pass": 0, "fail": 0, "results": []
+      "pass": 0, "fail": 0,
+      "results": [{"id": "C1", "status": "PASS", "reason": "..."}]
     },
-    "sub_requirement_status": {
-      "pass": 0, "fail": 0, "pending": 0, "skipped": 0,
-      "results": [
-        {"sub_requirement_id": "R1-SR1", "status": "pass", "task": "T1"},
-        {"sub_requirement_id": "R1-SR2", "status": "pending", "reason": "human review"}
-      ]
-    },
-    "requirements": {
-      "pass": 0, "fail": 0, "skipped_human": 0, "results": []
-    },
-    "deliverables": {
-      "pass": 0, "fail": 0, "results": []
-    },
-    "summary": "..."
+    "sub_requirements": [
+      {"id": "R1.1", "status": "PASS", "reason": "...", "test_coverage": true, "files_checked": [...]},
+      {"id": "R1.2", "status": "FAIL", "reason": "...", "test_coverage": false, "files_checked": [...]},
+      {"id": "R2.1", "status": "UNCERTAIN", "reason": "...", "test_coverage": false, "files_checked": [...]}
+    ],
+    "counts": {
+      "pass": 0, "fail": 0, "uncertain": 0
+    }
   }
   ```
   """)
 ```
 
-## Dispatch Modes
-
-- **DIRECT**: orchestrator executes checks directly (no agent) — use for small specs
-- **AGENT**: dispatch as Agent(subagent_type="worker", read-only) — default
-- **TEAM**: assign to idle worker or spawn verifier — for team-mode execution
-
-## Result Handling
-
-The caller handles the result. Below is the reference recovery pattern used by `/execute`.
+### Result Handling
 
 ```
-IF result.status == "VERIFIED":
-  # proceed (e.g., TaskUpdate, mark complete)
+# VERIFIED when: no FAIL, goal aligned, constraints passed
+# UNCERTAIN items in standard mode → marked as MANUAL REVIEW (no Tier 3)
 
-ELIF result.status == "FAILED":
-  # 1. Classify: goal_alignment failure = unrecoverable, HALT immediately
+tier1_attempt = 0
+
+IF result.goal_alignment.status == "FAIL":
+  print("GOAL MISALIGNMENT — cannot auto-fix. HALT.")
+  HALT  # Unrecoverable
+
+IF result.counts.fail > 0:
+  # Build failures array (contract for dev.md/team.md callers)
+  failures = []
   IF result.goal_alignment.status == "FAIL":
-    print("GOAL MISALIGNMENT — cannot auto-fix. HALT.")
-    print("  Reason: {result.goal_alignment.reason}")
-    HALT
+    failures.append({"description": "Goal misalignment", "reason": result.goal_alignment.reason})
+  FOR EACH c in result.constraints.results.filter(r => r.status == "FAIL"):
+    failures.append({"description": "Constraint {c.id}", "reason": c.reason, "task_id": null})
+  FOR EACH s in result.sub_requirements.filter(s => s.status == "FAIL"):
+    failures.append({"description": "Sub-req {s.id}", "reason": s.reason, "task_id": null})
 
-  # 2. All other failures (constraints, AC, requirements, deliverables):
-  #    Create derived fix tasks and re-run verification (max 2 attempts)
-  fv_attempt = 0
-  WHILE fv_attempt < 2:
-    fv_attempt += 1
-    fix_tasks = []
+  # Create fix tasks for FAIL items
+  FOR EACH failed in failures:
+    derive_result = Bash("""hoyeon-cli spec derive \
+      --parent {related_task_id} \
+      --source verify-standard \
+      --trigger semantic_verification \
+      --action "Fix: {failed.description} — {failed.reason}" \
+      --reason "Tier 1 semantic: {failed.reason}" \
+      {spec_path}""")
+    dispatch_fix(derive_result, spec_path)
 
-    FOR EACH category in [constraints, requirements, deliverables]:
-      FOR EACH failure in result[category].results.filter(r => r.status == "FAIL"):
-        parent_task_id = failure.task_id ?? last_planned_task_id
+  # Re-run Tier 1 (max 2 retries)
+  IF tier1_attempt >= 2:
+    HALT with failure report
+  tier1_attempt += 1
 
-        derive_result = Bash("""hoyeon-cli spec derive \
-          --parent {parent_task_id} \
-          --source verify-standard \
-          --trigger verify_standard \
-          --action "Fix: {failure.description}" \
-          --reason "Verify standard {category} failure: {failure.reason}" \
-          {spec_path}""")
-        fix_tasks.append(derive_result.created)
+IF result.counts.fail == 0:
+  total = result.counts.pass + result.counts.uncertain
+  uncertain_ratio = result.counts.uncertain / total IF total > 0 ELSE 0
 
-    # Execute fix tasks WITHOUT per-task verify (no :Verify step for fix-derived tasks)
-    FOR EACH fix_task_id in fix_tasks:
-      Agent(subagent_type="worker", prompt=WORKER_DESCRIPTION(fix_task_id))
-      Bash("hoyeon-cli spec task {fix_task_id} --status done {spec_path}")
+  # UNCERTAIN items → report as MANUAL REVIEW
+  FOR EACH uncertain in result.sub_requirements.filter(s => s.status == "UNCERTAIN"):
+    log("MANUAL REVIEW: {uncertain.id} — {uncertain.reason}")
 
-    # Commit all fixes together
-    Agent(subagent_type="git-master", prompt="Commit verification fixes")
-
-    # Re-dispatch verification
-    result = dispatch_verify_standard_worker()
-
-    IF result.status == "VERIFIED":
-      BREAK  # success
-
-    IF result.goal_alignment.status == "FAIL":
-      print("GOAL MISALIGNMENT after fix — HALT.")
-      HALT
-
-  IF result.status != "VERIFIED":
-    print("Verify standard failed after {fv_attempt} recovery attempt(s). HALT.")
-    HALT
+  IF uncertain_ratio > 0.3:
+    status = "VERIFIED_WITH_GAPS"
+    print("⚠ {result.counts.uncertain}/{total} sub-reqs could not be verified from code alone.")
+    print("  Consider --verify thorough for runtime verification.")
+  ELSE:
+    status = "VERIFIED"
 ```
 
-### Recovery Constraints
+---
+
+## Return Contract
+
+This recipe returns the **combined Tier 0 + Tier 1** format below (not the inner agent JSON).
+Callers (verify-thorough, dev.md, team.md) access `result.tier1.sub_requirements` and `result.failures`.
+
+**Caller handling for `status`:**
+- `VERIFIED` → task done, proceed
+- `VERIFIED_WITH_GAPS` → task done, log gap count, proceed (soft success)
+- `FAILED` → enter fix loop using `result.failures[]`
+
+## Output Format
+
+```json
+{
+  "status": "VERIFIED" | "VERIFIED_WITH_GAPS" | "FAILED",
+  "failures": [
+    { "description": "Sub-req R1.2", "reason": "missing file handler", "task_id": null }
+  ],
+  "tier0": {
+    "status": "VERIFIED",
+    "checks": [...]
+  },
+  "tier1": {
+    "status": "VERIFIED" | "FAILED",
+    "goal_alignment": { "status": "PASS", "reason": "..." },
+    "constraints": { "pass": 0, "fail": 0, "results": [] },
+    "sub_requirements": [
+      { "id": "R1.1", "status": "PASS", "reason": "...", "test_coverage": true, "files_checked": [] },
+      { "id": "R2.1", "status": "UNCERTAIN", "reason": "no test, UI rendering", "test_coverage": false, "files_checked": [] }
+    ],
+    "counts": { "pass": 0, "fail": 0, "uncertain": 0 }
+  },
+  "manual_review": ["R2.1"]
+}
+```
+
+---
+
+## Recovery Constraints
 
 | Constraint | Rule |
 |------------|------|
+| Tier 0 FAIL | Immediate HALT — fix build/lint before semantic verification |
 | goal_alignment FAIL | Immediate HALT — no recovery attempt |
-| Other failures | Create derived fix tasks via `spec derive --trigger verify_standard` |
-| Fix-derived tasks | Execute WITHOUT per-task verify (lightweight path) |
-| Max re-runs | 2 (circuit breaker — HALT after 2 failed attempts) |
-| Manual items (verified_by: human) | SKIP (report only, never HALT) |
-| Sandbox items | SKIP (deferred to verify-thorough) |
+| sub-req FAIL | Create derived fix tasks via `spec derive`, max 2 retries |
+| sub-req UNCERTAIN | Standard mode → MANUAL REVIEW. Thorough mode → deferred to Tier 3 |
+| No tests warning | Does not block — Tier 1 agent evaluates code directly |
