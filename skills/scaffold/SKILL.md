@@ -107,9 +107,11 @@ Mirror the user's goal with scaffold-specific framing:
 
 ### Merge
 
+First run `hoyeon-cli spec guide meta --schema v1` and `hoyeon-cli spec guide context --schema v1` to verify field names, then merge:
+
 ```bash
 hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
-{confirmed_goal, non_goals matching guide output}
+{"meta": {"goal": "...", "non_goals": ["Feature implementation", "Production deployment"]}, "context": {"confirmed_goal": "Set up a [framework] foundation with [key patterns] that an agent can extend to build [product] features"}}
 EOF
 ```
 
@@ -156,7 +158,11 @@ EOF
 
 ### Gate
 
-Auto-advance to L2.
+```bash
+hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer decisions
+```
+
+Auto-advance to L2 (no user approval needed, but validate to catch merge errors).
 
 ---
 
@@ -265,7 +271,8 @@ D_EXT2: "Data Layer extension activated — PostgreSQL + Prisma migrations"
 
 ### Termination
 
-Same as specify: composite >= 0.80, every dimension >= 0.60, unknowns == 0.
+Composite score uses **weighted average** across dimensions (weights from the table above).
+Terminate when: composite >= 0.80, every dimension >= 0.60, unknowns == 0.
 
 ### Inversion Probe
 
@@ -273,6 +280,11 @@ Two architecture-specific questions:
 
 1. **Inversion**: "Given these architecture decisions, what scenario would cause a complete restructure even if every component works individually?"
 2. **Implication**: "You chose [most impactful decision]. Does that also mean [architectural consequence]?"
+
+If the probe reveals a critical issue (e.g., contradictory decisions, missing dimension coverage):
+- Merge the issue as a `known_gap` via `--append`
+- Re-enter the interview loop targeting the affected dimension(s)
+- Continue until termination criteria are met again
 
 ### L2 Approval
 
@@ -463,9 +475,8 @@ L4 unifies requirements derivation and task generation in one step. Requirements
 
 ### Step 1: Derive Requirements
 
-```bash
-hoyeon-cli spec derive-requirements .hoyeon/specs/{name}/spec.json
-```
+Construct requirements manually from L2 decisions + L3 harness decisions, then merge via `spec merge --stdin`.
+Run `hoyeon-cli spec guide requirements --schema v1` and `hoyeon-cli spec guide sub --schema v1` for field reference.
 
 **Code Requirements (from L2):**
 
@@ -480,7 +491,7 @@ R2: "Test Infrastructure — Framework setup with patterns matching the exemplar
   R2.2: "Test directory structure mirrors source structure"
 
 R3: "Guard Rails — CLAUDE.md + enforcement mechanisms for drift resistance"
-  R3.1: "CLAUDE.md with architectural rules, domain context, team conventions, dependency direction, and file placement conventions"
+  R3.1: "CLAUDE.md with architectural rules, domain context, team conventions, dependency direction, file placement conventions, available project skills summary, and active hooks summary"
   R3.2: "Linter + formatter configured with project-specific rules"
   R3.3: "CI pipeline running lint + typecheck + test"
   R3.4: ".env.example with all required environment variables documented"
@@ -489,7 +500,22 @@ R3: "Guard Rails — CLAUDE.md + enforcement mechanisms for drift resistance"
 **Conditional Code Extensions (from L2):**
 
 ```
-R4-R7: Same as before (Type Contracts, Data Layer, Docker/Infra, Runtime Patterns)
+R4: "Type Contracts — Schema-driven type safety across client-server boundary" (if D_EXT1)
+  R4.1: "API schema or router defines all endpoints with typed request/response"
+  R4.2: "Client-side type bindings generated or inferred from the schema (no manual type duplication)"
+
+R5: "Data Layer — Database connection, schema management, and seed data" (if D_EXT2)
+  R5.1: "ORM/query builder configured with typed models matching the domain"
+  R5.2: "Initial migration generated and seed script produces development data"
+  R5.3: "Database connection uses environment variable (DATABASE_URL or equivalent)"
+
+R6: "Docker/Infra — Containerized local development environment" (if D_EXT3)
+  R6.1: "docker-compose.yml with required services (DB, cache, etc.) and persistent volumes"
+  R6.2: "README or CLAUDE.md documents how to start/stop the local environment"
+
+R7: "Runtime Patterns — Production-readiness baseline for long-running server" (if D_EXT4)
+  R7.1: "Health check endpoint returns server status and dependency connectivity"
+  R7.2: "Graceful shutdown handler closes DB connections and in-flight requests"
 ```
 
 **Harness Requirements (from L3):**
@@ -524,20 +550,22 @@ hoyeon-cli spec derive-tasks .hoyeon/specs/{name}/spec.json
 T1: Project initialization (package.json, tsconfig, base configs)
     fulfills: [R1]
 
-T2: Guard Rails setup (CLAUDE.md with domain/team context, lint, format, CI, .env.example, .claude/rules/)
-    fulfills: [R3, R8]
+T2: Guard Rails setup (CLAUDE.md with domain/team/skills/hooks context, lint, format, CI, .env.example, .claude/rules/)
+    fulfills: [R3] + [R8 if D_H3]
     depends_on: [T1]
-    ← CLAUDE.md now includes domain context (D_H1) and team conventions (D_H2)
-    ← .claude/rules/ generated from constraints selected in D_H3
+    ← CLAUDE.md includes domain context (D_H1), team conventions (D_H2),
+       available skills summary (D_H4), and active hooks summary (D_H5)
+    ← .claude/rules/ generated from constraints selected in D_H3 (if applicable)
 
-T3: Vertical slice exemplar (the reference implementation)
-    fulfills: [R1, R2]
-    depends_on: [T2]
-    ← THIS IS THE MOST IMPORTANT TASK
-
-T4: Test infrastructure (framework + exemplar-matching tests)
+T4: Test infrastructure (vitest.config, test dirs, path aliases — framework setup only, no tests yet)
     fulfills: [R2]
-    depends_on: [T3]
+    depends_on: [T1]
+
+T3: Vertical slice exemplar (the reference implementation + exemplar test)
+    fulfills: [R1]
+    depends_on: [T2, T4]
+    ← THIS IS THE MOST IMPORTANT TASK
+    ← Test infra (T4) must be ready so exemplar test can run
 
 --- Conditional code tasks (parallel where possible) ---
 
@@ -559,7 +587,7 @@ T_HOOK: Project Hooks setup (if R10 exists)
     ← Only needs base config to know formatter/linter paths
 
 TF: Scaffold verification
-    depends_on: [T1, T2, T3, T4, T5, T6, T7, T8, T_SKILL, T_HOOK]
+    depends_on: [T1, T2, T3, T4] + conditional [T5, T6, T7, T8, T_SKILL, T_HOOK] (only those that exist)
 ```
 
 ### T3: Vertical Slice Exemplar (Critical Task)
@@ -593,7 +621,7 @@ Each skill must reference actual tools/commands from L2 decisions:
   "steps": [
     "Build: all build/lint/typecheck commands pass",
     "Tests: all exemplar tests pass",
-    "CLAUDE.md: includes architectural rules + domain context + team conventions",
+    "CLAUDE.md: includes architectural rules + domain context + team conventions + available skills + active hooks",
     "Rules: .claude/rules/ files match selected constraints from L3",
     "Exemplar: vertical slice is complete (entry → data → response → test)",
     "Utilities: logger, config, errors are importable and used in exemplar",
@@ -637,8 +665,8 @@ Scaffold Tasks (DAG)
 ----------------------------------------
 T1: Project init [core] — pending
 T2: Guard Rails + Rules [core+harness] — pending (depends: T1)
-T3: Vertical slice exemplar [core] — pending (depends: T2)
-T4: Test infrastructure [core] — pending (depends: T3)
+T4: Test infrastructure [core] — pending (depends: T1)
+T3: Vertical slice exemplar [core] — pending (depends: T2, T4)
 T5: Type Contracts [extension] — pending (depends: T3)
 T6: Data Layer [extension] — pending (depends: T1)
 T7: Docker/Infra [extension] — pending (depends: T1)
@@ -707,7 +735,7 @@ AskUserQuestion(
 - [ ] L4: Requirements include Code (R1-R3) + Conditional (R4-R7) + Harness (R8-R10)
 - [ ] L4: fulfills[] uses parent requirement IDs only (R1, not R1.1)
 - [ ] R1 includes mandatory vertical slice exemplar requirement
-- [ ] R3.1 CLAUDE.md includes domain context (D_H1) and team conventions (D_H2)
+- [ ] R3.1 CLAUDE.md includes domain context (D_H1), team conventions (D_H2), available skills (D_H4), and active hooks (D_H5)
 - [ ] T3 (exemplar) includes importable utilities (logger, config, errors)
 - [ ] T_SKILL produces skills with project-specific commands (not generic placeholders)
 - [ ] T_HOOK produces hooks matching actual L2 tooling decisions
