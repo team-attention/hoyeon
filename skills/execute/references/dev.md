@@ -33,17 +33,18 @@ Examples:
 
 Code Review can be auto-skipped when changes are small enough.
 The orchestrator evaluates auto-pass conditions **before dispatching**.
-**Gate**: Only runs when `verify_depth == "thorough"`.
+**Gate**: Runs in `standard` and `thorough` verify (not `light`). Auto-pass skips when diff is small.
 
 | Gate | Auto-Pass Condition | What Gets Skipped |
 |------|---------------------|-------------------|
-| **Code Review** | Total `git diff --stat` shows ≤ 200 lines AND no new dependencies added (`package.json`, `Cargo.toml`, etc. unchanged) AND all tasks are risk "low" | `:Code Review` step |
+| **Code Review** | Total `git diff --stat` shows ≤ 200 lines AND no new dependencies added (`package.json`, `Cargo.toml`, etc. unchanged) AND all tasks are risk "low". Runs in standard and thorough verify (not light). | Code review agent in verify recipe |
 
 **How to evaluate:**
 
 ```
 function should_auto_pass_code_review() → bool:
-  IF verify_depth != "thorough": return true  # only thorough runs code review
+  IF verify_depth == "light": return true  # light skips code review entirely
+  # standard and thorough both run conditional code review (handled by verify recipe)
   diff_stat = Bash("git diff --stat main...HEAD")
   total_lines = parse_total_lines(diff_stat)
   dep_files_changed = Bash("git diff --name-only main...HEAD | grep -E '(package\\.json|Cargo\\.toml|go\\.mod|requirements\\.txt|pyproject\\.toml)'")

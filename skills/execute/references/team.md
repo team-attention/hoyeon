@@ -7,7 +7,7 @@ Optimized for specs with 3+ parallel tasks.
 
 **Prerequisite**: Phase 0 (Find Spec, Get Plan, Init Context, Confirm Pre-work, Work Mode Selection) and
 Phase 0.5 (Plan Analysis, Mode Selection) are already done.
-`spec_path`, `plan`, `CONTEXT_DIR`, `work_mode`, `verify_tier`, and `WORK_DIR` are all established.
+`spec_path`, `plan`, `CONTEXT_DIR`, `work_mode`, `verify_depth`, and `WORK_DIR` are all established.
 
 ---
 
@@ -264,9 +264,16 @@ FOR i in 1..N:
 #   - Blocked (dependency or scope issue)
 
 # Lead actions on message receipt:
-#   - On completion: log progress, check if all tasks done
+#   - On completion: log progress, check if all tasks done,
+#     AND notify standing-by workers that new tasks may be unblocked:
+IF any_workers_standing_by AND TaskList has pending+unblocked tasks:
+  FOR EACH idle_worker in standing_by_workers:
+    SendMessage(type="message", recipient=idle_worker,
+      content="New tasks unblocked. Check TaskList and claim.",
+      summary="Wake up — new tasks available")
 #   - On failure: log_to_audit + reassign or halt (see Watchdog)
-#   - On standing by: check if verify phase should start
+#   - On standing by: track worker as idle. If all workers standing by
+#     AND no pending tasks remain → proceed to verify phase
 #   - On blocked: log_to_audit + unblock or reassign
 
 # IMPORTANT: On FAILED or BLOCKED messages, lead MUST append to audit.md:
@@ -319,25 +326,20 @@ IF worker reports FAILED for task:
 ## Phase 1.5: Verify Stage
 
 ```
-# Verify routing based on user's verify tier selection from Phase 0.5:
+# Verify routing based on user's verify depth selection from Phase 0.5:
 Read the verify recipe:
   light    -> ${baseDir}/references/verify-light.md
   standard -> ${baseDir}/references/verify-standard.md
   thorough -> ${baseDir}/references/verify-thorough.md
   ralph    -> ${baseDir}/references/verify-ralph.md
 
-# In TEAM mode, ALWAYS spawn a dedicated verifier (fresh context, no pollution from implementation work):
-Agent(
-  subagent_type="worker",
-  team_name=team_name,
-  name="verifier-1",
-  description="Verification worker",
-  prompt=WORKER_PREAMBLE(team_name, "verifier-1", spec_path, CONTEXT_DIR) +
-         "\nYour task: Execute Finalize:Verify using {verify_recipe_path}. " +
-         "Spec: {spec_path}. Report results via SendMessage to team-lead.",
-  run_in_background=true
-)
-TaskUpdate(taskId=verify_task, owner="verifier-1", status="in_progress")
+# IMPORTANT: The lead executes the verify recipe DIRECTLY (not via team worker).
+# Verify recipes internally spawn sub-agents (code-reviewer, qa-verifier, etc.)
+# which team workers cannot do (NEVER spawn sub-agents rule).
+# The lead reads the verify recipe and follows its instructions as the orchestrator.
+
+TaskUpdate(taskId=verify_task, status="in_progress")
+# Follow verify recipe instructions directly (same as dev.md Phase 2b)
 ```
 
 ---
@@ -382,7 +384,7 @@ ELIF verify result == FAIL:
     # Wait for fix task completions via SendMessage
 
     # After all fix tasks done -> re-verify
-    verify_result = run_verify(verify_tier)
+    verify_result = run_verify(verify_depth)
 
     IF verify_result == PASS OR verify_result == VERIFIED_WITH_GAPS:
       IF verify_result == VERIFIED_WITH_GAPS:
@@ -450,7 +452,7 @@ SPEC: {spec_path}
 GOAL: {spec.meta.goal}
 DISPATCH: team
 WORK: {work_mode}
-VERIFY: {verify_tier}
+VERIFY: {verify_depth}
 WORKERS: {N} spawned
 
 ---------------------------------------------------
@@ -480,9 +482,8 @@ Audit: {count} events
 ---------------------------------------------------
 MANUAL REVIEW (require human verification)
 ---------------------------------------------------
-{FOR EACH req in (spec.requirements ?? []):}
-{FOR EACH sub_req where verified_by == "human":}
-- {sub_req.id}: {sub_req.description}
+{List any sub-requirements that require manual/visual verification
+ based on their behavior description (e.g., UI appearance, UX flows)}
 
 {IF no manual items: "None"}
 
@@ -577,7 +578,7 @@ Action: {what was done — derive, reassign, halt}
 9. **Description = recipe** -- TaskCreate description contains the full self-read recipe. At dispatch time, the worker preamble plus description provide all instructions.
 10. **Adaptation updates spec.json** -- new fix tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on automatically).
 11. **Max 5 workers** -- `N = min(ceil(parallel_tasks / 2), 5)`. More workers add coordination overhead without proportional throughput.
-12. **Verify stage uses existing recipes** -- TEAM mode loads the same verify recipes as other dispatch modes. The only difference is that a worker (or dedicated verifier) executes the recipe, not the orchestrator.
+12. **Verify stage runs by lead** -- TEAM mode loads the same verify recipes as other dispatch modes. The lead executes the recipe directly (not a team worker), because verify recipes internally spawn sub-agents (code-reviewer, qa-verifier) which team workers cannot do.
 
 ---
 
@@ -593,7 +594,7 @@ Action: {what was done — derive, reassign, halt}
 - [ ] Failed tasks reassigned (not halted) -- halt after 2+ failures on same task
 - [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
 - [ ] `hoyeon-cli spec check` passes at end
-- [ ] Verify recipe executed by idle worker or dedicated verifier
+- [ ] Verify recipe executed by lead directly (not team worker — verify spawns sub-agents)
 - [ ] Fix loop bounded by max 3 attempts
 - [ ] Shutdown: shutdown_request sent to all workers, shutdown_response received
 - [ ] TeamDelete called after all workers confirmed shutdown

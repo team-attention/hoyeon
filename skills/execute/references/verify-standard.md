@@ -1,6 +1,6 @@
-# Verify Standard — Tier 0 + Tier 1: Mechanical + Semantic
+# Verify Standard — Tier 0 + Tier 1 + Code Review: Mechanical + Semantic + Quality
 
-Spec-based verification: mechanical gate first, then semantic analysis per sub-requirement.
+Spec-based verification: mechanical gate first, semantic analysis per sub-requirement, then conditional code review.
 
 **Consumers**: `/execute` (AGENT/TEAM mode default), `/check`, `/ralph`.
 
@@ -159,10 +159,63 @@ IF result.counts.fail == 0:
 
 ---
 
+## Code Review (conditional)
+
+> Catches integration issues, hidden bugs, and design inconsistencies that
+> per-sub-requirement verification misses.
+
+Runs **after** Tier 1 passes (no FAIL items). Parallel with nothing — sequential gate.
+
+### Auto-pass conditions
+
+```
+# Skip code review when ALL true:
+#   - Total diff ≤ 200 lines
+#   - No new dependencies added (package.json, Cargo.toml, etc. unchanged)
+#   - All tasks are low risk
+IF auto_pass_conditions_met:
+  cr_result = {"status": "AUTO_PASS", "reason": "small diff, no new deps, low risk"}
+ELSE:
+  Agent(subagent_type="code-reviewer",
+    description="Code review",
+    prompt="""
+    Review the complete diff for this spec.
+    Spec path: {spec_path}
+    Focus on: correctness, edge cases, security, API consistency.
+    Output: "SHIP" or "NEEDS_FIXES" with list of issues
+    """)
+```
+
+### Result handling
+
+```
+IF cr_result.status == "AUTO_PASS" OR cr_result.verdict == "SHIP":
+  # Code review passed — proceed to final status
+  pass
+
+IF cr_result.verdict == "NEEDS_FIXES":
+  FOR EACH fix_item in cr_result.fix_items:
+    derive_result = Bash("""hoyeon-cli spec derive \
+      --parent {related_task_id} \
+      --source verify-standard \
+      --trigger code_review \
+      --action "Fix: {fix_item.id} — {fix_item.description}" \
+      --reason "Code review: {fix_item.impact}" \
+      {spec_path}""")
+    dispatch_fix(derive_result, spec_path)
+
+  # Re-run code review after fixes (max 1 retry)
+  IF cr_attempt >= 1:
+    HALT with code review failure report
+  cr_attempt += 1
+```
+
+---
+
 ## Return Contract
 
-This recipe returns the **combined Tier 0 + Tier 1** format below (not the inner agent JSON).
-Callers (verify-thorough, dev.md, team.md) access `result.tier1.sub_requirements` and `result.failures`.
+This recipe returns the **combined Tier 0 + Tier 1 + Code Review** format below (not the inner agent JSON).
+Callers (verify-thorough, dev.md, team.md) access `result.tier1.sub_requirements`, `result.code_review`, and `result.failures`.
 
 **Caller handling for `status`:**
 - `VERIFIED` → task done, proceed
@@ -191,6 +244,10 @@ Callers (verify-thorough, dev.md, team.md) access `result.tier1.sub_requirements
     ],
     "counts": { "pass": 0, "fail": 0, "uncertain": 0 }
   },
+  "code_review": {
+    "status": "SHIP" | "NEEDS_FIXES" | "AUTO_PASS",
+    "issues": []
+  },
   "manual_review": ["R2.1"]
 }
 ```
@@ -205,4 +262,6 @@ Callers (verify-thorough, dev.md, team.md) access `result.tier1.sub_requirements
 | goal_alignment FAIL | Immediate HALT — no recovery attempt |
 | sub-req FAIL | Create derived fix tasks via `spec derive`, max 2 retries |
 | sub-req UNCERTAIN | Standard mode → MANUAL REVIEW. Thorough mode → deferred to Tier 3 |
+| Code review NEEDS_FIXES | Create derived fix tasks via `spec derive`, max 1 retry |
+| Code review AUTO_PASS | Small diff + no deps + low risk → skip (no agent spawned) |
 | No tests warning | Does not block — Tier 1 agent evaluates code directly |

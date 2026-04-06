@@ -121,7 +121,20 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.5.3)
+## Recent Changes (v1.5.4)
+
+- feat(execute): add conditional code review to verify-standard (Tier 0 + Tier 1 + CR)
+  - Same auto-pass conditions as thorough (diff ≤ 200 lines, no new deps, low risk)
+  - verify-thorough no longer re-runs code review (reuses standard result)
+  - New verify tier structure: light (T0), standard (T0+T1+CR), thorough (T0+T1+CR+cross-task+T3)
+- fix(execute): team.md verify stage — lead executes verify directly instead of team worker
+  - Team workers cannot spawn sub-agents; verify recipes need code-reviewer/qa-verifier agents
+- fix(execute): team.md variable drift — verify_tier → verify_depth (consistency with dev.md/SKILL.md)
+- fix(execute): team.md MANUAL REVIEW — remove stale verified_by=="human" (v1 schema has no verified_by)
+- fix(execute): team.md add standing-by worker wake-up — lead notifies idle workers when tasks unblock
+- fix(execute): dev.md code review gate text — update from "thorough only" to "standard+thorough"
+
+## Previous Changes (v1.5.3)
 
 - feat(execute): restructure verify pipeline to 4-tier progressive gate (Tier 0→1→2→3)
   - verify-light: Tier 0 with toolchain auto-detection, CWD subshell rule
