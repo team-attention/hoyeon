@@ -41,6 +41,11 @@ openssl rand -hex 2
 /path/to/chromux screenshot exp-ab12 [path]  # Screenshot (verification only)
 /path/to/chromux scroll exp-ab12 down|up     # Scroll
 /path/to/chromux wait exp-ab12 <ms>          # Wait
+/path/to/chromux console exp-ab12             # Capture console logs (errors, warnings)
+/path/to/chromux console exp-ab12 --off      # Disable console capture
+/path/to/chromux network exp-ab12            # Capture failed requests (4xx/5xx)
+/path/to/chromux network exp-ab12 --all      # Capture all network requests
+/path/to/chromux network exp-ab12 --off      # Disable network capture
 /path/to/chromux close exp-ab12              # Close tab
 /path/to/chromux list                        # List sessions
 ```

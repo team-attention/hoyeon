@@ -73,6 +73,11 @@ Then in every subsequent Bash call, inline both the chromux path and session ID:
 /path/to/chromux screenshot exp-ab12 [path]      # Take screenshot (for VERIFICATION only)
 /path/to/chromux scroll exp-ab12 down|up         # Scroll page
 /path/to/chromux wait exp-ab12 <ms>              # Wait milliseconds
+/path/to/chromux console exp-ab12                # Capture console logs (errors, warnings, info)
+/path/to/chromux console exp-ab12 --off          # Disable console capture
+/path/to/chromux network exp-ab12                # Capture failed requests (4xx/5xx/errors)
+/path/to/chromux network exp-ab12 --all          # Capture all network requests
+/path/to/chromux network exp-ab12 --off          # Disable network capture
 /path/to/chromux close exp-ab12                  # Close tab
 /path/to/chromux list                            # List all active sessions
 ```
@@ -87,6 +92,7 @@ Then in every subsequent Bash call, inline both the chromux path and session ID:
 6. **Retry on element not found** — Wait 2 seconds and re-snapshot (up to 3 times)
 7. **Always close the session when done** — Run `close` to clean up
 8. **Inline everything** — Never rely on shell variables (`$CX`, `$S`) from previous Bash calls. Always use literal strings.
+9. **Use console/network for debugging** — When something looks broken (blank page, missing data, unexpected behavior), run `console` to check for JS errors and `network` to check for failed API calls before continuing.
 
 ## Workflow
 
