@@ -7886,15 +7886,12 @@ Usage:
                                                     --patch:  ID-based merge (match by id, update in place)
   hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]  Schema validation + coverage checks
   hoyeon-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
-  hoyeon-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
-  hoyeon-cli spec task <task-id> --get <path>                               Get task details as JSON
   hoyeon-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
   hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
   hoyeon-cli spec check <path>                      Check internal consistency
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
   hoyeon-cli spec guide [section]                             Show schema guide for a section
   hoyeon-cli spec sub <sub-req-id> --get <path>                    Get sub-requirement details as JSON
-  hoyeon-cli spec derive-tasks <path>                Generate task stubs from requirements (fulfills auto-linked)
   hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
   hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to context/issues.json
   hoyeon-cli spec search "query" [--specs-dir .hoyeon/specs] [--limit 10] [--json]  BM25 search across all specs
@@ -7908,8 +7905,6 @@ Examples:
   hoyeon-cli spec validate ./spec.json
   hoyeon-cli spec validate ./spec.json --layer decisions --json
   hoyeon-cli spec plan ./spec.json
-  hoyeon-cli spec task T1 --status done --summary "implemented" ./spec.json
-  hoyeon-cli spec task T1 --get ./spec.json
   hoyeon-cli spec status ./spec.json
   hoyeon-cli spec meta ./spec.json
   hoyeon-cli spec check ./spec.json
@@ -8096,11 +8091,9 @@ async function handleInit(args) {
   const specData = {
     meta: {
       name,
-      goal: parsed.goal
-    },
-    tasks: [
-      { id: "T1", action: "TODO", type: "work" }
-    ]
+      goal: parsed.goal,
+      schema_version: "v2"
+    }
   };
   if (parsed.type !== void 0) {
     const validTypes = ["dev", "plain"];
@@ -8111,13 +8104,18 @@ async function handleInit(args) {
     }
     specData.meta.type = parsed.type;
   }
-  if (parsed.schema) {
-    if (parsed.schema !== "v1") {
-      process.stderr.write(`Error: invalid --schema '${parsed.schema}'. Only 'v1' is supported.
+  if (parsed.schema !== void 0) {
+    if (parsed.schema === "v1") {
+      process.stderr.write(`Error: --schema 'v1' is no longer supported. v1 has been deprecated; omit --schema or pass --schema v2.
 `);
       process.exit(1);
     }
-    specData.meta.schema_version = parsed.schema;
+    if (parsed.schema !== "v2") {
+      process.stderr.write(`Error: invalid --schema '${parsed.schema}'. Only 'v2' is supported.
+`);
+      process.exit(1);
+    }
+    specData.meta.schema_version = "v2";
   }
   validateSpec(specData);
   writeState(specPath, specData);
@@ -8727,102 +8725,6 @@ async function handleAmend(args) {
 `);
   process.exit(0);
 }
-async function handleTask(args) {
-  const taskId = args[0];
-  if (!taskId || taskId.startsWith("--")) {
-    process.stderr.write("Error: <task-id> is required\n");
-    process.stderr.write('Usage: hoyeon-cli spec task <task-id> --status <status> [--summary "..."] <path>\n');
-    process.stderr.write("       hoyeon-cli spec task <task-id> --get <path>\n");
-    process.exit(1);
-  }
-  const parsed = parseArgs(args.slice(1));
-  if (parsed.get !== void 0) {
-    if (typeof parsed.get !== "string") {
-      process.stderr.write("Error: --get requires <path> argument\n");
-      process.stderr.write("Usage: hoyeon-cli spec task <task-id> --get <path>\n");
-      process.exit(1);
-    }
-    const filePath2 = parsed.get;
-    const specData2 = loadSpec(resolve(filePath2));
-    const task2 = specData2.tasks.find((t) => t.id === taskId);
-    if (!task2) {
-      process.stderr.write(`Error: task '${taskId}' not found in spec
-`);
-      process.exit(1);
-    }
-    process.stdout.write(JSON.stringify(task2, null, 2) + "\n");
-    process.exit(0);
-  }
-  let status = parsed.status;
-  if (parsed.done === true) status = "done";
-  if (parsed["in-progress"] === true) status = "in_progress";
-  if (!status) {
-    process.stderr.write("Error: --status <status> is required (or use --done / --in-progress / --get)\n");
-    process.exit(1);
-  }
-  const validStatuses = ["pending", "in_progress", "done"];
-  if (!validStatuses.includes(status)) {
-    process.stderr.write(`Error: invalid status '${status}'. Valid values: ${validStatuses.join(", ")}
-`);
-    process.exit(1);
-  }
-  const filePath = parsed._[0];
-  if (!filePath) {
-    process.stderr.write("Error: <path> to spec.json is required\n");
-    process.exit(1);
-  }
-  const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
-  const task = specData.tasks.find((t) => t.id === taskId);
-  if (!task) {
-    process.stderr.write(`Error: task '${taskId}' not found in spec
-`);
-    process.exit(1);
-  }
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  task.status = status;
-  if (status === "in_progress" && !task.started_at) {
-    task.started_at = now;
-  }
-  if (status === "done") {
-    task.completed_at = now;
-    if (parsed.summary) {
-      task.summary = parsed.summary;
-    }
-  }
-  const historyType = status === "in_progress" ? "task_start" : status === "done" ? "task_done" : "spec_updated";
-  const entry = { ts: now, type: historyType, task: taskId };
-  if (parsed.summary) {
-    entry.summary = parsed.summary;
-  }
-  let schema;
-  try {
-    schema = loadSchema(specData);
-  } catch (err) {
-    process.stderr.write(`Error: could not load schema: ${err.message}
-`);
-    process.exit(1);
-  }
-  const ajv = new import__.default({ allErrors: true });
-  (0, import_ajv_formats.default)(ajv);
-  const validate = ajv.compile(schema);
-  const valid = validate(specData);
-  if (!valid) {
-    process.stderr.write("Validation failed after update:\n");
-    for (const e of validate.errors) {
-      const path2 = e.instancePath || "(root)";
-      process.stderr.write(`  ${path2}: ${e.message}
-`);
-    }
-    printGuideHints(validate.errors);
-    process.exit(1);
-  }
-  writeState(specPath, specData);
-  appendHistory(specPath, entry);
-  process.stdout.write(`Updated task '${taskId}' status to '${status}'
-`);
-  process.exit(0);
-}
 async function handleStatus(args) {
   const filePath = args[0];
   if (!filePath) {
@@ -9018,11 +8920,12 @@ function generateGuide(section, schemaVersion) {
   const SECTIONS = {
     meta: { ref: "meta", desc: "Spec metadata (name, goal, type, schema_version, mode with dispatch/work/verify)" },
     context: { ref: "context", desc: "Confirmed goal, research, decisions, known gaps" },
-    tasks: { ref: "task", desc: "Task DAG (work items + verification)", isArray: true },
     requirements: { ref: "requirement", desc: "Requirements with sub-requirements (sub[] = behavioral acceptance criteria)", isArray: true },
     constraints: { ref: "constraint", desc: "Must-not-do / preserve constraints", isArray: true },
     external: { ref: "externalDependencies", desc: "Human-only pre/post-work dependencies" },
-    sub: { ref: "subRequirement", desc: "Sub-requirement (behavior required; optional given/when/then for GWT format)" },
+    sub: { ref: "subRequirement", desc: "Sub-requirement (behavior, given, when, then all required \u2014 GWT is mandatory in v2)" },
+    verification: { ref: "verification", desc: "Top-level verification block: journeys[] = cross-sub-req scenarios composing \u22652 sub-requirement IDs" },
+    journey: { ref: "journey", desc: "Single verification journey: ordered composes[] of sub-req IDs + top-level given/when/then" },
     merge: { ref: null, desc: "Merge modes: replace (default), --append, --patch", custom: "merge" }
   };
   if (!section || section === "list") {
@@ -9238,44 +9141,6 @@ async function handleGuide(args) {
   const schemaVersion = parsed.schema || void 0;
   const output = generateGuide(section, schemaVersion);
   process.stdout.write(output + "\n");
-  process.exit(0);
-}
-async function handleDeriveTasks(args) {
-  const filePath = args[0];
-  if (!filePath) {
-    process.stderr.write("Error: <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec derive-tasks <path>\n");
-    process.exit(1);
-  }
-  const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
-  const requirements = specData.requirements || [];
-  if (requirements.length === 0) {
-    process.stderr.write("Error: no requirements found. Run derive-requirements first.\n");
-    process.exit(1);
-  }
-  const tasks = [];
-  for (let i = 0; i < requirements.length; i++) {
-    const r = requirements[i];
-    const taskId = `T${i + 1}`;
-    tasks.push({
-      id: taskId,
-      action: `TODO \u2014 implement ${r.id}: ${r.behavior.slice(0, 60)}`,
-      depends_on: [],
-      fulfills: [r.id]
-    });
-  }
-  specData.tasks = tasks;
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  validateSpec(specData);
-  writeState(specPath, specData);
-  appendHistory(specPath, { ts: now, type: "tasks_changed", detail: `derive-tasks: ${tasks.length} stubs` });
-  process.stdout.write(`Derived ${tasks.length} tasks from ${requirements.length} requirements
-`);
-  for (const t of tasks) {
-    process.stdout.write(`  ${t.id}: fulfills=[${(t.fulfills || []).join(",")}] "${t.action.slice(0, 60)}"
-`);
-  }
   process.exit(0);
 }
 async function handleSub(args) {
@@ -9775,8 +9640,6 @@ async function spec(args) {
     await handleValidate(args.slice(1));
   } else if (subcommand === "plan") {
     await handlePlan(args.slice(1));
-  } else if (subcommand === "task") {
-    await handleTask(args.slice(1));
   } else if (subcommand === "status") {
     await handleStatus(args.slice(1));
   } else if (subcommand === "meta") {
@@ -9799,8 +9662,6 @@ async function spec(args) {
     await handleIssue(args.slice(1));
   } else if (subcommand === "search") {
     await handleSearch(args.slice(1));
-  } else if (subcommand === "derive-tasks") {
-    await handleDeriveTasks(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown spec subcommand '${subcommand}'
 `);
