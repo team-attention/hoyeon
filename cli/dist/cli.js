@@ -8227,6 +8227,61 @@ async function handleMerge(args) {
   if (strict) process.stdout.write("  mode: strict (coverage verified)\n");
   process.exit(0);
 }
+function humanizeAjvMessage(error, data) {
+  if (error.keyword === "minItems" && /\/verification\/journeys\/\d+\/composes$/.test(error.instancePath)) {
+    const m = error.instancePath.match(/\/verification\/journeys\/(\d+)\/composes$/);
+    const idx = m ? parseInt(m[1], 10) : -1;
+    const journey = data?.verification?.journeys?.[idx];
+    const jid = journey?.id || `#${idx}`;
+    return `journey '${jid}' must compose at least 2 sub-requirements`;
+  }
+  return error.message;
+}
+function runV2SemanticChecks(data) {
+  const errors = [];
+  const GWT_FIELDS = ["given", "when", "then"];
+  const requirements = Array.isArray(data?.requirements) ? data.requirements : [];
+  const subIds = /* @__PURE__ */ new Set();
+  for (let i = 0; i < requirements.length; i++) {
+    const req = requirements[i];
+    const subs = Array.isArray(req?.sub) ? req.sub : [];
+    for (let j = 0; j < subs.length; j++) {
+      const sr = subs[j];
+      if (sr && typeof sr === "object" && typeof sr.id === "string") {
+        subIds.add(sr.id);
+      }
+      for (const field of GWT_FIELDS) {
+        const v = sr?.[field];
+        const missing = typeof v !== "string" || v.length === 0;
+        const isTbd = typeof v === "string" && v.trim().toLowerCase() === "tbd";
+        if (missing || isTbd) {
+          errors.push({
+            path: `/requirements/${i}/sub/${j}/${field}`,
+            kind: "gwt-missing",
+            message: missing ? `sub-requirement is missing '${field}' (must be a non-empty string)` : `sub-requirement '${field}' is 'TBD' (must be filled in before validation passes)`
+          });
+        }
+      }
+    }
+  }
+  const journeys = Array.isArray(data?.verification?.journeys) ? data.verification.journeys : [];
+  for (let i = 0; i < journeys.length; i++) {
+    const journey = journeys[i];
+    const composes = Array.isArray(journey?.composes) ? journey.composes : [];
+    for (let k = 0; k < composes.length; k++) {
+      const ref = composes[k];
+      if (typeof ref !== "string") continue;
+      if (!subIds.has(ref)) {
+        errors.push({
+          path: `/verification/journeys/${i}/composes/${k}`,
+          kind: "dangling-sub-ref",
+          message: `journey '${journey?.id || `#${i}`}' composes references non-existent sub-requirement '${ref}'`
+        });
+      }
+    }
+  }
+  return errors;
+}
 async function handleValidate(args) {
   const parsed = parseArgs(args);
   const filePath = parsed._[0];
@@ -8276,7 +8331,7 @@ async function handleValidate(args) {
       instancePath: e.instancePath,
       schemaPath: e.schemaPath,
       keyword: e.keyword,
-      message: e.message,
+      message: humanizeAjvMessage(e, data),
       params: e.params
     }));
     if (useJson) {
@@ -8287,10 +8342,29 @@ async function handleValidate(args) {
     process.stderr.write("Validation failed:\n");
     for (const e of validate.errors) {
       const path2 = e.instancePath || "(root)";
-      process.stderr.write(`  ${path2}: ${e.message}
+      process.stderr.write(`  ${path2}: ${humanizeAjvMessage(e, data)}
 `);
     }
     printGuideHints(validate.errors);
+    process.exit(1);
+  }
+  const semanticErrors = runV2SemanticChecks(data);
+  if (semanticErrors.length > 0) {
+    if (useJson) {
+      const errors = semanticErrors.map((e) => ({
+        instancePath: e.path,
+        schemaPath: "",
+        keyword: e.kind,
+        message: e.message,
+        params: {}
+      }));
+      process.stdout.write(JSON.stringify({ valid: false, errors, coverage: null, gaps: [] }) + "\n");
+    }
+    process.stderr.write("Validation failed (v2 semantic checks):\n");
+    for (const e of semanticErrors) {
+      process.stderr.write(`  ${e.path || "(root)"}: ${e.message}
+`);
+    }
     process.exit(1);
   }
   const gaps = runCoverageChecks(data, layer);
