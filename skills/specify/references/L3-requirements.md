@@ -4,14 +4,24 @@
 
 ### Step 1: Claude scaffolds requirements directly from decisions
 
-There is no CLI scaffold helper in v2. Claude reads `context.decisions[]` from
-the spec (and `context.confirmed_goal` for R0) and writes the initial `requirements[]` structure
-inline via `hoyeon-cli spec merge --stdin` heredoc.
+There is no CLI scaffold helper in v2. Claude reads **all four context sources** and writes
+the initial `requirements[]` structure inline via `hoyeon-cli spec merge --stdin` heredoc:
+
+1. `context.confirmed_goal` → seeds R0 (overarching behavior).
+2. `meta.non_goals` → **filter**: do NOT emit requirements for these; flag if a decision implies one.
+3. `context.research` → **constraint injection**: existing patterns, file structures, and
+   technical facts discovered in L1 must be reflected in sub-req `given`/`when` fields.
+   Example: if research reports "orders table uses UUID PK", sub GWTs referencing order ids must
+   use UUID examples, not integer `id=42`.
+4. `context.decisions[]` → **1:N starting point** (reshape freely in Step 2; do not anchor on 1:1).
 
 Scaffolding rules:
 
 - Start with `R0` derived from `context.confirmed_goal` (the overarching behavior).
 - Emit one requirement `R1..Rn` per decision as a **starting point** — you will reshape in Step 2.
+- Cross-check each scaffolded sub-req against `context.research`: if a research finding
+  constrains the sub's precondition or outcome, bake it into GWT from the first draft.
+- Cross-check against `meta.non_goals`: if a scaffolded requirement restates a non-goal, drop it.
 - Every requirement has at least one `sub[]` entry from the start (no empty `sub`).
 - Every sub has all three GWT fields (`given`, `when`, `then`) filled with a real scenario.
   Do not use `TBD` — v2 validate rejects `TBD`/empty GWT strings.
@@ -133,6 +143,8 @@ GOOD — boundary-separated (SDK↔CLI):
 - Every decision has at least one requirement tracing back to it
 - Sub-requirements together cover the full behavior of the parent
 - No orphan decisions
+- **Research reflection**: each relevant finding in `context.research` (existing pattern, constraint, naming convention, data shape) appears in at least one sub-req's GWT — or is explicitly recorded in `known_gaps` with rationale
+- **Non-goals respected**: no requirement restates or re-scopes an item from `meta.non_goals`
 - **Boundary check**: if a sub-req implies a cross-boundary dependency (e.g., an API endpoint), verify the other side has a matching sub-req
 - **GWT completeness check**: every sub-req has all three GWT fields filled with real, non-TBD values
 
