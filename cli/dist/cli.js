@@ -7884,7 +7884,7 @@ Usage:
   hoyeon-cli spec merge <path> --stdin              Read JSON from stdin (heredoc-friendly)
                                                     --append: concatenate arrays
                                                     --patch:  ID-based merge (match by id, update in place)
-  hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]  Schema validation + coverage checks
+  hoyeon-cli spec validate <path> [--layer decisions|requirements] [--json]  Schema validation + coverage checks
   hoyeon-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
   hoyeon-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
   hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
@@ -8201,10 +8201,11 @@ async function handleMerge(args) {
   deepMerge(specData, fragment, append, patch);
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const mergedKeys = Object.keys(fragment).join(", ");
-  validateSpec(specData);
+  const validationClone = structuredClone(specData);
+  validateSpec(validationClone);
   const strict = parsed.strict === true;
   if (strict) {
-    const gaps = runCoverageChecks(specData);
+    const gaps = runCoverageChecks(validationClone);
     if (gaps.length > 0) {
       process.stderr.write("Strict merge failed \u2014 coverage gaps found (spec NOT written):\n");
       for (const g of gaps) {
@@ -8285,7 +8286,7 @@ async function handleValidate(args) {
   const filePath = parsed._[0];
   if (!filePath) {
     process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]\n");
+    process.stderr.write("Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements] [--json]\n");
     process.exit(1);
   }
   const layer = parsed.layer;
@@ -8775,14 +8776,13 @@ function collectRequirementSets(specData) {
   }
   return { allReqIds, referencedReqIds };
 }
-var VALID_COVERAGE_LAYERS = ["decisions", "requirements", "tasks"];
+var VALID_COVERAGE_LAYERS = ["decisions", "requirements"];
 function runCoverageChecks(specData, layer) {
   const gaps = [];
   const decisions = specData.context?.decisions || [];
   const requirements = specData.requirements || [];
   const decisionIds = new Set(decisions.map((d) => d.id).filter(Boolean));
   const runRequirements = !layer || layer === "requirements";
-  const runTasks = !layer || layer === "tasks";
   if (runRequirements) {
     for (const req of requirements) {
       const subs = req.sub || [];
@@ -8795,7 +8795,7 @@ function runCoverageChecks(specData, layer) {
       }
     }
   }
-  if (runRequirements && runTasks) {
+  if (runRequirements) {
     const { allReqIds, referencedReqIds } = collectRequirementSets(specData);
     const tasksWithFulfills = (specData.tasks || []).filter((t) => t.fulfills && t.fulfills.length > 0);
     if (allReqIds.size > 0 && tasksWithFulfills.length > 0) {
@@ -8817,7 +8817,7 @@ async function handleCoverage(args) {
   const filePath = parsed._[0];
   if (!filePath) {
     process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]\n");
+    process.stderr.write("Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements] [--json]\n");
     process.stderr.write('Note: "spec coverage" is deprecated \u2014 use "spec validate" instead.\n');
     process.exit(1);
   }
@@ -8858,26 +8858,27 @@ async function handleCheck(args) {
   }
   const specData = loadSpec(resolve(filePath));
   const issues = [];
-  const taskIds = new Set(specData.tasks.map((t) => t.id));
-  if (taskIds.size !== specData.tasks.length) {
+  const tasks = specData.tasks || [];
+  const taskIds = new Set(tasks.map((t) => t.id));
+  if (taskIds.size !== tasks.length) {
     issues.push("duplicate task IDs detected");
   }
-  for (const task of specData.tasks) {
+  for (const task of tasks) {
     for (const dep of task.depends_on || []) {
       if (!taskIds.has(dep)) {
         issues.push(`task '${task.id}' depends on unknown task '${dep}'`);
       }
     }
   }
-  for (const task of specData.tasks) {
+  for (const task of tasks) {
     if (task.status === "done" && !task.completed_at) {
       issues.push(`task '${task.id}' is done but missing completed_at`);
     }
   }
-  for (const task of specData.tasks) {
+  for (const task of tasks) {
     if (task.status === "in_progress" || task.status === "done") {
       for (const dep of task.depends_on || []) {
-        const depTask = specData.tasks.find((t) => t.id === dep);
+        const depTask = tasks.find((t) => t.id === dep);
         if (depTask && depTask.status !== "done") {
           issues.push(`task '${task.id}' is ${task.status} but dependency '${dep}' is not done`);
         }
@@ -8885,7 +8886,7 @@ async function handleCheck(args) {
     }
   }
   const reqIds = new Set((specData.requirements || []).map((r) => r.id).filter(Boolean));
-  for (const task of specData.tasks) {
+  for (const task of tasks) {
     for (const reqRef of task.fulfills || []) {
       if (!reqIds.has(reqRef)) {
         issues.push(`task '${task.id}' fulfills[] references unknown requirement '${reqRef}'`);
@@ -8893,7 +8894,7 @@ async function handleCheck(args) {
     }
   }
   {
-    const tasksWithRefs = (specData.tasks || []).filter((t) => t.fulfills && t.fulfills.length > 0);
+    const tasksWithRefs = tasks.filter((t) => t.fulfills && t.fulfills.length > 0);
     if (reqIds.size > 0 && tasksWithRefs.length > 0) {
       for (const id of reqIds) {
         const referenced = tasksWithRefs.some((t) => t.fulfills.includes(id));
@@ -8914,8 +8915,8 @@ async function handleCheck(args) {
   process.stdout.write("Spec check passed: internal consistency OK\n");
   process.exit(0);
 }
-function generateGuide(section, schemaVersion) {
-  const schema = loadSchema(schemaVersion);
+function generateGuide(section) {
+  const schema = loadSchema();
   const defs = schema.$defs || {};
   const SECTIONS = {
     meta: { ref: "meta", desc: "Spec metadata (name, goal, type, schema_version, mode with dispatch/work/verify)" },
@@ -9138,8 +9139,7 @@ function formatMergeGuide() {
 async function handleGuide(args) {
   const parsed = parseArgs(args);
   const section = parsed._[0];
-  const schemaVersion = parsed.schema || void 0;
-  const output = generateGuide(section, schemaVersion);
+  const output = generateGuide(section);
   process.stdout.write(output + "\n");
   process.exit(0);
 }

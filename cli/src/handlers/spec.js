@@ -14,7 +14,7 @@ Usage:
   hoyeon-cli spec merge <path> --stdin              Read JSON from stdin (heredoc-friendly)
                                                     --append: concatenate arrays
                                                     --patch:  ID-based merge (match by id, update in place)
-  hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]  Schema validation + coverage checks
+  hoyeon-cli spec validate <path> [--layer decisions|requirements] [--json]  Schema validation + coverage checks
   hoyeon-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
   hoyeon-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
   hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
@@ -390,12 +390,16 @@ async function handleMerge(args) {
   const now = new Date().toISOString();
   const mergedKeys = Object.keys(fragment).join(', ');
 
-  validateSpec(specData);
+  // C1: validate against a clone so loadSchema's v1→v2 in-memory migration
+  // (mutates meta.schema_version, drops tasks[], backfills GWT) never leaks
+  // to the on-disk spec. The original specData is written unmodified.
+  const validationClone = structuredClone(specData);
+  validateSpec(validationClone);
 
   // --strict: run coverage checks after schema validation, fail before writing
   const strict = parsed.strict === true;
   if (strict) {
-    const gaps = runCoverageChecks(specData);
+    const gaps = runCoverageChecks(validationClone);
     if (gaps.length > 0) {
       process.stderr.write('Strict merge failed — coverage gaps found (spec NOT written):\n');
       for (const g of gaps) {
@@ -496,7 +500,7 @@ async function handleValidate(args) {
 
   if (!filePath) {
     process.stderr.write('Error: missing <path> argument\n');
-    process.stderr.write('Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]\n');
+    process.stderr.write('Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements] [--json]\n');
     process.exit(1);
   }
 
@@ -1071,7 +1075,7 @@ function collectRequirementSets(specData) {
   return { allReqIds, referencedReqIds };
 }
 
-const VALID_COVERAGE_LAYERS = ['decisions', 'requirements', 'tasks'];
+const VALID_COVERAGE_LAYERS = ['decisions', 'requirements'];
 
 /**
  * Run coverage checks on parsed spec data.
@@ -1089,7 +1093,6 @@ function runCoverageChecks(specData, layer) {
   const decisionIds = new Set(decisions.map(d => d.id).filter(Boolean));
 
   const runRequirements = !layer || layer === 'requirements';
-  const runTasks = !layer || layer === 'tasks';
 
   // --- Check 1: sub-requirement coverage (requirements layer) ---
   if (runRequirements) {
@@ -1106,7 +1109,7 @@ function runCoverageChecks(specData, layer) {
   }
 
   // --- Check 4: orphan detection (requirements layer) ---
-  if (runRequirements && runTasks) {
+  if (runRequirements) {
     const { allReqIds, referencedReqIds } = collectRequirementSets(specData);
     const tasksWithFulfills = (specData.tasks || []).filter(t => t.fulfills && t.fulfills.length > 0);
     if (allReqIds.size > 0 && tasksWithFulfills.length > 0) {
@@ -1135,7 +1138,7 @@ async function handleCoverage(args) {
 
   if (!filePath) {
     process.stderr.write('Error: missing <path> argument\n');
-    process.stderr.write('Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]\n');
+    process.stderr.write('Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements] [--json]\n');
     process.stderr.write('Note: "spec coverage" is deprecated — use "spec validate" instead.\n');
     process.exit(1);
   }
@@ -1182,15 +1185,17 @@ async function handleCheck(args) {
 
   const specData = loadSpec(resolve(filePath));
   const issues = [];
-  const taskIds = new Set(specData.tasks.map(t => t.id));
+  // v2: tasks[] lives in plan.json (PR 2). Default to [] so v2 specs trivially pass.
+  const tasks = specData.tasks || [];
+  const taskIds = new Set(tasks.map(t => t.id));
 
   // Check for duplicate IDs
-  if (taskIds.size !== specData.tasks.length) {
+  if (taskIds.size !== tasks.length) {
     issues.push('duplicate task IDs detected');
   }
 
   // Check depends_on references
-  for (const task of specData.tasks) {
+  for (const task of tasks) {
     for (const dep of (task.depends_on || [])) {
       if (!taskIds.has(dep)) {
         issues.push(`task '${task.id}' depends on unknown task '${dep}'`);
@@ -1199,17 +1204,17 @@ async function handleCheck(args) {
   }
 
   // Check done tasks have completed_at
-  for (const task of specData.tasks) {
+  for (const task of tasks) {
     if (task.status === 'done' && !task.completed_at) {
       issues.push(`task '${task.id}' is done but missing completed_at`);
     }
   }
 
   // Check depends_on completion for in_progress/done tasks
-  for (const task of specData.tasks) {
+  for (const task of tasks) {
     if (task.status === 'in_progress' || task.status === 'done') {
       for (const dep of (task.depends_on || [])) {
-        const depTask = specData.tasks.find(t => t.id === dep);
+        const depTask = tasks.find(t => t.id === dep);
         if (depTask && depTask.status !== 'done') {
           issues.push(`task '${task.id}' is ${task.status} but dependency '${dep}' is not done`);
         }
@@ -1219,7 +1224,7 @@ async function handleCheck(args) {
 
   // Referential integrity: fulfills[] must reference valid requirement IDs
   const reqIds = new Set((specData.requirements || []).map(r => r.id).filter(Boolean));
-  for (const task of specData.tasks) {
+  for (const task of tasks) {
     for (const reqRef of (task.fulfills || [])) {
       if (!reqIds.has(reqRef)) {
         issues.push(`task '${task.id}' fulfills[] references unknown requirement '${reqRef}'`);
@@ -1229,7 +1234,7 @@ async function handleCheck(args) {
 
   // Orphan detection: requirement not referenced by any task.fulfills[]
   {
-    const tasksWithRefs = (specData.tasks || []).filter(t => t.fulfills && t.fulfills.length > 0);
+    const tasksWithRefs = tasks.filter(t => t.fulfills && t.fulfills.length > 0);
     if (reqIds.size > 0 && tasksWithRefs.length > 0) {
       for (const id of reqIds) {
         const referenced = tasksWithRefs.some(t => t.fulfills.includes(id));
@@ -1256,8 +1261,9 @@ async function handleCheck(args) {
  * Generate compact, LLM-friendly guide from the JSON Schema.
  * Resolves $ref, shows required/optional fields, types, enums, and minimal examples.
  */
-function generateGuide(section, schemaVersion) {
-  const schema = loadSchema(schemaVersion);
+function generateGuide(section) {
+  // D9: v2 is the only supported schema; loadSchema() with no args returns v2.
+  const schema = loadSchema();
   const defs = schema.$defs || {};
 
   const SECTIONS = {
@@ -1506,8 +1512,7 @@ function formatMergeGuide() {
 async function handleGuide(args) {
   const parsed = parseArgs(args);
   const section = parsed._[0];
-  const schemaVersion = parsed.schema || undefined;
-  const output = generateGuide(section, schemaVersion);
+  const output = generateGuide(section);
   process.stdout.write(output + '\n');
   process.exit(0);
 }
