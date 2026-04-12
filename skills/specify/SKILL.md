@@ -1,8 +1,8 @@
 ---
 name: specify
 description: |
-  Turn a goal into an implementation plan (spec.json v1).
-  Simplified layer chain: L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Tasks.
+  Turn a goal into an implementation plan (spec.json v2).
+  Simplified layer chain: L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Verification.
   No reviewer agents, no verify fields. Evidence-based clarity scoring at L2.
   CLI validates schema+coverage at each layer. User approves at L2, L3, L4.
   Use when: "/specify", "specify", "plan this"
@@ -18,7 +18,7 @@ allowed-tools:
 
 # /specify — Spec Generator
 
-Generate a spec.json (v1 schema) through a structured derivation chain.
+Generate a spec.json (v2 schema) through a structured derivation chain.
 Each layer builds on the previous — no skipping, no out-of-order merges.
 
 Before starting, run `hoyeon-cli spec guide full --schema v2` to see the complete schema.
