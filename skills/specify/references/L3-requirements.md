@@ -1,30 +1,52 @@
 ## L3: Requirements + Sub-requirements
 
-**Output**: `requirements[]` with `sub[]`
+**Output**: `requirements[]` with `sub[]` (every sub has required `given`, `when`, `then`)
 
-### Step 1: Scaffold from decisions
+### Step 1: Claude scaffolds requirements directly from decisions
+
+There is no CLI scaffold helper in v2. Claude reads `context.decisions[]` from
+the spec (and `context.confirmed_goal` for R0) and writes the initial `requirements[]` structure
+inline via `hoyeon-cli spec merge --stdin` heredoc.
+
+Scaffolding rules:
+
+- Start with `R0` derived from `context.confirmed_goal` (the overarching behavior).
+- Emit one requirement `R1..Rn` per decision as a **starting point** — you will reshape in Step 2.
+- Every requirement has at least one `sub[]` entry from the start (no empty `sub`).
+- Every sub has all three GWT fields (`given`, `when`, `then`) filled with a real scenario.
+  Do not use `TBD` — v2 validate rejects `TBD`/empty GWT strings.
+
+Run `hoyeon-cli spec guide requirements --schema v2` and `hoyeon-cli spec guide sub --schema v2`
+to confirm the exact field shape, then merge:
 
 ```bash
-hoyeon-cli spec derive-requirements .hoyeon/specs/{name}/spec.json
+hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
+{"requirements": [
+  {"id": "R0", "behavior": "<goal restated as observable behavior>", "sub": [
+    {"id": "R0.1", "behavior": "<summary>", "given": "<precondition>", "when": "<trigger>", "then": "<outcome>"}
+  ]},
+  {"id": "R1", "behavior": "User can log in with email and password", "sub": [
+    {"id": "R1.1", "behavior": "Valid login returns JWT", "given": "A registered user with valid credentials", "when": "POST /login with correct email and password", "then": "Returns 200 with JWT in response body"},
+    {"id": "R1.2", "behavior": "Wrong password returns 401", "given": "A registered user exists", "when": "POST /login with incorrect password", "then": "Returns 401 with error message 'Invalid credentials'"}
+  ]}
+]}
+EOF
 ```
 
-This auto-generates requirement stubs linked to every decision.
-Output: `R0` (from goal) + `R1`...`Rn` (one per decision), each with 1 `TODO` sub-req.
-
-**Coverage is 100% from the start.** No orphan decisions.
+(Use the default replace-merge for the initial scaffold, `--patch` for subsequent reshape edits.)
 
 ### Step 2: Reshape + Fill behaviors via --patch
 
-The scaffold is a **starting point, not a constraint**. The 1:1 decision→requirement mapping is rarely the final structure. Freely reorganize:
+The scaffold is a **starting point, not a constraint**. The 1:1 decision→requirement mapping is
+rarely the final structure. Freely reorganize:
 
 - **Split**: One decision often needs multiple requirements (e.g., D1:"JWT auth" → R1:login, R2:token refresh, R3:token expiry)
 - **Merge**: Multiple decisions may combine into one requirement (e.g., D1+D2 → R1:password security)
 - **Add**: Create new requirements for behaviors not tied to any single decision
 - **Delete**: Remove scaffold requirements that are redundant after reorganization
 
-As long as `spec validate` passes at the L3 gate (every requirement has at least one sub-req), the structure is valid.
-
-Run `hoyeon-cli spec guide requirements --schema v1` to check field types, then patch:
+As long as `spec validate` passes at the L3 gate (every requirement has at least one sub-req and
+every sub has GWT filled), the structure is valid.
 
 ```bash
 hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --patch << 'EOF'
@@ -37,14 +59,19 @@ hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --patch << 'EOF'
 EOF
 ```
 
-**GWT (Given/When/Then) rule:**
+**GWT (Given/When/Then) rule — REQUIRED:**
 
-Every sub-requirement MUST include `given`, `when`, and `then` fields. The `behavior` field serves as a **one-line summary** of the GWT scenario. The GWT fields provide the **detailed, testable specification**.
+Every sub-requirement MUST include `given`, `when`, and `then`. These are schema-level required
+fields in v2. The `behavior` field is a **one-line summary** of the GWT scenario. The GWT fields
+are the **detailed, testable specification**.
 
-- `behavior` — one-line summary (required, used as fallback display)
-- `given` — precondition / initial state
-- `when` — trigger / action performed
-- `then` — observable outcome / expected result
+- `behavior` — one-line summary (required)
+- `given` — precondition / initial state (required)
+- `when` — trigger / action performed (required)
+- `then` — observable outcome / expected result (required)
+
+`spec validate` fails with a JSON-Pointer-style error if any GWT field is missing, empty, or the
+literal string `TBD`.
 
 **Behavior quality rules:**
 - BANNED: "correctly", "properly", "works", "as expected", "handles" (without what)
@@ -56,7 +83,7 @@ Every sub-requirement MUST include `given`, `when`, and `then` fields. The `beha
 - Each sub-req IS an acceptance criterion for the parent requirement
 - The `behavior` field summarizes the criterion in one line
 - The `given`/`when`/`then` fields provide the full testable specification
-- Tasks that `fulfills` this requirement must satisfy ALL sub-req GWT scenarios
+- L4 verification journeys compose multiple sub-reqs into end-to-end flows
 - **Atomic** (single trigger, single outcome) → 1 sub-req with 1 GWT
 - **Compound** (multiple paths) → happy path + error + boundary conditions, each with its own GWT
 
@@ -69,8 +96,8 @@ Principle: if an artifact exists on one side of a boundary, the counterpart that
 BAD — mixed layers in one sub-req:
 ```json
 {"id": "R1", "behavior": "Project CRUD", "sub": [
-  {"id": "R1.1", "behavior": "User can create a project"},
-  {"id": "R1.2", "behavior": "User can delete a project"}
+  {"id": "R1.1", "behavior": "User can create a project", "given": "Authenticated user", "when": "User creates a project", "then": "Project exists"},
+  {"id": "R1.2", "behavior": "User can delete a project", "given": "A project exists", "when": "User deletes it", "then": "Project is gone"}
 ]}
 ```
 
@@ -103,11 +130,11 @@ GOOD — boundary-separated (SDK↔CLI):
 ```
 
 **Coverage checks (agent self-check before approval):**
-- Every decision has at least one requirement tracing back to it (guaranteed by derive)
+- Every decision has at least one requirement tracing back to it
 - Sub-requirements together cover the full behavior of the parent
 - No orphan decisions
 - **Boundary check**: if a sub-req implies a cross-boundary dependency (e.g., an API endpoint), verify the other side has a matching sub-req
-- **GWT completeness check**: every sub-req has all three GWT fields filled (given, when, then)
+- **GWT completeness check**: every sub-req has all three GWT fields filled with real, non-TBD values
 
 ### L3 Approval
 
@@ -116,7 +143,7 @@ Print ALL requirements and sub-requirements as text (show everything, do not tru
 ### L3 Gate
 
 ```bash
-hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer requirements
+hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --schema v2 --layer requirements
 ```
 
-Pass → advance to L4.
+Pass → advance to L4 (Verification Journeys — see `references/L4-verification.md`).
