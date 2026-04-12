@@ -3,8 +3,11 @@
 This file contains all plain-specific execution logic for the `/execute` skill.
 It is loaded when `meta.type == "plain"` after Phase 0 completes.
 
-**Prerequisite**: Phase 0 (Find Spec, Get Plan, Init Context, Confirm Pre-work) is already done.
-`spec_path`, `plan`, and `meta_type` are all established.
+**Prerequisite**: Phase 0 (Find Spec, Derive Plan, Init Context, Confirm Pre-work) is already done.
+`spec_path`, `plan_path`, `normalized_spec`, and `meta_type` are all established.
+
+- `plan_path` = `<dirname(spec_path)>/plan.json` — task state I/O via `hoyeon-cli plan`.
+- `normalized_spec` = session-cached spec object. If it has no `requirements`, fall back to each task's `action` as the only behavioral guidance.
 
 ---
 
@@ -17,9 +20,11 @@ Create TaskCreate entries for all tasks + finalize steps. **Batch all in one tur
 # TURN 1: Create ALL tasks in PARALLEL (single message)
 # ═══════════════════════════════════════════════════
 
-FOR EACH task in plan (flattened from rounds, excluding done):
+pending_tasks = Bash("hoyeon-cli plan list {plan_path} --status pending --json") → parse .tasks
+
+FOR EACH task in pending_tasks:
   t = TaskCreate(subject="{task.id}: {task.action}",
-                 description="Plain task {task.id}. Spec: {spec_path}",
+                 description="Plain task {task.id}. Plan: {plan_path}",
                  activeForm="{task.id}: Running")
 
 # Finalize tasks
@@ -35,14 +40,14 @@ rp = TaskCreate(subject="Finalize:Report",
 # TURN 2: Set up dependencies (single message)
 # ═══════════════════════════════════════════════════
 
-# Chain tasks by round order — each round blocks the next
-FOR EACH consecutive round pair (round_n, round_n+1):
-  last_of_n = last task of round_n
-  first_of_n+1 = first task of next round
-  TaskUpdate(taskId=last_of_n, addBlocks=[first_of_n+1])
+# Chain by depends_on from plan.json
+FOR EACH task WHERE task.depends_on is not empty:
+  FOR EACH dep_id in task.depends_on:
+    TaskUpdate(taskId=task_ids[dep_id].tracking, addBlocks=[task_ids[task.id].tracking])
 
-# Finalize chain: last task → Final Verify → Report
-TaskUpdate(taskId=last_task, addBlocks=[fv])
+# All task trackers → Final Verify → Report
+FOR EACH task in pending_tasks:
+  TaskUpdate(taskId=task_ids[task.id].tracking, addBlocks=[fv])
 TaskUpdate(taskId=fv, addBlocks=[rp])
 ```
 
@@ -52,41 +57,48 @@ TaskUpdate(taskId=fv, addBlocks=[rp])
 
 ## Task Loop
 
-Execute tasks in DAG order from `plan.rounds`.
+Execute tasks in dependency order from `plan.json`.
 The orchestrator is flexible in how it handles each task — it can delegate to agents/skills
 or execute work directly, depending on the task.
 
 ```
-FOR EACH round in plan.rounds:
-  runnable = round.tasks.filter(t => t.status != "done")
+pending_tasks = Bash("hoyeon-cli plan list {plan_path} --status pending --json") → parse .tasks
+runnable_rounds = group pending_tasks by dependency layer (topological rounds)
+
+FOR EACH round in runnable_rounds:
+  runnable = round.tasks
 
   IF len(runnable) == 0: CONTINUE
 
-  # Mark all in_progress (both spec and Claude Code tracking)
+  # Mark all in_progress (plan.json + Claude Code tracking)
   FOR EACH task in runnable:
-    Bash("hoyeon-cli spec task {task.id} --status in_progress {spec_path}")
+    Bash("hoyeon-cli plan status {task.id} {plan_path} --status in_progress")
     TaskUpdate(taskId=task.tracking_id, status="in_progress")
 
   FOR EACH task in runnable (single message, run_in_background=true if len > 1):
-    IF task.tool AND task.tool starts with "/":
+    # Guidance: prefer fulfills[] sub-req GWT from normalized_spec when present;
+    # fall back to task.action if no requirements are defined in the spec.
+    task_spec = Bash("hoyeon-cli plan get {task.id} {plan_path}") → parse JSON
+
+    IF task_spec.tool AND task_spec.tool starts with "/":
       # Invoke as Skill
-      Skill(skill=task.tool, args="")
-    ELIF task.tool:
+      Skill(skill=task_spec.tool, args="")
+    ELIF task_spec.tool:
       # Invoke as Agent with specific subagent_type
       Agent(
-        subagent_type=task.tool,
-        prompt=task.action,
+        subagent_type=task_spec.tool,
+        prompt=task_spec.action,
         run_in_background=(len(runnable) > 1)
       )
     ELSE:
       # No tool specified — orchestrator handles directly
-      Execute task.action directly OR Agent(subagent_type="general-purpose", prompt=task.action)
+      Execute task_spec.action directly OR Agent(subagent_type="general-purpose", prompt=task_spec.action)
 
-  # Collect results (update both spec and Claude Code tracking)
+  # Collect results (update both plan and Claude Code tracking)
   FOR EACH task in runnable:
     result = await task completion
     IF result indicates success:
-      Bash("hoyeon-cli spec task {task.id} --status done --summary '{result.summary}' {spec_path}")
+      Bash("hoyeon-cli plan status {task.id} {plan_path} --status done --summary '{result.summary}'")
       TaskUpdate(taskId=task.tracking_id, status="completed")
     ELSE:
       print("Task {task.id} FAILED: {result.reason}")
@@ -107,7 +119,7 @@ TaskUpdate(taskId=fv, status="in_progress")
 
 Read: ${baseDir}/references/final-verify.md
 Follow the usage instructions to dispatch the verification worker.
-Provide spec_path and parsed spec JSON.
+Provide spec_path, plan_path, and the normalized_spec object.
 
 IF result.status == "VERIFIED" OR result.status == "VERIFIED_WITH_GAPS":
   IF result.status == "VERIFIED_WITH_GAPS":
@@ -130,7 +142,7 @@ ELSE:
 
 ```
 TaskUpdate(taskId=rp, status="in_progress")
-spec = Read(spec_path) → parse JSON
+all_tasks = Bash("hoyeon-cli plan list {plan_path} --json") → parse .tasks
 
 print("""
 ═══════════════════════════════════════════════════
@@ -138,12 +150,13 @@ print("""
 ═══════════════════════════════════════════════════
 
 SPEC: {spec_path}
-GOAL: {spec.meta.goal}
+PLAN: {plan_path}
+GOAL: {normalized_spec.meta.goal}
 
 ───────────────────────────────────────────────────
 TASKS
 ───────────────────────────────────────────────────
-{FOR EACH task in spec.tasks:}
+{FOR EACH task in all_tasks:}
 {task.id}: {task.action} — {task.status}
   {task.summary}
 
@@ -159,7 +172,7 @@ FAILURES:
 ───────────────────────────────────────────────────
 POST-WORK (human actions after completion)
 ───────────────────────────────────────────────────
-{post_work = spec.external_dependencies.post_work ?? []}
+{post_work = normalized_spec.external_dependencies.post_work ?? []}
 {FOR EACH item in post_work:}
 - {item.action}
 
@@ -183,15 +196,17 @@ IF fv_failed:
 4. **No per-task verify** — Worker self-checks + Final Verify provide coverage
 5. **Final Verify required** — holistic spec verification always runs at the end
 6. **On failure → HALT** — no retry or adaptation flow
+7. **plan.json is task-state source** — use `hoyeon-cli plan` commands only; do not Read/Write plan.json directly
+8. **spec fallback** — if `normalized_spec.requirements` is empty, use `task.action` as sole behavioral guidance
 
 ---
 
 ## Checklist
 
 - [ ] All TaskCreate in single turn (Turn 1), all TaskUpdate in single turn (Turn 2)
-- [ ] All tasks dispatched in DAG order from `plan.rounds`
+- [ ] All tasks dispatched in dependency order from `plan.json`
 - [ ] Each task handled flexibly (direct work, Skill, or Agent)
-- [ ] Dual tracking: both spec (via `hoyeon-cli spec task`) and Claude Code (via TaskUpdate)
-- [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
+- [ ] Dual tracking: plan.json (via `hoyeon-cli plan status`) and Claude Code (via TaskUpdate)
+- [ ] All plan tasks have `status: "done"`
 - [ ] Final verify worker ran holistic spec verification
 - [ ] Final report output

@@ -5,9 +5,31 @@ It is loaded when the user selects `dispatch=team` in Phase 0.5.
 Uses Claude Code's native TeamCreate API for persistent workers with claim-based task distribution.
 Optimized for specs with 3+ parallel tasks.
 
-**Prerequisite**: Phase 0 (Find Spec, Get Plan, Init Context, Confirm Pre-work, Work Mode Selection) and
+**Prerequisite**: Phase 0 (Find Spec, Derive Plan, Init Context, Confirm Pre-work, Work Mode Selection) and
 Phase 0.5 (Plan Analysis, Mode Selection) are already done.
-`spec_path`, `plan`, `CONTEXT_DIR`, `work_mode`, `verify_depth`, and `WORK_DIR` are all established.
+`spec_path`, `plan_path`, `normalized_spec`, `CONTEXT_DIR`, `work_mode`, `verify_depth`, `WORK_DIR`, and `ephemeral` are all established.
+
+- `plan_path` = `<dirname(spec_path)>/plan.json` — all task state I/O via `hoyeon-cli plan` CLI (claim, status, merge).
+- `normalized_spec` = session-cached structured spec object (used by lead to construct charters for team workers).
+- `ephemeral` = boolean from Phase 0 (`--ephemeral` flag) indicating in-memory-only plan mode.
+
+---
+
+## Mode Exclusivity Preflight (R8.1 / C6)
+
+**FIRST ACTION — before any other work:**
+
+```
+IF ephemeral == true:
+  print("ERROR: team dispatch requires plan.json; incompatible with --ephemeral (C6)")
+  print("  Either:")
+  print("    1. Re-run without --ephemeral so a plan.json file is produced, OR")
+  print("    2. Choose a different dispatch mode (direct or agent)")
+  HALT
+```
+
+Team dispatch relies on `plan.json` as the shared claim-board across multiple worker sessions.
+An in-memory-only plan cannot serve that purpose.
 
 ---
 
@@ -16,6 +38,7 @@ Phase 0.5 (Plan Analysis, Mode Selection) are already done.
 ### Worker Count
 
 ```
+pending_tasks = Bash("hoyeon-cli plan list {plan_path} --status pending --json") → parse .tasks
 parallel_tasks = count of tasks with no unresolved dependencies
 N = min(ceil(parallel_tasks / 2), 5)  # max 5 workers
 ```
@@ -23,7 +46,7 @@ N = min(ceil(parallel_tasks / 2), 5)  # max 5 workers
 ### Team Creation
 
 ```
-team_name = "exec-{spec.meta.name}"  # slug from spec name
+team_name = "exec-{normalized_spec.meta.name}"  # slug from spec name
 
 TeamCreate(team_name=team_name)
 # Current session becomes team lead ("team-lead")
@@ -36,11 +59,12 @@ TeamCreate(team_name=team_name)
 # TURN 1: Create ALL tasks in PARALLEL (single message)
 # ===============================================
 
-FOR EACH task in plan (excluding done):
+FOR EACH task in pending_tasks:
+  charter = build_charter([task], normalized_spec)  # inlined GWT for worker
   TaskCreate(
     subject="{task.id}:Work -- {task.action}",
-    description=WORKER_DESCRIPTION(task.id),
-    owner=null  # unassigned -- workers claim from TaskList
+    description=WORKER_DESCRIPTION(task.id, charter),
+    owner=null  # unassigned -- workers claim via `plan status --status in_progress`
   )
 
 # Finalize tasks
@@ -60,7 +84,7 @@ TaskCreate(subject="Finalize:Report",
 # TURN 2: Set ALL dependencies in PARALLEL (single message)
 # ===============================================
 
-# Cross-task dependencies (from spec.json depends_on)
+# Cross-task dependencies (from plan.json depends_on)
 FOR EACH task WHERE task.depends_on is not empty:
   FOR EACH dep_id in task.depends_on:
     producer = task_ids[dep_id]
@@ -68,7 +92,7 @@ FOR EACH task WHERE task.depends_on is not empty:
     TaskUpdate(taskId=producer, addBlocks=[consumer])
 
 # All work tasks -> Finalize:Verify
-FOR EACH task in plan:
+FOR EACH task in pending_tasks:
   TaskUpdate(taskId=task_ids[task.id], addBlocks=[verify_task])
 
 # Finalize chain: Verify -> Report
@@ -79,36 +103,74 @@ TaskUpdate(taskId=verify_task, addBlocks=[report_task])
 
 ---
 
+## Charter Construction Helper (lead-side)
+
+```
+function build_charter(tasks, normalized_spec):
+  """
+  Build inlined GWT charter for a task (or list of tasks). Lead constructs this
+  when creating TaskCreate descriptions so that team workers never need to read
+  spec.json — workers only talk to plan.json via CLI.
+  """
+  charter = {}
+  FOR EACH task in tasks:
+    subs = []
+    FOR EACH req_id in (task.fulfills ?? []):
+      req = normalized_spec.requirements.find(r => r.id == req_id)
+      IF req:
+        FOR EACH s in req.sub:
+          subs.push({id: s.id, behavior: s.behavior, given: s.given, when: s.when, then: s.then})
+    charter[task.id] = {
+      action: task.action,
+      depends_on: task.depends_on ?? [],
+      fulfills: task.fulfills ?? [],
+      sub_requirements: subs
+    }
+  return charter
+```
+
+---
+
 ## Worker Preamble
 
 Template injected into each worker's spawn prompt. Workers are persistent --
-they claim multiple tasks from TaskList, not just one.
+they claim multiple tasks from the plan (and TaskList mirror), not just one.
 
 ```
-WORKER_PREAMBLE(team_name, worker_name, spec_path, CONTEXT_DIR) = """
+WORKER_PREAMBLE(team_name, worker_name, plan_path, spec_path, CONTEXT_DIR) = """
 You are a TEAM WORKER in team "{team_name}". Your name is "{worker_name}".
 You report to the team lead ("team-lead").
 You are not the leader and must not perform leader orchestration actions.
 
+Do not Read or Write plan.json directly — use the hoyeon-cli plan CLI only.
+The CLI holds a flock lock around plan.json to guarantee safe concurrent access.
+
 == WORK PROTOCOL ==
 
-1. CLAIM: Call TaskList to see available tasks.
-   Pick the first task with status "pending", owner null, and no unresolved blockedBy.
-   NEVER claim a task that is already "in_progress" or has an owner set.
-   Call TaskUpdate to set status "in_progress" and owner "{worker_name}":
-   {"taskId": "ID", "status": "in_progress", "owner": "{worker_name}"}
+1. CLAIM: List available tasks and atomically claim one.
+   - List: `hoyeon-cli plan list {plan_path} --status pending --json`
+   - Pick the first pending task whose depends_on are all `done`.
+   - Claim it by transitioning its status to `in_progress`:
+       hoyeon-cli plan status {task_id} {plan_path} --status in_progress --summary 'claimed by {worker_name}'
+   - The CLI's flock guarantees only one worker wins the claim (R8.2). If the CLI
+     reports the task was already claimed by someone else, loop back and pick another.
+   - Also mirror the claim in TaskList:
+       TaskUpdate({"taskId": "<tracking id>", "status": "in_progress", "owner": "{worker_name}"})
+   NEVER claim a task that is already "in_progress" / "done" / "blocked" in plan.json.
 
 2. WORK: Execute the task.
-   - Read task spec: hoyeon-cli spec task {task_id} --get {spec_path}
+   - Fetch task details from plan: `hoyeon-cli plan get {task_id} {plan_path}`
+   - Your TaskCreate description already contains a charter with the inlined
+     sub-requirement GWT — do NOT Read spec.json.
    - Read context: {CONTEXT_DIR}/learnings.json, {CONTEXT_DIR}/issues.json (if exist)
    - Implement using Read, Write, Edit, Bash, Grep, Glob
-   - Respect constraints from spec
-   - Verify: check fulfills[] -> requirements -> sub-requirements (GWT when available)
+   - Respect constraints from the charter
+   - Verify: each sub-requirement's GWT (given/when/then) or behavior must be satisfied
    - Run build/lint/typecheck to ensure nothing is broken
 
-3. COMPLETE: When done, mark the task completed:
-   {"taskId": "ID", "status": "completed"}
-   Update spec: hoyeon-cli spec task {task_id} --status done --summary '...' {spec_path}
+3. COMPLETE: When done, mark the task completed via CLI and TaskList:
+   hoyeon-cli plan status {task_id} {plan_path} --status done --summary '...'
+   TaskUpdate({"taskId": "<tracking id>", "status": "completed"})
 
 4. CONTEXT: Write learnings/issues via CLI:
    hoyeon-cli spec learning --task {task_id} --stdin {spec_path} << 'EOF'
@@ -124,16 +186,20 @@ You are not the leader and must not perform leader orchestration actions.
     "content": "Completed {task_id}: {summary}. Files: {files_modified}",
     "summary": "Task {task_id} complete"}
 
-6. NEXT: Call TaskList -> claim next unblocked pending task (go to step 1).
-   If no tasks available, notify lead:
+6. NEXT: Loop back to step 1 and claim the next unblocked pending task.
+   If `hoyeon-cli plan list {plan_path} --status pending --json` is empty or no
+   unblocked task exists, notify lead:
    {"type": "message", "recipient": "team-lead",
     "content": "All available tasks complete. Standing by.",
     "summary": "Standing by"}
+   Then WAIT for a wake-up message from lead before polling again.
 
 7. SHUTDOWN: On shutdown_request -> respond with:
    {"type": "shutdown_response", "request_id": "<from the request>", "approve": true}
 
 == RULES ==
+- NEVER Read or Write plan.json directly — use hoyeon-cli plan CLI only (C8).
+- NEVER Read spec.json — your charter carries the GWT you need.
 - NEVER spawn sub-agents or use the Task tool
 - NEVER run git commands -- lead handles commits
 - NEVER run team spawning/orchestration commands
@@ -147,28 +213,34 @@ You are not the leader and must not perform leader orchestration actions.
 
 ## WORKER_DESCRIPTION Template
 
-Task-level description stored in TaskCreate. Workers self-read details via CLI.
+Task-level description stored in TaskCreate. Workers fetch task state via CLI;
+GWT is inlined in the charter so workers do NOT touch spec.json.
 
 ```
-WORKER_DESCRIPTION(task_id) = """
+WORKER_DESCRIPTION(task_id, charter) = """
 You are a Worker in TEAM mode. Implement task {task_id}.
 Work in the current directory (session CWD).
 
-## Step 1: Read your task spec
-Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
-This returns JSON with: action, fulfills, depends_on.
+## Step 1: Claim and read your task
+Claim: `hoyeon-cli plan status {task_id} {plan_path} --status in_progress --summary 'claimed'`
+Read:  `hoyeon-cli plan get {task_id} {plan_path}`
+Do NOT Read or Write plan.json directly — use hoyeon-cli plan CLI only.
 
 ## Step 2: Resolve dependency inputs (if any)
-If your task has depends_on, fetch each dependency:
-Run: `hoyeon-cli spec task {dep_id} --get {spec_path}`
-Use its outputs to understand what was produced.
+If your task has depends_on, fetch each dependency via:
+  hoyeon-cli plan get {dep_id} {plan_path}
+Use its `summary` field to understand what was produced.
 
 ## Step 3: Read context files
 Read: {CONTEXT_DIR}/learnings.json -- structured learnings from previous workers (if exists)
 Read: {CONTEXT_DIR}/issues.json -- failed approaches to avoid (if exists)
 
+Your behavioral acceptance criteria (GWT) are inlined below — do NOT Read spec.json:
+
+{JSON.stringify(charter, null, 2)}
+
 ## Step 4: Implement
-Follow the task action from your task spec.
+Follow the task action from your charter.
 Respect constraints.
 Do NOT run git commands -- lead handles commits.
 
@@ -183,9 +255,8 @@ Do NOT produce these patterns in your implementation:
 - Leftover console.log, debugger statements, or TODO comments
 
 ### Verification before reporting DONE
-1. **Behavioral check**: Look up fulfills[] -> requirements -> sub-requirements.
-   Each sub-req's GWT fields (given/when/then) define structured acceptance criteria
-   when available; behavior serves as summary. Verify your implementation satisfies all.
+1. **Behavioral check**: For each sub-requirement in your charter, verify the
+   given/when/then scenario (or behavior if GWT absent) is satisfied.
 2. **Build/lint/typecheck**: Run the project's build, lint, and type-check commands.
 
 ## Step 5: Update context files
@@ -217,6 +288,9 @@ hoyeon-cli spec issue --task {task_id} --stdin {spec_path} << 'EOF'
 EOF
 ```
 
+## Step 6: Mark task done
+hoyeon-cli plan status {task_id} {plan_path} --status done --summary '...'
+
 ## Output (print as last message)
 ```json
 {"status": "DONE"|"FAILED"|"BLOCKED",
@@ -246,7 +320,7 @@ FOR i in 1..N:
     team_name=team_name,
     name="worker-{i}",
     description="Team worker {i}",
-    prompt=WORKER_PREAMBLE(team_name, "worker-{i}", spec_path, CONTEXT_DIR),
+    prompt=WORKER_PREAMBLE(team_name, "worker-{i}", plan_path, spec_path, CONTEXT_DIR),
     run_in_background=true
   )
 ```
@@ -266,10 +340,10 @@ FOR i in 1..N:
 # Lead actions on message receipt:
 #   - On completion: log progress, check if all tasks done,
 #     AND notify standing-by workers that new tasks may be unblocked:
-IF any_workers_standing_by AND TaskList has pending+unblocked tasks:
+IF any_workers_standing_by AND pending_tasks_with_no_unresolved_deps > 0:
   FOR EACH idle_worker in standing_by_workers:
     SendMessage(type="message", recipient=idle_worker,
-      content="New tasks unblocked. Check TaskList and claim.",
+      content="New tasks unblocked. Run `hoyeon-cli plan list {plan_path} --status pending --json` and claim.",
       summary="Wake up — new tasks available")
 #   - On failure: log_to_audit + reassign or halt (see Watchdog)
 #   - On standing by: track worker as idle. If all workers standing by
@@ -279,7 +353,7 @@ IF any_workers_standing_by AND TaskList has pending+unblocked tasks:
 # IMPORTANT: On FAILED or BLOCKED messages, lead MUST append to audit.md:
 IF worker reports BLOCKED for task:
   log_to_audit("BLOCKED: {task_id} from {worker} — {reason}")
-  # Then proceed to scope fix (derive + reassign)
+  # Then proceed to scope fix (append fix task + notify workers)
 
 IF worker reports FAILED for task:
   log_to_audit("FAILED: {task_id} from {worker} — {reason}")
@@ -295,19 +369,20 @@ IF time_since_last_message(worker) > 5min:
     content="Status check: what is your current task and progress?",
     summary="Status check")
 
-# 10min stuck -> reassign task to another worker
+# 10min stuck -> return task to pending in plan.json (re-claimable by another worker)
 IF time_since_last_message(worker) > 10min:
-  stuck_task = find_in_progress_task(worker)
-  TaskUpdate(taskId=stuck_task, owner=null, status="pending")
+  stuck_task_id = find_in_progress_task_for_worker(worker)
+  Bash("hoyeon-cli plan status {stuck_task_id} {plan_path} --status pending --summary 'reassigned — worker unresponsive'")
+  TaskUpdate(taskId=<tracking>, owner=null, status="pending")
   SendMessage(type="message", recipient="team-lead",
-    content="Reassigned {stuck_task} from {worker} -- unresponsive",
+    content="Reassigned {stuck_task_id} from {worker} -- unresponsive",
     summary="Task reassigned")
 
-# Worker FAILED -> reassign to different worker (NOT halt)
+# Worker FAILED -> return task to pending (NOT halt); another worker will claim it
 IF worker reports FAILED for task:
-  TaskUpdate(taskId=failed_task, owner=null, status="pending")
+  Bash("hoyeon-cli plan status {failed_task_id} {plan_path} --status pending --summary 'reassign — prior worker reported FAILED'")
+  TaskUpdate(taskId=<tracking>, owner=null, status="pending")
   log_to_audit("REASSIGN: {task_id} from {worker} -- worker reported FAILED")
-  # Another worker will claim it from TaskList
   # If task fails 2+ times across different workers -> HALT
   IF failure_count(task_id) >= 2:
     log_to_audit("HALT: {task_id} failed {failure_count} times across workers")
@@ -317,7 +392,7 @@ IF worker reports FAILED for task:
 ### All Tasks Done
 
 ```
-# When all work tasks are completed (Finalize tasks still pending):
+# When all pending tasks in plan.json have status="done" (Finalize tasks still pending):
 # -> Proceed to Phase 1.5: Verify Stage
 ```
 
@@ -360,27 +435,43 @@ ELIF verify result == FAIL:
     fix_tasks = []
 
     FOR EACH failure in verify_result.failures:
-      derive_result = Bash("""hoyeon-cli spec derive \
-        --parent {failure.related_task_id ?? last_task_id} \
-        --source verify \
-        --trigger verify_fix \
-        --action "Fix: {failure.description}" \
-        --reason "Verify failure: {failure.reason}" \
-        {spec_path}""")
+      # Append a fix task to plan.json via CLI (lead-only)
+      new_id = "{failure.related_task_id ?? last_task_id}.fix-{next_idx}"
+      payload = {
+        "tasks": [{
+          "id": new_id,
+          "action": "Fix: {failure.description}",
+          "type": "code",
+          "status": "pending",
+          "depends_on": [failure.related_task_id ?? last_task_id],
+          "fulfills": [],
+          "origin": "derived",
+          "derived_from": failure.related_task_id ?? last_task_id,
+          "reason": "Verify failure: {failure.reason}"
+        }]
+      }
+      Bash("""hoyeon-cli plan merge --stdin --append {plan_path} << 'EOF'
+{JSON.stringify(payload)}
+EOF""")
 
-      fix_task_id = derive_result.created
-      fix_tasks.append(fix_task_id)
+      fix_tasks.append(new_id)
 
-      # Create tracking task in TeamCreate TaskList
+      # Mirror into TaskList so team workers can see + claim it
+      charter = build_charter([payload.tasks[0]], normalized_spec)
       TaskCreate(
-        subject="{fix_task_id}:Work -- Fix: {failure.description}",
-        description=WORKER_DESCRIPTION(fix_task_id),
+        subject="{new_id}:Work -- Fix: {failure.description}",
+        description=WORKER_DESCRIPTION(new_id, charter),
         owner=null
       )
 
-    log_to_audit("VERIFY_FIX attempt {fix_attempt}: created {len(fix_tasks)} fix tasks")
+    log_to_audit("VERIFY_FIX attempt {fix_attempt}: appended {len(fix_tasks)} fix tasks to plan.json")
 
-    # Idle workers claim fix tasks from TaskList automatically
+    # Wake any standing-by workers so they claim the new fix tasks
+    FOR EACH idle_worker in standing_by_workers:
+      SendMessage(type="message", recipient=idle_worker,
+        content="New fix tasks available. Claim via hoyeon-cli plan list.",
+        summary="Wake up — fix tasks available")
+
     # Wait for fix task completions via SendMessage
 
     # After all fix tasks done -> re-verify
@@ -405,7 +496,7 @@ ELIF verify result == FAIL:
 
 ```
 # Step 1: Verify completion
-# All work tasks and verify task must be completed
+# All pending plan tasks must be done and the verify task completed
 
 # Step 2: Request shutdown from each worker
 FOR EACH worker in active_workers:
@@ -434,13 +525,13 @@ IF work_mode != "no-commit":
   git_status = Bash("git status --porcelain")
   IF git_status is not empty:
     Agent(subagent_type="git-master",
-          prompt="Commit all changes from spec: {spec.meta.goal}")
+          prompt="Commit all changes from spec: {normalized_spec.meta.goal}")
 ```
 
 ### Report
 
 ```
-spec = Read(spec_path) -> parse JSON
+all_tasks = Bash("hoyeon-cli plan list {plan_path} --json") → parse .tasks
 audit = Read("{CONTEXT_DIR}/audit.md")
 
 print("""
@@ -449,7 +540,8 @@ print("""
 ===================================================
 
 SPEC: {spec_path}
-GOAL: {spec.meta.goal}
+PLAN: {plan_path}
+GOAL: {normalized_spec.meta.goal}
 DISPATCH: team
 WORK: {work_mode}
 VERIFY: {verify_depth}
@@ -458,7 +550,7 @@ WORKERS: {N} spawned
 ---------------------------------------------------
 TASKS
 ---------------------------------------------------
-{FOR EACH task in spec.tasks:}
+{FOR EACH task in all_tasks:}
 {task.id}: {task.action} -- {task.status}
   {task.summary}
 
@@ -470,7 +562,7 @@ VERIFICATION
 ---------------------------------------------------
 ADAPTATIONS
 ---------------------------------------------------
-{List any derived fix tasks from verify failures, or "None"}
+{List any appended fix tasks from verify failures, or "None"}
 
 ---------------------------------------------------
 CONTEXT
@@ -490,7 +582,7 @@ MANUAL REVIEW (require human verification)
 ---------------------------------------------------
 POST-WORK (human actions after completion)
 ---------------------------------------------------
-{post_work = spec.external_dependencies.post_work ?? []}
+{post_work = normalized_spec.external_dependencies.post_work ?? []}
 {FOR EACH item in post_work:}
 - [{item.id ?? ''}] {item.dependency}: {item.action}
 
@@ -521,7 +613,7 @@ TaskUpdate(taskId=report_task, status="completed")
 | `learnings.json` | lead (Phase 0.7, `[]`) | workers (via `spec learning` CLI) | workers (next worker reads prev learnings) |
 | `issues.json` | lead (Phase 0.7, `[]`) | workers (via `spec issue` CLI) | workers (avoid repeated failed approaches) |
 | `audit.md` | lead (Phase 0.7, empty) | **lead only** | lead (report generation) |
-| `history.json` | CLI auto | CLI auto (on merge/task/derive) | analysis only |
+| `plan.json` | dev-cli (`plan init`) | CLI only (never direct) | CLI only |
 
 ### Worker Context Flow
 
@@ -529,19 +621,23 @@ Workers self-read context files — lead does NOT read them during dispatch.
 This saves lead tokens and survives compaction.
 
 ```
-Worker claims task → reads learnings.json + issues.json
+Worker claims task (via plan status --status in_progress)
+  → reads learnings.json + issues.json
+  → fetches task details via plan get
+  → reads inlined charter (GWT) from its TaskCreate description
   → implements task
   → writes learnings/issues via CLI
+  → marks done via plan status --status done
   → reports to lead via SendMessage
 ```
 
 ### Lead Audit Log
 
 The lead writes to `audit.md` for:
-- Worker BLOCKED events (scope blocker detected, derived fix task created)
+- Worker BLOCKED events (scope blocker detected, fix task appended)
 - Worker FAILED events (task failure, reassignment)
-- Verify fix events (verify failure, fix tasks created)
-- Reassignment events (watchdog timeout, task moved to different worker)
+- Verify fix events (verify failure, fix tasks appended)
+- Reassignment events (watchdog timeout, task returned to pending)
 
 Format:
 ```
@@ -549,53 +645,61 @@ Format:
 Event: {BLOCKED|FAILED|VERIFY_FIX|REASSIGN}
 Worker: {worker_name}
 Reason: {reason}
-Action: {what was done — derive, reassign, halt}
+Action: {what was done — fix task appended, reassigned, halt}
 ```
 
-### spec.json Update Responsibilities
+### plan.json / spec.json Update Responsibilities
 
 | Actor | Updates | Via |
 |-------|---------|-----|
-| lead | meta.mode (dispatch/work/verify) | `spec merge` |
-| lead | context.sandbox_capability | `spec merge` |
-| workers | tasks[].status → done | `spec task --status done` |
-| lead | tasks[].status → blocked | `spec task --status blocked` |
-| lead | new derived tasks | `spec derive` |
-| lead | final consistency check | `spec check` (read-only) |
+| lead | new fix tasks | `hoyeon-cli plan merge --stdin --append` |
+| lead | tasks[].status → blocked | `hoyeon-cli plan status <id> --status blocked` |
+| workers | tasks[].status → in_progress (claim) | `hoyeon-cli plan status <id> --status in_progress` |
+| workers | tasks[].status → done | `hoyeon-cli plan status <id> --status done --summary '...'` |
+| workers | learnings/issues | `hoyeon-cli spec learning` / `spec issue` |
+
+Nobody Reads or Writes plan.json directly — all access is through the CLI (C8).
+spec.json is only mutated by the `/specify` workflow; the `/execute` workflow treats
+it as read-only and caches it as `normalized_spec` in memory.
 
 ---
 
 ## Team-specific Rules
 
-1. **Workers are persistent** -- spawned once, they claim and execute multiple tasks. Do NOT spawn a new worker per task.
-2. **Claim-based dispatch** -- workers pick tasks from TaskList (unassigned, unblocked, pending). The lead does NOT assign tasks to specific workers.
-3. **FAILED tasks -> reassign** -- unlike AGENT mode which halts on worker failure, TEAM mode reassigns the failed task to a different worker. Halt only after 2+ failures on the same task.
-4. **SendMessage for all communication** -- workers report completion, failure, and standing-by status via SendMessage to "team-lead". Lead sends status checks and reassignments via SendMessage.
-5. **No per-task commit** -- TEAM mode uses end-of-execution commit (or round-level if configured). Workers MUST NOT run git commands.
-6. **Shutdown protocol is mandatory** -- always send shutdown_request to every worker and wait for shutdown_response before calling TeamDelete. No orphaned workers.
-7. **Two turns for task setup** -- Turn 1: all TaskCreate, Turn 2: all TaskUpdate (same as AGENT mode).
-8. **Workers self-read everything** -- workers use `hoyeon-cli spec task --get` and read context files themselves. Lead does NOT read spec.json or context files during dispatch.
-9. **Description = recipe** -- TaskCreate description contains the full self-read recipe. At dispatch time, the worker preamble plus description provide all instructions.
-10. **Adaptation updates spec.json** -- new fix tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on automatically).
-11. **Max 5 workers** -- `N = min(ceil(parallel_tasks / 2), 5)`. More workers add coordination overhead without proportional throughput.
-12. **Verify stage runs by lead** -- TEAM mode loads the same verify recipes as other dispatch modes. The lead executes the recipe directly (not a team worker), because verify recipes internally spawn sub-agents (code-reviewer, qa-verifier) which team workers cannot do.
+1. **Ephemeral mode is incompatible** — team dispatch HALTs at preflight if `ephemeral == true`. Team mode requires a real plan.json file as the shared claim-board (C6).
+2. **No direct plan.json I/O** — lead and workers MUST use `hoyeon-cli plan` CLI only. Never Read / Write / Edit plan.json directly (C8). The CLI provides flock-based concurrency safety (R8.2).
+3. **Claim via `plan status --status in_progress`** — atomic claim is the CLI transition from `pending` → `in_progress`. The CLI's flock ensures single-winner semantics (R8.2). TaskList owner is mirrored for visibility only.
+4. **Workers are persistent** -- spawned once, they claim and execute multiple tasks. Do NOT spawn a new worker per task.
+5. **Claim-based dispatch** -- workers poll `plan list --status pending --json` and claim. The lead does NOT assign tasks to specific workers.
+6. **FAILED tasks -> reassign** -- unlike AGENT mode, TEAM mode returns the failed task to `pending` via `plan status --status pending`, letting another worker claim it. Halt only after 2+ failures on the same task.
+7. **SendMessage for all communication** -- workers report completion, failure, and standing-by status via SendMessage to "team-lead". Lead sends status checks, wake-ups, and shutdowns via SendMessage.
+8. **No per-task commit** -- TEAM mode uses end-of-execution commit (or round-level if configured). Workers MUST NOT run git commands.
+9. **Shutdown protocol is mandatory** -- always send shutdown_request to every worker and wait for shutdown_response before calling TeamDelete. No orphaned workers.
+10. **Two turns for task setup** -- Turn 1: all TaskCreate, Turn 2: all TaskUpdate (same as AGENT mode).
+11. **Workers self-read plan state, charters carry GWT** -- workers use `hoyeon-cli plan get` for task state, and read the inlined GWT charter from their TaskCreate description. Workers MUST NOT Read spec.json. Lead does NOT read plan.json or context files during dispatch.
+12. **Description = recipe** -- TaskCreate description contains the full self-read recipe plus the GWT charter. At dispatch time, the worker preamble plus description provide all instructions.
+13. **Adaptation appends to plan.json** -- new fix tasks go through `hoyeon-cli plan merge --stdin --append` (lead-only). Workers then claim them via the normal protocol.
+14. **Standing-by wake-up** -- when tasks become unblocked (e.g., dep finished) or new fix tasks are appended, lead notifies idle workers via SendMessage so they resume polling.
+15. **Max 5 workers** -- `N = min(ceil(parallel_tasks / 2), 5)`. More workers add coordination overhead without proportional throughput.
+16. **Verify stage runs by lead** -- TEAM mode loads the same verify recipes as other dispatch modes. The lead executes the recipe directly (not a team worker), because verify recipes internally spawn sub-agents (code-reviewer, qa-verifier) which team workers cannot do.
 
 ---
 
 ## Checklist
 
+- [ ] Preflight: ABORT if ephemeral == true (R8.1 / C6)
 - [ ] Worker count calculated: `N = min(ceil(parallel_tasks / 2), 5)`
 - [ ] TeamCreate called with `exec-{spec-name}` slug
-- [ ] All TaskCreate in single turn (Turn 1), all TaskUpdate in single turn (Turn 2)
-- [ ] Worker preamble includes: claim protocol, SendMessage, shutdown response, no-git rule
+- [ ] All TaskCreate in single turn (Turn 1) with inlined GWT charters, all TaskUpdate in single turn (Turn 2)
+- [ ] Worker preamble includes: "no direct plan.json I/O" rule, CLI claim protocol, SendMessage, shutdown response, no-git rule
 - [ ] N workers spawned in parallel with `run_in_background=true`
 - [ ] Lead monitors via SendMessage (no polling)
-- [ ] Watchdog: 5min status check, 10min reassign
-- [ ] Failed tasks reassigned (not halted) -- halt after 2+ failures on same task
-- [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
-- [ ] `hoyeon-cli spec check` passes at end
+- [ ] Watchdog: 5min status check, 10min reassign (return to pending via `plan status`)
+- [ ] Failed tasks returned to pending (not halted) -- halt after 2+ failures on same task
+- [ ] All plan tasks have `status: "done"` (via `hoyeon-cli plan status`)
 - [ ] Verify recipe executed by lead directly (not team worker — verify spawns sub-agents)
-- [ ] Fix loop bounded by max 3 attempts
+- [ ] Fix loop bounded by max 3 attempts; fix tasks appended via `hoyeon-cli plan merge --stdin --append`
+- [ ] Standing-by workers woken via SendMessage when new/unblocked tasks appear
 - [ ] Shutdown: shutdown_request sent to all workers, shutdown_response received
 - [ ] TeamDelete called after all workers confirmed shutdown
 - [ ] Commit handled (end-of-execution, not per-task)

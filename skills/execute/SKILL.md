@@ -25,9 +25,12 @@ allowed-tools:
   - TeamDelete
   - SendMessage
 validate_prompt: |
-  All tasks in spec.json must have status "done" at completion.
-  hoyeon-cli spec check must pass (internal consistency).
-  Context files (learnings.json, issues.json, audit.md) are created at init for meta.type == "dev".
+  Spec path must come from CLI argument (no session fallback).
+  Phase 0 must normalize spec once via Read tool (not hoyeon-cli spec read commands).
+  plan.json must be created in spec's directory unless --ephemeral is set.
+  --ephemeral + --dispatch team combination must be rejected with error.
+  If plan.json already exists, user must be prompted (resume/fresh/abort).
+  All tasks in plan.json must have status "done" at completion.
   Verify recipe must run (all modes and types).
   Final report must be output.
   TDD mode is OFF by default (--tdd to enable). tdd flag must be passed to WORKER_DESCRIPTION.
@@ -37,86 +40,130 @@ validate_prompt: |
 
 **You are the conductor. You do not play instruments directly.**
 Delegate to worker agents or skills, manage parallelization.
-All task data comes from spec.json via `hoyeon-cli spec plan`.
+Spec is read once via the Read tool (normalized_spec cache); task data lives in plan.json via `hoyeon-cli plan`.
 
 ## Core Principles
 
 1. **DELEGATE** — In agent/team mode, all work goes to worker agents. In direct mode, the orchestrator executes tasks itself. In plain mode, the orchestrator may handle tasks directly or delegate. You only use Read, Grep, Glob, Bash (for orchestration), and Task tools for coordination.
 2. **PARALLELIZE** — Run all unblocked tasks within a round simultaneously via `run_in_background: true`.
-3. **spec.json is truth** — Task status and progress flow through `hoyeon-cli spec` commands.
+3. **plan.json is the task ledger** — Task status flows through `hoyeon-cli plan` commands; spec is read once by the orchestrator.
 4. **Context flows forward** — Workers write learnings/issues to shared context files. In agent mode, after each round the orchestrator collects DONE summaries into `round-summaries.json`. Next-round workers read all context files including prior round summaries.
 
 ---
 
 ## Phase 0: Initialize
 
-### 0.1 Find Spec
+### 0.0 Parse CLI Arguments (R13)
 
-Resolve spec path in priority order:
+Read the slash-command invocation (e.g. `/execute <spec-path> [flags]`).
+
+**Required positional arg**: spec path. If missing → print and abort:
 
 ```
-SESSION_ID="[session ID from UserPromptSubmit hook]"
-
-1) IF arg looks like a path (contains "/" or ends with ".json"):
-   spec_path = arg  (use as-is)
-
-2) IF arg is a feature name (e.g. "auth-login"):
-   spec_path = ".hoyeon/specs/{arg}/spec.json"
-
-3) No arg: session state (path registered by quick-plan, specify, etc.)
-   hoyeon-cli session get --sid $SESSION_ID
-   → if state.spec field exists, spec_path = state.spec
-
-If none found → error: "spec.json not found. Please generate one first with /specify or /quick-plan."
+spec path required
+Usage: /execute <spec-path> [--ephemeral] [--verify light|standard|thorough] [--dispatch direct|agent|team] [--tdd]
 ```
 
-Read spec.json and validate:
+**There is no `hoyeon-cli session` fallback** (D16). The user must pass the spec path explicitly.
+
+**Flags**:
+
+| Flag | Values | Default |
+|------|--------|---------|
+| `--ephemeral` | boolean | false |
+| `--verify` | light / standard / thorough | standard |
+| `--dispatch` | direct / agent / team | agent |
+| `--tdd` | boolean | false |
+
+**Mode exclusivity (R8.1, C6)**: If `--ephemeral` AND `--dispatch team` are both set → print error `"ephemeral and team modes are mutually exclusive"` and abort. **No files are written.**
+
+### 0.1 Normalize Spec (R1, C1, C9)
+
+Read the spec file **directly via the Read tool** — do NOT call `hoyeon-cli spec` read commands (C1).
+
+Detect format:
+
+| Extension | Detection | Handling |
+|-----------|-----------|----------|
+| `.json` with `schema_version: "v2"` | parse JSON as-is | use requirements / verification / constraints trees directly |
+| `.md` | LLM interprets | look for `## Requirements`, `## Sub` or `### R1.1`-style headings, `## Verification Journeys`; extract into the canonical shape below |
+| other | LLM best-effort | same three sections extracted if discoverable |
+
+Canonical `normalized_spec` shape (stored in session memory):
+
+```
+{
+  meta,
+  requirements: [
+    { id, behavior, sub: [{ id, behavior, given, when, then }] }
+  ],
+  verification: { journeys: [{ id, name, composes, given, when, then }] },
+  constraints: [{ id, rule }]
+}
+```
+
+**R1.3 fail-fast**: If extraction yields no `requirements` or parsing fails, print `"spec interpretation failed at <spec_path>: <reason>"` and abort **without** creating plan.json.
+
+**R1.4 cache rule**: Downstream phases (derive-plan, dispatch recipes, verify recipes) MUST read from `normalized_spec` in session memory. They must NOT re-Read the spec file.
+
+Optional: if spec is a hoyeon v2 `spec.json`, run `hoyeon-cli spec validate <spec_path>` to surface schema issues (this is a write/validation command, allowed under C1 which only forbids read-purpose calls).
+
+### 0.2 Resolve plan.json Path and Handle Existing Plan (R2, R3)
+
+```
+plan_path = dirname(spec_path) + "/plan.json"
+```
+
+**Ephemeral mode (R2.2, C5)**:
+- Skip plan.json creation entirely. Skip derive-plan.
+- Do NOT create `learnings.json` or `issues.json`.
+- Record `ephemeral: true` in session state for the Stop hook (R11.3):
+  ```bash
+  STATE_FILE="$HOME/.hoyeon/$CLAUDE_SESSION_ID/state.json"
+  if [ -f "$STATE_FILE" ]; then
+    jq '.ephemeral = true' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+  fi
+  ```
+- Dispatch recipes must keep all task state in orchestrator memory (no file writes).
+- Proceed to 0.5 (Dispatch routing) — skip 0.3 and 0.4.
+
+**plan.json already exists (R3.1)**:
+
+```
+AskUserQuestion(
+  question: "plan.json found at {plan_path}. What do you want to do?",
+  options: [
+    { label: "Resume",  description: "Continue from pending/in_progress tasks (skip done)" },
+    { label: "Fresh",   description: "Overwrite existing plan.json and re-derive from spec" },
+    { label: "Abort",   description: "Stop execution" }
+  ]
+)
+```
+
+- **Resume** → skip 0.3 (derive-plan). Proceed to 0.4 validation then 0.5 dispatch.
+- **Fresh** → continue to 0.3 (derive-plan overwrites existing plan.json).
+- **Abort** → HALT.
+
+**plan.json does not exist**: proceed to 0.3.
+
+### 0.3 Derive Plan (R6)
+
+```
+Read: ${baseDir}/references/derive-plan.md
+Follow ALL instructions to populate plan.json from `normalized_spec`.
+```
+
+Pass forward: `normalized_spec`, `plan_path`, `spec_path`.
+
+### 0.4 Validate Plan
 
 ```bash
-hoyeon-cli spec validate {spec_path}
-hoyeon-cli spec check {spec_path}
+hoyeon-cli plan list "$plan_path" --json
 ```
 
-**Read `spec.meta.type`** (default `"dev"` if absent):
+Confirm the file is readable and contains tasks (non-empty for non-ephemeral).
 
-```
-meta_type = spec.meta.type ?? "dev"
-```
-
-### 0.2 Get Execution Plan
-
-```bash
-plan_text = Bash("hoyeon-cli spec plan {spec_path}")
-plan_json = Bash("hoyeon-cli spec plan {spec_path} --format slim")
-plan = JSON.parse(plan_json)
-```
-
-Display plan_text to user. Filter out already-done tasks:
-
-```
-FOR EACH round in plan.rounds:
-  round.tasks = round.tasks.filter(t => t.status != "done")
-plan.rounds = plan.rounds.filter(r => r.tasks.length > 0)
-```
-
-### 0.3 Plan Analysis
-
-Analyze the execution plan to generate recommendations for the user.
-
-```
-parallel_tasks = count tasks in round 1 (or largest round)
-total_tasks = plan.total_tasks
-solo_candidates = tasks where action implies single-file change (config, rename, simple edit)
-groupable = find tasks touching same directory/module (no dependency between them)
-
-Print analysis:
-  ═══ ANALYSIS ═══
-  Tasks: {total_tasks} | Rounds: {plan.total_rounds} | Max parallelism: {parallel_tasks}
-  Solo candidates: {solo_candidates or "none"}
-  Groupable: {groupable or "none"}
-```
-
-### 0.4 Sandbox Detection
+### 0.5 Sandbox Detection
 
 Auto-detect sandbox capabilities from the project and system via 3-tier detection.
 
@@ -130,71 +177,19 @@ Tier 3 (MCP) is critical — skipping it causes false negatives (e.g., computer-
 
 Install recommendations are shown only when `verify == "thorough"` AND tools are missing.
 
-### 0.5 Configuration
+### 0.6 Work Mode
 
-#### Resolve from CLI flags first
-
-```
-dispatch = --dispatch flag ?? null
-work = --work flag ?? null
-verify = --verify flag ?? null
-```
-
-#### Recommendations
+`dispatch`, `verify`, and `ephemeral` come from Phase 0.0 flags. Still ask for `work` (worktree/branch/no-commit) since it is not a flag:
 
 ```
-recommend_dispatch =
-  IF total_tasks <= 2 AND all solo_candidates: "Direct"
-  ELIF total_tasks >= 3 AND parallel_tasks >= 3: "Team"
-  ELSE: "Agent"
-
-recommend_verify =
-  IF total_tasks <= 2: "Light"
-  ELIF total_tasks >= 5 OR any task touches auth/crypto/security: "Thorough"
-  ELSE: "Standard"
-```
-
-#### AskUserQuestion (skip if CLI flag provided)
-
-```
-IF dispatch is null:
-  dispatch = AskUserQuestion(
-    question: "Dispatch mode?",
-    options: [
-      { label: "Direct", description: "Orchestrator executes directly, no subagents" },
-      { label: "Agent", description: "Worker subagents with task grouping" },
-      { label: "Team", description: "TeamCreate persistent workers, claim-based" }
-    ]
-    # Mark recommended with "(Recommended)" in label
-  )
-
-IF work is null:
-  work = AskUserQuestion(
-    question: "Work mode?",
-    options: [
-      { label: "Worktree", description: ".worktrees/{name} branch, commit per round" },
-      { label: "Branch + Commit", description: "Current branch, commit per round" },
-      { label: "No Commit", description: "Current branch, no commits" }
-    ]
-  )
-
-IF verify is null:
-  verify = AskUserQuestion(
-    question: "Verify depth?",
-    options: [
-      { label: "Light", description: "Build/lint + spec check only" },
-      { label: "Standard", description: "Full spec verification (goal, constraints, sub-reqs)" },
-      { label: "Thorough", description: "Standard + Code Review + cross-task + sandbox" },
-      { label: "Ralph", description: "Standard verify + persistent DoD loop until all sub-reqs pass" }
-    ]
-    # If no sandbox detected: add "(no sandbox)" to Thorough description
-  )
-```
-
-#### Save to spec.json
-
-```bash
-Bash("hoyeon-cli spec merge {spec_path} --json '{\"meta\": {\"mode\": {\"dispatch\": \"{dispatch}\", \"work\": \"{work}\", \"verify\": \"{verify}\"}}}'")
+work = AskUserQuestion(
+  question: "Work mode?",
+  options: [
+    { label: "Worktree", description: ".worktrees/{name} branch, commit per round" },
+    { label: "Branch + Commit", description: "Current branch, commit per round" },
+    { label: "No Commit", description: "Current branch, no commits" }
+  ]
+)
 ```
 
 #### Save dispatch to session state
@@ -235,12 +230,12 @@ ELSE:
 - `spec_path`: absolute path (always — worktree mode converts it)
 - `CONTEXT_DIR`: absolute path (always — worktree mode converts it)
 
-### 0.6 Confirm Pre-work (Human Actions)
+### 0.8 Confirm Pre-work (Human Actions)
 
-Pre-work items are **human tasks** that must be completed before execution begins.
+Pre-work items are **human tasks** that must be completed before execution begins. Read from `normalized_spec` (not spec file).
 
 ```
-pre_work = spec.external_dependencies.pre_work ?? []
+pre_work = normalized_spec.external_dependencies?.pre_work ?? []
 IF len(pre_work) == 0:
   print("Pre-work: none found, skipping")
 ELSE:
@@ -260,21 +255,26 @@ ELSE:
     IF answer == "Abort": HALT
 ```
 
-### 0.7 Init Context
+### 0.7 Init Context (skip if --ephemeral)
+
+If `--ephemeral` is set, skip this section entirely (C5: no plan/learnings/issues files on disk).
+
+Otherwise, per D9/C4 `learnings.json` and `issues.json` live next to `plan.json` in the spec directory:
 
 ```bash
-CONTEXT_DIR=".hoyeon/specs/{name}/context"
+SPEC_DIR="$(dirname "$spec_path")"
+CONTEXT_DIR="$SPEC_DIR"
 mkdir -p "$CONTEXT_DIR"
 ```
 
 **First run** (no context files):
-- Create `audit.md` (empty — orchestrator will append)
-- Create `learnings.json` with `[]` (empty array — workers append via CLI)
-- Create `issues.json` with `[]` (empty array — workers append via CLI)
+- Create `$CONTEXT_DIR/audit.md` (empty — orchestrator will append)
+- Create `$CONTEXT_DIR/learnings.json` with `[]` (workers append via `hoyeon-cli spec learning`)
+- Create `$CONTEXT_DIR/issues.json` with `[]` (workers append via `hoyeon-cli spec issue`)
 
 **Resume** (context files exist):
 - Read all three files into memory
-- Determine progress from spec.json task statuses (not files)
+- Determine progress from **plan.json** task statuses via `hoyeon-cli plan list` (not spec.json — spec-v2 has no tasks[])
 
 ---
 
@@ -320,31 +320,29 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), verify recipe, and report
 
 ## Generic Rules
 
-1. **spec.json is the ONLY source** — no PLAN.md, no state.json
-2. **Always use cli** — `spec plan`, `spec task`, `spec merge`, `spec check`
+1. **Spec is read once via Read tool** — `normalized_spec` is the session-cached truth (C1, C9). No `hoyeon-cli spec` read calls.
+2. **plan.json is the task ledger** — all task CRUD via `hoyeon-cli plan` (init/get/status/list/merge). Never via `hoyeon-cli spec task` (removed) and never by direct file writes from workers (C8).
 3. **TaskCreate for all modes** — create Claude Code tracking tasks before execution begins. Structure differs per mode (see each reference md).
 4. **Background for parallel** — use `run_in_background: true` for round-parallel workers
-5. **Context files (dev only)** — in dev mode, workers write to learnings.json / issues.json via CLI; orchestrator appends to audit.md. Plain mode does not use context files.
-6. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli spec plan` to rebuild task state
-7. **Dispatch mode, work mode, and verify depth saved to spec.json meta.mode**
+5. **Context files live next to plan.json** — `learnings.json` / `issues.json` / `audit.md` in the spec directory (D9/C4). Skipped entirely in ephemeral mode (C5).
+6. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli plan list` to rebuild task state
+7. **Dispatch mode and verify depth come from CLI flags** (Phase 0.0); work mode prompted at 0.6
 8. **Verify depth routes to verify-light.md, verify-standard.md, verify-thorough.md, or verify-ralph.md**
 
 ## Checklist Before Stopping
 
 ### Common (all modes and types)
-- [ ] spec.json found and validated
-- [ ] `hoyeon-cli spec plan` executed and shown to user
-- [ ] `meta.type` read (defaulted to "dev" if absent)
-- [ ] Plan analysis ran (parallelism, solo candidates, groupable)
-- [ ] Sandbox detection ran (Phase 0.4)
-- [ ] Dispatch mode selected and routed correctly
-- [ ] Verify depth selected and routed correctly
-- [ ] `meta.mode` saved to spec.json (dispatch, work, verify)
-- [ ] Context directory initialized (audit.md, learnings.json, issues.json, round-summaries.json)
+- [ ] Spec path came from CLI arg; `--ephemeral` + `--dispatch team` rejected early if combined
+- [ ] Spec normalized exactly once via Read (no `hoyeon-cli spec` reads); stored as `normalized_spec` in session memory
+- [ ] plan.json handled: created via derive-plan, resumed via AskUserQuestion, or skipped (ephemeral)
+- [ ] `hoyeon-cli plan list` confirmed readable (non-ephemeral) / `ephemeral: true` written to session state (ephemeral)
+- [ ] Sandbox detection ran (Phase 0.5)
+- [ ] Dispatch mode selected (flag or default) and routed correctly
+- [ ] Verify depth selected (flag or default) and routed correctly
+- [ ] Context files initialized in spec dir (skipped if ephemeral): audit.md, learnings.json, issues.json
 - [ ] Pre-work status logged explicitly (none/pass/fail)
 - [ ] TaskCreate entries created for all tasks + finalize steps (structure per mode reference)
-- [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
-- [ ] `hoyeon-cli spec check` passes at end
+- [ ] All plan tasks have `status: "done"` via `hoyeon-cli plan status` (skip for ephemeral)
 - [ ] Final report output
 
 ### dispatch == "agent" (additional)

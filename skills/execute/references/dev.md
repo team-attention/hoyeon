@@ -3,9 +3,13 @@
 This is the AGENT dispatch mode reference, loaded when user selects `dispatch=agent`.
 It uses Worker subagents with task grouping and round-level commits.
 
-**Prerequisite**: Phase 0 (Find Spec, Get Plan, Init Context, Confirm Pre-work, Work Mode Selection) is already done.
-`spec_path`, `plan`, `CONTEXT_DIR`, `meta_type`, `work_mode`, and `WORK_DIR` are all established.
+**Prerequisite**: Phase 0 (Find Spec, Derive Plan, Init Context, Confirm Pre-work, Work Mode Selection) is already done.
+`spec_path`, `plan_path`, `normalized_spec`, `CONTEXT_DIR`, `meta_type`, `work_mode`, and `WORK_DIR` are all established.
 `{verify_depth}` is resolved in Phase 0.5 of SKILL.md and passed to this reference (`light` | `standard` | `thorough`).
+
+- `plan_path` = `<dirname(spec_path)>/plan.json` — all task state I/O via `hoyeon-cli plan`.
+- `normalized_spec` = session-cached structured object (requirements + sub[] with GWT, verification). Used to construct worker charters. Never Read spec.json during dispatch.
+- `spec_path` = original spec file path, retained for reference (e.g., `spec learning`/`spec issue` CLI targets, reporting).
 
 ---
 
@@ -65,9 +69,10 @@ function should_auto_pass_code_review() → bool:
 Before creating tracking tasks, group related tasks to reduce agent count.
 
 ```
-function group_tasks(plan) → grouped_tasks[]:
+function group_tasks(pending_tasks) → grouped_tasks[]:
+  # pending_tasks = Bash("hoyeon-cli plan list {plan_path} --status pending --json") → .tasks
   groups = []
-  FOR EACH task in plan (flattened):
+  FOR EACH task in pending_tasks:
     # Find if task shares a module/directory with an existing group
     task_dir = primary_directory(task.action)  # heuristic: first file path mentioned
     matched_group = groups.find(g => g.dir == task_dir AND no circular dependency)
@@ -96,7 +101,7 @@ Create TaskCreate entries for all task groups. **Batch all in one turn.**
 
 When `work_mode == "worktree"`, the orchestrator has already called `EnterWorktree` in Phase 0.5.
 Session CWD is inside the worktree — all tools (Read, Edit, Write, Bash, Glob, Grep) automatically
-operate there. No per-worker `cd` is needed. `spec_path` and `CONTEXT_DIR` are absolute paths.
+operate there. No per-worker `cd` is needed. `spec_path`, `plan_path`, and `CONTEXT_DIR` are absolute paths.
 
 ### Task Creation
 
@@ -105,12 +110,15 @@ operate there. No per-worker `cd` is needed. `spec_path` and `CONTEXT_DIR` are a
 # TURN 1: Create ALL tasks in PARALLEL (single message)
 # ═══════════════════════════════════════════════════
 
-grouped_tasks = group_tasks(plan)
+pending_tasks = Bash("hoyeon-cli plan list {plan_path} --status pending --json") → parse .tasks
+grouped_tasks = group_tasks(pending_tasks)
 
 FOR EACH group in grouped_tasks:
   task_ids = group.tasks.map(t => t.id).join(", ")
+  # Pre-build inlined GWT charter — workers receive GWT directly, do NOT re-read spec
+  gwt_charter = build_charter(group.tasks, normalized_spec)
   w = TaskCreate(subject="{task_ids}:Worker — {group summary}",
-                 description=GROUPED_WORKER_DESCRIPTION(group.tasks, tdd),
+                 description=GROUPED_WORKER_DESCRIPTION(group.tasks, gwt_charter, tdd),
                  activeForm="{task_ids}: Running Worker")
 
 # No per-task :Commit tasks
@@ -132,28 +140,60 @@ rp = TaskCreate(subject="Finalize:Report",
      activeForm="Generating report")
 ```
 
+### Charter Construction Helper
+
+```
+function build_charter(tasks, normalized_spec):
+  """
+  Build an inlined GWT charter for a group of tasks.
+  Per C9: the spec is cached in orchestrator memory (normalized_spec);
+  workers receive GWT in their charter so they do NOT need to Read spec.json.
+  """
+  charter = {}
+  FOR EACH task in tasks:
+    subs = []
+    FOR EACH req_id in (task.fulfills ?? []):
+      req = normalized_spec.requirements.find(r => r.id == req_id)
+      IF req:
+        FOR EACH s in req.sub:
+          subs.push({
+            id: s.id,
+            behavior: s.behavior,
+            given: s.given, when: s.when, then: s.then
+          })
+    charter[task.id] = {
+      action: task.action,
+      depends_on: task.depends_on ?? [],
+      fulfills: task.fulfills ?? [],
+      sub_requirements: subs
+    }
+  return charter
+```
+
 ### Description Templates
 
 > **Why descriptions, not orchestrator-built prompts?**
 > Workers self-read task details via `cli`. This means:
-> 1. **Orchestrator saves tokens** — no need to Read spec.json or context files
+> 1. **Orchestrator saves tokens** — workers fetch task state from plan.json
 > 2. **Compaction-resilient** — even if orchestrator context is compressed, the description
 >    in TaskCreate survives and workers can always re-fetch from CLI/files
 > 3. **Self-contained** — each worker has all instructions to operate independently
+> 4. **GWT is inlined** — workers do NOT Read spec.json; GWT comes from the charter embedded
+>    in the description (per C9 — spec is cached in orchestrator memory)
 
 ```
-WORKER_DESCRIPTION(task_id, tdd) = """
+WORKER_DESCRIPTION(task_id, charter, tdd) = """
 You are a Worker agent. Implement task {task_id}.
 Work in the current directory (session CWD — already set to worktree if applicable).
 TDD Mode: {IF tdd: "ON" ELSE: "OFF"}
 
 ## Step 1: Read your task spec
-Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
-This returns JSON with: action, fulfills, depends_on, and other task fields.
+Run: `hoyeon-cli plan get {task_id} {plan_path}`
+This returns JSON with: action, fulfills, depends_on, status.
 
 ## Step 2: Resolve dependencies (if any)
 If your task has `depends_on`, check that those tasks are done:
-Run: `hoyeon-cli spec task {dep_id} --get {spec_path}`
+Run: `hoyeon-cli plan get {dep_id} {plan_path}`
 Review their `summary` to understand what was produced.
 
 ## Step 3: Read context files
@@ -163,8 +203,10 @@ Read: {CONTEXT_DIR}/round-summaries.json — previous round results (if exists)
   Focus on tasks that modified files related to your scope.
   These are architectural decisions you must respect — do NOT contradict them.
 
-Also read spec decisions: each decision's `rationale` includes rejected alternatives.
-Do NOT revisit rejected approaches unless you find concrete evidence that the rejection reason no longer applies.
+Your behavioral acceptance criteria (GWT) are inlined below. Do NOT Read spec.json —
+the charter here is the authoritative source for your task's requirements:
+
+{JSON.stringify(charter, null, 2)}
 
 ## Step 4: Implement
 Follow the task action from your task spec.
@@ -183,7 +225,7 @@ Do NOT produce these patterns in your implementation:
 - Leftover console.log, debugger statements, or TODO comments
 
 ### Verification before reporting DONE
-1. **Behavioral check**: Look up `fulfills[]` → requirements → sub-requirements. Each sub-req's GWT fields (given/when/then) define the structured acceptance criterion when available; behavior serves as summary. Verify your implementation satisfies all of them.
+1. **Behavioral check**: For each sub-requirement in your charter's `sub_requirements`, the GWT fields (given/when/then) define the structured acceptance criterion when available; behavior serves as summary. Verify your implementation satisfies all of them.
 2. **Build/lint/typecheck**: Run the project's build, lint, and type-check commands to ensure nothing is broken. Find these from package.json, Makefile, or project config.
 3. **Test pass (TDD only)**: If TDD Mode is ON, run the test suite and confirm all tests pass.
 
@@ -236,7 +278,7 @@ EOF
 ```
 
 ```
-GROUPED_WORKER_DESCRIPTION(tasks, tdd) = """
+GROUPED_WORKER_DESCRIPTION(tasks, charter, tdd) = """
 You are a Worker agent. Implement tasks: {tasks.map(t => t.id).join(", ")}.
 Work in the current directory (session CWD — already set to worktree if applicable).
 TDD Mode: {IF tdd: "ON" ELSE: "OFF"}
@@ -244,13 +286,13 @@ TDD Mode: {IF tdd: "ON" ELSE: "OFF"}
 ## Your tasks (implement in order)
 {FOR EACH task in tasks:}
 ### {task.id}
-Run: `hoyeon-cli spec task {task.id} --get {spec_path}`
+Run: `hoyeon-cli plan get {task.id} {plan_path}`
 Implement as described. After completing each:
-  hoyeon-cli spec task {task.id} --status done --summary '...' {spec_path}
+  hoyeon-cli plan status {task.id} {plan_path} --status done --summary '...'
 
 ## Step 2: Resolve dependency outputs (if any)
 If any task has `depends_on[]`, check completed dependency summaries for context:
-Run: `hoyeon-cli spec task {dep_task_id} --get {spec_path}`
+Run: `hoyeon-cli plan get {dep_task_id} {plan_path}`
 Use its `summary` field to understand what was produced.
 
 ## Step 3: Read context files
@@ -260,8 +302,10 @@ Read: {CONTEXT_DIR}/round-summaries.json — previous round results (if exists)
   Focus on tasks that modified files related to your scope.
   These are architectural decisions you must respect — do NOT contradict them.
 
-Also read spec decisions: each decision's `rationale` includes rejected alternatives.
-Do NOT revisit rejected approaches unless you find concrete evidence that the rejection reason no longer applies.
+Your behavioral acceptance criteria (GWT) for ALL tasks are inlined below. Do NOT
+Read spec.json — the charter here is the authoritative source:
+
+{JSON.stringify(charter, null, 2)}
 
 ## Step 4: Implement
 Follow each task's action from the task spec, in order.
@@ -280,7 +324,7 @@ Do NOT produce these patterns in your implementation:
 - Leftover console.log, debugger statements, or TODO comments
 
 ### Verification before reporting DONE
-1. **Behavioral check**: For each task, look up `fulfills[]` → requirements → sub-requirements. Each sub-req's GWT fields (given/when/then) define the structured acceptance criterion when available; behavior serves as summary. Verify your implementation satisfies all of them.
+1. **Behavioral check**: For each task, use the sub-requirement GWT in your charter. Each sub-req's GWT fields (given/when/then) define the structured acceptance criterion when available; behavior serves as summary. Verify your implementation satisfies all of them.
 2. **Build/lint/typecheck**: Run the project's build, lint, and type-check commands to ensure nothing is broken. Find these from package.json, Makefile, or project config.
 3. **Test pass (TDD only)**: If TDD Mode is ON, run the test suite and confirm all tests pass.
 
@@ -351,7 +395,7 @@ IF work_mode != "no-commit":
       FOR EACH nw in next_round_workers:
         TaskUpdate(taskId=round_commit, addBlocks=[nw])
 
-  # Cross-group dependencies (from spec.json depends_on)
+  # Cross-group dependencies (from plan.json depends_on)
   FOR EACH group WHERE any task has depends_on pointing to task in another group:
     producer_group_worker = group containing the dependency target
     consumer_group_worker = current group's worker
@@ -384,8 +428,8 @@ ELSE:  # no-commit mode
 ## Phase 1: Execute Loop
 
 > **Compaction recovery**: `session-compact-hook.sh` re-injects skill name + state.json path.
-> Read state.json to get spec_path, then use `hoyeon-cli spec plan` to rebuild task state.
-> Workers self-read task details via `hoyeon-cli spec task <id> --get` and context files.
+> Read state.json to get spec_path + plan_path, then use `hoyeon-cli plan list` to rebuild task state.
+> Workers self-read task details via `hoyeon-cli plan get <id> {plan_path}` and context files.
 
 ### Sandbox Task Dispatch
 
@@ -396,12 +440,13 @@ contains instructions for handling sandbox sub-requirements (T_SV prefix check).
 Before dispatching T_SANDBOX, verify sandbox capability:
 
 ```
-IF plan contains tasks with ID starting with "T_SANDBOX" or "T_SV":
-  capability = spec.context.sandbox_capability
+pending_tasks = Bash("hoyeon-cli plan list {plan_path} --status pending --json") → parse .tasks
+IF pending_tasks contains tasks with ID starting with "T_SANDBOX" or "T_SV":
+  capability = normalized_spec.context.sandbox_capability
   IF capability is null:
     print("WARNING: Sandbox tasks exist but no sandbox_capability set. Skipping sandbox tasks.")
-    FOR EACH sandbox_task in plan WHERE id starts with "T_SANDBOX" or "T_SV":
-      Bash("hoyeon-cli spec task {sandbox_task.id} --status done --summary 'Skipped — no sandbox capability' {spec_path}")
+    FOR EACH sandbox_task in pending_tasks WHERE id starts with "T_SANDBOX" or "T_SV":
+      Bash("hoyeon-cli plan status {sandbox_task.id} {plan_path} --status done --summary 'Skipped — no sandbox capability'")
       TaskUpdate(taskId=sandbox_task.tracking_id, status="completed")
   ELSE:
     # Sandbox capability confirmed — T_SANDBOX and T_SV tasks will be dispatched
@@ -499,22 +544,26 @@ FOR EACH round in execution_order:
 
 ### Derived Task Helpers
 
-When `spec derive` creates a new task in spec.json, the orchestrator must also create
-Claude Code tracking tasks (TaskCreate/TaskUpdate) to keep both DAGs in sync.
+When a fix task is added via `hoyeon-cli plan merge --stdin --append` (e.g., BLOCKED scope fix,
+verify-failure fix), the orchestrator must also create Claude Code tracking tasks to keep both
+DAGs in sync.
 
 ```
-function dispatch_derived_task(derive_result, spec_path):
+function dispatch_derived_task(new_task, plan_path, spec_path):
   """
-  After spec derive, create tracking tasks and dispatch worker.
+  After appending a new task to plan.json, create tracking tasks and dispatch worker.
   Returns {task_id, worker, commit} for the caller to chain dependencies.
   """
-  task_id = derive_result.created        # e.g. "T1.fix-1"
-  task_action = derive_result.action     # from derive JSON output
+  task_id = new_task.id               # e.g. "T1.fix-1"
+  task_action = new_task.action
+
+  # Build charter for this single derived task
+  charter = build_charter([new_task], normalized_spec)
 
   # 1. Create tracking tasks (always 2-step: Worker → Commit)
   fw = TaskCreate(
     subject="{task_id}.1:Worker — {task_action}",
-    description=WORKER_DESCRIPTION(task_id, tdd),
+    description=WORKER_DESCRIPTION(task_id, charter, tdd),
     activeForm="{task_id}.1: Running Worker")
 
   fc = TaskCreate(subject="{task_id}.2:Commit",
@@ -527,40 +576,66 @@ function dispatch_derived_task(derive_result, spec_path):
   result = Agent(subagent_type="worker", description="Implement: {task_id}",
                  prompt=TaskGet(fw).description)
 
-  # 3. On completion, mark spec task done
-  Bash("hoyeon-cli spec task {task_id} --status done --summary '{result.summary}' {spec_path}")
+  # 3. On completion, mark plan task done
+  Bash("hoyeon-cli plan status {task_id} {plan_path} --status done --summary '{result.summary}'")
   TaskUpdate(taskId=fw, status="completed")
 
   return {task_id: task_id, worker: fw, commit: fc}
 
 
-function dispatch_fv_fix(derive_result, spec_path):
+function dispatch_fv_fix(new_task, plan_path, spec_path):
   """
   Lightweight dispatch for verify fixes — NO per-task commit.
   Verify fixes are committed together after all fixes complete.
   """
-  task_id = derive_result.created
+  task_id = new_task.id
+  charter = build_charter([new_task], normalized_spec)
 
   fw = TaskCreate(
     subject="{task_id}.1:Worker — verify fix",
-    description=WORKER_DESCRIPTION(task_id, tdd),
+    description=WORKER_DESCRIPTION(task_id, charter, tdd),
     activeForm="{task_id}.1: Verify fix")
 
   TaskUpdate(taskId=fw, status="in_progress")
   result = Agent(subagent_type="worker", description="Verify fix: {task_id}",
                  prompt=TaskGet(fw).description)
 
-  Bash("hoyeon-cli spec task {task_id} --status done --summary '{result.summary ?? \"Verify fix applied\"}' {spec_path}")
+  Bash("hoyeon-cli plan status {task_id} {plan_path} --status done --summary '{result.summary ?? \"Verify fix applied\"}'")
   TaskUpdate(taskId=fw, status="completed")
+
+
+function append_fix_task(parent_task_id, action, reason, plan_path):
+  """
+  Append a new fix task to plan.json via plan merge --stdin --append.
+  Returns the new task object.
+  """
+  new_id = "{parent_task_id}.fix-{next_idx}"
+  payload = {
+    "tasks": [{
+      "id": new_id,
+      "action": action,
+      "type": "code",
+      "status": "pending",
+      "depends_on": [parent_task_id],
+      "fulfills": [],
+      "origin": "derived",
+      "derived_from": parent_task_id,
+      "reason": reason
+    }]
+  }
+  Bash("""hoyeon-cli plan merge --stdin --append {plan_path} << 'EOF'
+{JSON.stringify(payload)}
+EOF""")
+  return payload.tasks[0]
 ```
 
 ---
 
 ### 1a. :Worker — Delegate Implementation
 
-> **Self-read pattern**: The orchestrator does NOT read spec.json or context files.
-> The worker's description (set at TaskCreate time) contains all instructions for
-> the worker to self-read via `cli` and context files.
+> **Self-read pattern**: The orchestrator does NOT read spec.json during dispatch.
+> The worker's description (set at TaskCreate time) contains the inlined charter (GWT)
+> plus instructions for self-reading task state via `hoyeon-cli plan get`.
 
 ```
 # Description was already set in Phase 0.5 TaskCreate via WORKER_DESCRIPTION or GROUPED_WORKER_DESCRIPTION.
@@ -578,33 +653,36 @@ Agent(
 
 ```
 IF result.status == "DONE":
-  # For grouped workers, update all task statuses
+  # For grouped workers, mark tasks in_progress in plan (the worker already
+  # marked them done via `plan status --status done` inside its own step).
+  # Safety net: ensure plan.json reflects the outcome.
   FOR EACH task_id in group.tasks.map(t => t.id):
-    Bash("hoyeon-cli spec task {task_id} --status in_progress {spec_path}")
+    # worker already updated plan.json; nothing else to do here
+    pass
   TaskUpdate(taskId, status="completed")
 
 ELIF result.status == "BLOCKED":
-  # Scope blocker detected — create derived fix task
+  # Scope blocker detected — append derived fix task and re-dispatch
   log_to_audit("BLOCKED: {task_ids} — {result.scope_blockers.type}: {result.scope_blockers.reason}")
 
-  derive_result = Bash("""hoyeon-cli spec derive \
-    --parent {blocked_task_id} \
-    --source worker \
-    --trigger scope_blocker \
-    --action "Fix: {result.scope_blockers.suggested_fix}" \
-    --reason "{result.scope_blockers.type}: {result.scope_blockers.reason}" \
-    {spec_path}""")
+  new_task = append_fix_task(
+    blocked_task_id,
+    "Fix: {result.scope_blockers.suggested_fix}",
+    "{result.scope_blockers.type}: {result.scope_blockers.reason}",
+    plan_path
+  )
 
-  tracking = dispatch_derived_task(derive_result, spec_path)
+  tracking = dispatch_derived_task(new_task, plan_path, spec_path)
 
   # Re-run the blocked worker after fix completes
+  rw_charter = build_charter([plan_get(blocked_task_id)], normalized_spec)
   rw = TaskCreate(subject="{blocked_task_id}.R:Worker — Re-run after scope fix",
-       description=WORKER_DESCRIPTION(blocked_task_id, tdd),
+       description=WORKER_DESCRIPTION(blocked_task_id, rw_charter, tdd),
        activeForm="{blocked_task_id}: Re-running after scope fix")
   TaskUpdate(taskId=tracking.commit, addBlocks=[rw])
 
-  # Update spec.json status
-  Bash("hoyeon-cli spec task {blocked_task_id} --status blocked {spec_path}")
+  # Update plan.json status
+  Bash("hoyeon-cli plan status {blocked_task_id} {plan_path} --status blocked")
   TaskUpdate(taskId=taskId, status="completed")  # original worker done (blocked)
 
 ELIF result.status == "FAILED":
@@ -646,7 +724,7 @@ EOF""")
     IF answer == "Abort": HALT
     ELSE:
       FOR EACH tid in task_ids:
-        Bash("hoyeon-cli spec task {tid} --status done --summary 'Skipped after failed retry' {spec_path}")
+        Bash("hoyeon-cli plan status {tid} {plan_path} --status done --summary 'Skipped after failed retry'")
       TaskUpdate(taskId=taskId, status="completed")
 ```
 
@@ -666,7 +744,7 @@ IF work_mode == "no-commit":
 ELSE:
   git_status = Bash("git status --porcelain")
   IF git_status is not empty:
-    Agent(subagent_type="git-master", prompt="Commit remaining changes from spec: {spec.meta.goal}")
+    Agent(subagent_type="git-master", prompt="Commit remaining changes from spec: {normalized_spec.meta.goal}")
   TaskUpdate(taskId=residual, status="completed")
 ```
 
@@ -697,7 +775,7 @@ ELSE:
     print("  Reason: {result.goal_alignment.reason}")
     HALT
 
-  # For all other failures: create derived fix tasks and re-verify (max 2 attempts)
+  # For all other failures: append fix tasks to plan.json and re-verify (max 2 attempts)
   fv_attempt = 0
   WHILE fv_attempt < 2:
     fv_attempt += 1
@@ -706,20 +784,19 @@ ELSE:
     FOR EACH failure in result.failures:
       parent_task_id = failure.task_id ?? last_planned_task_id
 
-      derive_result = Bash("""hoyeon-cli spec derive \
-        --parent {parent_task_id} \
-        --source verify \
-        --trigger verify_failure \
-        --action "Verify fix: {failure.description}" \
-        --reason "Verify failure: {failure.reason}" \
-        {spec_path}""")
-      fix_tasks.append(derive_result.created)
+      new_task = append_fix_task(
+        parent_task_id,
+        "Verify fix: {failure.description}",
+        "Verify failure: {failure.reason}",
+        plan_path
+      )
+      fix_tasks.append(new_task)
 
     log_to_audit("VERIFY attempt {fv_attempt}: created {len(fix_tasks)} fix tasks")
 
     # Execute fix tasks via lightweight helper (no per-task commit)
-    FOR EACH fix_task_id in fix_tasks:
-      dispatch_fv_fix({created: fix_task_id}, spec_path)
+    FOR EACH ft in fix_tasks:
+      dispatch_fv_fix(ft, plan_path, spec_path)
 
     # Commit all verify fixes together
     IF work_mode != "no-commit":
@@ -748,7 +825,7 @@ ELSE:
 ### 2c. :Report
 
 ```
-spec = Read(spec_path) → parse JSON
+all_tasks = Bash("hoyeon-cli plan list {plan_path} --json") → parse .tasks
 audit = Read("{CONTEXT_DIR}/audit.md")
 
 # Standard report
@@ -758,7 +835,8 @@ print("""
 ═══════════════════════════════════════════════════
 
 SPEC: {spec_path}
-GOAL: {spec.meta.goal}
+PLAN: {plan_path}
+GOAL: {normalized_spec.meta.goal}
 DISPATCH: agent
 VERIFY: {verify_depth}
 WORK: {work_mode}{IF work_mode == "worktree": " ({WORK_DIR}, branch: {branch_name})"}
@@ -766,7 +844,7 @@ WORK: {work_mode}{IF work_mode == "worktree": " ({WORK_DIR}, branch: {branch_nam
 ───────────────────────────────────────────────────
 TASKS
 ───────────────────────────────────────────────────
-{FOR EACH task in spec.tasks:}
+{FOR EACH task in all_tasks:}
 {task.id}: {task.action}  [{task.type}] — {task.status}
   {task.summary}
 
@@ -779,7 +857,7 @@ Verify depth: {verify_depth}
 ───────────────────────────────────────────────────
 ADAPTATIONS
 ───────────────────────────────────────────────────
-{List any dynamically created fix tasks (scope blocker fixes, verify fixes), or "None"}
+{List any dynamically appended fix tasks (scope blocker fixes, verify fixes), or "None"}
 
 ───────────────────────────────────────────────────
 CONTEXT
@@ -799,7 +877,7 @@ MANUAL REVIEW (require human verification)
 ───────────────────────────────────────────────────
 POST-WORK (human actions after completion)
 ───────────────────────────────────────────────────
-{post_work = spec.external_dependencies.post_work ?? []}
+{post_work = normalized_spec.external_dependencies.post_work ?? []}
 {FOR EACH item in post_work:}
 - {item.action}
 
@@ -836,8 +914,8 @@ The orchestrator DOES write round-summaries.json (after each round) and audit.md
 ### Orchestrator Audit Log
 
 The orchestrator writes to `audit.md` for:
-- Scope blocker events (Worker BLOCKED status, derived fix task created)
-- Verify fix events (verify failure, fix tasks created)
+- Scope blocker events (Worker BLOCKED status, derived fix task appended)
+- Verify fix events (verify failure, fix tasks appended)
 
 Format:
 ```
@@ -851,20 +929,20 @@ Details: {summary}
 
 ## AGENT Mode Rules
 
-1. **spec.json is the ONLY source** — no PLAN.md, no state.json
-2. **Always use cli** — `spec plan`, `spec task`, `spec merge`, `spec check`
+1. **plan.json is the task-state source** — all task reads/writes via `hoyeon-cli plan` CLI. Never Read/Write plan.json directly. spec.json is cached in `normalized_spec` and consulted for requirements/GWT only (never re-read during dispatch).
+2. **Always use cli** — `hoyeon-cli plan get/list/status/merge`, `hoyeon-cli spec learning/issue/search`
 3. **Two turns for task setup** — Turn 1: all TaskCreate, Turn 2: all TaskUpdate
-4. **Dual tracking** — both spec.json (via `spec task`) and TaskList (via TaskUpdate)
-5. **Workers self-read everything** — Workers use `hoyeon-cli spec task --get` and Read context files themselves. Orchestrator does NOT read spec.json or context files during dispatch. Orchestrator only writes audit.md.
-6. **Description = recipe** — TaskCreate description contains the full self-read recipe (CLI commands, context paths, output format). At dispatch time, orchestrator just passes `TaskGet(id).description` as the Agent prompt.
+4. **Dual tracking** — both plan.json (via `plan status`) and TaskList (via TaskUpdate)
+5. **Workers self-read state, charters carry GWT** — Workers use `hoyeon-cli plan get` for task state and read context files themselves. GWT sub-requirements are INLINED in the worker's description (charter) — workers MUST NOT Read spec.json. Orchestrator does NOT read plan.json or context files during dispatch. Orchestrator only writes audit.md.
+6. **Description = recipe** — TaskCreate description contains the full self-read recipe (CLI commands, context paths, GWT charter, output format). At dispatch time, orchestrator just passes `TaskGet(id).description` as the Agent prompt.
 7. **Task grouping** — related tasks (same module/directory) are grouped into a single worker to reduce agent count. Tasks with dependencies on each other cannot be grouped.
 8. **Round-level commit** — instead of per-task commits, all changes from a round are committed together via a single git-master dispatch after all workers in that round complete.
-9. **Worker BLOCKED = scope fix** — when Worker reports BLOCKED, orchestrator creates a derived fix task via `spec derive --trigger scope_blocker`, dispatches it, then re-runs the original worker
+9. **Worker BLOCKED = scope fix** — when Worker reports BLOCKED, orchestrator appends a fix task via `plan merge --stdin --append`, dispatches it, then re-runs the original worker
 10. **Worker FAILED = bounded retry (max 1)** — first failure records issue via `spec issue`, then retries. Second failure escalates to user (Skip/Abort). Workers perform Tier 1 checks (build/lint/typecheck). TDD mode adds test-first workflow.
-11. **Adaptation updates spec.json** — new tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on, re-plan automatically)
+11. **Adaptation appends to plan.json** — new fix tasks are appended via `hoyeon-cli plan merge --stdin --append` (no spec derive; tasks are plan-local by design)
 12. **Background for parallel** — use `run_in_background: true` for round-parallel workers
 13. **work_mode governs git behavior** — `worktree`: uses `EnterWorktree` to switch session CWD into an isolated worktree (all tools automatically operate there); `branch-commit`: current branch with round-level commits; `no-commit`: current branch, no commits at all (no :Commit tasks, no Residual Commit)
-14. **Worktree = session CWD switch** — `EnterWorktree` changes the session's working directory. All tools (Read, Edit, Write, Bash, Glob, Grep) automatically operate in the worktree. No per-worker `cd` needed. `spec_path` and `CONTEXT_DIR` are converted to absolute paths before entering.
+14. **Worktree = session CWD switch** — `EnterWorktree` changes the session's working directory. All tools (Read, Edit, Write, Bash, Glob, Grep) automatically operate in the worktree. No per-worker `cd` needed. `spec_path`, `plan_path`, `CONTEXT_DIR` are converted to absolute paths before entering.
 15. **Sandbox tasks are regular tasks** — T_SANDBOX and T_SV* tasks MUST be dispatched as normal workers when `sandbox_capability` is set. Only skip when `sandbox_capability` is null/missing. If `scaffold_required: true`, T_SANDBOX sets up the infra first. Dependencies handle execution order (T_SV* depends_on T_SANDBOX).
 16. **Verify routing** — verification depth is determined by `verify_depth` (light/standard/thorough) and dispatched to the corresponding verify recipe.
 
@@ -874,14 +952,13 @@ Details: {summary}
 
 - [ ] All TaskCreate in single turn (Turn 1), all TaskUpdate in single turn (Turn 2)
 - [ ] Tasks grouped by module/directory (group_tasks applied)
-- [ ] Worker descriptions use self-read pattern (WORKER_DESCRIPTION / GROUPED_WORKER_DESCRIPTION)
-- [ ] Orchestrator does NOT Read spec.json or context files during dispatch
+- [ ] Worker descriptions use self-read pattern with inlined GWT charter
+- [ ] Orchestrator does NOT Read spec.json or plan.json or context files during dispatch
 - [ ] Round-level commits used (not per-task commits)
-- [ ] Worker BLOCKED status handled (scope fix derived task + re-worker)
+- [ ] Worker BLOCKED status handled (fix task appended via plan merge --append + re-worker)
 - [ ] Worker FAILED → bounded retry (max 1), then escalate to user
 - [ ] Round summaries collected after each round (round-summaries.json)
-- [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
-- [ ] `hoyeon-cli spec check` passes at end
+- [ ] All plan tasks have `status: "done"` (via `hoyeon-cli plan status`)
 - [ ] Residual commit handled
 - [ ] Verify recipe dispatched based on `verify_depth` (light/standard/thorough)
 - [ ] Scope blocker events logged in audit.md
