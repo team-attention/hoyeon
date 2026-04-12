@@ -2,7 +2,8 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 
 import { resolve, dirname } from 'path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import specSchemaV1 from '../../schemas/dev-spec-v1.schema.json' with { type: 'json' };
+import specSchemaV2 from '../../schemas/dev-spec-v2.schema.json' with { type: 'json' };
+import specSchemaV1 from '../../schemas/_deprecated/dev-spec-v1.schema.json' with { type: 'json' };
 
 import { writeState } from '../lib/state-io.js';
 
@@ -45,8 +46,55 @@ Examples:
   hoyeon-cli spec amend --reason fb-001 --spec ./spec.json
 `;
 
-function loadSchema() {
-  return specSchemaV1;
+let v1DeprecationWarned = false;
+
+/**
+ * Load schema for the given spec data. If spec is v1 (or missing schema_version),
+ * mutate specData in-memory to v2 shape (drop tasks[], backfill GWT placeholders)
+ * and emit a single-line stderr deprecation warning. Never writes to disk.
+ *
+ * @param {object} [specData] - parsed spec JSON (optional; returns v2 schema if omitted)
+ * @returns {object} JSON Schema (v2)
+ */
+function loadSchema(specData) {
+  if (!specData || typeof specData !== 'object') {
+    return specSchemaV2;
+  }
+
+  const version = specData.meta?.schema_version;
+
+  if (version === 'v2') {
+    return specSchemaV2;
+  }
+
+  // v1 or absent → migrate in-memory to v2 shape
+  if (!v1DeprecationWarned) {
+    process.stderr.write(`Warning: spec uses 'v1' schema which is deprecated; auto-migrating in-memory to v2 (source file unchanged).\n`);
+    v1DeprecationWarned = true;
+  }
+
+  if (!specData.meta || typeof specData.meta !== 'object') {
+    specData.meta = {};
+  }
+  specData.meta.schema_version = 'v2';
+
+  if (Array.isArray(specData.tasks)) {
+    delete specData.tasks;
+  }
+
+  if (Array.isArray(specData.requirements)) {
+    for (const req of specData.requirements) {
+      if (!Array.isArray(req?.sub)) continue;
+      for (const sr of req.sub) {
+        if (!sr || typeof sr !== 'object') continue;
+        if (typeof sr.given !== 'string' || sr.given.length === 0) sr.given = 'TBD';
+        if (typeof sr.when !== 'string' || sr.when.length === 0) sr.when = 'TBD';
+        if (typeof sr.then !== 'string' || sr.then.length === 0) sr.then = 'TBD';
+      }
+    }
+  }
+
+  return specSchemaV2;
 }
 
 /**

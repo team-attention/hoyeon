@@ -7624,14 +7624,14 @@ var import_ajv_formats = __toESM(require_dist(), 1);
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
 import { resolve, dirname } from "path";
 
-// schemas/dev-spec-v1.schema.json
-var dev_spec_v1_schema_default = {
+// schemas/dev-spec-v2.schema.json
+var dev_spec_v2_schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "dev-spec/v1",
-  title: "dev-spec v1",
-  description: "Spec schema for specify. Focused on goal \u2192 decisions \u2192 requirements (with sub-req behaviors as acceptance criteria) \u2192 tasks.",
+  $id: "dev-spec/v2",
+  title: "dev-spec v2",
+  description: "Spec schema v2. Separates the Contract (requirements + verification journeys) from task decomposition, which moves to execute-owned plan.json. GWT (given/when/then) is required on every sub-requirement. Adds top-level verification.journeys[] for cross-sub-req compositional scenarios.",
   type: "object",
-  required: ["meta", "tasks"],
+  required: ["meta"],
   additionalProperties: false,
   properties: {
     $schema: { type: "string" },
@@ -7641,11 +7641,7 @@ var dev_spec_v1_schema_default = {
       type: "array",
       items: { $ref: "#/$defs/requirement" }
     },
-    tasks: {
-      type: "array",
-      minItems: 1,
-      items: { $ref: "#/$defs/task" }
-    },
+    verification: { $ref: "#/$defs/verification" },
     constraints: {
       type: "array",
       items: { $ref: "#/$defs/constraint" }
@@ -7671,13 +7667,13 @@ var dev_spec_v1_schema_default = {
         },
         schema_version: {
           type: "string",
-          enum: ["v1"],
-          description: "Schema version."
+          enum: ["v2"],
+          description: "Schema version. v2 removes tasks[] from spec (moved to plan.json), requires GWT on sub-requirements, and adds top-level verification.journeys[]."
         },
         mode: {
           type: "object",
           additionalProperties: false,
-          description: "Execution configuration axes. Replaces legacy 'depth' field.",
+          description: "Execution configuration axes.",
           properties: {
             dispatch: {
               type: "string",
@@ -7767,54 +7763,50 @@ var dev_spec_v1_schema_default = {
           type: "array",
           minItems: 1,
           items: { $ref: "#/$defs/subRequirement" },
-          description: "Sub-requirements decomposing this requirement into testable behaviors. These serve as the behavioral acceptance criteria for tasks that fulfill this requirement."
+          description: "Sub-requirements decomposing this requirement into testable behaviors. GWT (given/when/then) is required on every sub-requirement in v2."
         }
       }
     },
     subRequirement: {
       type: "object",
-      description: "Sub-requirement with required behavior summary. Optionally uses Given/When/Then (GWT) format for structured precondition, action, and expected outcome.",
-      required: ["id", "behavior"],
+      description: "Sub-requirement using Given/When/Then (GWT) format for structured precondition, action, and expected outcome. All GWT fields are required in v2.",
+      required: ["id", "behavior", "given", "when", "then"],
       additionalProperties: false,
       properties: {
         id: { type: "string" },
-        behavior: { type: "string", description: "Concrete, testable behavior (summary line, always required)" },
-        given: { type: "string", description: "Precondition or initial context (GWT format, optional)" },
-        when: { type: "string", description: "Action or trigger (GWT format, optional)" },
-        then: { type: "string", description: "Expected outcome or assertion (GWT format, optional)" }
+        behavior: { type: "string", description: "Concrete, testable behavior (summary line)" },
+        given: { type: "string", description: "Precondition or initial context (GWT)" },
+        when: { type: "string", description: "Action or trigger (GWT)" },
+        then: { type: "string", description: "Expected outcome or assertion (GWT)" }
       }
     },
-    task: {
+    verification: {
       type: "object",
-      required: ["id", "action"],
+      additionalProperties: false,
+      description: "Top-level verification block. Holds journeys[] \u2014 ordered compositions of sub-requirement IDs that describe cross-sub-req scenarios.",
+      properties: {
+        journeys: {
+          type: "array",
+          items: { $ref: "#/$defs/journey" }
+        }
+      }
+    },
+    journey: {
+      type: "object",
+      required: ["id", "name", "composes", "given", "when", "then"],
       additionalProperties: false,
       properties: {
         id: { type: "string" },
-        action: { type: "string" },
-        tool: {
-          type: "string",
-          description: "Dispatch hint for plain mode: skill name (e.g. /bugfix), agent subtype (e.g. worker), or omit for orchestrator-direct"
-        },
-        type: {
-          type: "string",
-          enum: ["work", "verification"]
-        },
-        status: {
-          type: "string",
-          enum: ["pending", "in_progress", "done"],
-          default: "pending"
-        },
-        depends_on: {
+        name: { type: "string" },
+        composes: {
           type: "array",
-          items: { type: "string" }
+          minItems: 2,
+          items: { type: "string" },
+          description: "Ordered list of sub-req IDs this journey traverses. Order is semantically significant (transition sequence). CLI validate must ensure each ID references an existing requirements[].sub[].id."
         },
-        fulfills: {
-          type: "array",
-          items: { type: "string" }
-        },
-        started_at: { type: "string" },
-        completed_at: { type: "string" },
-        summary: { type: "string" }
+        given: { type: "string" },
+        when: { type: "string" },
+        then: { type: "string" }
       }
     },
     externalDependencies: {
@@ -7923,8 +7915,39 @@ Examples:
   hoyeon-cli spec check ./spec.json
   hoyeon-cli spec amend --reason fb-001 --spec ./spec.json
 `;
-function loadSchema() {
-  return dev_spec_v1_schema_default;
+var v1DeprecationWarned = false;
+function loadSchema(specData) {
+  if (!specData || typeof specData !== "object") {
+    return dev_spec_v2_schema_default;
+  }
+  const version = specData.meta?.schema_version;
+  if (version === "v2") {
+    return dev_spec_v2_schema_default;
+  }
+  if (!v1DeprecationWarned) {
+    process.stderr.write(`Warning: spec uses 'v1' schema which is deprecated; auto-migrating in-memory to v2 (source file unchanged).
+`);
+    v1DeprecationWarned = true;
+  }
+  if (!specData.meta || typeof specData.meta !== "object") {
+    specData.meta = {};
+  }
+  specData.meta.schema_version = "v2";
+  if (Array.isArray(specData.tasks)) {
+    delete specData.tasks;
+  }
+  if (Array.isArray(specData.requirements)) {
+    for (const req of specData.requirements) {
+      if (!Array.isArray(req?.sub)) continue;
+      for (const sr of req.sub) {
+        if (!sr || typeof sr !== "object") continue;
+        if (typeof sr.given !== "string" || sr.given.length === 0) sr.given = "TBD";
+        if (typeof sr.when !== "string" || sr.when.length === 0) sr.when = "TBD";
+        if (typeof sr.then !== "string" || sr.then.length === 0) sr.then = "TBD";
+      }
+    }
+  }
+  return dev_spec_v2_schema_default;
 }
 function printGuideHints(errors) {
   const sections = /* @__PURE__ */ new Set();
