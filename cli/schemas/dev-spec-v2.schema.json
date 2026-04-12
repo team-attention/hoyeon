@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dev-spec/v2",
+  "title": "dev-spec v2",
+  "description": "Spec schema v2. Separates the Contract (requirements + verification journeys) from task decomposition, which moves to execute-owned plan.json. GWT (given/when/then) is required on every sub-requirement. Adds top-level verification.journeys[] for cross-sub-req compositional scenarios.",
+  "type": "object",
+  "required": ["meta"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "meta": { "$ref": "#/$defs/meta" },
+    "context": { "$ref": "#/$defs/context" },
+    "requirements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/requirement" }
+    },
+    "verification": { "$ref": "#/$defs/verification" },
+    "constraints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/constraint" }
+    },
+    "external_dependencies": { "$ref": "#/$defs/externalDependencies" }
+  },
+  "$defs": {
+    "meta": {
+      "type": "object",
+      "required": ["name", "goal"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "goal": { "type": "string" },
+        "non_goals": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What this project is explicitly NOT trying to achieve"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["dev", "plain"]
+        },
+        "schema_version": {
+          "type": "string",
+          "enum": ["v2"],
+          "description": "Schema version. v2 removes tasks[] from spec (moved to plan.json), requires GWT on sub-requirements, and adds top-level verification.journeys[]."
+        },
+        "mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Execution configuration axes.",
+          "properties": {
+            "dispatch": {
+              "type": "string",
+              "enum": ["direct", "agent", "team"],
+              "description": "How tasks are dispatched: direct (orchestrator-direct), agent (worker subagents with grouping), team (TeamCreate persistent workers)"
+            },
+            "work": {
+              "type": "string",
+              "enum": ["worktree", "branch", "no-commit"],
+              "description": "Git work mode: worktree, branch, or no-commit"
+            },
+            "verify": {
+              "type": "string",
+              "enum": ["light", "standard", "thorough", "ralph"],
+              "description": "Verification depth: light (build check), standard (spec-based FV), thorough (CR + cross-task + sandbox), ralph (standard + persistent DoD loop)"
+            },
+            "depth": {
+              "type": "string",
+              "description": "Deprecated — use dispatch + verify instead. Kept for backward compatibility."
+            }
+          }
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "confirmed_goal": {
+          "type": "string",
+          "description": "Confirmed goal statement from mirror phase"
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "decision", "rationale"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "decision": { "type": "string" },
+              "rationale": { "type": "string" }
+            }
+          }
+        },
+        "research": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Key findings from L1 codebase/environment investigation"
+        },
+        "known_gaps": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Things that couldn't be decided yet"
+        },
+        "sandbox_capability": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Auto-detected sandbox capabilities for verification",
+          "properties": {
+            "tools": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["browser", "terminal", "desktop", "cli"] }
+            },
+            "scaffold_required": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "required": ["id", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "rule": { "type": "string", "description": "Non-functional guardrail that must not be violated" }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "required": ["id", "behavior", "sub"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "behavior": { "type": "string" },
+        "sub": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/subRequirement" },
+          "description": "Sub-requirements decomposing this requirement into testable behaviors. GWT (given/when/then) is required on every sub-requirement in v2."
+        }
+      }
+    },
+    "subRequirement": {
+      "type": "object",
+      "description": "Sub-requirement using Given/When/Then (GWT) format for structured precondition, action, and expected outcome. All GWT fields are required in v2.",
+      "required": ["id", "behavior", "given", "when", "then"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "behavior": { "type": "string", "description": "Concrete, testable behavior (summary line)" },
+        "given": { "type": "string", "description": "Precondition or initial context (GWT)" },
+        "when": { "type": "string", "description": "Action or trigger (GWT)" },
+        "then": { "type": "string", "description": "Expected outcome or assertion (GWT)" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Top-level verification block. Holds journeys[] — ordered compositions of sub-requirement IDs that describe cross-sub-req scenarios.",
+      "properties": {
+        "journeys": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/journey" }
+        }
+      }
+    },
+    "journey": {
+      "type": "object",
+      "required": ["id", "name", "composes", "given", "when", "then"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "composes": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string" },
+          "description": "Ordered list of sub-req IDs this journey traverses. Order is semantically significant (transition sequence). CLI validate must ensure each ID references an existing requirements[].sub[].id."
+        },
+        "given": { "type": "string" },
+        "when": { "type": "string" },
+        "then": { "type": "string" }
+      }
+    },
+    "externalDependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pre_work": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["action"],
+            "additionalProperties": false,
+            "properties": {
+              "action": { "type": "string" }
+            }
+          }
+        },
+        "post_work": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["action"],
+            "additionalProperties": false,
+            "properties": {
+              "action": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
