@@ -1,8 +1,13 @@
-# Verify Standard — Tier 0 + Tier 1 + Code Review: Mechanical + Semantic + Quality
+# Verify Standard — Tier 0 + Sub FV + Journey Static Coverage
 
-Spec-based verification: mechanical gate first, semantic analysis per sub-requirement, then conditional code review.
+Spec-based verification. Mechanical gate first, then two semantic parts:
+**(a)** static per-sub-requirement FV, **(b)** static journey coverage.
 
 **Consumers**: `/execute` (AGENT/TEAM mode default), `/check`, `/ralph`.
+
+**Inputs**
+- `normalized_spec` — Phase 0 cache (requirements[].sub[] with GWT, verification.journeys[])
+- `plan_path` — `<spec-dir>/plan.json` (source of truth for task status / fulfills)
 
 ---
 
@@ -11,257 +16,221 @@ Spec-based verification: mechanical gate first, semantic analysis per sub-requir
 Execute the same checks as verify-light. Read `${baseDir}/references/verify-light.md`.
 
 ```
-tier0_result = execute_verify_light(spec_path)
+tier0_result = execute_verify_light()
 IF tier0_result.status == "FAILED":
-  # Mechanical gate failed — do NOT proceed to Tier 1
-  # Return tier0 result with added context
-  HALT
+  HALT  # Mechanical gate failed — do NOT proceed to semantic checks.
 ```
 
-**No tests found** is a PASS with warning — it does not block Tier 1.
+**No tests found** is a PASS with warning — it does not block part (a) or (b).
 
 ---
 
-## Tier 1: Semantic Verification
+## Part (a): Sub-requirement FV (static)
 
-Dispatch a single verification agent. Read-only — no file modifications.
+Load done tasks and their fulfills[]:
 
-### Dispatch
+```
+done_tasks = Bash("hoyeon-cli plan list {plan_path} --status done --json").tasks
+fulfilled_sub_ids = flatten(t.fulfills for t in done_tasks)   # dedup
+```
+
+Dispatch a single verification worker (read-only):
 
 ```
 Agent(subagent_type="worker",
-  description="Tier 1: Semantic verification",
+  description="Sub-req FV (static)",
   prompt="""
-  You are a VERIFICATION worker. Read the spec and source code to verify
-  each sub-requirement. DO NOT modify any files. Only READ and RUN commands.
+  You are a VERIFICATION worker. DO NOT modify files. Read-only.
 
-  Spec path: {spec_path}
+  Normalized spec (inlined by orchestrator):
+  {normalized_spec.requirements with sub[].id/behavior/given/when/then}
 
-  ## Step 1: Goal Alignment
+  Done-task fulfills mapping:
+  {done_tasks with id + fulfills[]}
 
-  - Goal: {spec.meta.goal}
-  - Non-goals: {spec.meta.non_goals ?? "None"}
-  - Check: Does the implementation achieve the goal?
-  - Check: Does it avoid non-goals?
-  Report: PASS or FAIL with reason.
+  ## Goal Alignment
+  - Goal: {normalized_spec.meta.goal}
+  - Non-goals: {normalized_spec.meta.non_goals}
+  Report PASS/FAIL with reason.
 
-  ## Step 2: Constraints
+  ## Constraints
+  FOR each constraint in normalized_spec.constraints:
+    Verify implementation respects [{c.id}] {c.rule}.
 
-  {FOR EACH constraint in spec.constraints ?? []:}
-  - [{constraint.id}] {constraint.rule}
-    Verify the implementation respects this constraint.
-  {IF no constraints: "None defined — skip."}
+  ## Per Sub-requirement FV
+  FOR each sub in normalized_spec.requirements[].sub[]:
+    1. Find the owning task via fulfilled_sub_ids / done_tasks[].fulfills
+    2. Read related source + tests
+    3. Trace given/when/then through the code
+    4. Assign ONE status:
+       - PASS: code or a passing test clearly implements this GWT
+       - FAIL: code contradicts GWT, or a test disproves it, or sub is not
+               in any done task's fulfills[]
+       - UNCERTAIN: runtime/UI/external state prevents static judgment
 
-  ## Step 3: Per Sub-requirement Verification
+  Emit:
+  { "id": "R1.1", "status": "PASS|FAIL|UNCERTAIN",
+    "reason": "...", "test_coverage": bool, "files_checked": [...] }
 
-  For EACH sub-requirement in spec.requirements[].sub[], evaluate independently:
-
-  1. Read source code related to this sub-requirement
-  2. Check if an existing test covers this sub-requirement
-  3. If the sub-req has given/when/then, trace the logic through the code
-  4. Assign ONE of three statuses:
-
-     PASS — code clearly implements this, or a passing test covers it
-     FAIL — code contradicts this, or a failing test disproves it
-     UNCERTAIN — cannot determine from code alone. Use ONLY when:
-       - No test exists for this sub-req AND logic has conditional branches
-       - Sub-req involves UI rendering that code reading can't confirm
-       - Sub-req depends on runtime state (DB content, env vars, external API)
-       - Related code file not found
-
-  For each sub-req, output:
-  {
-    "id": "{sub_req.id}",
-    "status": "PASS" | "FAIL" | "UNCERTAIN",
-    "reason": "specific evidence from code",
-    "test_coverage": true | false,
-    "files_checked": ["path1", "path2"]
-  }
-
-  ## OUTPUT FORMAT
+  ## OUTPUT
   ```json
-  {
-    "status": "VERIFIED" | "FAILED",
-    "goal_alignment": {
-      "status": "PASS" | "FAIL",
-      "reason": "..."
-    },
-    "constraints": {
-      "pass": 0, "fail": 0,
-      "results": [{"id": "C1", "status": "PASS", "reason": "..."}]
-    },
-    "sub_requirements": [
-      {"id": "R1.1", "status": "PASS", "reason": "...", "test_coverage": true, "files_checked": [...]},
-      {"id": "R1.2", "status": "FAIL", "reason": "...", "test_coverage": false, "files_checked": [...]},
-      {"id": "R2.1", "status": "UNCERTAIN", "reason": "...", "test_coverage": false, "files_checked": [...]}
-    ],
-    "counts": {
-      "pass": 0, "fail": 0, "uncertain": 0
-    }
-  }
+  { "status": "VERIFIED"|"FAILED",
+    "goal_alignment": {"status": "PASS|FAIL", "reason": "..."},
+    "constraints":   {"pass": N, "fail": N, "results": [...]},
+    "sub_requirements": [...],
+    "counts": {"pass": N, "fail": N, "uncertain": N} }
   ```
   """)
 ```
 
-### Result Handling
+### Recovery
 
 ```
-# VERIFIED when: no FAIL, goal aligned, constraints passed
-# UNCERTAIN items in standard mode → marked as MANUAL REVIEW (no Tier 3)
-
-tier1_attempt = 0
-
-IF result.goal_alignment.status == "FAIL":
-  print("GOAL MISALIGNMENT — cannot auto-fix. HALT.")
-  HALT  # Unrecoverable
+IF result.goal_alignment.status == "FAIL":   HALT (unrecoverable)
 
 IF result.counts.fail > 0:
-  # Build failures array (contract for dev.md/team.md callers)
-  failures = []
-  IF result.goal_alignment.status == "FAIL":
-    failures.append({"description": "Goal misalignment", "reason": result.goal_alignment.reason})
-  FOR EACH c in result.constraints.results.filter(r => r.status == "FAIL"):
-    failures.append({"description": "Constraint {c.id}", "reason": c.reason, "task_id": null})
-  FOR EACH s in result.sub_requirements.filter(s => s.status == "FAIL"):
-    failures.append({"description": "Sub-req {s.id}", "reason": s.reason, "task_id": null})
-
-  # Create fix tasks for FAIL items
-  FOR EACH failed in failures:
-    derive_result = Bash("""hoyeon-cli spec derive \
-      --parent {related_task_id} \
-      --source verify-standard \
-      --trigger semantic_verification \
-      --action "Fix: {failed.description} — {failed.reason}" \
-      --reason "Tier 1 semantic: {failed.reason}" \
-      {spec_path}""")
-    dispatch_fix(derive_result, spec_path)
-
-  # Re-run Tier 1 (max 2 retries)
-  IF tier1_attempt >= 2:
-    HALT with failure report
-  tier1_attempt += 1
+  # Derive fix tasks in plan.json (NOT spec)
+  FOR each failed_sub:
+    Bash("hoyeon-cli plan merge {plan_path} --stdin ...")  # append fix task
+  IF sub_fv_attempt >= 2: HALT with failures
+  sub_fv_attempt += 1; re-run Part (a)
 
 IF result.counts.fail == 0:
-  total = result.counts.pass + result.counts.uncertain
-  uncertain_ratio = result.counts.uncertain / total IF total > 0 ELSE 0
-
-  # UNCERTAIN items → report as MANUAL REVIEW
-  FOR EACH uncertain in result.sub_requirements.filter(s => s.status == "UNCERTAIN"):
-    log("MANUAL REVIEW: {uncertain.id} — {uncertain.reason}")
-
-  IF uncertain_ratio > 0.3:
-    status = "VERIFIED_WITH_GAPS"
-    print("⚠ {result.counts.uncertain}/{total} sub-reqs could not be verified from code alone.")
-    print("  Consider --verify thorough for runtime verification.")
-  ELSE:
-    status = "VERIFIED"
+  uncertain_ratio = uncertain / (pass + uncertain)
+  IF uncertain_ratio > 0.3: part_a_status = "VERIFIED_WITH_GAPS"
+  ELSE:                     part_a_status = "VERIFIED"
 ```
 
 ---
 
-## Code Review (conditional)
+## Part (b): Journey Static Coverage
 
-> Catches integration issues, hidden bugs, and design inconsistencies that
-> per-sub-requirement verification misses.
+Read `normalized_spec.verification.journeys` from Phase 0 cache.
 
-Runs **after** Tier 1 passes (no FAIL items). Parallel with nothing — sequential gate.
-
-### Auto-pass conditions
+### Graceful no-journeys (R10.4)
 
 ```
-# Skip code review when ALL true:
-#   - Total diff ≤ 200 lines
-#   - No new dependencies added (package.json, Cargo.toml, etc. unchanged)
-#   - All tasks are low risk
-IF auto_pass_conditions_met:
-  cr_result = {"status": "AUTO_PASS", "reason": "small diff, no new deps, low risk"}
-ELSE:
+journeys = normalized_spec.verification?.journeys ?? []
+IF len(journeys) == 0:
+  log("no journeys to verify — skipping journey block")
+  journey_block = {"status": "SKIPPED", "reason": "no journeys", "results": []}
+  → proceed to final aggregation with part_a only
+```
+
+### B1. ID coverage (mechanical)
+
+```
+FOR each journey in journeys:
+  missing = [sid for sid in journey.composes if sid NOT IN fulfilled_sub_ids]
+  IF missing:
+    journey.id_coverage = {"status": "FAIL", "missing_sub_ids": missing}
+  ELSE:
+    journey.id_coverage = {"status": "PASS"}
+```
+
+### B2. Semantic coverage (code-reviewer agent)
+
+For each journey that passed B1, dispatch one code-reviewer to judge whether
+the composed subs' GWTs collectively cover the journey's GWT scenario.
+
+```
+FOR each journey where id_coverage.status == "PASS":
+  composed_subs = [lookup_sub(sid) for sid in journey.composes]
   Agent(subagent_type="code-reviewer",
-    description="Code review",
+    description="Journey semantic coverage: {journey.id}",
     prompt="""
-    Review the complete diff for this spec.
-    Spec path: {spec_path}
-    Focus on: correctness, edge cases, security, API consistency.
-    Output: "SHIP" or "NEEDS_FIXES" with list of issues
+    Judge whether the following sub-requirement GWTs collectively cover the
+    journey scenario below, SEMANTICALLY (not just by ID).
+
+    Journey {journey.id}:
+      Given: {journey.given}
+      When:  {journey.when}
+      Then:  {journey.then}
+
+    Composed sub-requirements:
+    FOR s in composed_subs:
+      - {s.id}: G={s.given} / W={s.when} / T={s.then}
+
+    Questions:
+    1. Does the union of sub GWTs reach every state in the journey's Given?
+    2. Does every action in the journey's When appear in some sub's When?
+    3. Does every observable in the journey's Then appear in some sub's Then?
+
+    Output JSON:
+    { "verdict": "PASS" | "FAIL",
+      "gaps": ["..."],   // non-empty only when FAIL
+      "evidence": "..." }
     """)
 ```
 
-### Result handling
+### Journey aggregation
 
 ```
-IF cr_result.status == "AUTO_PASS" OR cr_result.verdict == "SHIP":
-  # Code review passed — proceed to final status
-  pass
+FOR each journey:
+  IF id_coverage.FAIL OR semantic.verdict == "FAIL":
+    journey.status = "FAIL"
+  ELSE:
+    journey.status = "PASS"
 
-IF cr_result.verdict == "NEEDS_FIXES":
-  FOR EACH fix_item in cr_result.fix_items:
-    derive_result = Bash("""hoyeon-cli spec derive \
-      --parent {related_task_id} \
-      --source verify-standard \
-      --trigger code_review \
-      --action "Fix: {fix_item.id} — {fix_item.description}" \
-      --reason "Code review: {fix_item.impact}" \
-      {spec_path}""")
-    dispatch_fix(derive_result, spec_path)
+journey_block.status = "PASS" if every journey PASS else "FAIL"
 
-  # Re-run code review after fixes (max 1 retry)
-  IF cr_attempt >= 1:
-    HALT with code review failure report
-  cr_attempt += 1
+IF journey_block.status == "FAIL":
+  FOR each failed journey:
+    Bash("hoyeon-cli plan merge {plan_path} --stdin ...")  # derive fix task
+  IF journey_attempt >= 1: HALT with journey failures
+  journey_attempt += 1; re-run Part (b)
 ```
 
 ---
 
-## Return Contract
+## Final Aggregation
 
-This recipe returns the **combined Tier 0 + Tier 1 + Code Review** format below (not the inner agent JSON).
-Callers (verify-thorough, dev.md, team.md) access `result.tier1.sub_requirements`, `result.code_review`, and `result.failures`.
-
-**Caller handling for `status`:**
-- `VERIFIED` → task done, proceed
-- `VERIFIED_WITH_GAPS` → task done, log gap count, proceed (soft success)
-- `FAILED` → enter fix loop using `result.failures[]`
+```
+status =
+  "FAILED"               if part_a == "FAILED" or journey_block.status == "FAIL"
+  "VERIFIED_WITH_GAPS"   if part_a == "VERIFIED_WITH_GAPS"
+  "VERIFIED"             otherwise
+```
 
 ## Output Format
 
 ```json
 {
   "status": "VERIFIED" | "VERIFIED_WITH_GAPS" | "FAILED",
-  "failures": [
-    { "description": "Sub-req R1.2", "reason": "missing file handler", "task_id": null }
-  ],
-  "tier0": {
-    "status": "VERIFIED",
-    "checks": [...]
-  },
-  "tier1": {
-    "status": "VERIFIED" | "FAILED",
+  "tier0": { "status": "VERIFIED", "checks": [...] },
+  "sub_fv": {
+    "status": "VERIFIED" | "VERIFIED_WITH_GAPS" | "FAILED",
     "goal_alignment": { "status": "PASS", "reason": "..." },
-    "constraints": { "pass": 0, "fail": 0, "results": [] },
+    "constraints":    { "pass": 0, "fail": 0, "results": [] },
     "sub_requirements": [
-      { "id": "R1.1", "status": "PASS", "reason": "...", "test_coverage": true, "files_checked": [] },
-      { "id": "R2.1", "status": "UNCERTAIN", "reason": "no test, UI rendering", "test_coverage": false, "files_checked": [] }
+      {"id": "R1.1", "status": "PASS", "reason": "...", "test_coverage": true}
     ],
     "counts": { "pass": 0, "fail": 0, "uncertain": 0 }
   },
-  "code_review": {
-    "status": "SHIP" | "NEEDS_FIXES" | "AUTO_PASS",
-    "issues": []
+  "journeys": {
+    "status": "PASS" | "FAIL" | "SKIPPED",
+    "results": [
+      { "id": "J1",
+        "id_coverage": { "status": "PASS", "missing_sub_ids": [] },
+        "semantic":    { "verdict": "PASS", "gaps": [], "evidence": "..." },
+        "status": "PASS" }
+    ]
   },
-  "manual_review": ["R2.1"]
+  "failures": [
+    { "description": "Sub-req R1.2", "reason": "missing handler", "task_id": null },
+    { "description": "Journey J1 semantic", "reason": "Then step not covered" }
+  ]
 }
 ```
-
----
 
 ## Recovery Constraints
 
 | Constraint | Rule |
 |------------|------|
-| Tier 0 FAIL | Immediate HALT — fix build/lint before semantic verification |
-| goal_alignment FAIL | Immediate HALT — no recovery attempt |
-| sub-req FAIL | Create derived fix tasks via `spec derive`, max 2 retries |
-| sub-req UNCERTAIN | Standard mode → MANUAL REVIEW. Thorough mode → deferred to Tier 3 |
-| Code review NEEDS_FIXES | Create derived fix tasks via `spec derive`, max 1 retry |
-| Code review AUTO_PASS | Small diff + no deps + low risk → skip (no agent spawned) |
-| No tests warning | Does not block — Tier 1 agent evaluates code directly |
+| Tier 0 FAIL | Immediate HALT |
+| goal_alignment FAIL | Immediate HALT |
+| sub FAIL | Derive fix tasks in plan.json; max 2 retries |
+| sub UNCERTAIN | Report as MANUAL REVIEW (resolved only in verify-thorough) |
+| Journey id_coverage FAIL | Derive fix tasks; max 1 retry |
+| Journey semantic FAIL | Derive fix tasks; max 1 retry |
+| No journeys | Skip journey block with log; do NOT fail |

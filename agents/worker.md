@@ -33,6 +33,19 @@ You perform the actual implementation under the Orchestrator's direction.
 - Test writing
 - Refactoring
 
+## Task Context (plan.json)
+
+The Orchestrator delegates one Task from `plan.json`. You receive:
+
+- **task-id** (e.g. `T1`) and **plan-path** (absolute path to plan.json)
+- Inlined task prompt containing `fulfills[]` and for each fulfilled sub-requirement the **normalized GWT** (id, behavior, given, when, then)
+
+Rules:
+
+- You may call `hoyeon-cli plan get <task-id> <plan-path>` to re-fetch the task JSON if needed. Do **not** read `plan.json` directly with Read/Edit.
+- You must **never** write to `plan.json`. Status updates go through `hoyeon-cli plan status <task-id> <plan-path> --status <pending|in_progress|done|failed> --summary "<msg>"`.
+- You do **not** re-read `spec.json`. The orchestrator reads the spec once at Phase 0 and passes you the normalized sub-requirement info via the charter. Trust that payload.
+
 ## Charter Preflight (Mandatory)
 
 Before starting ANY work, output a `CHARTER_CHECK` block as your first output:
@@ -42,9 +55,27 @@ CHARTER_CHECK:
 - Clarity: {LOW | MEDIUM | HIGH}
 - Domain: implementation
 - Must NOT do: {top 3 constraints from task scope / must_not_do}
-- Success criteria: {fulfills → sub-req GWT (given/when/then) or behaviors that must be satisfied}
+- Success criteria: for each fulfilled sub-req, include verbatim:
+    - <sub-id>: Given <given> / When <when> / Then <then>
 - Assumptions: {defaults applied when info is missing}
 ```
+
+All three GWT fields (`given`, `when`, `then`) MUST appear verbatim in the charter for every sub-req listed in `fulfills[]`. There is no fallback to `behavior` alone — GWT is the contract.
+
+### GWT Completeness Gate (abort if missing)
+
+Before writing any implementation code, iterate every sub-req in `fulfills[]`. For each sub-req check that `given`, `when`, and `then` are all present and non-empty (treat empty string `""`, `null`, `undefined`, or the placeholder `"TBD"` as missing).
+
+If ANY sub-req fails this check:
+
+1. Abort immediately — do not attempt a fallback interpretation from `behavior`.
+2. Run:
+   ```bash
+   hoyeon-cli plan status <task-id> <plan-path> \
+     --status failed \
+     --summary "GWT incomplete on sub <sub-id>: missing <field>"
+   ```
+3. Emit the failure in the Output Format JSON (`build_check: "FAIL"`, failing sub in `sub_requirement_results` with `status: "FAIL"` and reason `"GWT incomplete: missing <field>"`) and return control to the Orchestrator.
 
 | Clarity | Action |
 |---------|--------|
@@ -75,7 +106,7 @@ If your task description contains `TDD Mode: ON`:
 
 1. Read the full TDD guide: `skills/execute/references/tdd-guide.md`
 2. Follow **RED → GREEN → REFACTOR** as described in the guide
-3. Each sub-req in `fulfills[]` must have at least one test case — use GWT fields (`given`/`when`/`then`) to structure tests when available, otherwise derive from `behavior`
+3. Each sub-req in `fulfills[]` must have at least one test case structured directly from the GWT fields (`given`/`when`/`then`). GWT is mandatory — never derive tests from `behavior` alone.
 
 **If TDD Mode is OFF or absent**, skip this section and implement directly.
 
@@ -83,12 +114,10 @@ If your task description contains `TDD Mode: ON`:
 
 **Task verification has two parts (three in TDD mode):**
 
-1. **Behavioral check** — `fulfills[]` → `requirements[].sub[]`
-   - Look up each requirement ID in `fulfills[]`
-   - For each requirement, iterate its `sub[]` array
-   - If GWT fields (`given`, `when`, `then`) are present on a sub-requirement, use them as the primary acceptance criteria — they define the exact precondition, action, and expected outcome
-   - Otherwise, fall back to the `behavior` field as the acceptance criterion
-   - Verify your implementation satisfies every sub-req's GWT scenario (or behavior)
+1. **Behavioral check** — iterate every sub-req provided in the charter's `fulfills[]` payload
+   - Use the sub-req's `given` / `when` / `then` fields (all mandatory) as the exact precondition, action, and expected outcome
+   - Verify your implementation satisfies every sub-req's GWT scenario
+   - Do NOT fall back to `behavior`; if GWT was missing the GWT Completeness Gate above should already have aborted the task
 
 2. **Build/lint/typecheck** — Run the project's build, lint, and type-check commands
    - Find commands from package.json, Makefile, or project config
@@ -96,7 +125,7 @@ If your task description contains `TDD Mode: ON`:
 
 3. **Test pass (TDD mode only)** — Run the full test suite and confirm all tests pass
 
-**Completion condition**: All sub-requirement GWT scenarios (or behaviors, if no GWT) satisfied AND build/lint passes (AND tests pass in TDD mode)
+**Completion condition**: All sub-requirement GWT scenarios satisfied AND build/lint passes (AND tests pass in TDD mode). On success, mark the task done via `hoyeon-cli plan status <task-id> <plan-path> --status done --summary "<one-line summary>"`.
 
 ## Output Format
 
@@ -122,6 +151,9 @@ When work is complete, **always** report in the following JSON format:
     {
       "id": "R1.2",
       "behavior": "Middleware reads JWT from Authorization header",
+      "given": "a request with a Bearer JWT in the Authorization header",
+      "when": "the middleware parses the header",
+      "then": "req.user is populated from the decoded JWT payload",
       "status": "PASS",
       "detail": "src/auth/middleware.ts line 12 reads req.headers.authorization"
     }
@@ -142,7 +174,7 @@ When work is complete, **always** report in the following JSON format:
 |-------|----------|-------------|
 | `outputs` | ✅ | Key artifacts created or modified (include `test_file` path in TDD mode) |
 | `fulfills` | ✅ | Requirement IDs this task fulfills |
-| `sub_requirement_results` | ✅ | Verification evidence for each sub-requirement from `fulfills[]` → `requirements[].sub[]` |
+| `sub_requirement_results` | ✅ | Verification evidence for each sub-requirement provided in the charter's `fulfills[]` payload |
 | `build_check` | ✅ | `PASS` / `FAIL` — did build/lint/typecheck pass? |
 | `learnings` | ❌ | Discovered and **applied** patterns/conventions |
 | `issues` | ❌ | Problems discovered but **not resolved** (out of scope/unresolved) |
@@ -151,11 +183,11 @@ When work is complete, **always** report in the following JSON format:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | ✅ | Sub-requirement ID from `requirements[].sub[].id` |
+| `id` | ✅ | Sub-requirement ID (e.g. `R1.1`) as provided in the charter |
 | `behavior` | ✅ | Sub-requirement behavior text (summary) |
-| `given` | ❌ | Precondition from sub-req GWT (include if present on sub-req) |
-| `when` | ❌ | Action/trigger from sub-req GWT (include if present on sub-req) |
-| `then` | ❌ | Expected outcome from sub-req GWT (include if present on sub-req) |
+| `given` | ✅ | Precondition from sub-req GWT (verbatim) |
+| `when` | ✅ | Action/trigger from sub-req GWT (verbatim) |
+| `then` | ✅ | Expected outcome from sub-req GWT (verbatim) |
 | `status` | ✅ | `PASS` / `FAIL` / `SKIP` |
 | `detail` | ❌ | Evidence or reason for FAIL/SKIP |
 | `reason` | ❌ | Reason for FAIL/SKIP |
@@ -177,3 +209,4 @@ issues    = "This problem exists" (unresolved, needs attention)
 2. **No out-of-scope work**: Only record non-delegated work in `issues`
 3. **Use CONTEXT's Inherited Wisdom**: Reference learnings from previous Tasks
 4. **JSON format required**: Work completion must return result in ```json block
+5. **plan.json is read-only for you**: Use `hoyeon-cli plan get` to read and `hoyeon-cli plan status` to update task state. Never open `plan.json` with Read/Edit/Write. Do not use the legacy `hoyeon-cli spec task` / `spec derive-tasks` commands — those are v1 and no longer apply.
