@@ -61,7 +61,7 @@ Read the slash-command invocation (e.g. `/execute <spec-path> [flags]`).
 
 ```
 spec path required
-Usage: /execute <spec-path> [--ephemeral] [--verify light|standard|thorough] [--dispatch direct|agent|team] [--tdd]
+Usage: /execute <spec-path> [--ephemeral] [--dispatch direct|agent|team] [--tdd]
 ```
 
 **There is no `hoyeon-cli session` fallback** (D16). The user must pass the spec path explicitly.
@@ -71,9 +71,10 @@ Usage: /execute <spec-path> [--ephemeral] [--verify light|standard|thorough] [--
 | Flag | Values | Default |
 |------|--------|---------|
 | `--ephemeral` | boolean | false |
-| `--verify` | light / standard / thorough | standard |
 | `--dispatch` | direct / agent / team | agent |
 | `--tdd` | boolean | false |
+
+`verify` tier is **always** prompted via AskUserQuestion in Phase 0.6 (no flag).
 
 **Mode exclusivity (R8.1, C6)**: If `--ephemeral` AND `--dispatch team` are both set → print error `"ephemeral and team modes are mutually exclusive"` and abort. **No files are written.**
 
@@ -179,15 +180,25 @@ Install recommendations are shown only when `verify == "thorough"` AND tools are
 
 ### 0.6 Work Mode
 
-`dispatch`, `verify`, and `ephemeral` come from Phase 0.0 flags. Still ask for `work` (worktree/branch/no-commit) since it is not a flag:
+`dispatch` and `ephemeral` come from Phase 0.0 flags. `verify` and `work` are **always** asked via AskUserQuestion (no flags):
 
 ```
+verify = AskUserQuestion(
+  question: "Verify depth?",
+  options: [
+    { label: "Standard", description: "sub-req FV + journey static coverage (Recommended)" },
+    { label: "Light",    description: "build/lint/typecheck only (no sub or journey verification)" },
+    { label: "Thorough", description: "standard + runtime journey execution via qa-verifier" },
+    { label: "Ralph",    description: "DoD loop mode (iterative, not task-based)" }
+  ]
+)
+
 work = AskUserQuestion(
   question: "Work mode?",
   options: [
-    { label: "Worktree", description: ".worktrees/{name} branch, commit per round" },
+    { label: "Worktree",       description: ".worktrees/{name} branch, commit per round" },
     { label: "Branch + Commit", description: "Current branch, commit per round" },
-    { label: "No Commit", description: "Current branch, no commits" }
+    { label: "No Commit",      description: "Current branch, no commits" }
   ]
 )
 ```
@@ -326,7 +337,7 @@ plain.md owns: flexible dispatch (direct/Skill/Agent), verify recipe, and report
 4. **Background for parallel** — use `run_in_background: true` for round-parallel workers
 5. **Context files live next to plan.json** — `learnings.json` / `issues.json` / `audit.md` in the spec directory (D9/C4). Skipped entirely in ephemeral mode (C5).
 6. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli plan list` to rebuild task state
-7. **Dispatch mode and verify depth come from CLI flags** (Phase 0.0); work mode prompted at 0.6
+7. **Dispatch mode comes from CLI flag** (Phase 0.0); **verify depth and work mode are always prompted** at 0.6
 8. **Verify depth routes to verify-light.md, verify-standard.md, verify-thorough.md, or verify-ralph.md**
 
 ## Checklist Before Stopping
