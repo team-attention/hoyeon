@@ -1,4 +1,5 @@
 import specHandler from '../src/handlers/spec.js';
+import planHandler from '../src/handlers/plan.js';
 import stateHandler from '../src/handlers/state.js';
 import sessionHandler from '../src/handlers/session.js';
 import feedbackHandler from '../src/handlers/feedback.js';
@@ -11,7 +12,8 @@ Usage:
   hoyeon-cli <subcommand> [options]
 
 Subcommands:
-  spec      Manage spec/plan state
+  spec      Manage spec state
+  plan      Manage plan.json (tasks, status, history)
   state     Read or update workflow state
   session   Manage session state (~/.hoyeon/{sid}/)
   feedback  Manage feedback files
@@ -28,6 +30,7 @@ Examples:
 
 const SUBCOMMANDS = {
   spec: specHandler,
+  plan: planHandler,
   state: stateHandler,
   session: sessionHandler,
   feedback: feedbackHandler,

@@ -22,8 +22,8 @@ Usage:
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
   hoyeon-cli spec guide [section]                             Show schema guide for a section
   hoyeon-cli spec sub <sub-req-id> --get <path>                    Get sub-requirement details as JSON
-  hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
-  hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to context/issues.json
+  hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to <spec-dir>/learnings.json
+  hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to <spec-dir>/issues.json
   hoyeon-cli spec search "query" [--specs-dir .hoyeon/specs] [--limit 10] [--json]  BM25 search across all specs
 
 Options:
@@ -1753,21 +1753,34 @@ async function handleLearning(args) {
   }
 
   const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
+  loadSpec(specPath);
 
-  // Find task and auto-map requirements
-  const task = specData.tasks.find(t => t.id === taskId);
-  if (!task) {
-    process.stderr.write(`Error: task '${taskId}' not found in spec\n`);
-    process.exit(1);
+  // Validate --task against plan.json (if it exists) — v2 specs no longer carry tasks[]
+  const specDir = dirname(specPath);
+  const planPath = resolve(specDir, 'plan.json');
+  let taskIdValidated = false;
+  let requirementIds = [];
+  if (existsSync(planPath)) {
+    let planData;
+    try {
+      planData = JSON.parse(readFileSync(planPath, 'utf8'));
+    } catch (err) {
+      process.stderr.write(`Error: failed to parse plan.json: ${err.message}\n`);
+      process.exit(1);
+    }
+    const tasks = Array.isArray(planData.tasks) ? planData.tasks : [];
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) {
+      const available = tasks.map(t => t.id).join(', ') || '(none)';
+      process.stderr.write(`Error: task not found: ${taskId} (available: ${available})\n`);
+      process.exit(1);
+    }
+    taskIdValidated = true;
+    requirementIds = [...new Set(task.fulfills || [])];
   }
 
-  // Extract requirement IDs from fulfills[]
-  const requirementIds = [...new Set(task.fulfills || [])];
-
-  // Load or create learnings.json
-  const contextDir = resolve(dirname(specPath), 'context');
-  const learningsPath = resolve(contextDir, 'learnings.json');
+  // Write to <spec-dir>/learnings.json (sibling of spec.json)
+  const learningsPath = resolve(specDir, 'learnings.json');
 
   let learnings = [];
   if (existsSync(learningsPath)) {
@@ -1776,8 +1789,9 @@ async function handleLearning(args) {
     } catch {
       learnings = [];
     }
-  } else if (!existsSync(contextDir)) {
-    mkdirSync(contextDir, { recursive: true });
+  }
+  if (!existsSync(specDir)) {
+    mkdirSync(specDir, { recursive: true });
   }
 
   // Generate ID
@@ -1790,6 +1804,7 @@ async function handleLearning(args) {
   const entry = {
     id: newId,
     task: taskId,
+    task_id_validated: taskIdValidated,
     requirements: requirementIds,
     problem: learningData.problem || '',
     cause: learningData.cause || '',
@@ -1855,13 +1870,28 @@ async function handleIssue(args) {
   }
 
   const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
+  loadSpec(specPath);
 
-  // Validate task exists
-  const task = specData.tasks.find(t => t.id === taskId);
-  if (!task) {
-    process.stderr.write(`Error: task '${taskId}' not found in spec\n`);
-    process.exit(1);
+  // Validate --task against plan.json (if it exists)
+  const specDir = dirname(specPath);
+  const planPath = resolve(specDir, 'plan.json');
+  let taskIdValidated = false;
+  if (existsSync(planPath)) {
+    let planData;
+    try {
+      planData = JSON.parse(readFileSync(planPath, 'utf8'));
+    } catch (err) {
+      process.stderr.write(`Error: failed to parse plan.json: ${err.message}\n`);
+      process.exit(1);
+    }
+    const tasks = Array.isArray(planData.tasks) ? planData.tasks : [];
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) {
+      const available = tasks.map(t => t.id).join(', ') || '(none)';
+      process.stderr.write(`Error: task not found: ${taskId} (available: ${available})\n`);
+      process.exit(1);
+    }
+    taskIdValidated = true;
   }
 
   // Validate type field
@@ -1872,9 +1902,8 @@ async function handleIssue(args) {
     process.exit(1);
   }
 
-  // Load or create issues.json
-  const contextDir = resolve(dirname(specPath), 'context');
-  const issuesPath = resolve(contextDir, 'issues.json');
+  // Write to <spec-dir>/issues.json (sibling of spec.json)
+  const issuesPath = resolve(specDir, 'issues.json');
 
   let issues = [];
   if (existsSync(issuesPath)) {
@@ -1883,8 +1912,9 @@ async function handleIssue(args) {
     } catch {
       issues = [];
     }
-  } else if (!existsSync(contextDir)) {
-    mkdirSync(contextDir, { recursive: true });
+  }
+  if (!existsSync(specDir)) {
+    mkdirSync(specDir, { recursive: true });
   }
 
   // Generate ID
@@ -1897,6 +1927,7 @@ async function handleIssue(args) {
   const entry = {
     id: newId,
     task: taskId,
+    task_id_validated: taskIdValidated,
     type: issueData.type || '',
     description: issueData.description || '',
     created_at: new Date().toISOString()
@@ -1991,8 +2022,11 @@ async function handleSearch(args) {
       });
     }
 
-    // Index structured learnings (learnings.json)
-    const learningsJsonPath = resolve(specsDir, specName, 'context', 'learnings.json');
+    // Index structured learnings (learnings.json) — prefer sibling of spec, fall back to context/
+    let learningsJsonPath = resolve(specsDir, specName, 'learnings.json');
+    if (!existsSync(learningsJsonPath)) {
+      learningsJsonPath = resolve(specsDir, specName, 'context', 'learnings.json');
+    }
     if (existsSync(learningsJsonPath)) {
       try {
         const learnings = JSON.parse(readFileSync(learningsJsonPath, 'utf8'));

@@ -2976,7 +2976,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve5.call(this, root, ref);
+      let _sch = resolve6.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3003,7 +3003,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve5(root, ref) {
+    function resolve6(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3578,7 +3578,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve5(baseURI, relativeURI, options) {
+    function resolve6(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3805,7 +3805,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve5,
+      resolve: resolve6,
       resolveComponent,
       equal,
       serialize,
@@ -7892,8 +7892,8 @@ Usage:
   hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
   hoyeon-cli spec guide [section]                             Show schema guide for a section
   hoyeon-cli spec sub <sub-req-id> --get <path>                    Get sub-requirement details as JSON
-  hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
-  hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to context/issues.json
+  hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to <spec-dir>/learnings.json
+  hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to <spec-dir>/issues.json
   hoyeon-cli spec search "query" [--specs-dir .hoyeon/specs] [--limit 10] [--json]  BM25 search across all specs
 
 Options:
@@ -9320,16 +9320,32 @@ async function handleLearning(args) {
     process.exit(1);
   }
   const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
-  const task = specData.tasks.find((t) => t.id === taskId);
-  if (!task) {
-    process.stderr.write(`Error: task '${taskId}' not found in spec
+  loadSpec(specPath);
+  const specDir = dirname(specPath);
+  const planPath = resolve(specDir, "plan.json");
+  let taskIdValidated = false;
+  let requirementIds = [];
+  if (existsSync(planPath)) {
+    let planData;
+    try {
+      planData = JSON.parse(readFileSync(planPath, "utf8"));
+    } catch (err) {
+      process.stderr.write(`Error: failed to parse plan.json: ${err.message}
 `);
-    process.exit(1);
+      process.exit(1);
+    }
+    const tasks = Array.isArray(planData.tasks) ? planData.tasks : [];
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) {
+      const available = tasks.map((t) => t.id).join(", ") || "(none)";
+      process.stderr.write(`Error: task not found: ${taskId} (available: ${available})
+`);
+      process.exit(1);
+    }
+    taskIdValidated = true;
+    requirementIds = [...new Set(task.fulfills || [])];
   }
-  const requirementIds = [...new Set(task.fulfills || [])];
-  const contextDir = resolve(dirname(specPath), "context");
-  const learningsPath = resolve(contextDir, "learnings.json");
+  const learningsPath = resolve(specDir, "learnings.json");
   let learnings = [];
   if (existsSync(learningsPath)) {
     try {
@@ -9337,8 +9353,9 @@ async function handleLearning(args) {
     } catch {
       learnings = [];
     }
-  } else if (!existsSync(contextDir)) {
-    mkdirSync(contextDir, { recursive: true });
+  }
+  if (!existsSync(specDir)) {
+    mkdirSync(specDir, { recursive: true });
   }
   const maxNum = learnings.reduce((max, l) => {
     const m = l.id?.match(/^L(\d+)$/);
@@ -9348,6 +9365,7 @@ async function handleLearning(args) {
   const entry = {
     id: newId,
     task: taskId,
+    task_id_validated: taskIdValidated,
     requirements: requirementIds,
     problem: learningData.problem || "",
     cause: learningData.cause || "",
@@ -9403,12 +9421,28 @@ async function handleIssue(args) {
     process.exit(1);
   }
   const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
-  const task = specData.tasks.find((t) => t.id === taskId);
-  if (!task) {
-    process.stderr.write(`Error: task '${taskId}' not found in spec
+  loadSpec(specPath);
+  const specDir = dirname(specPath);
+  const planPath = resolve(specDir, "plan.json");
+  let taskIdValidated = false;
+  if (existsSync(planPath)) {
+    let planData;
+    try {
+      planData = JSON.parse(readFileSync(planPath, "utf8"));
+    } catch (err) {
+      process.stderr.write(`Error: failed to parse plan.json: ${err.message}
 `);
-    process.exit(1);
+      process.exit(1);
+    }
+    const tasks = Array.isArray(planData.tasks) ? planData.tasks : [];
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) {
+      const available = tasks.map((t) => t.id).join(", ") || "(none)";
+      process.stderr.write(`Error: task not found: ${taskId} (available: ${available})
+`);
+      process.exit(1);
+    }
+    taskIdValidated = true;
   }
   const validTypes = ["failed_approach", "out_of_scope", "blocker"];
   const issueType = issueData.type;
@@ -9417,8 +9451,7 @@ async function handleIssue(args) {
 `);
     process.exit(1);
   }
-  const contextDir = resolve(dirname(specPath), "context");
-  const issuesPath = resolve(contextDir, "issues.json");
+  const issuesPath = resolve(specDir, "issues.json");
   let issues = [];
   if (existsSync(issuesPath)) {
     try {
@@ -9426,8 +9459,9 @@ async function handleIssue(args) {
     } catch {
       issues = [];
     }
-  } else if (!existsSync(contextDir)) {
-    mkdirSync(contextDir, { recursive: true });
+  }
+  if (!existsSync(specDir)) {
+    mkdirSync(specDir, { recursive: true });
   }
   const maxNum = issues.reduce((max, i) => {
     const m = i.id?.match(/^I(\d+)$/);
@@ -9437,6 +9471,7 @@ async function handleIssue(args) {
   const entry = {
     id: newId,
     task: taskId,
+    task_id_validated: taskIdValidated,
     type: issueData.type || "",
     description: issueData.description || "",
     created_at: (/* @__PURE__ */ new Date()).toISOString()
@@ -9514,7 +9549,10 @@ async function handleSearch(args) {
         rule: c.rule
       });
     }
-    const learningsJsonPath = resolve(specsDir, specName, "context", "learnings.json");
+    let learningsJsonPath = resolve(specsDir, specName, "learnings.json");
+    if (!existsSync(learningsJsonPath)) {
+      learningsJsonPath = resolve(specsDir, specName, "context", "learnings.json");
+    }
     if (existsSync(learningsJsonPath)) {
       try {
         const learnings = JSON.parse(readFileSync(learningsJsonPath, "utf8"));
@@ -9671,12 +9709,431 @@ async function spec(args) {
   }
 }
 
+// src/handlers/plan.js
+import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, existsSync as existsSync2, mkdirSync as mkdirSync2, rmdirSync, renameSync } from "fs";
+import { resolve as resolve2, dirname as dirname2 } from "path";
+var HELP = `
+Usage:
+  hoyeon-cli plan init <path> [--spec-ref <spec-path>]            Create a new plan.json
+  hoyeon-cli plan get <task-id> <path>                             Print task JSON to stdout
+  hoyeon-cli plan status <task-id> <path> --status <s> [opts]      Update task status
+                                                                   opts: --summary "..." --commit <sha>
+                                                                   status: pending|in_progress|done|failed
+  hoyeon-cli plan list <path> [--status <s>] [--json]              List tasks (optional filter)
+  hoyeon-cli plan merge <path> --stdin [--append] [--patch]        Deep-merge JSON fragment (heredoc-friendly)
+
+Options:
+  --help, -h   Show this help message
+
+Examples:
+  hoyeon-cli plan init .hoyeon/specs/foo/plan.json --spec-ref .hoyeon/specs/foo/spec.json
+  hoyeon-cli plan get T1 ./plan.json
+  hoyeon-cli plan status T1 ./plan.json --status done --summary "impl done" --commit abc123
+  hoyeon-cli plan list ./plan.json --status pending --json
+  cat task.json | hoyeon-cli plan merge ./plan.json --stdin --patch
+`;
+var VALID_STATUS = ["pending", "in_progress", "done", "failed"];
+var FULFILLS_RE = /^R\d+(\.\d+)?$/;
+var LOCK_TIMEOUT_MS = 5e3;
+var LOCK_POLL_MS = 50;
+function parseArgs2(args) {
+  const result = { _: [] };
+  let i = 0;
+  while (i < args.length) {
+    const arg = args[i];
+    if (arg.startsWith("--")) {
+      const key = arg.slice(2);
+      const next = args[i + 1];
+      if (next !== void 0 && !next.startsWith("--")) {
+        result[key] = next;
+        i += 2;
+      } else {
+        result[key] = true;
+        i += 1;
+      }
+    } else {
+      result._.push(arg);
+      i += 1;
+    }
+  }
+  return result;
+}
+function acquireLock(planPath) {
+  const lockPath = planPath + ".lock";
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  mkdirSync2(dirname2(planPath), { recursive: true });
+  while (true) {
+    try {
+      mkdirSync2(lockPath);
+      return lockPath;
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+      if (Date.now() >= deadline) {
+        throw new Error(`Lock contention: ${lockPath} held for >${LOCK_TIMEOUT_MS}ms`);
+      }
+      const until = Date.now() + LOCK_POLL_MS;
+      while (Date.now() < until) {
+      }
+    }
+  }
+}
+function releaseLock(lockPath) {
+  try {
+    rmdirSync(lockPath);
+  } catch {
+  }
+}
+function withLock(planPath, fn) {
+  const lock = acquireLock(planPath);
+  try {
+    return fn();
+  } finally {
+    releaseLock(lock);
+  }
+}
+function readPlan(planPath) {
+  let raw;
+  try {
+    raw = readFileSync2(planPath, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      process.stderr.write(`Error: plan file not found: ${planPath}
+`);
+      process.exit(1);
+    }
+    throw err;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    process.stderr.write(`Error: invalid JSON in plan file: ${err.message}
+`);
+    process.exit(1);
+  }
+}
+function writePlanAtomic(planPath, data) {
+  data.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+  const tmp = planPath + ".tmp";
+  mkdirSync2(dirname2(planPath), { recursive: true });
+  writeFileSync2(tmp, JSON.stringify(data, null, 2), "utf8");
+  renameSync(tmp, planPath);
+}
+function validateTask(task, ctx = "task") {
+  if (!task || typeof task !== "object" || Array.isArray(task)) {
+    throw new Error(`${ctx}: must be an object`);
+  }
+  if (typeof task.id !== "string" || task.id.length === 0) {
+    throw new Error(`${ctx}: id (string) is required`);
+  }
+  if (typeof task.action !== "string") {
+    throw new Error(`${ctx} ${task.id}: action (string) is required`);
+  }
+  if (!VALID_STATUS.includes(task.status)) {
+    throw new Error(`${ctx} ${task.id}: status must be one of ${VALID_STATUS.join("|")}`);
+  }
+  if (task.depends_on !== void 0 && task.depends_on !== null) {
+    if (!Array.isArray(task.depends_on) || !task.depends_on.every((d) => typeof d === "string")) {
+      throw new Error(`${ctx} ${task.id}: depends_on must be string[]`);
+    }
+  }
+  if (task.fulfills !== void 0 && task.fulfills !== null) {
+    if (!Array.isArray(task.fulfills)) {
+      throw new Error(`${ctx} ${task.id}: fulfills must be string[]`);
+    }
+    for (const f of task.fulfills) {
+      if (typeof f !== "string" || !FULFILLS_RE.test(f)) {
+        throw new Error(`${ctx} ${task.id}: fulfills entry '${f}' must match ^R\\d+(\\.\\d+)?$ (sub-req ids only; journey 'J...' ids rejected)`);
+      }
+    }
+  }
+  if (task.summary !== void 0 && task.summary !== null && typeof task.summary !== "string") {
+    throw new Error(`${ctx} ${task.id}: summary must be string|null`);
+  }
+  if (task.commit_sha !== void 0 && task.commit_sha !== null && typeof task.commit_sha !== "string") {
+    throw new Error(`${ctx} ${task.id}: commit_sha must be string|null`);
+  }
+}
+function validatePlan(plan) {
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+    throw new Error("plan: must be an object");
+  }
+  if (!Array.isArray(plan.tasks)) {
+    throw new Error("plan: tasks must be an array");
+  }
+  if (!Array.isArray(plan.history)) {
+    throw new Error("plan: history must be an array");
+  }
+  const ids = /* @__PURE__ */ new Set();
+  for (const t of plan.tasks) {
+    validateTask(t);
+    if (ids.has(t.id)) throw new Error(`plan: duplicate task id '${t.id}'`);
+    ids.add(t.id);
+  }
+}
+function deepMerge2(target, source, append = false, patch = false) {
+  for (const key of Object.keys(source)) {
+    if (source[key] === null || source[key] === void 0) continue;
+    if (Array.isArray(source[key])) {
+      if (patch && Array.isArray(target[key])) {
+        for (const item of source[key]) {
+          if (item && typeof item === "object" && item.id) {
+            const idx = target[key].findIndex((t) => t && t.id === item.id);
+            if (idx >= 0) {
+              for (const k of Object.keys(item)) {
+                if (item[k] === null || item[k] === void 0) continue;
+                if (Array.isArray(item[k]) && Array.isArray(target[key][idx][k])) {
+                  const nestedT = { [k]: target[key][idx][k] };
+                  deepMerge2(nestedT, { [k]: item[k] }, false, true);
+                  target[key][idx][k] = nestedT[k];
+                } else if (typeof item[k] === "object" && !Array.isArray(item[k]) && target[key][idx][k] && typeof target[key][idx][k] === "object" && !Array.isArray(target[key][idx][k])) {
+                  deepMerge2(target[key][idx][k], item[k], false, true);
+                } else {
+                  target[key][idx][k] = item[k];
+                }
+              }
+            } else {
+              target[key].push(item);
+            }
+          } else {
+            target[key].push(item);
+          }
+        }
+      } else if (append && Array.isArray(target[key])) {
+        target[key] = target[key].concat(source[key]);
+      } else {
+        target[key] = source[key];
+      }
+    } else if (typeof source[key] === "object") {
+      if (!target[key] || typeof target[key] !== "object" || Array.isArray(target[key])) {
+        target[key] = {};
+      }
+      deepMerge2(target[key], source[key], append, patch);
+    } else {
+      target[key] = source[key];
+    }
+  }
+  return target;
+}
+function appendHistory2(plan, entry) {
+  plan.history.push({ ts: (/* @__PURE__ */ new Date()).toISOString(), ...entry });
+}
+async function handleInit2(args) {
+  const parsed = parseArgs2(args);
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write("Error: <path> is required\n");
+    process.stderr.write("Usage: hoyeon-cli plan init <path> [--spec-ref <spec-path>]\n");
+    process.exit(1);
+  }
+  const planPath = resolve2(filePath);
+  if (existsSync2(planPath)) {
+    process.stderr.write(`Error: file already exists: ${planPath}
+`);
+    process.exit(1);
+  }
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const plan = {
+    spec_ref: parsed["spec-ref"] ? String(parsed["spec-ref"]) : null,
+    created_at: now,
+    updated_at: now,
+    tasks: [],
+    history: [{ ts: now, event: "plan_created" }]
+  };
+  writePlanAtomic(planPath, plan);
+  process.stdout.write(`Plan created: ${planPath}
+`);
+  if (plan.spec_ref) process.stdout.write(`  spec_ref: ${plan.spec_ref}
+`);
+  process.exit(0);
+}
+async function handleGet(args) {
+  const parsed = parseArgs2(args);
+  const taskId = parsed._[0];
+  const filePath = parsed._[1];
+  if (!taskId || !filePath) {
+    process.stderr.write("Error: <task-id> and <path> are required\n");
+    process.stderr.write("Usage: hoyeon-cli plan get <task-id> <path>\n");
+    process.exit(1);
+  }
+  const plan = readPlan(resolve2(filePath));
+  const task = (plan.tasks || []).find((t) => t && t.id === taskId);
+  if (!task) {
+    process.stderr.write(`Error: task not found: ${taskId}
+`);
+    process.exit(1);
+  }
+  process.stdout.write(JSON.stringify(task, null, 2) + "\n");
+  process.exit(0);
+}
+async function handleStatus2(args) {
+  const parsed = parseArgs2(args);
+  const taskId = parsed._[0];
+  const filePath = parsed._[1];
+  if (!taskId || !filePath) {
+    process.stderr.write("Error: <task-id> and <path> are required\n");
+    process.stderr.write('Usage: hoyeon-cli plan status <task-id> <path> --status <s> [--summary "..."] [--commit <sha>]\n');
+    process.exit(1);
+  }
+  const newStatus = parsed.status;
+  if (!newStatus || !VALID_STATUS.includes(newStatus)) {
+    process.stderr.write(`Error: --status must be one of ${VALID_STATUS.join("|")}
+`);
+    process.exit(1);
+  }
+  const planPath = resolve2(filePath);
+  try {
+    withLock(planPath, () => {
+      const plan = readPlan(planPath);
+      const task = (plan.tasks || []).find((t) => t && t.id === taskId);
+      if (!task) {
+        process.stderr.write(`Error: task not found: ${taskId}
+`);
+        process.exit(1);
+      }
+      const from = task.status;
+      task.status = newStatus;
+      if (parsed.summary !== void 0 && parsed.summary !== true) {
+        task.summary = String(parsed.summary);
+      }
+      if (parsed.commit !== void 0 && parsed.commit !== true) {
+        task.commit_sha = String(parsed.commit);
+      }
+      validateTask(task);
+      appendHistory2(plan, { event: "task_status", task: taskId, from, to: newStatus });
+      writePlanAtomic(planPath, plan);
+      process.stdout.write(`Task ${taskId}: ${from} \u2192 ${newStatus}
+`);
+    });
+  } catch (err) {
+    process.stderr.write(`Error: ${err.message}
+`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+async function handleList(args) {
+  const parsed = parseArgs2(args);
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write("Error: <path> is required\n");
+    process.stderr.write("Usage: hoyeon-cli plan list <path> [--status <s>] [--json]\n");
+    process.exit(1);
+  }
+  const plan = readPlan(resolve2(filePath));
+  let tasks = plan.tasks || [];
+  if (parsed.status && parsed.status !== true) {
+    if (!VALID_STATUS.includes(parsed.status)) {
+      process.stderr.write(`Error: --status must be one of ${VALID_STATUS.join("|")}
+`);
+      process.exit(1);
+    }
+    tasks = tasks.filter((t) => t.status === parsed.status);
+  }
+  if (parsed.json === true) {
+    process.stdout.write(JSON.stringify(tasks, null, 2) + "\n");
+  } else {
+    if (tasks.length === 0) {
+      process.stdout.write("(no tasks)\n");
+    } else {
+      for (const t of tasks) {
+        const deps = t.depends_on && t.depends_on.length ? ` deps=[${t.depends_on.join(",")}]` : "";
+        const ff = t.fulfills && t.fulfills.length ? ` fulfills=[${t.fulfills.join(",")}]` : "";
+        process.stdout.write(`${t.id}  [${t.status}]  ${t.action}${deps}${ff}
+`);
+      }
+    }
+  }
+  process.exit(0);
+}
+async function handleMerge2(args) {
+  const parsed = parseArgs2(args);
+  const filePath = parsed._[0];
+  if (!filePath) {
+    process.stderr.write("Error: <path> is required\n");
+    process.stderr.write("Usage: hoyeon-cli plan merge <path> --stdin [--append] [--patch]\n");
+    process.exit(1);
+  }
+  if (parsed.stdin !== true) {
+    process.stderr.write("Error: --stdin is required (heredoc-friendly)\n");
+    process.exit(1);
+  }
+  const append = parsed.append === true;
+  const patch = parsed.patch === true;
+  if (append && patch) {
+    process.stderr.write("Error: --append and --patch are mutually exclusive\n");
+    process.exit(1);
+  }
+  let jsonStr;
+  try {
+    jsonStr = readFileSync2(0, "utf8");
+  } catch (err) {
+    process.stderr.write(`Error: failed to read stdin: ${err.message}
+`);
+    process.exit(1);
+  }
+  let fragment;
+  try {
+    fragment = JSON.parse(jsonStr);
+  } catch (err) {
+    process.stderr.write(`Error: invalid JSON fragment: ${err.message}
+`);
+    process.exit(1);
+  }
+  if (typeof fragment !== "object" || Array.isArray(fragment)) {
+    process.stderr.write("Error: JSON fragment must be an object\n");
+    process.exit(1);
+  }
+  const planPath = resolve2(filePath);
+  try {
+    withLock(planPath, () => {
+      const plan = readPlan(planPath);
+      deepMerge2(plan, fragment, append, patch);
+      validatePlan(plan);
+      appendHistory2(plan, { event: "plan_merged", mode: patch ? "patch" : append ? "append" : "replace" });
+      writePlanAtomic(planPath, plan);
+      process.stdout.write(`Plan merged: ${planPath}
+`);
+    });
+  } catch (err) {
+    process.stderr.write(`Error: ${err.message}
+`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+async function handlePlan2(args) {
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+    process.stdout.write(HELP);
+    process.exit(0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  switch (sub) {
+    case "init":
+      return handleInit2(rest);
+    case "get":
+      return handleGet(rest);
+    case "status":
+      return handleStatus2(rest);
+    case "list":
+      return handleList(rest);
+    case "merge":
+      return handleMerge2(rest);
+    default:
+      process.stderr.write(`Error: unknown 'plan' subcommand '${sub}'
+`);
+      process.stderr.write(`Run 'hoyeon-cli plan --help' for usage.
+`);
+      process.exit(1);
+  }
+}
+
 // src/handlers/state.js
 var import__2 = __toESM(require__(), 1);
 var import_ajv_formats2 = __toESM(require_dist(), 1);
-import { readFileSync as readFileSync2 } from "fs";
+import { readFileSync as readFileSync3 } from "fs";
 import { createHash } from "crypto";
-import { resolve as resolve2, dirname as dirname2, relative } from "path";
+import { resolve as resolve3, dirname as dirname3, relative } from "path";
 
 // schemas/dev-state-v1.schema.json
 var dev_state_v1_schema_default = {
@@ -9836,10 +10293,10 @@ ${errors.join("\n")}`);
   }
 }
 function computeSpecHash(specPath) {
-  const raw = readFileSync2(specPath);
+  const raw = readFileSync3(specPath);
   return createHash("sha256").update(raw).digest("hex");
 }
-function parseArgs2(args) {
+function parseArgs3(args) {
   const result = { _: [] };
   let i = 0;
   while (i < args.length) {
@@ -9861,18 +10318,18 @@ function parseArgs2(args) {
   }
   return result;
 }
-async function handleInit2(args) {
-  const parsed = parseArgs2(args);
+async function handleInit3(args) {
+  const parsed = parseArgs3(args);
   if (!parsed.spec) {
     process.stderr.write("Error: --spec <path> is required\n");
     process.stderr.write("Usage: hoyeon-cli state init --spec <path> [--output <path>]\n");
     process.exit(1);
   }
-  const specPath = resolve2(parsed.spec);
+  const specPath = resolve3(parsed.spec);
   let specRaw;
   let specData;
   try {
-    specRaw = readFileSync2(specPath, "utf8");
+    specRaw = readFileSync3(specPath, "utf8");
     specData = JSON.parse(specRaw);
   } catch (err) {
     if (err.code === "ENOENT") {
@@ -9892,8 +10349,8 @@ async function handleInit2(args) {
     process.exit(1);
   }
   const specHash = computeSpecHash(specPath);
-  const outputPath = parsed.output ? resolve2(parsed.output) : resolve2(dirname2(specPath), "state.json");
-  const specRefRelative = relative(dirname2(outputPath), specPath);
+  const outputPath = parsed.output ? resolve3(parsed.output) : resolve3(dirname3(specPath), "state.json");
+  const specRefRelative = relative(dirname3(outputPath), specPath);
   const tasks = {};
   const seenIds = /* @__PURE__ */ new Set();
   for (const task of specData.tasks) {
@@ -9944,7 +10401,7 @@ async function handleUpdate(args) {
     process.stderr.write("Usage: hoyeon-cli state update <task-id> --status <status> [--state <path>]\n");
     process.exit(1);
   }
-  const parsed = parseArgs2(args.slice(1));
+  const parsed = parseArgs3(args.slice(1));
   let status = parsed.status;
   if (parsed.done === true) status = "done";
   if (parsed["in-progress"] === true) status = "in_progress";
@@ -9963,7 +10420,7 @@ async function handleUpdate(args) {
     process.stderr.write("Error: --blocked-by <task-id> is required when status is blocked_by\n");
     process.exit(1);
   }
-  const statePath = parsed.state ? resolve2(parsed.state) : resolve2("state.json");
+  const statePath = parsed.state ? resolve3(parsed.state) : resolve3("state.json");
   const stateData = readState(statePath);
   if (!stateData) {
     process.stderr.write(`Error: state file not found: ${statePath}
@@ -10021,7 +10478,7 @@ async function handleUpdate(args) {
   process.exit(0);
 }
 async function handleCheck2(args) {
-  const parsed = parseArgs2(args);
+  const parsed = parseArgs3(args);
   if (!parsed.spec) {
     process.stderr.write("Error: --spec <path> is required\n");
     process.stderr.write("Usage: hoyeon-cli state check --spec <path> --state <path>\n");
@@ -10032,11 +10489,11 @@ async function handleCheck2(args) {
     process.stderr.write("Usage: hoyeon-cli state check --spec <path> --state <path>\n");
     process.exit(1);
   }
-  const specPath = resolve2(parsed.spec);
-  const statePath = resolve2(parsed.state);
+  const specPath = resolve3(parsed.spec);
+  const statePath = resolve3(parsed.state);
   let specData;
   try {
-    const raw = readFileSync2(specPath, "utf8");
+    const raw = readFileSync3(specPath, "utf8");
     specData = JSON.parse(raw);
   } catch (err) {
     if (err.code === "ENOENT") {
@@ -10081,7 +10538,7 @@ async function handleCheck2(args) {
   process.exit(0);
 }
 async function handleSync(args) {
-  const parsed = parseArgs2(args);
+  const parsed = parseArgs3(args);
   if (!parsed.spec) {
     process.stderr.write("Error: --spec <path> is required\n");
     process.stderr.write("Usage: hoyeon-cli state sync --spec <path> --state <path>\n");
@@ -10092,11 +10549,11 @@ async function handleSync(args) {
     process.stderr.write("Usage: hoyeon-cli state sync --spec <path> --state <path>\n");
     process.exit(1);
   }
-  const specPath = resolve2(parsed.spec);
-  const statePath = resolve2(parsed.state);
+  const specPath = resolve3(parsed.spec);
+  const statePath = resolve3(parsed.state);
   let specData;
   try {
-    const raw = readFileSync2(specPath, "utf8");
+    const raw = readFileSync3(specPath, "utf8");
     specData = JSON.parse(raw);
   } catch (err) {
     if (err.code === "ENOENT") {
@@ -10188,7 +10645,7 @@ async function state(args) {
     process.exit(0);
   }
   if (subcommand === "init") {
-    await handleInit2(args.slice(1));
+    await handleInit3(args.slice(1));
   } else if (subcommand === "update") {
     await handleUpdate(args.slice(1));
   } else if (subcommand === "check") {
@@ -10207,10 +10664,10 @@ async function state(args) {
 // src/handlers/session.js
 import { homedir } from "os";
 import { join } from "path";
-function deepMerge2(target, source) {
+function deepMerge3(target, source) {
   for (const key of Object.keys(source)) {
     if (source[key] !== null && typeof source[key] === "object" && !Array.isArray(source[key]) && target[key] !== null && typeof target[key] === "object" && !Array.isArray(target[key])) {
-      deepMerge2(target[key], source[key]);
+      deepMerge3(target[key], source[key]);
     } else {
       target[key] = source[key];
     }
@@ -10235,7 +10692,7 @@ Examples:
   hoyeon-cli session set --sid abc123 --json '{"rulph": {"round": 0}}'
   hoyeon-cli session get --sid abc123
 `;
-function parseArgs3(args) {
+function parseArgs4(args) {
   const result = { _: [] };
   let i = 0;
   while (i < args.length) {
@@ -10260,7 +10717,7 @@ function getStatePath(sid) {
   return join(homedir(), ".hoyeon", sid, "state.json");
 }
 async function handleSet(args) {
-  const parsed = parseArgs3(args);
+  const parsed = parseArgs4(args);
   if (!parsed.sid) {
     process.stderr.write("Error: --sid is required\n");
     process.exit(1);
@@ -10286,7 +10743,7 @@ async function handleSet(args) {
 `);
       process.exit(1);
     }
-    deepMerge2(state2, fragment);
+    deepMerge3(state2, fragment);
   }
   writeState(statePath, state2);
   const updates = [];
@@ -10297,8 +10754,8 @@ async function handleSet(args) {
 `);
   process.exit(0);
 }
-async function handleGet(args) {
-  const parsed = parseArgs3(args);
+async function handleGet2(args) {
+  const parsed = parseArgs4(args);
   if (!parsed.sid) {
     process.stderr.write("Error: --sid is required\n");
     process.exit(1);
@@ -10322,7 +10779,7 @@ async function session(args) {
   if (subcommand === "set") {
     await handleSet(args.slice(1));
   } else if (subcommand === "get") {
-    await handleGet(args.slice(1));
+    await handleGet2(args.slice(1));
   } else {
     process.stderr.write(`Error: unknown session subcommand '${subcommand}'
 `);
@@ -10332,8 +10789,8 @@ async function session(args) {
 }
 
 // src/handlers/feedback.js
-import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, existsSync as existsSync2 } from "fs";
-import { resolve as resolve3, dirname as dirname3 } from "path";
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync2, existsSync as existsSync3 } from "fs";
+import { resolve as resolve4, dirname as dirname4 } from "path";
 var FEEDBACK_HELP = `
 Usage:
   hoyeon-cli feedback create "<message>" [--dir <path>]
@@ -10349,7 +10806,7 @@ Examples:
   hoyeon-cli feedback create "Missing acceptance criteria for T3"
   hoyeon-cli feedback create "Scope is too broad" --dir ./project/feedback
 `;
-function parseArgs4(args) {
+function parseArgs5(args) {
   const result = { _: [] };
   let i = 0;
   while (i < args.length) {
@@ -10372,7 +10829,7 @@ function parseArgs4(args) {
   return result;
 }
 function nextFeedbackId(feedbackDir) {
-  if (!existsSync2(feedbackDir)) {
+  if (!existsSync3(feedbackDir)) {
     return "fb-001";
   }
   const files = readdirSync2(feedbackDir).filter((f) => /^fb-\d{3}\.json$/.test(f)).sort();
@@ -10388,23 +10845,23 @@ function nextFeedbackId(feedbackDir) {
   return `fb-${String(nextNum).padStart(3, "0")}`;
 }
 async function handleCreate(args) {
-  const parsed = parseArgs4(args);
+  const parsed = parseArgs5(args);
   const message = parsed._[0];
   if (!message) {
     process.stderr.write("Error: <message> is required\n");
     process.stderr.write('Usage: hoyeon-cli feedback create "<message>" [--dir <path>]\n');
     process.exit(1);
   }
-  const feedbackDir = parsed.dir ? resolve3(parsed.dir) : resolve3("feedback");
+  const feedbackDir = parsed.dir ? resolve4(parsed.dir) : resolve4("feedback");
   try {
-    mkdirSync2(feedbackDir, { recursive: true });
+    mkdirSync3(feedbackDir, { recursive: true });
   } catch (err) {
     process.stderr.write(`Error: could not create feedback directory: ${err.message}
 `);
     process.exit(1);
   }
   const id = nextFeedbackId(feedbackDir);
-  const feedbackPath = resolve3(feedbackDir, `${id}.json`);
+  const feedbackPath = resolve4(feedbackDir, `${id}.json`);
   const feedbackData = {
     id,
     message,
@@ -10412,7 +10869,7 @@ async function handleCreate(args) {
     status: "open"
   };
   try {
-    writeFileSync2(feedbackPath, JSON.stringify(feedbackData, null, 2), "utf8");
+    writeFileSync3(feedbackPath, JSON.stringify(feedbackData, null, 2), "utf8");
   } catch (err) {
     process.stderr.write(`Error: could not write feedback file: ${err.message}
 `);
@@ -10442,8 +10899,8 @@ async function feedback(args) {
 }
 
 // src/handlers/settings-validate.js
-import { readFileSync as readFileSync4, existsSync as existsSync3, accessSync, constants } from "fs";
-import { resolve as resolve4, dirname as dirname4, join as join2 } from "path";
+import { readFileSync as readFileSync5, existsSync as existsSync4, accessSync, constants } from "fs";
+import { resolve as resolve5, dirname as dirname5, join as join2 } from "path";
 var SETTINGS_HELP = `
 Usage:
   hoyeon-cli settings validate   Validate .claude/settings.json hook configuration
@@ -10467,10 +10924,10 @@ function findSettingsJson(startDir) {
   let dir = startDir;
   while (true) {
     const candidate = join2(dir, ".claude", "settings.json");
-    if (existsSync3(candidate)) {
+    if (existsSync4(candidate)) {
       return candidate;
     }
-    const parent = dirname4(dir);
+    const parent = dirname5(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -10499,10 +10956,10 @@ async function handleValidate2() {
     process.stderr.write("Error: .claude/settings.json not found (searched from cwd upward)\n");
     process.exit(1);
   }
-  const projectRoot = dirname4(dirname4(settingsPath));
+  const projectRoot = dirname5(dirname5(settingsPath));
   let settings2;
   try {
-    settings2 = JSON.parse(readFileSync4(settingsPath, "utf8"));
+    settings2 = JSON.parse(readFileSync5(settingsPath, "utf8"));
   } catch (err) {
     process.stderr.write(`Error: failed to parse settings.json: ${err.message}
 `);
@@ -10519,8 +10976,8 @@ async function handleValidate2() {
   process.stdout.write("Check 1: Hook script path existence\n");
   const missingPaths = [];
   for (const { eventType, matcher, command } of hookEntries) {
-    const absPath = resolve4(projectRoot, command);
-    if (!existsSync3(absPath)) {
+    const absPath = resolve5(projectRoot, command);
+    if (!existsSync4(absPath)) {
       missingPaths.push({ eventType, matcher, command, absPath });
     }
   }
@@ -10540,8 +10997,8 @@ async function handleValidate2() {
   process.stdout.write("\nCheck 2: Hook script executable bit\n");
   const nonExecutable = [];
   for (const { eventType, matcher, command } of hookEntries) {
-    const absPath = resolve4(projectRoot, command);
-    if (!existsSync3(absPath)) continue;
+    const absPath = resolve5(projectRoot, command);
+    if (!existsSync4(absPath)) continue;
     try {
       accessSync(absPath, constants.X_OK);
     } catch {
@@ -10640,7 +11097,8 @@ Usage:
   hoyeon-cli <subcommand> [options]
 
 Subcommands:
-  spec      Manage spec/plan state
+  spec      Manage spec state
+  plan      Manage plan.json (tasks, status, history)
   state     Read or update workflow state
   session   Manage session state (~/.hoyeon/{sid}/)
   feedback  Manage feedback files
@@ -10656,6 +11114,7 @@ Examples:
 `;
 var SUBCOMMANDS = {
   spec,
+  plan: handlePlan2,
   state,
   session,
   feedback,

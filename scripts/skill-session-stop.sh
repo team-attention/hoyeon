@@ -48,12 +48,26 @@ if [[ "$DISPATCH" == "team" ]]; then
   exit 0
 fi
 
-# ── Execute: check spec.json via cli ──
+# ── Execute: ephemeral mode guard (skip circuit breaker) ──
+
+EPHEMERAL=$(jq -r '.ephemeral // false' "$STATE_FILE")
+if [[ "$EPHEMERAL" == "true" ]]; then
+  exit 0
+fi
+
+# ── Execute: resolve spec path and derive plan.json alongside it ──
 
 SPEC_PATH="$CWD/$SPEC_REL"
 
 if [[ -z "$SPEC_REL" || ! -f "$SPEC_PATH" ]]; then
   rm -f "$STATE_FILE"
+  exit 0
+fi
+
+PLAN_PATH="$(dirname "$SPEC_PATH")/plan.json"
+
+# Ephemeral mode (no plan.json) → skip circuit breaker entirely
+if [[ ! -f "$PLAN_PATH" ]]; then
   exit 0
 fi
 
@@ -71,14 +85,9 @@ if [[ "$ITERATION" -ge "$MAX_ITER" ]]; then
   exit 0
 fi
 
-# Check task completion — direct jq parse (no CLI dependency on critical path)
-if [[ ! -f "$SPEC_PATH" ]]; then
-  rm -f "$STATE_FILE"
-  exit 0
-fi
-
-TOTAL=$(jq '[.tasks // [] | length] | .[0]' "$SPEC_PATH" 2>/dev/null || echo 0)
-DONE_COUNT=$(jq '[.tasks // [] | map(select(.status == "done")) | length] | .[0]' "$SPEC_PATH" 2>/dev/null || echo 0)
+# Check task completion from plan.json — direct jq parse (no CLI dependency on critical path)
+TOTAL=$(jq '(.tasks // []) | length' "$PLAN_PATH" 2>/dev/null || echo 0)
+DONE_COUNT=$(jq '[(.tasks // [])[] | select(.status == "done")] | length' "$PLAN_PATH" 2>/dev/null || echo 0)
 
 if [[ "$TOTAL" -eq 0 ]]; then
   rm -f "$STATE_FILE"
@@ -90,7 +99,7 @@ STATUS_JSON=$(jq -n \
   --argjson done "$DONE_COUNT" \
   --argjson total "$TOTAL" \
   --argjson complete "$([ "$DONE_COUNT" -eq "$TOTAL" ] && echo true || echo false)" \
-  --argjson remaining "$(jq '[.tasks // [] | map(select(.status != "done")) | .[] | {id, action, status}]' "$SPEC_PATH" 2>/dev/null || echo '[]')" \
+  --argjson remaining "$(jq '[(.tasks // [])[] | select(.status != "done") | {id, action, status}]' "$PLAN_PATH" 2>/dev/null || echo '[]')" \
   '{done: $done, total: $total, complete: $complete, remaining: $remaining}'
 )
 
