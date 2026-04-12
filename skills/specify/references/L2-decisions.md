@@ -245,7 +245,7 @@ After each round, merge that round's decisions immediately. Do NOT batch decisio
 
 **Rationale must include rejected alternatives**: When writing the `rationale` field, mention alternatives that were considered and why they were rejected (e.g., `"REST over GraphQL (team unfamiliar) and gRPC (browser incompatible)"`). This prevents workers from re-evaluating already-rejected approaches during execution.
 
-Run `hoyeon-cli spec guide context --schema v1` to check field types, then:
+Run `hoyeon-cli spec guide context --schema v2` to check field types, then:
 
 ```bash
 hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --append << 'EOF'
@@ -261,7 +261,7 @@ Collect constraints naturally during the interview — things that must NOT be v
 
 Sources: user statements, L1 research findings, inversion probe answers.
 
-Run `hoyeon-cli spec guide constraints --schema v1`, then merge at L2 end.
+Run `hoyeon-cli spec guide constraints --schema v2`, then merge at L2 end.
 If no constraints: merge `"constraints": []` explicitly.
 
 ### Known Gaps

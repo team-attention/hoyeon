@@ -21,7 +21,7 @@ allowed-tools:
 Generate a spec.json (v1 schema) through a structured derivation chain.
 Each layer builds on the previous — no skipping, no out-of-order merges.
 
-Before starting, run `hoyeon-cli spec guide full --schema v1` to see the complete schema.
+Before starting, run `hoyeon-cli spec guide full --schema v2` to see the complete schema.
 
 ---
 
@@ -34,7 +34,7 @@ Before starting, run `hoyeon-cli spec guide full --schema v1` to see the complet
    {"context": {"decisions": [...]}}
    EOF
    ```
-3. **Guide before merge** — Run `hoyeon-cli spec guide <section> --schema v1` before constructing JSON. Guide output is the source of truth.
+3. **Guide before merge** — Run `hoyeon-cli spec guide <section> --schema v2` before constructing JSON. Guide output is the source of truth.
 4. **Validate at layer transitions** — `hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json` once per layer (before advancing), not after every merge.
 5. **One merge per section** — Never merge multiple sections in parallel.
 6. **Merge failure** — Read error → run guide → fix JSON → retry (max 2). Don't retry with same JSON.
@@ -57,12 +57,12 @@ Execute layers sequentially. Read each reference file just-in-time.
 | L1 | (same file) | Codebase research → context.research | Auto-advance |
 | L2 | `${baseDir}/references/L2-decisions.md` | Interview → decisions + constraints | CLI validate + L2-reviewer + User approval |
 | L3 | `${baseDir}/references/L3-requirements.md` | Derive requirements + sub from decisions | CLI validate + User approval |
-| L4 | `${baseDir}/references/L4-tasks.md` | Derive tasks + external_deps, Plan Summary | CLI validate + User approval |
+| L4 | `${baseDir}/references/L4-verification.md` | Verification (Journeys) | CLI validate + User approval |
 
 ### Session Init (before L0)
 
 ```bash
-hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v1 --interaction {interaction} \
+hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v2 --interaction {interaction} \
   .hoyeon/specs/{name}/spec.json
 ```
 
@@ -106,6 +106,7 @@ Autopilot mode: skip user approval (except Plan Summary at L4).
 - [ ] `meta.non_goals` populated (empty `[]` if none)
 - [ ] `context.decisions[]` populated
 - [ ] Every requirement has at least 1 sub-requirement
-- [ ] Every task has `fulfills[]`
+- [ ] All sub-requirements have GWT filled
+- [ ] verification.journeys[] composes resolves (or explicit 0-journey confirmation)
 - [ ] Plan Summary presented to user
 - [ ] `meta.approved_by` and `meta.approved_at` written after approval
