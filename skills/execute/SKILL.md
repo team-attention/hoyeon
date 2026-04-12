@@ -61,7 +61,7 @@ Read the slash-command invocation (e.g. `/execute <spec-path> [flags]`).
 
 ```
 spec path required
-Usage: /execute <spec-path> [--ephemeral] [--dispatch direct|agent|team] [--tdd]
+Usage: /execute <spec-path> [--ephemeral] [--tdd]
 ```
 
 **There is no `hoyeon-cli session` fallback** (D16). The user must pass the spec path explicitly.
@@ -71,12 +71,11 @@ Usage: /execute <spec-path> [--ephemeral] [--dispatch direct|agent|team] [--tdd]
 | Flag | Values | Default |
 |------|--------|---------|
 | `--ephemeral` | boolean | false |
-| `--dispatch` | direct / agent / team | agent |
 | `--tdd` | boolean | false |
 
-`verify` tier is **always** prompted via AskUserQuestion in Phase 0.6 (no flag).
+`work`, `dispatch`, and `verify` are **always** prompted via AskUserQuestion at Phase 0.6 (in that order). No flags.
 
-**Mode exclusivity (R8.1, C6)**: If `--ephemeral` AND `--dispatch team` are both set → print error `"ephemeral and team modes are mutually exclusive"` and abort. **No files are written.**
+**Mode exclusivity (R8.1, C6)**: If `--ephemeral` is set and the user picks `team` at the dispatch prompt → print error `"ephemeral and team modes are mutually exclusive"` and abort. **No files are written.**
 
 ### 0.1 Normalize Spec (R1, C1, C9)
 
@@ -180,9 +179,32 @@ Install recommendations are shown only when `verify == "thorough"` AND tools are
 
 ### 0.6 Work Mode
 
-`dispatch` and `ephemeral` come from Phase 0.0 flags. `verify` and `work` are **always** asked via AskUserQuestion (no flags):
+`ephemeral` comes from Phase 0.0 flag. `work`, `dispatch`, `verify` are **always** asked via AskUserQuestion (in this exact order):
 
 ```
+# 1) Work
+work = AskUserQuestion(
+  question: "Work mode?",
+  options: [
+    { label: "Worktree",        description: ".worktrees/{name} branch, commit per round" },
+    { label: "Branch + Commit", description: "Current branch, commit per round" },
+    { label: "No Commit",       description: "Current branch, no commits" }
+  ]
+)
+
+# 2) Dispatch
+dispatch = AskUserQuestion(
+  question: "Dispatch mode?",
+  options: [
+    { label: "Agent",  description: "Worker subagents with task grouping (Recommended)" },
+    { label: "Direct", description: "Orchestrator executes tasks directly (no subagents)" },
+    { label: "Team",   description: "TeamCreate persistent workers (requires plan.json; incompatible with --ephemeral)" }
+  ]
+)
+
+# If --ephemeral set AND dispatch == "team" → abort (mode exclusivity, R8.1/C6).
+
+# 3) Verify
 verify = AskUserQuestion(
   question: "Verify depth?",
   options: [
@@ -190,15 +212,6 @@ verify = AskUserQuestion(
     { label: "Light",    description: "build/lint/typecheck only (no sub or journey verification)" },
     { label: "Thorough", description: "standard + runtime journey execution via qa-verifier" },
     { label: "Ralph",    description: "DoD loop mode (iterative, not task-based)" }
-  ]
-)
-
-work = AskUserQuestion(
-  question: "Work mode?",
-  options: [
-    { label: "Worktree",       description: ".worktrees/{name} branch, commit per round" },
-    { label: "Branch + Commit", description: "Current branch, commit per round" },
-    { label: "No Commit",      description: "Current branch, no commits" }
   ]
 )
 ```
