@@ -1,4 +1,4 @@
-> **MUST-READ-FIRST** — Reading this file is mandatory before executing L2. The SKILL.md L2 row is a 1-line summary; the real protocol (Step 0 checkpoint generation, Interview Loop, 3-state resolution, Unknown/Unknown 3-tier detection, Scoreboard, Inversion Probe, Unresolved Sweep, L2-reviewer) lives below. Skipping any step = protocol violation. Do not "ad-hoc interview" — execute steps in order.
+> **MUST-READ-FIRST** — Reading this file is mandatory before executing L2. The SKILL.md L2 row is a 1-line summary; the real protocol (Step 0 checkpoint generation, Interview Loop, 3-state resolution, Unknown/Unknown 3-tier detection, Scoreboard, Unresolved Sweep, L2-reviewer) lives below. Skipping any step = protocol violation. Do not "ad-hoc interview" — execute steps in order.
 
 ## L2: Decisions + Constraints
 
@@ -9,10 +9,9 @@
 1. **Step 0** — Complexity classify (signal count) + per-dimension checkpoint generation + L1 auto-resolve
 2. **Interview Loop** — Score → Target lowest dim → Ask 2 scenario questions → 3-state resolve → Unknown/Unknown 3-tier scan → Scoreboard
 3. **Termination check** — composite ≥ 0.80 AND every dim ≥ 0.60 AND unknowns == 0 (else continue loop)
-4. **Inversion Probe** — fires when composite first hits ≥ 0.80
-5. **Unresolved Checkpoint Sweep** — append every unresolved/provisional checkpoint to `known_gaps[]`
-6. **L2-reviewer Task** — steelman + complexity verification (max 2 retry on NEEDS_FIX)
-7. **L2 Approval** — AskUserQuestion (Approve/Revise/Abort) + `spec validate --layer decisions`
+4. **Unresolved Checkpoint Sweep** — append every unresolved/provisional checkpoint to `known_gaps[]`
+5. **L2-reviewer Task** — fresh-context subagent runs Clarity + Blind-spot audit (includes steelman + "what breaks first" + "most suspicious assumption"). User-in-loop on NEEDS_FIX, max 3 reviewer rounds.
+6. **L2 Approval** — AskUserQuestion (Approve/Revise/Abort) + `spec validate --layer decisions`
 
 ### Step 0: Checkpoint Generation (runs once at L2 start)
 
@@ -78,7 +77,7 @@ Output the checkpoint table (visible to user):
 Each round:
 1. **Score** — compute coverage per dimension (see 3-state scoring below)
 2. **Target** — pick lowest-scoring dimension(s) for next questions
-3. **Ask** — 2 scenario questions targeting those checkpoints
+3. **Ask** — 2 scenario questions targeting those checkpoints (see persona rotation + snapshot hint below)
 4. **Resolve** — classify answer depth, merge decisions (see 3-state resolution)
 5. **Scan** — detect unknown/unknowns (structured 3-tier check)
 6. **Display** — show scoreboard + next action
@@ -88,6 +87,32 @@ Each round:
 - User can skip ("Agent decides") → checkpoint marked resolved, `assumed: true`
 - User says "I don't know" → checkpoint stays unresolved, add to `known_gaps`
 - After each round: merge decisions, show scoreboard
+
+#### Persona Rotation (round-aware question framing)
+
+Before asking, pick the persona lens based on round number. Personas are **prompt scaffolding**, not separate agents — they shape how you phrase the question, not who asks it.
+
+| Round | Active personas | What they push for |
+|-------|-----------------|--------------------|
+| 1–2 (early) | **Goal Clarifier** + **Breadth Keeper** | Who is the user? What's the bounding scope? Cover unexplored dimensions first. |
+| 3–5 (mid) | **Constraint Prober** + **Architect** | What must NOT be violated? What are the structural dependencies between decisions? |
+| 6+ (late) | **Edge-Case Hunter** + **Closer** | What breaks under stress? What's left to resolve so we can stop? |
+
+Rotation is a hint, not a hard rule — if a low-scoring dimension clearly needs early-persona treatment in round 6 (e.g., scope suddenly reopened), use it. The orchestrator picks 1–2 personas per round and silently conditions question wording accordingly. Do NOT enumerate personas in the user-facing question text.
+
+#### Ambiguity Snapshot (prepended to internal reasoning each round)
+
+Before composing the 2 questions, surface the current weak-signal snapshot to yourself:
+
+```
+Current snapshot:
+  Scoreboard:  Scope 0.55 / Impl 0.82 / Data 0.60 / NF 0.30
+  Lowest 2:    NF (0.30), Scope (0.55)
+  Unknowns:    1 pending (Tier 2 — D4 implies asset sourcing)
+  Persona set: Constraint Prober + Architect (round 4)
+```
+
+Use the snapshot to self-select which checkpoint to probe — do NOT mechanically drain the single lowest dimension if a higher-impact unknown is flagged. The snapshot is **advisory**: if NF is 0.30 but its checkpoints are trivial ("no performance target needed — playground"), skip and target Scope instead. The `recommendation` field in round logs records your reasoning.
 
 #### 3-State Checkpoint Resolution (Step 4)
 
@@ -231,25 +256,13 @@ Proceed requires ALL conditions met (AND):
 | State | Action |
 |-------|--------|
 | Any condition unmet | Must continue. "Proceed" button NOT shown in options |
-| All conditions met | Inversion Probe → Unresolved Sweep → L2 Approval |
+| All conditions met | Unresolved Sweep → L2-reviewer → L2 Approval |
 | round >= 7 | Soft warning: "diminishing returns likely" |
 | round >= 10 | Circuit breaker. Strongly recommend proceed |
 
 **Per-dimension floor effect**: With 2 checkpoints, 1/2 = 0.50 < 0.60 → blocked (must resolve both). With 3 checkpoints, 2/3 = 0.67 >= 0.60 → passes. This prevents high-composite scores from masking under-explored dimensions.
 
 **User override**: If the user types "proceed" as free text (not via button) at any point, honor it regardless of score. The button is hidden below thresholds, but explicit user intent is always respected.
-
-### Inversion Probe (triggered when composite first reaches >= 0.80)
-
-Two questions:
-
-1. **Inversion**: "Given the decisions so far, what scenario could cause this to fail even if every individual requirement is met correctly?"
-2. **Implication**: "You decided [most impactful decision]. Does that also mean [likely consequence]?"
-
-If inversion reveals new gaps → add checkpoints → score may drop below 0.80 → continue interviewing.
-If no new gaps → proceed to Unresolved Checkpoint Sweep → L2 Approval.
-
-**Edge case**: If L1 auto-resolves push score >= 0.80 at Step 0 (before any user questions), Inversion Probe fires immediately as a safety gate before skipping the interview entirely. This is intentional — it validates that L1's auto-resolved decisions are sufficient.
 
 ### Merge Decisions (incremental — runs in Interview Loop step 4)
 
@@ -309,28 +322,80 @@ This ensures no incomplete checkpoint is silently dropped. L3 can reference thes
 
 ### L2 Approval
 
-Present all decisions + constraints to user. Then spawn **L2-reviewer** before user approval:
+Present all decisions + constraints to user. Then spawn **L2-reviewer** (fresh-context subagent) before user approval:
 
 ```
 Task(subagent_type="general-purpose", prompt="""
-You are an L2 clarity reviewer. Given:
-- The checkpoint table with scores
-- All merged decisions
-- The complexity classification
+You are an adversarial L2 reviewer. Your job is NOT to rubber-stamp — flag NEEDS_FIX on anything weak.
 
-Check:
-1. Is complexity classification correct? Count signals from decisions.
-2. Any dimension below 0.70 that should have more checkpoints?
-3. Any decision that is too vague to derive requirements from?
-4. Any cross-decision tension not caught by Unknown/Unknown detection?
-5. Steelman test: For the most impactful decision, construct the strongest possible argument AGAINST the chosen option (not a strawman — the real reason a smart person would disagree). If this counterargument is not addressed in the decision's rationale, flag it as NEEDS_FIX.
+## Input
+Read the spec file directly (do not trust any summary):
+  spec path: .hoyeon/specs/{name}/spec.json
+  Load: meta.goal, meta.non_goals, context.confirmed_goal, context.research,
+        context.decisions, context.known_gaps, constraints, and any checkpoint/score
+        state present in the spec.
 
-Return: PASS or NEEDS_FIX with specific issues.
+## Part A — Clarity Audit
+1. Is the complexity classification correct? Count signals from decisions.
+2. Any dimension still below 0.70 that needed more checkpoints?
+3. Any decision too vague to derive requirements from?
+4. Cross-decision tension not caught by Unknown/Unknown detection?
+5. Steelman: for the most impactful decision, construct the strongest argument
+   AGAINST the chosen option (real reason a smart person would disagree — not a
+   strawman). If the rationale does not address it → NEEDS_FIX.
+
+## Part B — Blind-spot Audit (Unknown/Unknown + Inversion coverage)
+Find things NOT mentioned in any decision or known_gap. For each axis, look for
+concrete scenarios the current decisions would silently fail on:
+  a. **Missing actor** — who else interacts (admin, cron, external service,
+     future maintainer) that no decision models?
+  b. **Missing lifecycle phase** — first-run, error, shutdown, migration,
+     rollback, empty-state — any phase no decision covers?
+  c. **Missing failure mode / "what breaks first"** — name at least ONE concrete
+     scenario that would break the system even if every requirement is met
+     (network partition, rate limit, quota, stale cache, clock skew, partial
+     write, upstream API deprecation, etc.). If you cannot identify a
+     plausible break, explain why in `evidence`.
+  d. **Missing non-functional dimension** — performance / a11y / i18n / security
+     / observability — any axis not even scored?
+  e. **Most suspicious assumption** — for the most impactful decision, name the
+     single load-bearing assumption that, if wrong, invalidates the decision.
+     If that assumption is not validated in research or rationale → NEEDS_FIX.
+For each miss: name the category, the concrete scenario, and which dimension
+should have caught it. ≥1 material miss → NEEDS_FIX.
+
+## Output (strict JSON — single object, no prose)
+{
+  "verdict": "PASS" | "NEEDS_FIX",
+  "issues": [
+    { "part": "A"|"B", "category": "<short>", "evidence": "<spec excerpt or path>",
+      "recommendation": "<concrete fix: add checkpoint / re-interview dim / clarify D#>" }
+  ]
+}
 """)
 ```
 
 - **PASS** → present AskUserQuestion (Approve/Revise/Abort) to user
-- **NEEDS_FIX** → address issues (add checkpoints, re-interview, clarify decisions), then re-run reviewer (max 2 retries)
+- **NEEDS_FIX** → do NOT silently auto-fix. User owns ambiguity. Present the issue list to the user and loop until resolved:
+
+  ```
+  Show issues (grouped by Part A / Part B, most impactful first).
+  For each issue, call AskUserQuestion:
+    question: "<issue.category>: <issue.evidence>\nReviewer recommends: <issue.recommendation>"
+    options:
+      - "Resolve"         → user answers clarifying question(s) → merge into decisions[] (--patch or --append)
+      - "Accept as gap"   → append to context.known_gaps[] with issue.evidence as rationale
+      - "Out of scope"    → append to meta.non_goals[]
+      - "Skip"            → ignore this issue only (do not re-surface)
+  After all issues processed → re-run L2-reviewer.
+  ```
+
+  **Loop termination**:
+  - reviewer returns `PASS` → proceed to Step 7
+  - round counter hits **3** (reviewer ran 3× total) → stop looping. Surface any still-open issues to user one final time with a single AskUserQuestion: "Reviewer still flags N issues after 3 rounds. Proceed with these as known_gaps, or continue iterating?" → user's choice is final.
+  - User selects "Skip" on every remaining issue → treat as PASS and proceed.
+
+  **Anti-pattern**: the orchestrator must NOT invent answers to resolve NEEDS_FIX issues on the user's behalf. If `issue.recommendation` reads "re-interview Scope dim on admin actor", the next step is an AskUserQuestion to the user — not an orchestrator-guessed decision merge.
 
 ### L2 Gate
 
