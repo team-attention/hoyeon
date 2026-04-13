@@ -18,25 +18,31 @@ allowed-tools:
 
 # /ultrawork Skill - Automated Development Pipeline
 
-You are initiating an **ultrawork** session - a fully automated pipeline that chains:
-1. `/specify` - Interview and plan generation
-2. `/execute` - Implementation
+You are initiating an **ultrawork** session — a fully automated pipeline that chains:
+1. `/specify` — Layer-based derivation (L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Verification) producing a `spec.json` (v2)
+2. `/execute` — Reads `spec.json`, derives `plan.json` (tasks), and implements
 
 ## How It Works
 
 The ultrawork pipeline runs automatically through **Stop hooks**:
-- When you complete Interview (DRAFT.md created) → Hook triggers Plan generation
-- When Plan is approved → Hook triggers `/execute`
-- When all TODOs complete → Pipeline ends
+- When specify finishes L4 with user approval → Hook triggers `/execute {spec-path}`
+- `/execute` then derives `plan.json` from the approved spec and runs tasks to completion
+- When all tasks complete → Pipeline ends
 
-**You don't need to manually trigger the next step** - the hooks handle transitions.
+**You don't need to manually trigger the next step** — the hooks handle transitions.
+
+### v2 schema note
+
+In spec-v2, `spec.json` contains **only** requirements + sub-requirements (with GWT) + verification journeys.
+It does **not** contain `tasks[]`. Task breakdown lives in a sibling `plan.json` derived by `/execute`.
+Ultrawork is just the glue: specify produces the spec, execute produces and runs the plan.
 
 ## Your Role
 
 1. **Extract the feature name** from user's request
-2. **Initialize ultrawork state** (CRITICAL - must do before anything else)
+2. **Initialize ultrawork state** (handled by UserPromptSubmit hook)
 3. **Start the specify skill** with the feature name
-4. **Follow specify's interview process** normally
+4. **Follow specify's layer flow** normally (approve at L2, L3, L4)
 5. The rest happens automatically via hooks
 
 ## Execution
@@ -53,12 +59,12 @@ Extract a short, kebab-case name for the feature:
 ### Step 2: Announce Ultrawork Mode
 
 ```
-🚀 Ultrawork Mode Activated
+Ultrawork Mode Activated
 
 Feature: {name}
-Pipeline: specify → execute
+Pipeline: specify (spec.json v2) → execute (plan.json + run)
 
-Starting interview phase...
+Starting specify L0...
 ```
 
 ### Step 3: Invoke Specify
@@ -68,18 +74,20 @@ Skill("specify", args="{name}")
 ```
 
 The specify skill will:
-1. Run Interview Mode (gather requirements)
-2. Wait for DRAFT.md to be created
-3. **[Hook auto-triggers]** → Generate Plan when DRAFT is ready
-4. Run Reviewer approval
-5. **[Hook auto-triggers]** → Call /execute when Plan is approved
+1. L0: Goal mirror + confirmed_goal
+2. L1: Codebase research
+3. L2: Decisions + constraints (user approves)
+4. L3: Requirements + sub-requirements with GWT (user approves)
+5. L4: Verification journeys (user approves)
+6. Write approved `spec.json` at `.hoyeon/specs/{name}/spec.json`
 
 ### Step 4: Let Hooks Handle the Rest
 
-After specify completes with an approved plan:
-- `ultrawork-stop-hook.sh` detects PLAN.md with "APPROVED"
-- Hook automatically injects `/execute {name}`
-- Execute runs until all TODOs complete
+After specify completes with an approved spec:
+- `ultrawork-stop-hook.sh` detects an approved `spec.json` (meta.approved_by populated)
+- Hook automatically injects `/execute .hoyeon/specs/{name}/spec.json`
+- `/execute` prompts (via AskUserQuestion) for dispatch/work/verify mode selections,
+  derives `plan.json`, and runs tasks to completion
 
 ## User Interruption
 
@@ -98,14 +106,14 @@ The hook tracks progress in `.hoyeon/state.local.json`:
   "session-id": {
     "ultrawork": {
       "name": "feature-name",
-      "phase": "specify_interview",
+      "phase": "specify",
       "iteration": 0
     }
   }
 }
 ```
 
-Phases: `specify_interview` → `specify_plan` → `executing` → `done`
+Phases: `specify` → `executing` → `done`
 
 ## Example Flow
 
@@ -118,26 +126,27 @@ User: "/ultrawork add dark mode support"
 1. Parse: feature name = "dark-mode"
 
 2. Announce:
-   🚀 Ultrawork Mode Activated
+   Ultrawork Mode Activated
    Feature: dark-mode
    Pipeline: specify → execute
-   Starting interview phase...
+   Starting specify L0...
 
 3. Invoke: Skill("specify", args="dark-mode")
 
-[Specify Interview runs...]
-[DRAFT.md created]
-[Hook detects → triggers "Generate the plan"]
-[Plan created, Reviewer approves]
-[Hook detects → triggers "/execute dark-mode"]
-[TODOs completed]
+[Specify L0→L1→L2(approve)→L3(approve)→L4(approve)]
+[spec.json written and approved at .hoyeon/specs/dark-mode/spec.json]
+[Hook detects approved spec → triggers "/execute .hoyeon/specs/dark-mode/spec.json"]
+[/execute prompts for dispatch/work/verify, derives plan.json, runs tasks]
+[All tasks completed]
 [Pipeline ends]
 ```
 
 ## Important Notes
 
-- **State is auto-initialized** by `UserPromptSubmit` hook - no manual setup needed
-- **Do NOT manually call /execute** - hooks handle this
-- **Follow specify's interview process** - gather requirements properly
-- **The pipeline is autonomous** - just start it and let it run
+- **State is auto-initialized** by `UserPromptSubmit` hook — no manual setup needed
+- **Do NOT manually call /execute** — hooks handle this
+- **Follow specify's layer flow** — approve at L2/L3/L4 gates
+- **spec.json has no tasks** in v2 — `/execute` derives `plan.json` as a sibling file
+- **Mode selection is interactive** — `/execute` asks for dispatch/work/verify via AskUserQuestion (no CLI flags)
+- **The pipeline is autonomous** — just start it and let it run
 - **User can interrupt** at any time for manual control
