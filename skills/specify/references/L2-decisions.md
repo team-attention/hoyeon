@@ -1,6 +1,18 @@
+> **MUST-READ-FIRST** — Reading this file is mandatory before executing L2. The SKILL.md L2 row is a 1-line summary; the real protocol (Step 0 checkpoint generation, Interview Loop, 3-state resolution, Unknown/Unknown 3-tier detection, Scoreboard, Inversion Probe, Unresolved Sweep, L2-reviewer) lives below. Skipping any step = protocol violation. Do not "ad-hoc interview" — execute steps in order.
+
 ## L2: Decisions + Constraints
 
 **Output**: `context.decisions[]`, `constraints[]`, `context.known_gaps[]`
+
+### Mandatory Step Order (do not skip, do not reorder)
+
+1. **Step 0** — Complexity classify (signal count) + per-dimension checkpoint generation + L1 auto-resolve
+2. **Interview Loop** — Score → Target lowest dim → Ask 2 scenario questions → 3-state resolve → Unknown/Unknown 3-tier scan → Scoreboard
+3. **Termination check** — composite ≥ 0.80 AND every dim ≥ 0.60 AND unknowns == 0 (else continue loop)
+4. **Inversion Probe** — fires when composite first hits ≥ 0.80
+5. **Unresolved Checkpoint Sweep** — append every unresolved/provisional checkpoint to `known_gaps[]`
+6. **L2-reviewer Task** — steelman + complexity verification (max 2 retry on NEEDS_FIX)
+7. **L2 Approval** — AskUserQuestion (Approve/Revise/Abort) + `spec validate --layer decisions`
 
 ### Step 0: Checkpoint Generation (runs once at L2 start)
 

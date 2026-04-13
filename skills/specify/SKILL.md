@@ -1,5 +1,6 @@
 ---
 name: specify
+model: opus
 description: |
   Turn a goal into an implementation plan (spec.json v2).
   Simplified layer chain: L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Verification.
@@ -44,20 +45,21 @@ Before starting, run `hoyeon-cli spec guide full --schema v2` to see the complet
    - **Add new item** (e.g. add D5) → `--append`
    - **Remove + rewrite entire section** → no flag (intentional full replace)
    - **NEVER** use no-flag merge with a subset of items — this silently replaces the entire array.
+9. **MUST READ reference before each layer** — Before executing layer N, you MUST `Read` the corresponding `references/{layer}.md` file. The SKILL.md summary is NOT sufficient — each reference contains mandatory sub-steps (Step 0, Interview Loop, Inversion Probe, etc.) that the summary does not enumerate. Skipping the Read = protocol violation; you will silently miss required sub-procedures (this has happened in past sessions, most often at L2).
 
 ---
 
 ## Layer Flow
 
-Execute layers sequentially. Read each reference file just-in-time.
+Per-layer protocol (apply to every layer): **Read MUST-READ-FIRST file → Execute all sub-steps in that file → Merge → CLI validate → Gate**. Do NOT shortcut from this table's "What" column — it is a 1-line summary, not the spec.
 
-| Layer | Read File | What | Gate |
-|-------|-----------|------|------|
+| Layer | MUST Read First | What (summary only — full procedure in file) | Gate |
+|-------|-----------------|-----------------------------------------------|------|
 | L0 | `${baseDir}/references/L0-L1-context.md` | Mirror → confirmed_goal, non_goals | User confirms mirror |
 | L1 | (same file) | Codebase research → context.research | Auto-advance |
-| L2 | `${baseDir}/references/L2-decisions.md` | Interview → decisions + constraints | CLI validate + L2-reviewer + User approval |
-| L3 | `${baseDir}/references/L3-requirements.md` | Derive requirements + sub from decisions | CLI validate + User approval |
-| L4 | `${baseDir}/references/L4-verification.md` | Verification (Journeys) | CLI validate + User approval |
+| L2 | `${baseDir}/references/L2-decisions.md` | **7 mandatory steps**: (0) Complexity classify + checkpoint generation per dimension → (1) Score-driven Interview Loop with 3-state resolution → (2) Unknown/Unknown 3-tier detection each round → (3) Scoreboard display → (4) Termination check (composite ≥ 0.80, every dim ≥ 0.60, unknowns = 0) → (5) Inversion Probe + Unresolved Sweep into `known_gaps` → (6) L2-reviewer Task (steelman). Skipping any = violation. | CLI validate + L2-reviewer + User approval |
+| L3 | `${baseDir}/references/L3-requirements.md` | Scaffold from 4 context sources (confirmed_goal / non_goals / research / decisions) → reshape requirements → fill GWT (given/when/then required, no TBD) → coverage check (every decision traced, research reflected, non_goals respected) | CLI validate + User approval |
+| L4 | `${baseDir}/references/L4-verification.md` | Derive verification journeys composing 2+ sub-reqs into end-to-end flows (may be empty after explicit confirmation) → AskUserQuestion flow → merge | CLI validate + User approval |
 
 ### Session Init (before L0)
 

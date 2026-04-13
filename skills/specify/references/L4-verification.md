@@ -1,3 +1,5 @@
+> **MUST-READ-FIRST** — Reading this file is mandatory before executing L4. The SKILL.md L4 row is a 1-line summary; the real protocol (heuristic, AskUserQuestion flow, merge semantics, 0-journey explicit confirmation) lives below. Skipping = protocol violation.
+
 ## L4: Verification (Journeys)
 
 **Output**: `verification.journeys[]` (optional — may be empty after explicit confirmation)

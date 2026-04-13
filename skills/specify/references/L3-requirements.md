@@ -1,3 +1,5 @@
+> **MUST-READ-FIRST** — Reading this file is mandatory before executing L3. The SKILL.md L3 row is a 1-line summary; the real protocol (4-context scaffold, GWT-required subs, research reflection, non_goals filter, coverage check) lives below. Skipping = protocol violation.
+
 ## L3: Requirements + Sub-requirements
 
 **Output**: `requirements[]` with `sub[]` (every sub has required `given`, `when`, `then`)
