@@ -4,21 +4,65 @@
 
 ### Mirror Protocol
 
-Before asking questions, mirror the user's goal:
+Before asking any questions, present your understanding using this **exact template** (4 sections, in this order):
 
-```
-"I understand you want [goal]. Scope: [included / excluded].
- Done when: [success criteria].
- Does this match?"
+```markdown
+**🪞 Mirror — Here's what I understood**
+
+**Understanding:**
+<1–2 sentences paraphrasing the user's request in your own words. Not a verbatim echo.>
+
+**Goal:**
+- <bullet 1: concrete outcome>
+- <bullet 2: concrete outcome>
+
+**Non-Goal (explicitly out of scope this round):**
+- <bullet 1: exclusion — at least one must be inferred, not stated by user>
+- <bullet 2: exclusion>
+
+**Ambiguous (scope-level unknowns — NOT tech choices):**
+- <ambiguity about what "done" means, what's included, or who the user is>
+- <ambiguity about boundaries of the feature>
 ```
 
-Then `AskUserQuestion`: "Does this match your intent?"
+Then immediately call `AskUserQuestion`:
+```
+AskUserQuestion(
+  question: "Does this Mirror match your intent?",
+  options: [
+    { label: "Approve", description: "Matches — proceed to L1" },
+    { label: "Revise",  description: "Fix goal/non-goal/scope" },
+    { label: "Clarify", description: "Resolve the Ambiguous items first" }
+  ]
+)
+```
+
+### L0 Ambiguous vs L2 Decisions — no overlap
+
+They look similar but answer different questions. Use this test before writing an Ambiguous bullet:
+
+| Axis | L0 Ambiguous | L2 Decisions |
+|------|--------------|--------------|
+| Question type | "What are we building / for whom / done when?" | "How are we building it?" |
+| Resolves into | `meta.goal`, `meta.non_goals`, `context.confirmed_goal` | `context.decisions[]`, `constraints[]` |
+| Example (good) | "Is this single-user local-only, or multi-user shared?" | "SQLite vs Postgres?" |
+| Example (good) | "Does 'dashboard' include historical charts, or only current values?" | "Recharts vs Chart.js?" |
+| Example (good) | "Is this a throwaway playground or a reusable internal tool?" | "Next.js vs vanilla HTML?" |
+| Resolution method | User says yes/no in Mirror approval | Step-0 checkpoints → Interview Loop → score ≥ 0.80 |
+
+**Rule of thumb:** if answering the ambiguity would add an entry to `decisions[]`, it belongs in L2, not L0. L0 Ambiguous items feed L2 as *scope inputs* — they shape which dimensions L2 must score, but L2 is where they get resolved with rationale.
 
 **Rules:**
-- Mirror confirms goal, scope, done criteria ONLY. No tech choices (those are L2).
-- Include at least one inference beyond the literal request.
-- If ambiguous, surface the ambiguity explicitly.
-- Max 3 mirror attempts. If still unclear, ask directly.
+- Mirror confirms **goal / non-goal / scope ambiguity ONLY**. No tech choices at L0.
+- At least one Non-Goal and one Ambiguous item must be inferred by you — a pure echo of the user's words is a protocol violation.
+- Never ask clarifying questions as free-form text. Always go through `AskUserQuestion`.
+- Max 3 mirror revision rounds. If still unclear after 3, advance and record residual ambiguities into `known_gaps` at L2.
+
+**❌ Forbidden at L0** (defer to L2):
+- "Which framework?" / "React vs Next.js?"
+- "Which API provider / data source?"
+- "Realtime or batch?" (unless the user already framed it as scope, not implementation)
+- Any question whose answer would land in `context.decisions[]`.
 
 ### Merge
 
