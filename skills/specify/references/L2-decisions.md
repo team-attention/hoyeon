@@ -114,19 +114,31 @@ Current snapshot:
 
 Use the snapshot to self-select which checkpoint to probe — do NOT mechanically drain the single lowest dimension if a higher-impact unknown is flagged. The snapshot is **advisory**: if NF is 0.30 but its checkpoints are trivial ("no performance target needed — playground"), skip and target Scope instead. The `recommendation` field in round logs records your reasoning.
 
-#### 3-State Checkpoint Resolution (Step 4)
+#### 4-State Checkpoint Resolution (Step 4)
 
-Answers are classified into 3 states, not binary resolved/unresolved:
+Answers are classified into 4 states (not binary). A named choice alone is NOT enough — "SQLite + Prisma" is a stack pick, not a resolved data layer.
 
-| State | Score weight | When |
-|-------|-------------|------|
-| **resolved** | 1.0 | Answer contains a **discriminator**: number, threshold, named actor, explicit behavior, or condition/exception |
-| **provisional** | 0.5 | Answer lacks discriminators (short, vague, single option with no detail) |
-| **unresolved** | 0.0 | No answer yet, or "I don't know" |
+| State | Weight | Requires |
+|-------|--------|----------|
+| **resolved** | 1.0 | **All three**: (1) discriminator (number/threshold/named actor/explicit behavior/condition), (2) rationale (why this over alternatives), (3) at least ONE downstream implication or constraint acknowledged |
+| **actionable** | 0.75 | Discriminator + rationale, but downstream implication not yet surfaced |
+| **provisional** | 0.5 | Discriminator only (named choice with no rationale) |
+| **unresolved** | 0.0 | No answer, or "I don't know" |
 
-**After classifying as provisional**, check if the checkpoint is **high-impact** (Core Behavior or Error/Edge dimension):
-- YES → ask ONE follow-up probing the most likely edge case, then re-classify
-- NO → keep provisional, move on (re-evaluate at round end or Unresolved Sweep)
+**Examples:**
+
+| Answer | State | Why |
+|--------|-------|-----|
+| "SQLite + Prisma" | provisional (0.5) | Named stack, no rationale, no implication |
+| "SQLite + Prisma because this is a single-user playground and we don't need concurrency" | actionable (0.75) | Discriminator + rationale, but migration/schema-evolution implication unstated |
+| "SQLite + Prisma (single-user playground, no concurrency needed). Schema evolution via `prisma migrate dev`, reset DB is fine when schema changes" | resolved (1.0) | All three present |
+| "DB 뭐가 좋을까?" → "음... 알아서" | provisional (0.5) | `assumed: true` + orchestrator picks, but user signaled no opinion — treat as weakly held |
+| "모르겠어" | unresolved (0.0) | Add to `known_gaps` |
+
+**Follow-up rule** (applies to provisional and actionable):
+- **provisional** on a **high-impact dim** (Core Behavior / Error-Edge / Security) → ask ONE follow-up probing rationale OR implication; re-classify
+- **actionable** → ask ONE follow-up ONLY if the missing implication is likely load-bearing (e.g., "migration story" for a chosen DB); otherwise leave at 0.75 and move on
+- Cap: no checkpoint gets more than 2 total follow-ups — after that, accept final state and record to `known_gaps` if still < 0.75
 
 ```
 Example:
@@ -137,7 +149,7 @@ A: "재시작 버튼" → no discriminator → provisional
 A2: "전부 리셋, 스테이지 1부터" → discriminator (explicit behavior) → resolved
 ```
 
-**Composite score** uses weighted states: `(1.0 × resolved + 0.5 × provisional + 0.0 × unresolved) / total`
+**Composite score** uses weighted states: `(1.0 × resolved + 0.75 × actionable + 0.5 × provisional + 0.0 × unresolved) / total`
 
 **Question format — RIGHT (scenario):**
 ```
