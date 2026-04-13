@@ -17,10 +17,11 @@ allowed_tools:
   - Skill
 validate_prompt: |
   Must complete with one of:
-  1. Execute completed successfully (spec.json all tasks done)
+  1. Execute completed successfully (all plan.json tasks done)
   2. Circuit breaker triggered (max attempts exhausted, report saved)
   3. Escalated to /specify (with spec.json + debug report saved)
-  Must NOT: skip root cause analysis, apply multiple fixes simultaneously.
+  Must NOT: skip root cause analysis, apply multiple fixes simultaneously,
+  write tasks[] into spec.json, or call `hoyeon-cli spec task` (removed in v2).
 ---
 
 # /bugfix Skill
@@ -64,9 +65,11 @@ Phase 5: CLEANUP & REPORT ──────────────────
 
 Always runs the full investigation + execution pipeline. No SIMPLE/COMPLEX branching.
 
-| dispatch | verify | Phase 1 | Retry |
-|---------|--------|---------|-------|
-| agent | standard | debugger + verification-planner + gap-analyzer | bugfix-managed (max 3) |
+| Phase 1 | Retry |
+|---------|-------|
+| debugger + verification-planner + gap-analyzer | bugfix-managed (max 3) |
+
+`/execute` will prompt for dispatch/work/verify via AskUserQuestion when invoked — bugfix does not pre-select these modes.
 
 ---
 
@@ -198,7 +201,7 @@ SPEC_PATH = "$SPEC_DIR/spec.json"
 hoyeon-cli spec init fix-{slug} \
   --goal "Fix: {bug description}" \
   --type dev \
-  --schema v1 \
+  --schema v2 \
   ${SPEC_PATH}
 ```
 
@@ -211,31 +214,29 @@ hoyeon-cli spec init fix-{slug} \
 
 Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single merge call.
 
-**What to include:**
+**What to include (spec v2 — do NOT merge `tasks[]`; /execute derives plan.json separately):**
 
-- **meta**: `non_goals` (no refactoring, no unrelated features)
+- **meta**: `schema_version: "v2"`, `non_goals` (no refactoring, no unrelated features)
 - **context**: `confirmed_goal` (original bug description), `research` (debugger analysis summary as string array), `decisions` (root cause location + rationale), `known_gaps` (from debugger's assumptions/unknowns)
-- **tasks**: Single task (T1) with:
-  - `action`: debugger's proposed fix (include implementation steps: write regression test RED → apply minimal fix GREEN → verify. Include must-not-do constraints inline: minimal diff <5%, no refactoring, no unrelated changes, no git commands, fix root cause not symptom)
-  - `type`: `"work"`, `status`: `"pending"`
-  - `fulfills`: requirement IDs from `requirements[].id` this task covers
-  - If debugger found **similar issues**: add T2 (`depends_on: ["T1"]`) to fix those locations — T2 must include `type: "work"`, `status: "pending"`, and `fulfills`
-- **constraints**: minimal diff rule, root cause targeting rule (id + rule)
+- **constraints**: minimal diff rule, root cause targeting rule (id + rule). Encode fix-scope guardrails here (e.g. "minimal diff <5%", "no refactoring", "fix root cause not symptom") — these are the must-not-do constraints that were previously inlined in task actions
 - **requirements**: Generate from debugger diagnosis. Each requirement describes a behavior that was broken:
-  1. Run `hoyeon-cli spec guide requirements` to check field structure
+  1. Run `hoyeon-cli spec guide requirements` and `hoyeon-cli spec guide sub` to check field structure
   2. Construct JSON with `requirements[]` (id, behavior, sub[])
      - Convert debugger's reproduction steps → behavior description for each sub-requirement
-     - Use optional GWT fields (given, when, then) when precondition/action/outcome is clear
-     - If debugger identified edge cases, add additional sub-requirements
+     - **GWT is mandatory on every sub** (given/when/then). Map the bug scenario:
+       - `given`: the precondition/state that triggers the bug
+       - `when`: the action that exercises the broken path
+       - `then`: the expected (post-fix) outcome — what "fixed" looks like
+     - If debugger identified edge cases / similar issues, add sub-requirements for each (one sub per scenario)
   3. Merge via `hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)"`
-  - This enables Final Verify to check requirement sub-requirements, preventing regression
+  - Final Verify uses sub GWT to check regression coverage
+- **verification.journeys[]** (optional): If the bug spans multiple sub-requirements end-to-end (e.g. auth + redirect + session), add an integration journey with `composes: [sub-ids]` + GWT. Omit entirely for single-surface bugs.
+
+> **Do NOT merge `tasks[]` into spec.json.** v2 rejects it. `/execute` derives `plan.json` from requirements+sub in Phase 0.
 
 ### Step 2.3: Validate & Register
 
 ```bash
-# Always use agent dispatch + standard verify for thorough investigation
-hoyeon-cli spec merge ${SPEC_PATH} --json '{"meta": {"mode": {"dispatch": "agent", "work": "branch", "verify": "standard"}}}'
-
 hoyeon-cli spec validate ${SPEC_PATH}
 hoyeon-cli session set --sid $SESSION_ID --spec "$SPEC_PATH"
 ```
@@ -255,9 +256,10 @@ Skill("execute", args="${SPEC_PATH}")
 ```
 
 What execute handles:
-- Worker dispatch (self-read pattern, mode set by meta.mode)
+- Prompts the user for dispatch / work / verify via AskUserQuestion (no meta.mode pre-selection; see `/execute` Phase 0.6)
+- Worker dispatch (self-read pattern) according to the chosen dispatch mode
 - Round-level commit (git-master)
-- Verify recipe (light/standard/thorough based on meta.mode.verify)
+- Verify recipe (light/standard/thorough/ralph) according to the chosen verify depth
 - Final report
 
 **Result judgment:**
@@ -294,6 +296,7 @@ MAX_ATTEMPTS = 3
 
 IF attempt >= MAX_ATTEMPTS:
   → Step 4.5 (Circuit Breaker)
+
 ```
 
 **Stagnation Detection (attempt >= 2):**
@@ -336,21 +339,26 @@ Update DEBUG_STATE: attempt: {attempt}
 #    Merge via:
 hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)"
 
-# 4. Reset task status
-hoyeon-cli spec task T1 --status pending ${SPEC_PATH}
-{IF T2 exists AND T2 not done:}
-hoyeon-cli spec task T2 --status pending ${SPEC_PATH}
+# 4. Re-invoke execute (spec v2)
+#    /execute reads plan.json next to spec.json. Do NOT touch plan.json directly
+#    from bugfix — /execute handles task status and re-derivation.
+#    If you need to reset failed tasks to pending so /execute will re-run them,
+#    do it via the plan CLI (NOT `spec task`, which was removed in v2):
+#      hoyeon-cli plan list <PLAN_PATH>
+#      hoyeon-cli plan status <task-id> <PLAN_PATH> --status pending --summary "bugfix retry"
+#    where PLAN_PATH = $(dirname ${SPEC_PATH})/plan.json
+#    In most cases /execute will resume on its own from the existing plan.json.
 
 # 5. Re-invoke execute
 → Phase 3
 ```
 
 Execute handles resume naturally:
-- Skips done tasks
-- Context files (learnings.json, issues.json) retain previous failure info for the new worker
+- Reads existing plan.json and skips done tasks
+- Context files (learnings.json, issues.json — now alongside plan.json) retain previous failure info for the new worker
 - `known_gaps` carry failure context and retry_hint for the worker
 
-### Step 4.4: Circuit Breaker
+### Step 4.5: Circuit Breaker
 
 Max attempts exceeded. Present escalation options to user.
 
@@ -416,7 +424,7 @@ Write to .hoyeon/debug/{slug}.md:
   {debugger's Root Cause analysis}
 
   ## Fix
-  {spec.json T1.action + result summary}
+  {proposed fix from debugger + result summary from /execute's final report}
 
   ## Verification
   {verification results from execute's final report}

@@ -27,9 +27,12 @@ validate_prompt: |
   Must end with AskUserQuestion offering next actions (Execute / Revise plan / Discuss further).
   Must NOT generate spec.json until user explicitly chooses "Execute".
   Must NOT: create teams or spawn agents during planning.
-  spec.json must include requirements (one per task) with sub-requirements before tasks are merged.
+  Must NOT: merge tasks[] into spec.json — tasks live in plan.json and are derived by /execute.
+  spec.json must set meta.schema_version = "v2".
+  spec.json must include requirements with sub-requirements, and each sub-requirement must have given/when/then (GWT is mandatory in v2).
   spec.json must include context.known_gaps (at least one assumption/gap about the plan).
-  If any task has type: dev, spec.json must include context.research with commands and structure.
+  If the plan involves code changes (likely dev work), spec.json must include context.research with commands and structure.
+  spec.json may optionally include verification.journeys[] for cross-sub integration flows; omit the field if none.
 ---
 
 # /quick-plan — Session Task Planner
@@ -241,60 +244,78 @@ Only runs when user explicitly chooses to execute.
 #### 9.1 Session Directory
 
 ```bash
-SESSION_ID="[session ID from UserPromptSubmit hook]"
+SESSION_ID="$CLAUDE_SESSION_ID"
 SESSION_DIR="$HOME/.hoyeon/$SESSION_ID"
 SPEC_PATH="$SESSION_DIR/spec.json"
 ```
 
 #### 9.2 Initialize spec.json
 
-Determine the plan type based on task composition from Phase 5:
+Determine the plan type based on task composition from Phase 5 (this drives `meta.type`; tasks themselves are NOT stored in spec.json in v2):
 - If **any task has `type: dev`** → use `--type dev` (dev pipeline with worktree isolation)
 - If **all tasks have `type: plain`** → use `--type plain` (lightweight skill-only pipeline)
 
 ```bash
-hoyeon-cli spec init {plan-name} --goal "{user's goal}" --type dev|plain --schema v1 ${SPEC_PATH}
+hoyeon-cli spec init {plan-name} --goal "{user's goal}" --type dev|plain --schema v2 ${SPEC_PATH}
 ```
 
 `{plan-name}`: derive from user's goal (kebab-case, max 30 chars).
 
-#### 9.2.5 Merge lightweight requirements
+> **⚠️ v2 Scope Note**: `/quick-plan` writes ONLY `spec.json` (meta + context + requirements + optional verification.journeys). It does **NOT** merge `tasks[]` into the spec — v2 forbids `tasks` under `spec.json`. Task breakdowns live in `plan.json`, which `/execute` derives from the spec (see `skills/execute/references/derive-plan.md`). The Phase 7 DAG/Agent Mapping/Execution Plan you show the user is a *preview* of what `/execute` will produce; the DAG is not persisted in spec.json.
 
-Before merging tasks, generate **lightweight requirements** from the task breakdown.
-Each task's "Done when" condition becomes a requirement with one sub-requirement.
+#### 9.2.5 Merge lightweight requirements (with mandatory GWT)
+
+Generate **lightweight requirements** from the task breakdown. Each task's "Done when" condition becomes a requirement with one sub-requirement.
 
 Rules:
-- One requirement per task (R1 maps to T1, R2 to T2, etc.)
-- Each requirement has exactly one sub-requirement with id and behavior
-- When the done-when condition has clear precondition/action/outcome structure, add optional GWT fields (given, when, then)
-  - Example: `{ "id": "R1.1", "behavior": "Config file validates on load", "given": "Config file exists with valid YAML", "when": "Application starts", "then": "Config is parsed without errors" }`
+- One requirement per task item from Phase 2 (R1 ↔ task 1, R2 ↔ task 2, etc.)
+- Each requirement has exactly one sub-requirement with `id`, `behavior`
+- **Every sub-requirement MUST include `given` / `when` / `then`** — GWT is mandatory in v2. Re-express the "Done when" condition as precondition / action / expected outcome.
+  - Example: `{ "id": "R1.1", "behavior": "Config file validates on load", "given": "Config file exists with valid YAML at ./config.yaml", "when": "Application starts via npm run start", "then": "Config is parsed without errors and app enters ready state" }`
+  - If a done-condition has no natural GWT (e.g., pure non-functional constraint), move it to `constraints[]` instead of `sub[]`.
 - Keep it minimal — no gap analysis, no multi-sub-requirement requirements
 
-> **⚠️ Merge Convention**: All `spec merge --json '...'` examples below show JSON inline for readability. In practice:
-> 1. **Always run `hoyeon-cli spec guide <section>` before constructing merge JSON** to verify field names and types
-> 2. **Always use file-based passing**: write JSON to `/tmp/spec-merge.json` via `<< 'EOF'` heredoc, then pass via `--json "$(cat /tmp/spec-merge.json)"`, then `rm /tmp/spec-merge.json`
-> 3. **On merge failure**: run `spec guide <failed-section>`, fix JSON to match schema, retry once
+> **⚠️ Merge Convention**: Follow the canonical `specify` pattern:
+> 1. **Always run `hoyeon-cli spec guide <section> --schema v2` before constructing merge JSON** to verify field names and types (guide output is the source of truth)
+> 2. **Always pass JSON via stdin heredoc**: `hoyeon-cli spec merge ${SPEC_PATH} --stdin << 'EOF' ... EOF` — no temp files
+> 3. **On merge failure**: run `spec guide <failed-section> --schema v2`, fix JSON to match schema, retry once (max 2)
 
 ```bash
-# 1. Check field structure
-hoyeon-cli spec guide requirements
+# 1. Check field structure (v2: sub[] requires given/when/then)
+hoyeon-cli spec guide requirements --schema v2
+hoyeon-cli spec guide sub --schema v2
 
 # 2. Construct JSON with requirements.id, requirements.behavior, requirements.sub[]
-#    Each sub-requirement needs: id, behavior
-#    Optional GWT fields: given (precondition), when (action), then (expected outcome)
-#    Example sub: { "id": "R1.1", "behavior": "Login rejects invalid credentials",
-#                   "given": "User is on login page", "when": "User submits wrong password", "then": "Error message shown and login denied" }
+#    Each sub-requirement needs: id, behavior, given, when, then (all required in v2)
 
-# 3. Merge via file-based passing
-cat > /tmp/spec-merge.json << 'EOF'
+# 3. Merge via stdin heredoc
+hoyeon-cli spec merge ${SPEC_PATH} --stdin << 'EOF'
 { "requirements": [ ... ] }
 EOF
-hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
 ```
 
 This ensures:
-- `fulfills[]` in tasks reference real requirement IDs for behavior verification
-- Final Verify in /execute can check requirement sub-requirements via fulfills → req.sub[]
+- When `/execute` derives `plan.json`, each task's `fulfills[]` can reference real requirement IDs whose sub-requirements carry GWT acceptance criteria.
+- Verify stage in /execute reads sub-req GWT directly to judge pass/fail.
+
+#### 9.2.6 (Optional) Merge verification journeys
+
+If the plan involves 2+ sub-requirements that compose into a cross-sub integration flow (e.g., login → dashboard → logout end-to-end), capture them as `verification.journeys[]`. Skip entirely when no meaningful cross-sub flows exist — quick-plan stays lightweight by default.
+
+```bash
+# 1. Check field structure
+hoyeon-cli spec guide verification --schema v2
+
+# 2. Construct JSON — each journey: { id, name, composes[], given, when, then }
+#    composes[] must reference real sub-req IDs (e.g., ["R1.1", "R2.1"])
+
+# 3. Merge via stdin heredoc (use --append if journeys may already exist)
+hoyeon-cli spec merge ${SPEC_PATH} --stdin --append << 'EOF'
+{ "verification": { "journeys": [ ... ] } }
+EOF
+```
+
+If no journeys are needed, skip this step — omitting the field entirely is valid in v2.
 
 #### 9.2.7 Merge context
 
@@ -302,19 +323,18 @@ Merge the context gathered during planning. Content is **type-aware**:
 
 ```bash
 # 1. Check field structure
-hoyeon-cli spec guide context
+hoyeon-cli spec guide context --schema v2
 
 # 2. Construct JSON with context fields:
 #    - confirmed_goal: user's confirmed goal statement
 #    - decisions: key planning decisions (id, decision, rationale)
 #    - known_gaps: assumptions and unknowns as string array
-#    IF any task has type: dev → also include context.research (string array of key findings)
+#    IF any task in the plan is type: dev → also include context.research (string array of key findings)
 
-# 3. Merge via file-based passing
-cat > /tmp/spec-merge.json << 'EOF'
+# 3. Merge via stdin heredoc
+hoyeon-cli spec merge ${SPEC_PATH} --stdin << 'EOF'
 { "context": { "confirmed_goal": "...", "decisions": [...], "known_gaps": [...], "research": [...] } }
 EOF
-hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
 ```
 
 **known_gaps to always capture** (at minimum):
@@ -324,44 +344,15 @@ hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /t
 
 These known_gaps give /execute triage context when things go wrong.
 
-#### 9.3 Merge tasks
+#### 9.3 (Tasks are NOT merged into spec.json)
 
-Merge **all tasks in a single call** — this replaces the placeholder T1 from `spec init`.
-Do NOT call merge per task (without `--append`, each call overwrites the previous tasks array).
+In v2, **task breakdowns belong in `plan.json`, not `spec.json`**. `/quick-plan` intentionally stops after requirements + optional journeys + context.
 
-```bash
-# 1. Check field structure
-hoyeon-cli spec guide tasks
+- Do **not** call `hoyeon-cli spec task ...` (removed in v2).
+- Do **not** merge `{ "tasks": [...] }` into `spec.json` (schema rejects it).
+- `/execute` will derive `plan.json` from the spec on first invocation using `skills/execute/references/derive-plan.md`. The DAG/Agent Mapping preview shown to the user in Phase 7 is guidance material for that derivation, not persisted state.
 
-# 2. Construct JSON with all tasks in a single array
-#    Each task needs: id, action, type, status, depends_on, fulfills
-#    Optional: tool (dispatch hint for plain mode — skill name like /bugfix or agent subtype like worker)
-#    Acceptance criteria = sub-req behaviors (+ GWT fields when available) from fulfills[] (Worker reads requirements directly)
-
-# 3. Merge ALL tasks in one call via file-based passing
-cat > /tmp/spec-merge.json << 'EOF'
-{ "tasks": [ { "id": "T1", ... }, { "id": "T2", ... } ] }
-EOF
-hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)" && rm /tmp/spec-merge.json
-```
-
-Map from plan:
-- Task Breakdown → `action` (include implementation steps inline in the action description)
-- Done condition → `fulfills[]` (requirement IDs) → sub-req behaviors (+ GWT fields when available) as acceptance criteria
-- Dependency DAG → `depends_on`
-- Agent Mapping → `tool` (from Phase 5 discovery, optional — used for plain mode dispatch)
-
-#### 9.3.5 Auto-generate sandbox tasks
-
-After all tasks are merged, check for sandbox sub-requirements and generate infra + verification tasks:
-
-```bash
-# Auto-generates T_SANDBOX (infra prep) + T_SV1~N (per-sub-requirement verification) tasks
-# No-ops if no execution_env: sandbox sub-requirements exist
-hoyeon-cli spec sandbox-tasks ${SPEC_PATH}
-```
-
-This command scans all sub-requirements for `execution_env: "sandbox"` and automatically creates the required infra and per-sub-requirement verification tasks with correct `depends_on` wiring.
+If your plan includes sandbox sub-requirements (i.e., sub-reqs whose GWT requires a live environment), flag them in `known_gaps` so `/execute` can generate the corresponding sandbox infra + verification tasks during plan derivation.
 
 #### 9.4 Update state.json
 
