@@ -136,60 +136,87 @@ Emit one block per candidate, then route to §4.
 
 ### 4. AskUserQuestion Interaction Flow
 
-`AskUserQuestion` is limited to **4 options per question**. The flow is one question per
-candidate, plus a final top-level question.
+`AskUserQuestion` accepts a `questions[]` array in a single call — each question has ≤4 options.
+L4 uses **batched questions** so every candidate is approved explicitly without a separate
+round-trip per candidate (previous per-candidate loop caused models to silently skip later
+candidates under UX fatigue).
 
-#### 4a. Per-candidate question
+**Non-negotiable invariant:** every candidate that ends up in the final merge must have been
+Accepted or Modified in an AskUserQuestion response. No journey may be merged without an
+explicit per-candidate decision. This is the D4 "no silent skip" guarantee.
 
-For each candidate `J<n>`:
+#### 4a. Batched candidate decisions
+
+Group candidates into batches of **up to 4 per AskUserQuestion call** (the questions[] array
+limit that keeps the UI readable). For N candidates, issue ⌈N/4⌉ batched calls.
+
+Each question in the batch uses the same 4-option shape:
 
 ```
 AskUserQuestion(
-  question: "Candidate J1 — Project create → fetch → edit. Decision?",
-  options: [
-    { label: "Accept",         description: "Use as-is (R1.1, R2.3, R3.1 + proposed GWT)" },
-    { label: "Modify",         description: "Keep the composition but edit name / composes / GWT" },
-    { label: "Reject",         description: "Drop this candidate — not a real journey" },
-    { label: "Propose-custom", description: "Discard this and I'll describe a different journey" }
+  questions: [
+    {
+      question: "Candidate J1 — Project create → fetch → edit. Decision?",
+      header: "J1",
+      options: [
+        { label: "Accept",         description: "Use as-is (R1.1, R2.3, R3.1 + proposed GWT)" },
+        { label: "Modify",         description: "Keep composition, edit name / composes / GWT after" },
+        { label: "Reject",         description: "Drop — not a real journey" },
+        { label: "Propose-custom", description: "Discard this; I'll describe a different journey" }
+      ]
+    },
+    {
+      question: "Candidate J2 — Guest checkout happy path. Decision?",
+      header: "J2",
+      options: [ /* same 4 options */ ]
+    }
+    // ...up to 4 per call
   ]
 )
 ```
 
-Branches:
+Per-answer handling (applied across all questions in the batch response):
 
-- **Accept** → stage the candidate as-is for the batch merge in §5.
-- **Reject** → drop; move to next candidate.
-- **Modify** → follow-up prompts (free text):
-  1. `name` — "New name for this journey (or press enter to keep '<proposed name>'):"
+- **Accept** → stage as-is for §5 merge.
+- **Reject** → drop.
+- **Modify** → after the batch returns, prompt free-text follow-ups *only for the Modified items*:
+  1. `name` — "New name (or enter to keep '<proposed>'):"
   2. `composes` — "Comma-separated sub ids (current: R1.1, R2.3, R3.1):"
-  3. `given`, `when`, `then` — three separate prompts, each defaulting to the proposed value.
-- **Propose-custom** → same follow-up prompts but starting from blank:
-  1. `name` — "Journey name:"
-  2. `composes` — "Comma-separated sub ids (min 2):"
-  3. `given`, `when`, `then` — three prompts, no defaults.
+  3. `given`, `when`, `then` — three prompts, each defaulting to the proposed value.
+- **Propose-custom** → after the batch returns, prompt blank follow-ups (same 5 fields, no defaults).
 
-Validate collected `composes` locally against `requirements[].sub[].id` before staging — if the
-user typed a bogus id, re-prompt. Enforce `composes.length >= 2` before staging.
+Validate collected `composes` locally against `requirements[].sub[].id` before staging. Re-prompt
+on bogus ids. Enforce `composes.length >= 2`.
 
-#### 4b. Top-level question (after all candidates processed)
+#### 4b. Post-batch wrap question
+
+After all candidate batches complete, issue **one** closing question:
 
 ```
 AskUserQuestion(
-  question: "All candidates processed. Anything else?",
-  options: [
-    { label: "Add another",      description: "Propose an additional custom journey" },
-    { label: "Proceed to merge", description: "Merge the staged journeys" },
-    { label: "Revise",           description: "Re-open a previously answered candidate" },
-    { label: "Abort",            description: "Stop L4 without merging" }
-  ]
+  questions: [{
+    question: "All candidates processed ({n_accepted} accepted, {n_rejected} rejected). Anything else?",
+    header: "Wrap",
+    options: [
+      { label: "Proceed to merge", description: "Merge the staged journeys" },
+      { label: "Add another",      description: "Propose an additional custom journey" },
+      { label: "Revise",           description: "Re-open a previous candidate decision" },
+      { label: "Abort",            description: "Stop L4 without merging" }
+    ]
+  }]
 )
 ```
 
-**Add another** loops back to the custom-journey follow-ups in §4a. **Proceed to merge** advances
-to §5. **Revise** re-opens the per-candidate loop starting at the selected candidate.
+**Proceed** → §5. **Add another** → custom-journey follow-ups, then re-ask this wrap question.
+**Revise** → re-batch the selected candidate(s) in §4a. **Abort** → exit without merging.
 
-If zero candidates were produced by the scan → skip §4a entirely and jump to §7 (zero-journey gate).
-If candidates were produced but all were Rejected → also jump to §7.
+#### 4c. Skip rules
+
+- **Zero candidates from scan** → skip §4a/§4b, jump straight to §7 (zero-journey gate).
+- **All candidates Rejected** → §4b still runs (user may Add another or Proceed with empty set → §7).
+- **Autopilot mode** (`meta.autopilot: true`): skip §4a/§4b entirely, auto-Accept every candidate,
+  emit a one-line summary ("Auto-accepted J1, J2, J3"), proceed to §5. The final Plan Summary
+  gate in §8 remains the single human approval point.
 
 ---
 
