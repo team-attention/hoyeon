@@ -1,0 +1,28 @@
+{
+  "name": "@team-attention/hoyeon-cli2",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Dedicated CLI for specify2 + blueprint workflow (requirements.md + plan.json)",
+  "bin": {
+    "hoyeon-cli2": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "schemas/",
+    "package.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.0.0",
+    "ajv-formats": "^3.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.3"
+  }
+}
