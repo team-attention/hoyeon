@@ -429,9 +429,49 @@ For each CONFLICT and ASSUMPTION, use AskUserQuestion with options (typically: a
 
 For OPEN QUESTIONS: either answer them now (free-text or AskUserQuestion) or explicitly defer them to the open_decisions list.
 
-### Step 4.3: Write Final `requirements.md`
+### Step 4.3: Preview final requirements
 
-Only after user has explicitly resolved all conflicts and accepted (or deferred) all assumptions:
+After all conflicts and assumptions are resolved, show the full requirements list before writing to disk:
+
+```
+[specify2] Final Requirements Preview
+
+Type: greenfield | Goal: "<goal>"
+Non-goals: <list>
+
+## R-B1: <title>
+  - R-B1.1: <sub title>
+    given: ... | when: ... | then: ...
+  - R-B1.2: ...
+
+## R-U1: <title>
+  - R-U1.1: ...
+
+## R-T1: <title>
+  - R-T1.1: ...
+
+Summary: {N} parent reqs, {M} sub-reqs (B:{b} U:{u} T:{t})
+Open Decisions: {count or "none"}
+```
+
+Then ask:
+```
+AskUserQuestion(
+  question: "Finalize these requirements?",
+  options: [
+    { label: "Approve", description: "Write requirements.md and finish" },
+    { label: "Edit", description: "Modify specific requirements before writing" },
+    { label: "Re-interview", description: "Go back to interview for missing coverage" }
+  ]
+)
+```
+
+If **Edit**: ask which requirements to change, apply edits, re-show preview. Max 3 rounds.
+If **Re-interview**: return to Phase 1 with the gap identified.
+
+### Step 4.4: Write Final `requirements.md`
+
+Only after user has explicitly approved the preview:
 
 1. Read `${baseDir}/templates/requirements.md` template (cli2 format)
 2. Overwrite `<spec_dir>/requirements.md` (replacing the stub created by `hoyeon-cli2 req init` at Phase 0.3). Final shape:
@@ -461,6 +501,11 @@ Only after user has explicitly resolved all conflicts and accepted (or deferred)
    ## R-T1: <Tech requirement parent>
    ...
 
+   ## Pre-work
+
+   - [ ] <action> (blocking)
+   - [ ] <action> (non-blocking)
+
    ## Open Decisions
 
    ### OD-1: <title>
@@ -473,8 +518,9 @@ Only after user has explicitly resolved all conflicts and accepted (or deferred)
    - Sub: `#### R-X<num>.Y:` at H4 with `given/when/then` lines
    - No axis grouping headings in the body (flat list); axis is encoded in the ID letter
 4. **Frontmatter** carries only `type`, `goal`, `non_goals[]`. Do NOT add extra keys like `spec`, `phase`, `date`, `total_requirements` — those broke with cli2's frontmatter format.
-5. Open Decisions is optional — omit the section if no unresolved decisions
-6. Confirm completion with the user, showing final file path + next step: `/blueprint <spec_dir>/`
+5. Pre-work is optional — include only when the interview surfaced actions the user must complete before execution (e.g., "get API key", "run migration"). Mark each item `(blocking)` or `(non-blocking)`. execute2 will gate on blocking items.
+6. Open Decisions is optional — omit the section if no unresolved decisions
+7. Confirm completion with the user, showing final file path + next step: `/blueprint <spec_dir>/`
 
 ## Output Files
 

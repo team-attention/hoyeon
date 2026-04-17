@@ -96,11 +96,56 @@ IF input_mode == "plan":                             # R-F1.1
   Bash("hoyeon-cli2 plan validate {spec_dir}")
 
 ELIF input_mode == "requirements":                   # R-F1.2
-  # Auto-invoke /blueprint — NO user confirm. Blueprint writes plan.json (and
-  # optionally contracts.md) into the same spec_dir.
-  Skill(blueprint, args="{spec_dir}")
-  ASSERT exists(spec_dir/plan.json) else ABORT
-  Bash("hoyeon-cli2 plan validate {spec_dir}")
+  # Try /blueprint first; fall back to inline planning if unavailable.
+  IF Skill(blueprint, args="{spec_dir}") succeeds AND exists(spec_dir/plan.json):
+    Bash("hoyeon-cli2 plan validate {spec_dir}")
+  ELSE:
+    # Inline planning — lightweight alternative to /blueprint.
+    # Read requirements.md directly (exception to INV-3 — only during init).
+    reqs_content = Read("{spec_dir}/requirements.md")
+
+    # Extract frontmatter (type, goal, non_goals) + sub-requirements
+    meta_type = parse_frontmatter(reqs_content).type
+    sub_reqs  = parse_sub_reqs(reqs_content)  # [{id, given, when, then}]
+
+    # Check pre-work section (if present)
+    pre_work = parse_pre_work(reqs_content)   # see "Pre-work Gate" below
+
+    # Generate task graph inline (no contracts, no journeys)
+    draft_tasks = []
+    FOR EACH logical group of sub_reqs (by parent R-X):
+      draft_tasks.append({
+        id: "T{n}", action: "<what to build>",
+        fulfills: [sub_req.id for sub_req in group],
+        depends_on: [], parallel_safe: true
+      })
+
+    # Generate basic verify_plan (gate 1+2 for all)
+    draft_verify = []
+    FOR EACH sub_req in sub_reqs:
+      draft_verify.append({ target: sub_req.id, type: "sub_req", gates: [1, 2] })
+
+    # Preview (same pattern as blueprint Step 2.3)
+    print("[execute2] Inline Plan (no /blueprint)")
+    print_task_table(draft_tasks)
+    print(f"Verify: {len(draft_verify)} entries (all G1+G2)")
+
+    choice = AskUserQuestion(
+      question: "Proceed with this inline plan?",
+      options: [
+        { label: "Proceed", description: "Write plan.json and execute" },
+        { label: "Edit",    description: "Revise tasks before proceeding" },
+        { label: "Abort",   description: "Stop — run /blueprint first for a detailed plan" }
+      ]
+    )
+    IF choice == "Abort": HALT
+    IF choice == "Edit": draft_tasks = interactive_edit(draft_tasks)
+
+    # Write via cli2
+    Bash("hoyeon-cli2 plan init {spec_dir} --type {meta_type}")
+    write_json_to_tmp({tasks: draft_tasks, verify_plan: draft_verify}) → /tmp/plan-inline.json
+    Bash("hoyeon-cli2 plan merge {spec_dir} --json \"$(cat /tmp/plan-inline.json)\"")
+    Bash("hoyeon-cli2 plan validate {spec_dir}")
 
 ELIF input_mode == "virtual":                        # R-F1.3
   # Session-context synthesis with user confirm.
@@ -140,6 +185,33 @@ ELIF input_mode == "virtual":                        # R-F1.3
 ```
 
 At the end of 0.2 we have: `spec_dir/plan.json` (valid) + `input_mode` + (optionally) `spec_dir/contracts.md`.
+
+### 0.2b Pre-work Gate (optional)
+
+If `requirements.md` exists and contains a `## Pre-work` section, parse it and gate on blocking items before proceeding.
+
+```
+IF exists("{spec_dir}/requirements.md"):
+  pre_work = scan for "## Pre-work" section → parse checkbox items
+  # Expected format: "- [ ] action (blocking)" or "- [ ] action (non-blocking)"
+  blocking = [item for item in pre_work if "blocking" in item]
+
+  IF len(blocking) > 0:
+    print("Pre-work items requiring completion:")
+    FOR EACH item in blocking:
+      print("  - {item.action}")
+
+    AskUserQuestion(
+      question: "Have you completed all blocking pre-work items?",
+      options: [
+        { label: "Yes, all done", description: "Continue to execution" },
+        { label: "Not yet",       description: "Abort — complete pre-work first" }
+      ]
+    )
+    IF answer == "Not yet": HALT
+```
+
+If there is no `## Pre-work` section, skip silently.
 
 ### 0.3 Load plan.json (structural fields only)
 

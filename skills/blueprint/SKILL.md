@@ -138,6 +138,40 @@ hoyeon-cli2 plan merge <spec_dir> --patch --json "$(cat /tmp/bp-meta.json)"
 
 ---
 
+## Phase 0.5: Codebase Reconnaissance (non-greenfield only)
+
+**Skip if `meta.type == greenfield`.** For `feature`, `refactor`, and `bugfix`, scan the existing codebase so that contract derivation and task planning are grounded in real code structure — not just requirements text.
+
+### Step 0.5.1: Dispatch code-explorer (parallel)
+
+```
+Agent(subagent_type="code-explorer",
+  prompt="Goal: {meta.goal}. Find: project structure, modules, existing interfaces/types
+         relevant to this change. Report as file:line with brief summary.",
+  run_in_background=true)
+
+Agent(subagent_type="code-explorer",
+  prompt="Goal: {meta.goal}. Find: existing test infrastructure (test runner, test dirs,
+         fixture patterns) and build/lint commands. Report as file:line.",
+  run_in_background=true)
+```
+
+### Step 0.5.2: Build code context summary
+
+Consolidate agent results into a short context block (keep in memory, not a file):
+```
+code_context = {
+  modules: ["src/api/", "src/storage/", "src/ui/"],
+  existing_interfaces: ["StorageAPI (src/storage/types.ts:12)", ...],
+  test_infra: "vitest, src/__tests__/, no E2E setup",
+  entry_points: ["src/main.ts", "src/api/router.ts"]
+}
+```
+
+Pass `code_context` to Phase 1 (contract-deriver) and Phase 2 (taskgraph-planner) agent prompts alongside `requirements.md` content. This helps agents ground their output in actual file structure rather than inventing module names.
+
+---
+
 ## Phase 1: Contract Synthesis
 
 **Goal**: produce the minimal cross-module surface area.
@@ -148,6 +182,7 @@ Pass:
 - Full `requirements.md` content (you already read it in 0.2 — inline into agent prompt)
 - Detected `meta.type`
 - `spec_dir` absolute path
+- `code_context` summary from Phase 0.5 (if non-greenfield; omit for greenfield)
 
 The agent writes `<spec_dir>/contracts.md` (markdown) and returns:
 
@@ -183,6 +218,7 @@ Pass:
 - Full `requirements.md` content
 - Phase 1 contracts summary (artifact name + interfaces + invariants)
 - `meta.type`
+- `code_context` summary from Phase 0.5 (if non-greenfield; omit for greenfield)
 
 Expected output:
 ```json
