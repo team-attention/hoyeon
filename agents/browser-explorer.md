@@ -42,13 +42,13 @@ CX=$(command -v chromux 2>/dev/null || echo "") && [ -n "$CX" ] && echo "CHROMUX
 1. Inline the full chromux command (e.g., `/Users/you/.local/bin/chromux` or `npx @team-attention/chromux`)
 2. Inline the session ID as a literal string (e.g., `exp-ab12`)
 
-Launch Chrome (skip if already running). Omit `--headless` unless the caller explicitly requested headless mode:
+Launch Chrome in headless mode (skip if already running):
 
 ```bash
-/path/to/chromux launch default 2>/dev/null || true
+/path/to/chromux launch default --headless 2>/dev/null || true
 ```
 
-If headless is explicitly requested: `/path/to/chromux launch default --headless 2>/dev/null || true`
+To watch the headless session live, the caller can open `http://localhost:<port>` in their regular Chrome — port is shown by `chromux ps`.
 
 ## Session Commands
 
@@ -138,7 +138,6 @@ After `open`, do a `snapshot` and look for dismiss buttons. Click them before pr
 - **DO NOT** take a screenshot and try to guess which CSS selector to click
 - **DO NOT** use `eval` with complex DOM queries to find elements — use snapshot @ref instead
 - **DO NOT** use `$CX` or `$S` across separate Bash calls — inline literal strings
-- **DO NOT** launch with `--headless` unless explicitly told to
 
 ## Output
 
