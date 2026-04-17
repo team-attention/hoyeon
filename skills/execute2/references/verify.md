@@ -102,7 +102,7 @@ session's round-summaries (`CONTEXT_DIR/round-summaries.json`) or re-read via
 FOR sid, row in coverage.items():
   validated = []
   FOR tid in row.fulfilling_tasks:
-    worker_out = round_summaries[tid].fulfills_attribution or []
+    worker_out = round_summaries[tid].fulfills or []
     cite = worker_out.find(c => c.sub_req_id == sid)
     IF cite AND cite.file_path AND cite.line:
       validated.append(tid)

@@ -84,7 +84,7 @@ FOR EACH task IN ordered:
   # ───────────────────────────────────────────────────────────
   # (A) Idempotent skip — fulfills R-F3.2 / INV-9
   # ───────────────────────────────────────────────────────────
-  current = Bash("hoyeon-cli2 plan get {spec_dir} --path tasks")
+  current = Bash("hoyeon-cli2 plan get {plan_path} --path tasks")
             .find(t => t.id == task.id)
   IF current.status == "done":
     audit_append("SKIP {task.id} (already done)")

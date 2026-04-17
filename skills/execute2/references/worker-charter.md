@@ -201,7 +201,7 @@ Before reporting `done`, the worker:
 
 1. Confirms every sub_req GWT is satisfied by concrete code lines.
 2. Runs project build / lint / typecheck.
-3. Builds the `fulfills_attribution` array by locating the exact `file:line` for
+3. Builds the `fulfills` array by locating the exact `file_path:line` for
    each sub_req.
 
 ### 3.5 Step 5 — Append learning or issue

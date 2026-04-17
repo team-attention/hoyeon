@@ -164,9 +164,9 @@ Do NOT run git — lead commits per round (C2).
   "status": "DONE|FAILED|BLOCKED",
   "summary": "...",
   "files_modified": [...],
-  "fulfills_attribution": [{"sub_req": "R-Fx.y", "file": "...", "line": "..."}],
+  "fulfills": [{"sub_req_id": "R-Fx.y", "file_path": "...", "line": "..."}],
   "self_verify_rounds": 0|1|2,
-  "contract_issues": null | "..."
+  "contract_mismatch": null | "..."
 }
 """
 ```
