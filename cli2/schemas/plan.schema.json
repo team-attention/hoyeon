@@ -63,7 +63,11 @@
             "items": { "type": "string", "pattern": "^T\\d+$" }
           },
           "parallel_safe": { "type": "boolean" },
-          "status": { "enum": ["pending", "in_progress", "completed", "blocked"] }
+          "status": {
+            "enum": ["pending", "running", "done", "failed", "blocked"],
+            "default": "pending"
+          },
+          "summary": { "type": "string" }
         }
       }
     },

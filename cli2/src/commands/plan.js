@@ -5,13 +5,16 @@ import {
   validatePlan, mergePlan, writeJsonAtomic,
 } from '../lib/json-io.js';
 
+const TASK_STATES = ['pending', 'running', 'done', 'failed', 'blocked'];
+
 const HELP = `
 Usage:
   hoyeon-cli2 plan <command> [options]
 
 Commands:
-  init <spec_dir> --type <greenfield|feature|refactor|bugfix>
+  init <spec_dir> --type <greenfield|feature|refactor|bugfix> [--force]
       Create an empty plan.json stub (schema: plan/v1).
+      --force: overwrite existing plan.json.
 
   merge <spec_dir> --json '<payload>' [--patch|--append]
       Merge payload into plan.json with schema validation.
@@ -20,32 +23,33 @@ Commands:
   get <spec_dir> --path <dotted.path>
       Read a field (e.g. meta.type, tasks[0].id, journeys[0].composes).
 
+  list <spec_dir> [--status <${TASK_STATES.join('|')}>] [--json]
+      List tasks. Filter by status. --json for machine-readable output.
+
+  task <spec_dir> --status <task_id>=<state> [--summary '...']
+      Mutate a task's status. <state> must be one of:
+        ${TASK_STATES.join(' | ')}
+      Idempotent: re-setting the same status exits 0 with no write.
+      Monotonic: a task already in 'done' cannot transition to anything else.
+
   validate <spec_dir>
-      Schema check + internal cross-ref integrity:
-        - tasks.fulfills ⊆ verify_plan targets (type=sub_req)
-        - journeys.composes ⊆ verify_plan targets (type=sub_req)
-        - journeys.id ⊆ verify_plan targets (type=journey)
-        - tasks.depends_on ⊆ tasks.id
-      (Does NOT validate coverage against requirements.md — that is the LLM's job.)
+      Schema check + internal cross-ref integrity.
 
 Options:
   --help, -h   This help.
-
-Note:
-  cli2 never reads requirements.md. Sub-requirement coverage is enforced at
-  /blueprint generation time by the LLM — cli2 only ensures plan.json is
-  self-consistent.
 `;
 
 // ---------------- init ----------------
 
 async function cmdInit(args) {
-  const { _: [specDir], type } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { _: [specDir], type } = parsed;
   if (!specDir) die('Error: <spec_dir> required');
   if (!type) die('Error: --type required (greenfield|feature|refactor|bugfix)');
 
+  const force = parsed.force === true;
   const path = specPaths(specDir).plan;
-  if (existsSync(path)) die(`Error: ${path} already exists`);
+  if (existsSync(path) && !force) die(`Error: ${path} already exists (use --force to overwrite)`);
 
   const stub = {
     schema: 'plan/v1',
@@ -174,6 +178,102 @@ async function cmdValidate(args) {
   );
 }
 
+// ---------------- list ----------------
+
+async function cmdList(args) {
+  const parsed = parseArgs(args);
+  const specDir = parsed._[0];
+  if (!specDir) die('Error: <spec_dir> required');
+
+  const plan = readPlanIfExists(specDir);
+  if (!plan) die(`Error: plan.json not found in ${specDir}`);
+
+  let tasks = plan.tasks || [];
+  const filterStatus = parsed.status;
+  if (filterStatus) {
+    tasks = tasks.filter((t) => t.status === filterStatus);
+  }
+
+  if (parsed.json) {
+    process.stdout.write(JSON.stringify({ tasks, total: (plan.tasks || []).length, filtered: tasks.length }, null, 2) + '\n');
+  } else {
+    if (tasks.length === 0) {
+      process.stdout.write(filterStatus ? `No tasks with status '${filterStatus}'\n` : 'No tasks\n');
+      return;
+    }
+    const pad = (s, n) => (s + ' '.repeat(n)).slice(0, n);
+    process.stdout.write(pad('ID', 6) + pad('STATUS', 14) + pad('LAYER', 6) + 'ACTION\n');
+    process.stdout.write('-'.repeat(60) + '\n');
+    for (const t of tasks) {
+      process.stdout.write(
+        pad(t.id, 6) +
+        pad(t.status || 'pending', 14) +
+        pad(t.layer || '-', 6) +
+        (t.action.length > 50 ? t.action.slice(0, 47) + '...' : t.action) + '\n'
+      );
+    }
+    process.stdout.write(`\n${tasks.length}/${(plan.tasks || []).length} tasks shown\n`);
+  }
+}
+
+// ---------------- task (status mutation) ----------------
+
+async function cmdTask(args) {
+  const parsed = parseArgs(args);
+  const specDir = parsed._[0];
+  if (!specDir) die('Error: <spec_dir> required');
+  if (!parsed.status || parsed.status === true) {
+    die('Error: --status <task_id>=<state> required');
+  }
+
+  const eq = parsed.status.indexOf('=');
+  if (eq <= 0 || eq === parsed.status.length - 1) {
+    die(`Error: --status must be '<task_id>=<state>' (got '${parsed.status}')`);
+  }
+  const taskId = parsed.status.slice(0, eq);
+  const nextState = parsed.status.slice(eq + 1);
+
+  if (!TASK_STATES.includes(nextState)) {
+    die(`Error: invalid state '${nextState}'. Must be one of: ${TASK_STATES.join(', ')}`);
+  }
+
+  const plan = readPlanIfExists(specDir);
+  if (!plan) die(`Error: plan.json not found in ${specDir}`);
+
+  const task = (plan.tasks || []).find((t) => t.id === taskId);
+  if (!task) die(`Error: task '${taskId}' not found in plan.json`);
+
+  const currentState = task.status || 'pending';
+
+  if (currentState === nextState) {
+    process.stdout.write(`${taskId}: ${nextState} (no change)\n`);
+    return;
+  }
+
+  if (currentState === 'done') {
+    process.stderr.write(
+      `Error: task '${taskId}' is already 'done' — INV-9 forbids re-transition to '${nextState}'\n`
+    );
+    process.exit(1);
+  }
+
+  task.status = nextState;
+  if (parsed.summary && parsed.summary !== true) task.summary = parsed.summary;
+
+  const { ok, errors } = validatePlan(plan);
+  if (!ok) {
+    process.stderr.write(`Schema validation failed:\n`);
+    for (const e of errors) process.stderr.write(`  - ${e}\n`);
+    process.exit(1);
+  }
+
+  const path = specPaths(specDir).plan;
+  writeJsonAtomic(path, plan);
+  process.stdout.write(
+    `${taskId}: ${currentState} → ${nextState}${parsed.summary && parsed.summary !== true ? ' — ' + parsed.summary : ''}\n`
+  );
+}
+
 // ---------------- dispatcher ----------------
 
 function die(msg) { process.stderr.write(msg + '\n'); process.exit(1); }
@@ -182,6 +282,8 @@ const COMMANDS = {
   init: cmdInit,
   merge: cmdMerge,
   get: cmdGet,
+  list: cmdList,
+  task: cmdTask,
   validate: cmdValidate,
 };
 

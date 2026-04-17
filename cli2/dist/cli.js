@@ -6911,7 +6911,11 @@ var plan_schema_default = {
             items: { type: "string", pattern: "^T\\d+$" }
           },
           parallel_safe: { type: "boolean" },
-          status: { enum: ["pending", "in_progress", "completed", "blocked"] }
+          status: {
+            enum: ["pending", "running", "done", "failed", "blocked"],
+            default: "pending"
+          },
+          summary: { type: "string" }
         }
       }
     },
@@ -7093,13 +7097,15 @@ async function req(args) {
 
 // src/commands/plan.js
 import { existsSync as existsSync3 } from "fs";
+var TASK_STATES = ["pending", "running", "done", "failed", "blocked"];
 var HELP2 = `
 Usage:
   hoyeon-cli2 plan <command> [options]
 
 Commands:
-  init <spec_dir> --type <greenfield|feature|refactor|bugfix>
+  init <spec_dir> --type <greenfield|feature|refactor|bugfix> [--force]
       Create an empty plan.json stub (schema: plan/v1).
+      --force: overwrite existing plan.json.
 
   merge <spec_dir> --json '<payload>' [--patch|--append]
       Merge payload into plan.json with schema validation.
@@ -7108,28 +7114,29 @@ Commands:
   get <spec_dir> --path <dotted.path>
       Read a field (e.g. meta.type, tasks[0].id, journeys[0].composes).
 
+  list <spec_dir> [--status <${TASK_STATES.join("|")}>] [--json]
+      List tasks. Filter by status. --json for machine-readable output.
+
+  task <spec_dir> --status <task_id>=<state> [--summary '...']
+      Mutate a task's status. <state> must be one of:
+        ${TASK_STATES.join(" | ")}
+      Idempotent: re-setting the same status exits 0 with no write.
+      Monotonic: a task already in 'done' cannot transition to anything else.
+
   validate <spec_dir>
-      Schema check + internal cross-ref integrity:
-        - tasks.fulfills \u2286 verify_plan targets (type=sub_req)
-        - journeys.composes \u2286 verify_plan targets (type=sub_req)
-        - journeys.id \u2286 verify_plan targets (type=journey)
-        - tasks.depends_on \u2286 tasks.id
-      (Does NOT validate coverage against requirements.md \u2014 that is the LLM's job.)
+      Schema check + internal cross-ref integrity.
 
 Options:
   --help, -h   This help.
-
-Note:
-  cli2 never reads requirements.md. Sub-requirement coverage is enforced at
-  /blueprint generation time by the LLM \u2014 cli2 only ensures plan.json is
-  self-consistent.
 `;
 async function cmdInit2(args) {
-  const { _: [specDir], type } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { _: [specDir], type } = parsed;
   if (!specDir) die2("Error: <spec_dir> required");
   if (!type) die2("Error: --type required (greenfield|feature|refactor|bugfix)");
+  const force = parsed.force === true;
   const path = specPaths(specDir).plan;
-  if (existsSync3(path)) die2(`Error: ${path} already exists`);
+  if (existsSync3(path) && !force) die2(`Error: ${path} already exists (use --force to overwrite)`);
   const stub = {
     schema: "plan/v1",
     meta: { type, goal: "<TBD>", non_goals: [] },
@@ -7240,6 +7247,88 @@ ${errors.length} error(s)
 `
   );
 }
+async function cmdList(args) {
+  const parsed = parseArgs(args);
+  const specDir = parsed._[0];
+  if (!specDir) die2("Error: <spec_dir> required");
+  const plan2 = readPlanIfExists(specDir);
+  if (!plan2) die2(`Error: plan.json not found in ${specDir}`);
+  let tasks = plan2.tasks || [];
+  const filterStatus = parsed.status;
+  if (filterStatus) {
+    tasks = tasks.filter((t) => t.status === filterStatus);
+  }
+  if (parsed.json) {
+    process.stdout.write(JSON.stringify({ tasks, total: (plan2.tasks || []).length, filtered: tasks.length }, null, 2) + "\n");
+  } else {
+    if (tasks.length === 0) {
+      process.stdout.write(filterStatus ? `No tasks with status '${filterStatus}'
+` : "No tasks\n");
+      return;
+    }
+    const pad = (s, n) => (s + " ".repeat(n)).slice(0, n);
+    process.stdout.write(pad("ID", 6) + pad("STATUS", 14) + pad("LAYER", 6) + "ACTION\n");
+    process.stdout.write("-".repeat(60) + "\n");
+    for (const t of tasks) {
+      process.stdout.write(
+        pad(t.id, 6) + pad(t.status || "pending", 14) + pad(t.layer || "-", 6) + (t.action.length > 50 ? t.action.slice(0, 47) + "..." : t.action) + "\n"
+      );
+    }
+    process.stdout.write(`
+${tasks.length}/${(plan2.tasks || []).length} tasks shown
+`);
+  }
+}
+async function cmdTask(args) {
+  const parsed = parseArgs(args);
+  const specDir = parsed._[0];
+  if (!specDir) die2("Error: <spec_dir> required");
+  if (!parsed.status || parsed.status === true) {
+    die2("Error: --status <task_id>=<state> required");
+  }
+  const eq = parsed.status.indexOf("=");
+  if (eq <= 0 || eq === parsed.status.length - 1) {
+    die2(`Error: --status must be '<task_id>=<state>' (got '${parsed.status}')`);
+  }
+  const taskId = parsed.status.slice(0, eq);
+  const nextState = parsed.status.slice(eq + 1);
+  if (!TASK_STATES.includes(nextState)) {
+    die2(`Error: invalid state '${nextState}'. Must be one of: ${TASK_STATES.join(", ")}`);
+  }
+  const plan2 = readPlanIfExists(specDir);
+  if (!plan2) die2(`Error: plan.json not found in ${specDir}`);
+  const task = (plan2.tasks || []).find((t) => t.id === taskId);
+  if (!task) die2(`Error: task '${taskId}' not found in plan.json`);
+  const currentState = task.status || "pending";
+  if (currentState === nextState) {
+    process.stdout.write(`${taskId}: ${nextState} (no change)
+`);
+    return;
+  }
+  if (currentState === "done") {
+    process.stderr.write(
+      `Error: task '${taskId}' is already 'done' \u2014 INV-9 forbids re-transition to '${nextState}'
+`
+    );
+    process.exit(1);
+  }
+  task.status = nextState;
+  if (parsed.summary && parsed.summary !== true) task.summary = parsed.summary;
+  const { ok, errors } = validatePlan(plan2);
+  if (!ok) {
+    process.stderr.write(`Schema validation failed:
+`);
+    for (const e of errors) process.stderr.write(`  - ${e}
+`);
+    process.exit(1);
+  }
+  const path = specPaths(specDir).plan;
+  writeJsonAtomic(path, plan2);
+  process.stdout.write(
+    `${taskId}: ${currentState} \u2192 ${nextState}${parsed.summary && parsed.summary !== true ? " \u2014 " + parsed.summary : ""}
+`
+  );
+}
 function die2(msg) {
   process.stderr.write(msg + "\n");
   process.exit(1);
@@ -7248,6 +7337,8 @@ var COMMANDS2 = {
   init: cmdInit2,
   merge: cmdMerge,
   get: cmdGet,
+  list: cmdList,
+  task: cmdTask,
   validate: cmdValidate
 };
 async function plan(args) {
@@ -7270,7 +7361,7 @@ Usage:
 
 Groups:
   req     requirements.md scaffolding (init only \u2014 cli2 does not parse .md)
-  plan    plan.json operations (init, merge, get, validate)
+  plan    plan.json operations (init, merge, get, list, task, validate)
 
 Options:
   --help, -h    Show this help message
@@ -7280,6 +7371,7 @@ Examples:
   hoyeon-cli2 req init .hoyeon/specs/my-spec --type greenfield
   hoyeon-cli2 plan init .hoyeon/specs/my-spec --type greenfield
   hoyeon-cli2 plan merge .hoyeon/specs/my-spec --json '{"tasks":[...]}'
+  hoyeon-cli2 plan task .hoyeon/specs/my-spec --status T1=running
   hoyeon-cli2 plan validate .hoyeon/specs/my-spec
 `;
 var GROUPS = {

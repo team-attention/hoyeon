@@ -9,7 +9,7 @@ Usage:
 
 Groups:
   req     requirements.md scaffolding (init only — cli2 does not parse .md)
-  plan    plan.json operations (init, merge, get, validate)
+  plan    plan.json operations (init, merge, get, list, task, validate)
 
 Options:
   --help, -h    Show this help message
@@ -19,6 +19,7 @@ Examples:
   hoyeon-cli2 req init .hoyeon/specs/my-spec --type greenfield
   hoyeon-cli2 plan init .hoyeon/specs/my-spec --type greenfield
   hoyeon-cli2 plan merge .hoyeon/specs/my-spec --json '{"tasks":[...]}'
+  hoyeon-cli2 plan task .hoyeon/specs/my-spec --status T1=running
   hoyeon-cli2 plan validate .hoyeon/specs/my-spec
 `;
 
