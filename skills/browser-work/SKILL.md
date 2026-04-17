@@ -45,11 +45,13 @@ CX=$(command -v chromux 2>/dev/null || echo "") && [ -n "$CX" ] && echo "CHROMUX
 
 If `MISSING`, report error and stop.
 
-Launch Chrome (head mode by default):
+Launch Chrome in headless mode (default):
 
 ```bash
-/path/to/chromux launch default 2>/dev/null || true
+/path/to/chromux launch default --headless 2>/dev/null || true
 ```
+
+To watch live, open `http://localhost:<port>` (from `chromux ps`) in your regular Chrome.
 
 #### 0-3. Generate Session ID
 

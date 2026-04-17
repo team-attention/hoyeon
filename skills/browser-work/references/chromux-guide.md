@@ -10,11 +10,13 @@ Resolve the chromux binary path (run once, remember the output):
 CX=$(command -v chromux 2>/dev/null || echo "") && [ -n "$CX" ] && echo "CHROMUX=$CX" || (npx @team-attention/chromux help >/dev/null 2>&1 && echo "CHROMUX=npx @team-attention/chromux" || echo "MISSING")
 ```
 
-Launch Chrome (skip if already running):
+Launch Chrome in headless mode (skip if already running):
 
 ```bash
-/path/to/chromux launch default 2>/dev/null || true
+/path/to/chromux launch default --headless 2>/dev/null || true
 ```
+
+To watch live, open `http://localhost:<port>` (from `chromux ps`) in your regular Chrome.
 
 ## CRITICAL: Shell Variable Persistence
 
