@@ -121,7 +121,29 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (v1.5.4)
+## Recent Changes (unreleased — execute2)
+
+- feat(execute2): plan-driven orchestrator built on /blueprint output
+  - Rewrote SKILL.md with Phase 0 input resolution (plan.json / requirements.md auto-blueprint / session-based virtual plan with confirm)
+  - AskUserQuestion for dispatch (direct/agent/team) + verify depth (light/standard/thorough) with plan-analysis hints
+  - contracts.md path auto-injected into worker charter (no body inlining — INV-2)
+  - Orchestrator Boundaries: reads plan.json structural fields only, never requirements/contracts body (INV-3 / R-N15.2)
+  - Resume Behavior: idempotent done-skip uniform across all 3 modes (R-F8.2)
+  - Concurrency Rules: no sleep/polling, single-message parallel dispatch (INV-4)
+- feat(execute2): 6 dispatch/verify recipes as reference files (all charter = paths+IDs only, INV-2)
+  - references/direct.md — topological sequential, retry max 2, dispatch ceiling 5, single end commit
+  - references/agent.md — parallel_safe ready set, module-group batching, notification-based collection, round-level commit
+  - references/team.md — TeamCreate with longest-deps-first claim, persistent MODULE_CACHE/CONTRACTS_SEEN, internal self-verify/fix loop max 2
+  - references/worker-charter.md [NEW] — canonical charter + WorkerOutput shapes, round>1 learnings/issues read, anti-pattern section
+  - references/verify.md — unified pipeline (depth = gate cap), coverage pre-check + gap re-dispatch, parallel gate=1 toolchain, gate=2 double review (code-reviewer + spec-coverage), gate=3 qa-verifier
+  - references/contracts-patch.md [NEW] — mismatch detection + orchestrator auto-Edit + audit log (no user confirm per INV-7)
+- feat(agents): new spec-coverage agent — GWT citation enforcement for gate=2 double review
+- feat(cli2): `plan task --status <id>=<state>` subcommand with TaskStatus enum + monotonic done-lock (INV-9) + idempotent no-op
+- feat(execute2): Output Artifacts: audit.md append-only event log, learnings.json/issues.json worker-managed, NO report.md file
+- feat(execute2): Stdout Report: 8 fixed sections (Status/Summary/Post-Work/Tasks/Matrix/Patches/Issues/Learnings), Post-Work directly under Summary
+- Total: 1 new skill (execute2), 2 new agents, 6 new reference files, 1 new cli2 command. ~3000+ lines across commits.
+
+## Previous Changes (v1.5.4)
 
 - feat(execute): add conditional code review to verify-standard (Tier 0 + Tier 1 + CR)
   - Same auto-pass conditions as thorough (diff ≤ 200 lines, no new deps, low risk)
