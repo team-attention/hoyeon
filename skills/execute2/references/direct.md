@@ -154,6 +154,22 @@ FOR EACH task IN ordered:
     except FatalError as e:
       result = { status: "failed", reason: str(e), files: [] }
 
+    # (C.5b) Contracts auto-patch hook (C4 / R-F9.1 / R-F9.2).
+    # MUST run BEFORE we mark the task done or enqueue a retry. The recipe
+    # inline-edits contracts.md, appends to audit.md, and returns control — no
+    # user confirm (INV-7). See ${baseDir}/references/contracts-patch.md.
+    IF contracts_path AND (
+         result.contract_mismatch OR
+         (result.status == "blocked" AND
+          /contract|invariant|interface/i.test(result.blocked_reason or ""))
+       ):
+      run_recipe("contracts-patch",
+        worker_output  = result,
+        task_id        = task.id,
+        round          = attempt,
+        contracts_path = contracts_path,
+        audit_path     = {spec_dir}/audit.md)
+
     # (C.6) Tier-1 mechanical checks
     tier1 = run_mechanical_checks()            # build / lint / typecheck
 

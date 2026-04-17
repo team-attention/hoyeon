@@ -217,9 +217,10 @@ redundant null guards, single-use helpers, leftover TODO/console.log/debugger.
 1. Each sub_req GWT in fulfills[] is satisfied (cite file:line).
 2. Build / lint / typecheck pass (Tier 1 mechanical).
 
-## Record learnings/issues (NOT via cli2 — use Edit directly; INV-5)
-- On success with a non-obvious discovery → Edit {CONTEXT_DIR}/learnings.json append.
-- On BLOCKED or FAILED → Edit {CONTEXT_DIR}/issues.json append.
+## Record learnings/issues (NOT via cli2 — Read+Write pattern per worker-charter §3.5; INV-5)
+- On success with a non-obvious discovery → Read {CONTEXT_DIR}/learnings.json, append entry to array, Write back.
+- On BLOCKED or FAILED → Read {CONTEXT_DIR}/issues.json, append entry to array, Write back.
+- Never `Edit` these files with line-anchor replacement — they are JSON arrays; use the Read+Write pattern.
 
 ## Mark tasks done (cli2, per INV-5)
 For each task you completed:
@@ -258,9 +259,13 @@ Key properties:
 Exactly **one** commit per round. Never per-task, never per-group.
 
 ```
-function commit_round(round_id, round_workers):
+function commit_round(round_id, round_workers, round_groups):
   if work == "no-commit":
     return                                    # commit disabled
+
+  # Derive task id list + group count from the round's dispatched groups.
+  round_task_ids = [t.id for g in round_groups for t in g.tasks]
+  group_count    = len(round_groups)
 
   # Wait until every worker in the round has posted its done-notification.
   # (Not a sleep — this is just "don't commit until the round aggregate
@@ -280,11 +285,11 @@ function commit_round(round_id, round_workers):
     description   = "Round {round_id} commit",
     prompt        = "Commit all changes produced in round {round_id}. "
                     "Spec: {spec_dir}. "
-                    "Include task IDs [{round_task_ids}] in the commit message. "
+                    "Include task IDs [" + round_task_ids.join(",") + "] in the commit message. "
                     "One commit only (INV-1)."
   )
 
-  append_audit("ROUND {round_id} COMMIT: tasks={round_task_ids}, groups={group_count}")
+  append_audit("ROUND {round_id} COMMIT: tasks=[" + round_task_ids.join(",") + "], groups=" + group_count)
 ```
 
 After the round commit, return to Phase A and compute the next ready set.
@@ -298,15 +303,34 @@ The notification handler routes on `status`:
 
 ```
 on_worker_done(worker_id, parsed):
+  # Contracts auto-patch hook (C4 / R-F9.1 / R-F9.2) — MUST run BEFORE per-task
+  # routing, so any patch applies before a task is marked done or re-dispatched.
+  # See ${baseDir}/references/contracts-patch.md. No user confirm (INV-7).
+  IF contracts_path AND (
+       parsed.contract_mismatch OR
+       (parsed.status == "blocked" AND
+        /contract|invariant|interface/i.test(parsed.blocked_reason or ""))
+     ):
+    run_recipe("contracts-patch",
+      worker_output  = parsed,
+      task_id        = worker.tasks[0].id,   # representative origin for the group
+      round          = round_id,
+      contracts_path = contracts_path,
+      audit_path     = CONTEXT_DIR + "/audit.md")
+
+  # Per-task outcome is derived from plan.json (the worker marked each task via
+  # cli2 per its charter). WorkerOutput's top-level `status` is the group-level
+  # summary; re-read plan.json to get per-task status.
+  fresh_tasks = cli2("plan get {plan_path} --path tasks")
   for task in worker.tasks:
-    per_task = parsed.task_results.find(r => r.task_id == task.id)
-    switch per_task.status:
+    current = fresh_tasks.find(t => t.id == task.id)
+    switch current.status:
       case "done":
         # already marked done by the worker via cli2. nothing to do.
       case "failed":
-        handle_failed(task, per_task)
+        handle_failed(task, parsed)
       case "blocked":
-        handle_blocked(task, per_task)
+        handle_blocked(task, parsed)
 ```
 
 ### FAILED retry  *(R-F7.1, bounded)*
@@ -381,7 +405,7 @@ function run_agent_mode():
     await_round_notifications(round_id)          # handler-driven, not poll
 
     # ── Phase D: round-level commit (INV-1) ─────────────────────
-    commit_round(round_id, round_workers)
+    commit_round(round_id, round_workers, groups)
 
   # Serial ready tasks (parallel_safe=false) accumulated across rounds are
   # handed off to direct.md as a trailing serial pass, NOT interleaved into

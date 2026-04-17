@@ -299,6 +299,125 @@ field and use it.
 
 ---
 
+## Helper Definitions
+
+Each helper below is a plain function the orchestrator runs in its own
+context — no sub-agents, no cli2. All file access uses `Read` only (anchor /
+label scanning is a metadata read, permitted by the INV-3 carve-out above).
+
+### `next_invariant_id(contracts_path) → string`
+
+```
+text = Read(contracts_path)
+# Match every bullet like `- **INV-12**:` or `**INV-7**:` case-insensitively.
+ids = regex_find_all(text, /\bINV-(\d+)\b/)
+IF ids is empty:
+  return "INV-1"
+max_n = max(int(n) for n in ids)
+return "INV-" + (max_n + 1)
+```
+
+### `extract_interface_name(text) → string | null`
+
+```
+# Preferred: explicit `### Name` reference in the mismatch text.
+m = regex_find(text, /###\s+([A-Za-z][A-Za-z0-9_]*)/)
+IF m: return m.group(1)
+
+# Fallback: any TitleCase token adjacent to a contract/interface keyword.
+m = regex_find(text, /(?:interface|contract|shape|schema|type)\s+`?([A-Z][A-Za-z0-9_]+)`?/i)
+IF m: return m.group(1)
+
+# Final fallback: first TitleCase token in the text.
+m = regex_find(text, /\b([A-Z][A-Za-z0-9_]{2,})\b/)
+return m ? m.group(1) : null
+```
+
+### `extract_field_name(text) → string | null`
+
+```
+# Preferred: a backtick-quoted token immediately after "field"/"property"/"param".
+m = regex_find(text, /(?:field|property|param|parameter|key)\s+`([^`]+)`/i)
+IF m: return m.group(1)
+
+# Fallback: any backtick-quoted identifier in the text.
+m = regex_find(text, /`([A-Za-z_][A-Za-z0-9_]*)`/)
+return m ? m.group(1) : null
+```
+
+### `one_line_summary(text) → string`
+
+```
+# First sentence boundary, capped at 140 chars; normalize whitespace.
+first = split(text, /(?<=[.!?])\s+/)[0] or text
+trimmed = normalize_whitespace(first)
+return trimmed.length > 140 ? trimmed.slice(0, 137) + "..." : trimmed
+```
+
+### `has_section(contracts_path, heading) → bool`
+
+```
+# heading example: "## Notes" or "## Invariants"
+text = Read(contracts_path)
+return regex_find(text, "^" + escape(heading) + "\\s*$", multiline=true) != null
+```
+
+### `find_section_anchor(contracts_path, heading) → string`
+
+```
+# Returns the last non-empty line inside the named section (used as unique
+# Edit anchor when appending). If the section has no body yet, returns the
+# heading line itself.
+text = Read(contracts_path)
+lines = text.split("\n")
+start = lines.find_index(line => line.strip() == heading.strip())
+IF start < 0: ERROR "section not found: " + heading
+
+# Walk forward until the next `## ` heading or EOF.
+end = start + 1
+WHILE end < lines.length AND NOT lines[end].startswith("## "):
+  end += 1
+
+# Last non-empty line inside [start+1 .. end) — fallback to heading.
+body = [lines[i] for i in range(start + 1, end) if lines[i].strip() != ""]
+return body.length > 0 ? body[-1] : lines[start]
+```
+
+### `find_last_invariant_line(contracts_path) → string`
+
+```
+# Convenience wrapper — Invariants section is the canonical append target for
+# add_invariant / mark_allowed_churn.
+return find_section_anchor(contracts_path, "## Invariants")
+```
+
+### `find_interface_anchor(contracts_path, section_heading) → string`
+
+```
+# section_heading example: "### WorkerOutput"
+# Returns the last non-empty line inside that interface's subsection so the
+# orchestrator can Edit(old=anchor, new=anchor + "\n- new bullet").
+text = Read(contracts_path)
+lines = text.split("\n")
+start = lines.find_index(line => line.strip() == section_heading.strip())
+IF start < 0: ERROR "interface section not found: " + section_heading
+
+# Walk forward until the next `## ` or `### ` heading or EOF.
+end = start + 1
+WHILE end < lines.length AND NOT (
+  lines[end].startswith("## ") OR lines[end].startswith("### ")
+):
+  end += 1
+
+body = [lines[i] for i in range(start + 1, end) if lines[i].strip() != ""]
+return body.length > 0 ? body[-1] : lines[start]
+```
+
+Each helper is deterministic and read-only — mutation of `contracts.md`
+happens exclusively in `apply_patch` (Phase B) via `Edit` / `Write`.
+
+---
+
 ## Traceability
 
 | Sub-req  | Implemented by                                                    |

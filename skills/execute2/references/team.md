@@ -155,8 +155,13 @@ Do NOT run git — lead commits per round (C2).
   TaskUpdate(taskId=tracking, status="completed")
 
 ## Step 9 — Report to lead
+  # If the orchestrator needs to auto-patch contracts.md (C4), the lead must see
+  # the mismatch text. Append a trailing "CONTRACT_MISMATCH: ..." token to the
+  # content so the lead's message handler can pick it up without re-parsing the
+  # whole WorkerOutput.
+  contract_tail = (contract_mismatch ? " | CONTRACT_MISMATCH: " + contract_mismatch : "")
   SendMessage(recipient="team-lead", type="message",
-    content="DONE {task_id}: {summary}. Files: {files_modified}. Fulfills: {citations}.",
+    content="DONE {task_id}: {summary}. Files: {files_modified}. Fulfills: {citations}." + contract_tail,
     summary="{task_id} done")
 
 ## Output (last message, JSON)
@@ -182,14 +187,18 @@ Injected into each worker session at spawn. Separate from `WORKER_DESCRIPTION` �
 loop that lets a single worker claim many tasks while keeping its in-session memory.
 
 ```
-WORKER_PREAMBLE(team_name, worker_name, plan_path, spec_dir, CONTEXT_DIR) = """
+WORKER_PREAMBLE(team_name, worker_name, plan_path, contracts_path, spec_dir, CONTEXT_DIR) = """
 You are TEAM WORKER "{worker_name}" in team "{team_name}".
 Report to "team-lead" via SendMessage. Never Read/Write plan.json directly — cli2 only.
+
+Session constants (already resolved by lead):
+  - contracts_path: {contracts_path ?? "(none)"}
 
 == PERSISTENT CLAIM LOOP ==
 
 State you keep across claims (in-session memory, DO NOT re-read unless invalidated):
   - CONTRACTS_SEEN: set of contracts_path values you've already Read
+    (seeded empty; add {contracts_path} after your first Read of it)
   - MODULE_CACHE:   map of module → files you've already Read from that module
   - LEARNINGS_SEEN: last snapshot hash of learnings.json
 
@@ -278,7 +287,7 @@ FOR i in 1..N:
     subagent_type="worker",
     name="worker-{i}",
     description="Team worker {i}",
-    prompt=WORKER_PREAMBLE(team_name, "worker-{i}", plan_path, spec_dir, CONTEXT_DIR),
+    prompt=WORKER_PREAMBLE(team_name, "worker-{i}", plan_path, contracts_path, spec_dir, CONTEXT_DIR),
     run_in_background=true
   )
 
@@ -291,6 +300,23 @@ WHILE has_pending_tasks_in_plan():
   msg = wait_for_SendMessage()
 
   IF msg.content starts with "DONE":
+    # Contracts auto-patch hook (C4 / R-F9.1 / R-F9.2) — run BEFORE the task is
+    # rolled into the round commit tally. Worker Step 9 appends a
+    # "CONTRACT_MISMATCH: ..." tail when applicable; pull the text out here.
+    cm = regex_find(msg.content, /CONTRACT_MISMATCH:\s*(.+)$/)
+    IF contracts_path AND cm:
+      synthesized_output = {
+        status: "done",
+        contract_mismatch: cm.group(1).trim(),
+        blocked_reason: null
+      }
+      run_recipe("contracts-patch",
+        worker_output  = synthesized_output,
+        task_id        = msg.task_id,
+        round          = round_idx,
+        contracts_path = contracts_path,
+        audit_path     = CONTEXT_DIR + "/audit.md")
+
     round_completed_tasks.append(msg.task_id)
     standing_by.discard(msg.worker)
 
@@ -367,10 +393,10 @@ function handle_failed(msg):
       ),
       owner=null
     )
-    Edit(audit.md, append="RETRY {msg.task_id} round={retry_count[msg.task_id] + 1}: {msg.summary}")
+    Edit(CONTEXT_DIR + "/audit.md", append="RETRY {msg.task_id} round={retry_count[msg.task_id] + 1}: {msg.summary}")
     wake_standing_by_workers()
   ELSE:
-    Edit(audit.md, append="HALT {msg.task_id}: failed after R-F7.1 retries. Worker internal 2 + lead 2 = R-F7.1 budget exhausted (INV-6 floor).")
+    Edit(CONTEXT_DIR + "/audit.md", append="HALT {msg.task_id}: failed after R-F7.1 retries. Worker internal 2 + lead 2 = R-F7.1 budget exhausted (INV-6 floor).")
     HALT
 ```
 
@@ -379,9 +405,23 @@ function handle_failed(msg):
 ```
 function handle_blocked(msg):
   fix_task_json = derive_fix_task(msg)    # id, action, depends_on, fulfills
+  fix_id = fix_task_json.id
   Bash("hoyeon-cli2 plan merge {plan_path} --append --json '{fix_task_json}'")
-  TaskCreate(subject="{fix_id}:Work — fix", description=WORKER_DESCRIPTION(...), owner=null)
-  Edit(audit.md, append="BLOCKED {msg.task_id}: appended fix {fix_id}")
+  TaskCreate(
+    subject="{fix_id}:Work — fix for {msg.task_id}",
+    description=WORKER_DESCRIPTION(
+      task_id=fix_id,
+      plan_path=plan_path,
+      contracts_path=contracts_path,
+      sub_req_ids=fix_task_json.fulfills,
+      spec_dir=spec_dir,
+      round=1,
+      prior_failure_context="BLOCKED by {msg.task_id}: {msg.blocked_reason}",
+      CONTEXT_DIR=CONTEXT_DIR
+    ),
+    owner=null
+  )
+  Edit(CONTEXT_DIR + "/audit.md", append="BLOCKED {msg.task_id}: appended fix {fix_id}")
   wake_standing_by_workers()
 ```
 

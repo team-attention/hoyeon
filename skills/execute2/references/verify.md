@@ -159,16 +159,16 @@ IF gaps AND gap_retry_rounds < 1:
   # as persistent immediately (the retry budget is not consumed).
   IF dispatched_any:
     gap_retry_rounds += 1
+    # After all re-dispatched workers return: rebuild coverage (goto Step 1)
+    → goto Step 1
   ELSE:
     FOR sid in gaps:
       Edit(CONTEXT_DIR/audit.md, append="""
       [{timestamp}] PERSISTENT_GAP_CEILING_BLOCKED sub_req={sid}
         reason: every owning task hit INV-6 dispatch ceiling — no gap re-dispatch occurred
       """)
-    # Fall through to Step 4 without incrementing gap_retry_rounds
-
-  # After all re-dispatched workers return: rebuild coverage (goto Step 1)
-  → goto Step 1
+    # Fall through to Step 4 without incrementing gap_retry_rounds AND
+    # without re-looping — ceiling-blocked gaps are terminal for this round.
 ```
 
 ### Step 4: Persistent gap → PARTIAL (R-F10.4)
@@ -221,10 +221,17 @@ tier0_checks = collect_background_results([build, lint, typecheck, unit])
 
 IF any check.status == "FAIL":
   gate1_status = "FAIL"
-  # Do NOT dispatch gate=2/gate=3 — fail-fast before higher gates
-  → enter Fix Loop (R-F11.5) targeting failing tasks (best-effort task attribution
-    from diff or test output). If fix loop already used or unavailable, mark
-    run_status = "FAILED" and skip to report.
+  # Do NOT dispatch gate=2/gate=3 — fail-fast before higher gates.
+  # Accumulate failures (best-effort task attribution from diff / test output)
+  # and redirect to Phase 2.3 (Fix Loop). Phase 2.3 is the SOLE writer of
+  # run_status = "FAILED" (see Phase 2.5 invariant) — do NOT inline-set it here.
+  FOR check IN checks WHERE check.status == "FAIL":
+    failures.append({
+      task: attributed_task_from_diff_or_output(check),
+      gate: 1,
+      reason: check.stderr or check.stdout
+    })
+  → goto Phase 2.3 (Fix Loop)
 ELIF "no tests" in unit.stdout:
   unit.status = "PASS"   # warning only — no blocking
   gate1_status = "PASS"
@@ -426,6 +433,7 @@ IF failures AND fix_loop_rounds < 1:
           IF s in (t.fulfills or []):
             sub_req_ids_for_task.setdefault(t.id, set()).add(s)
 
+  fix_dispatched_any = False
   FOR tid, fails in by_task.items():
     IF dispatch_count[tid] >= 5:    # INV-6 ceiling
       audit.append("DISPATCH_CEILING_EXCEEDED", tid)
@@ -443,11 +451,24 @@ IF failures AND fix_loop_rounds < 1:
     Bash("hoyeon-cli2 plan task --status {tid}=running")
     dispatch_worker(charter)
     dispatch_count[tid] += 1
+    fix_dispatched_any = True
 
-  fix_loop_rounds += 1
-  # After fix workers return, GO BACK to Phase 2.1 (gate=1) — we re-run the full
-  # gate stack, not just the failed gate. Toolchain must still pass.
-  → goto Phase 2.1
+  # Only consume the fix-loop budget + re-run gates when we actually dispatched
+  # at least one worker. If every owning task was ceiling-blocked the budget is
+  # preserved — and without new work there's nothing to re-verify, so mark the
+  # run FAILED and proceed to aggregation (symmetric to the gap-retry guard).
+  IF fix_dispatched_any:
+    fix_loop_rounds += 1
+    # After fix workers return, GO BACK to Phase 2.1 (gate=1) — we re-run the full
+    # gate stack, not just the failed gate. Toolchain must still pass.
+    → goto Phase 2.1
+  ELSE:
+    Edit(CONTEXT_DIR/audit.md, append="""
+    [{timestamp}] FIX_LOOP_CEILING_BLOCKED
+      reason: every failing task's owner hit INV-6 dispatch ceiling — no fix re-dispatch occurred
+    """)
+    run_status = "FAILED"
+    → proceed to Final Aggregation with failures recorded
 
 ELIF failures AND fix_loop_rounds >= 1:
   run_status = "FAILED"    # one fix round already spent; no more retries
