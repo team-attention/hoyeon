@@ -64,8 +64,8 @@ retries (step 8), and later by `verify.md` for gap re-dispatch / verify fix.
 ### 1.1 Build ordered work list
 
 ```
-# Fetch tasks via cli2 only — never Read plan.json directly (INV-5)
-all_tasks = Bash("hoyeon-cli2 plan get {plan_path} --path tasks --json").tasks
+# Fetch tasks via cli2
+all_tasks = Bash("hoyeon-cli2 plan get {spec_dir} --path tasks").tasks
 
 # Topological sort honoring depends_on; ties broken by (layer asc, id asc).
 ordered = topo_sort(all_tasks, key=lambda t: (t.layer, t.id))
@@ -84,7 +84,7 @@ FOR EACH task IN ordered:
   # ───────────────────────────────────────────────────────────
   # (A) Idempotent skip — fulfills R-F3.2 / INV-9
   # ───────────────────────────────────────────────────────────
-  current = Bash("hoyeon-cli2 plan get {plan_path} --path tasks")
+  current = Bash("hoyeon-cli2 plan get {spec_dir} --path tasks")
             .find(t => t.id == task.id)
   IF current.status == "done":
     audit_append("SKIP {task.id} (already done)")

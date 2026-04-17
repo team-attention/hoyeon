@@ -191,7 +191,7 @@ You are a Worker subagent. Round {round_id}. Dispatch mode: agent.
 
 ## Self-read protocol (MANDATORY — charter gives paths/IDs only, INV-2)
 1. For each task_id in [{tasks.map(t => t.id)}]:
-     task = `hoyeon-cli2 plan get {plan_path} --path tasks` → find by id
+     task = `hoyeon-cli2 plan get {spec_dir} --path tasks` → find by id
      fulfills = task.fulfills
 2. Read ONLY the sub-requirement sections of {spec_dir}/requirements.md that
    correspond to fulfills[]. Do NOT read the whole file into working memory.
@@ -224,11 +224,11 @@ redundant null guards, single-use helpers, leftover TODO/console.log/debugger.
 
 ## Mark tasks done (cli2, per INV-5)
 For each task you completed:
-  `hoyeon-cli2 plan task {plan_path} --status {task_id}=done --summary '<one line>'`
+  `hoyeon-cli2 plan task {spec_dir} --status {task_id}=done --summary '<one line>'`
 For BLOCKED:
-  `hoyeon-cli2 plan task {plan_path} --status {task_id}=blocked --summary '<reason>'`
+  `hoyeon-cli2 plan task {spec_dir} --status {task_id}=blocked --summary '<reason>'`
 For FAILED:
-  `hoyeon-cli2 plan task {plan_path} --status {task_id}=failed --summary '<reason>'`
+  `hoyeon-cli2 plan task {spec_dir} --status {task_id}=failed --summary '<reason>'`
 
 ## Output (last message — WorkerOutput contract)
 ```json

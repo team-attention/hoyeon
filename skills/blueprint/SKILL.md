@@ -218,7 +218,39 @@ cli2 does NOT verify coverage against requirements.md. **You** must ensure:
 
 - **Parallel safety**: for each L1 task pair with `parallel_safe: true`, double-check they touch different modules and share only L0 contract state. If uncertain → set `parallel_safe: false` (serial is safe default).
 
-### Step 2.3: Merge tasks into plan.json
+### Step 2.3: Preview task graph for user
+
+Before merging, show the user what was planned. Print a readable summary:
+
+```
+[blueprint] Task Graph (Phase 2)
+
+| # | Layer | Action | Fulfills | Depends | Parallel |
+|---|-------|--------|----------|---------|----------|
+| T1 | L0 | write contracts.md + storage sig | R-T2.1, R-T7.1 | — | no |
+| T2 | L1 | implement auth flow | R-U1.1, R-U1.2 | T1 | yes |
+| ...
+
+Coverage: 12/12 sub-reqs fulfilled (0 uncovered)
+```
+
+**Auto-approve**: `meta.type == bugfix` AND no ambiguities → skip the ask, print the table, proceed.
+Otherwise ask:
+```
+AskUserQuestion(
+  question: "Proceed with this task graph?",
+  options: [
+    { label: "Approve", description: "Merge tasks into plan.json and continue" },
+    { label: "Revise", description: "Re-generate with feedback" },
+    { label: "Abort", description: "Stop blueprint" }
+  ]
+)
+```
+
+If **Revise**: ask what to change, re-dispatch taskgraph-planner with the feedback. Max 2 revision rounds.
+If **Abort**: exit skill.
+
+### Step 2.4: Merge tasks into plan.json
 
 ```bash
 cat > /tmp/bp-tasks.json << 'EOF'
@@ -334,7 +366,41 @@ Expected output:
 
 If mismatch, re-dispatch verify-planner with the gap list. Max 2 retries.
 
-### Step 4.3: Merge verify_plan
+### Step 4.3: Preview verify plan for user
+
+Show the gate assignments so the user understands what verification will happen:
+
+```
+[blueprint] Verify Plan (Phase 4)
+
+| Target | Type | Gates | Rationale |
+|--------|------|-------|-----------|
+| R-T2.1 | sub_req | 1, 2 | pure logic, no UI |
+| R-U5.1 | sub_req | 1, 2, 3 | visible UI behavior |
+| R-B3.1 | sub_req | 1, 2, 4 | subjective quality |
+| J1 | journey | 1, 2, 3 | E2E user flow |
+| ...
+
+Summary: {N} entries — G1:{n} G2:{n} G3:{n} G4:{n}
+```
+
+**Auto-approve**: `meta.type == bugfix` AND no ambiguities → skip the ask, print the table, proceed.
+Otherwise ask:
+```
+AskUserQuestion(
+  question: "Proceed with this verify plan?",
+  options: [
+    { label: "Approve", description: "Merge verify_plan and finalize" },
+    { label: "Revise", description: "Adjust gate assignments" },
+    { label: "Abort", description: "Stop blueprint" }
+  ]
+)
+```
+
+If **Revise**: ask which targets need gate changes, re-dispatch or manually patch. Max 2 rounds.
+If **Abort**: exit skill.
+
+### Step 4.4: Merge verify_plan
 
 ```bash
 cat > /tmp/bp-verify.json << 'EOF'

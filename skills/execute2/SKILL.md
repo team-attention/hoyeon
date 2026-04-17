@@ -93,14 +93,14 @@ Handle each `input_mode` — the goal is to end this sub-phase with a validated 
 ```
 IF input_mode == "plan":                             # R-F1.1
   # Direct use — NO user confirm.
-  Bash("hoyeon-cli2 plan validate {spec_dir}/plan.json")
+  Bash("hoyeon-cli2 plan validate {spec_dir}")
 
 ELIF input_mode == "requirements":                   # R-F1.2
   # Auto-invoke /blueprint — NO user confirm. Blueprint writes plan.json (and
   # optionally contracts.md) into the same spec_dir.
   Skill(blueprint, args="{spec_dir}")
   ASSERT exists(spec_dir/plan.json) else ABORT
-  Bash("hoyeon-cli2 plan validate {spec_dir}/plan.json")
+  Bash("hoyeon-cli2 plan validate {spec_dir}")
 
 ELIF input_mode == "virtual":                        # R-F1.3
   # Session-context synthesis with user confirm.
@@ -135,8 +135,8 @@ ELIF input_mode == "virtual":                        # R-F1.3
   # Persist via cli2 (INV-5). Write, then validate.
   write_json_to_tmp(draft_plan) → /tmp/plan-virtual.json
   Bash("hoyeon-cli2 plan init {spec_dir} --type {draft_plan.meta.type}")
-  Bash("hoyeon-cli2 plan merge {spec_dir}/plan.json --json \"$(cat /tmp/plan-virtual.json)\"")
-  Bash("hoyeon-cli2 plan validate {spec_dir}/plan.json")
+  Bash("hoyeon-cli2 plan merge {spec_dir} --json \"$(cat /tmp/plan-virtual.json)\"")
+  Bash("hoyeon-cli2 plan validate {spec_dir}")
 ```
 
 At the end of 0.2 we have: `spec_dir/plan.json` (valid) + `input_mode` + (optionally) `spec_dir/contracts.md`.
@@ -146,7 +146,7 @@ At the end of 0.2 we have: `spec_dir/plan.json` (valid) + `input_mode` + (option
 INV-3: read **only** structural fields from `plan.json`. Do NOT open `requirements.md` or `contracts.md` body here.
 
 ```
-plan = Bash("hoyeon-cli2 plan get {spec_dir}/plan.json --json") → parse
+plan = Read("{spec_dir}/plan.json") → JSON.parse
 
 # Structural metrics used by 0.4 prompts
 task_count     = len(plan.tasks)
@@ -293,7 +293,7 @@ across all three dispatch modes.
 
 ```
 # Runs at the top of every dispatch recipe, before any worker is spawned.
-plan       = Bash("hoyeon-cli2 plan get {plan_path} --json")
+plan       = Read("{plan_path}") → JSON.parse
 done_ids   = { t.id for t in plan.tasks if t.status == "done" }   # INV-9: monotonic
 pending    = [ t for t in plan.tasks if t.status != "done" ]
 

@@ -67,8 +67,7 @@ has unrecoverable persistent gaps, but verify still renders the matrix.
 
 ```
 # Read done tasks from plan.json
-done_tasks = Bash("hoyeon-cli2 plan get {plan_path} --json").tasks
-              .filter(t => t.status == "done")
+done_tasks = Bash("hoyeon-cli2 plan list {spec_dir} --status done --json").tasks
 
 # Pull every sub_req ID that appears in verify_plan
 all_sub_ids = unique([vp.target for vp in plan.verify_plan if vp.type == "sub_req"])

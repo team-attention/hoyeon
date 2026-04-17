@@ -31,7 +31,7 @@ frontier. A bucket = set of tasks that share a primary module/file-scope **and**
 a `depends_on` edge with each other.
 
 ```
-pending = Bash("hoyeon-cli2 plan get {plan_path} --status pending --json").tasks
+pending = Bash("hoyeon-cli2 plan list {spec_dir} --status pending --json").tasks
 ready   = pending.filter(t => all(d.status == "done" for d in t.depends_on))
 
 buckets = group_by_module(ready)
@@ -117,10 +117,10 @@ Do NOT re-claim here. If your session somehow reached this step without holding 
 claim, abort and let the LOOP re-run step 3.
 
 ## Step 2 — Self-read GWT
-  hoyeon-cli2 plan get {plan_path} --task {task_id} --json
-  → yields action, depends_on, fulfills[], and embedded sub-requirement GWT
+  Read("{plan_path}") → JSON.parse → find task by {task_id}
+  → yields action, depends_on, fulfills[], and sub-requirement IDs
 
-Do NOT Read requirements.md or spec.json. Do NOT Read plan.json directly.
+Do NOT Read requirements.md or spec.json.
 
 ## Step 3 — Self-read contracts (if present)
   IF {contracts_path} != null AND this is your FIRST claim in this session:
@@ -150,7 +150,7 @@ Do NOT run git — lead commits per round (C2).
   Edit {CONTEXT_DIR}/issues.json     (append JSON if blockers)
 
 ## Step 8 — Mark done
-  hoyeon-cli2 plan task {plan_path} --status {task_id}=done \
+  hoyeon-cli2 plan task {spec_dir} --status {task_id}=done \
     --summary '{one-line summary}'
   TaskUpdate(taskId=tracking, status="completed")
 
@@ -204,7 +204,7 @@ State you keep across claims (in-session memory, DO NOT re-read unless invalidat
 
 LOOP:
   1. LIST ready tasks:
-       hoyeon-cli2 plan get {plan_path} --status pending --json
+       hoyeon-cli2 plan list {spec_dir} --status pending --json
      Filter to tasks whose depends_on are all `done`.
      IF empty → emit "standing by" → WAIT for SendMessage wake-up, then restart LOOP.
 
@@ -226,7 +226,7 @@ LOOP:
        highest-priority task from a new module.
 
   3. CLAIM (atomic via cli2 flock):
-       hoyeon-cli2 plan task {plan_path} --status {picked_id}=running
+       hoyeon-cli2 plan task {spec_dir} --status {picked_id}=running
      IF cli2 reports "already claimed" → loop back to step 1.
 
   4. EXECUTE the task by following its TaskCreate description (WORKER_DESCRIPTION
@@ -380,7 +380,7 @@ function handle_failed(msg):
   IF retry < 2:
     retry_count[msg.task_id] = retry + 1
     # Return to pending so any worker can re-claim
-    Bash("hoyeon-cli2 plan task {plan_path} --status {msg.task_id}=pending")
+    Bash("hoyeon-cli2 plan task {spec_dir} --status {msg.task_id}=pending")
     # Re-issue TaskCreate with prior_failure_context populated
     TaskCreate(
       subject="{msg.task_id}:Work (retry {retry_count[msg.task_id]})",
@@ -406,7 +406,7 @@ function handle_failed(msg):
 function handle_blocked(msg):
   fix_task_json = derive_fix_task(msg)    # id, action, depends_on, fulfills
   fix_id = fix_task_json.id
-  Bash("hoyeon-cli2 plan merge {plan_path} --append --json '{fix_task_json}'")
+  Bash("hoyeon-cli2 plan merge {spec_dir} --append --json '{fix_task_json}'")
   TaskCreate(
     subject="{fix_id}:Work — fix for {msg.task_id}",
     description=WORKER_DESCRIPTION(
