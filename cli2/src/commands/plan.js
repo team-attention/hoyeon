@@ -233,6 +233,10 @@ async function cmdTask(args) {
   const taskId = parsed.status.slice(0, eq);
   const nextState = parsed.status.slice(eq + 1);
 
+  if (!/^[A-Za-z0-9._-]+$/.test(taskId)) {
+    die(`Error: invalid task ID format '${taskId}'`);
+  }
+
   if (!TASK_STATES.includes(nextState)) {
     die(`Error: invalid state '${nextState}'. Must be one of: ${TASK_STATES.join(', ')}`);
   }

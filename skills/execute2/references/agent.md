@@ -167,6 +167,12 @@ The charter is **paths and IDs only**. The worker self-reads spec body. No
 GWT, no requirements prose, no contracts body is inlined by the orchestrator.
 
 ```
+# NOTE: `tasks[]` in this charter signature means a multi-task batch — agent
+# mode groups tasks by module and dispatches one worker per group
+# (charter-per-group pattern). This differs from contracts.md's canonical
+# `WorkerCharter { task_id: string }` shape, which is authoritative for
+# single-task dispatches (direct.md / team.md). Do not reconcile by editing
+# contracts.md from this file — any schema alignment happens there.
 WORKER_CHARTER(tasks, round_id, plan_path, contracts_path, CONTEXT_DIR, spec_dir) = """
 You are a Worker subagent. Round {round_id}. Dispatch mode: agent.
 
@@ -211,7 +217,7 @@ redundant null guards, single-use helpers, leftover TODO/console.log/debugger.
 1. Each sub_req GWT in fulfills[] is satisfied (cite file:line).
 2. Build / lint / typecheck pass (Tier 1 mechanical).
 
-## Record learnings/issues (INV-5 says: NOT via cli2)
+## Record learnings/issues (NOT via cli2 — use Edit directly; INV-5)
 - On success with a non-obvious discovery → Edit {CONTEXT_DIR}/learnings.json append.
 - On BLOCKED or FAILED → Edit {CONTEXT_DIR}/issues.json append.
 
@@ -260,6 +266,14 @@ function commit_round(round_id, round_workers):
   # (Not a sleep — this is just "don't commit until the round aggregate
   # function has fired".)
   assert all(w.notification_received for w in round_workers)
+
+  # Empty-diff guard — mirrors team.md:326. If the round produced no file
+  # changes (e.g. all workers blocked, all failed pre-write, or every task
+  # was a no-op), skip the commit call entirely so git-master does not
+  # create an empty-tree commit.
+  if Bash("git status --porcelain").output is empty:
+    append_audit("[COMMIT_SKIP] round={round_id} no changes to commit")
+    return
 
   Agent(
     subagent_type = "git-master",
@@ -334,12 +348,28 @@ handle_blocked(task, result):
 ```
 function run_agent_mode():
   round_id = 0
+  serial_queue = []                              # tasks accumulated across
+                                                  # rounds with parallel_safe=false
+  seen_serial_ids = set()                        # dedupe across rounds
   while true:
     round_id += 1
     ready = compute_ready_set(plan_path)
 
+    # Accumulate any newly-ready serial tasks so they survive until the
+    # trailing serial pass below. They are NOT dispatched in the agent
+    # round — this loop only drives parallel work.
+    for t in ready.serial:
+      if t.id not in seen_serial_ids:
+        serial_queue.append(t)
+        seen_serial_ids.add(t.id)
+
     if ready.parallel == [] and ready.serial == []:
       break                                      # all done or deadlocked
+
+    # If the only ready work is serial, stop looping — the trailing pass
+    # below owns those tasks. Avoids an empty parallel round.
+    if ready.parallel == []:
+      break
 
     groups = group_by_module(ready.parallel)     # Phase B
 
@@ -353,10 +383,15 @@ function run_agent_mode():
     # ── Phase D: round-level commit (INV-1) ─────────────────────
     commit_round(round_id, round_workers)
 
-  # Serial ready tasks (parallel_safe=false) are handed off to direct.md
-  # as a trailing serial pass, NOT interleaved into the agent loop.
-  if serial_ready:
-    delegate_to_direct_mode(serial_ready)
+  # Serial ready tasks (parallel_safe=false) accumulated across rounds are
+  # handed off to direct.md as a trailing serial pass, NOT interleaved into
+  # the agent loop. direct.md runs them one at a time with its own per-task
+  # commit policy; this recipe's INV-1 (one commit per round) does not apply
+  # to the delegated serial pass.
+  if serial_queue:
+    append_audit("SERIAL_HANDOFF: {len(serial_queue)} tasks → direct.md "
+                 "ids=[{serial_queue.map(t => t.id).join(',')}]")
+    delegate_to_direct_mode(serial_queue)
 
   proceed_to_finalize()                          # verify + report
 ```

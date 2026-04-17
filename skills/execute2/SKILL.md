@@ -235,8 +235,8 @@ IF work == "Worktree":
 
 # (c) Context files (next to plan.json)
 CONTEXT_DIR = spec_dir
-Bash: touch {CONTEXT_DIR}/learnings.json   # initialize to [] if new
-Bash: touch {CONTEXT_DIR}/issues.json      # initialize to [] if new
+Bash: [ -s {CONTEXT_DIR}/learnings.json ] || echo '[]' > {CONTEXT_DIR}/learnings.json   # initialize to [] if new
+Bash: [ -s {CONTEXT_DIR}/issues.json ]    || echo '[]' > {CONTEXT_DIR}/issues.json      # initialize to [] if new
 Bash: touch {CONTEXT_DIR}/audit.md
 
 # (d) Worker charter template — paths and IDs only (INV-2, R-N15.1)

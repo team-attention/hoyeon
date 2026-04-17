@@ -35,11 +35,17 @@ one budget per task.
 # Initialize once at entry to Phase 1
 dispatch_count = {}          # task_id → int (initial attempt counts as 1)
 blocked_set    = set()       # tasks flagged BLOCKED (and their descendants)
+done_this_run  = set()       # task_ids that transitioned to done during THIS run
+                             #   (used for the single end-of-phase commit message;
+                             #   excludes tasks that were already done on entry
+                             #   via the INV-9 idempotent skip)
 
 function bump_dispatch(task_id) → ok:
   dispatch_count[task_id] = dispatch_count.get(task_id, 0) + 1
   IF dispatch_count[task_id] > 5:
-    audit_append("ABORT DISPATCH_CEILING_EXCEEDED task={task_id} attempts={dispatch_count[task_id]}")
+    audit_append("[DISPATCH_CEILING_EXCEEDED] task={task_id} \
+                  completed_attempts={dispatch_count[task_id]-1} \
+                  blocked_at=6th (INV-6)")
     abort_all("DISPATCH_CEILING_EXCEEDED on {task_id}")
     return false          # fulfills R-F7.4 / INV-6
   return true
@@ -59,7 +65,7 @@ retries (step 8), and later by `verify.md` for gap re-dispatch / verify fix.
 
 ```
 # Fetch tasks via cli2 only — never Read plan.json directly (INV-5)
-all_tasks = Bash("hoyeon-cli2 plan list {spec_dir} --json").tasks
+all_tasks = Bash("hoyeon-cli2 plan get {plan_path} --path tasks --json").tasks
 
 # Topological sort honoring depends_on; ties broken by (layer asc, id asc).
 ordered = topo_sort(all_tasks, key=lambda t: (t.layer, t.id))
@@ -104,6 +110,13 @@ FOR EACH task IN ordered:
   attempt = 0
   prior_failure_context = null
   task_outcome = null
+  contracts_text = null
+
+  # (C.0) Read contracts.md ONCE per task if present. Workers don't exist in
+  #       direct mode, so the orchestrator reads contracts itself. Hoisted
+  #       outside the retry loop so retries don't re-read the same file.
+  IF contracts_path:
+    contracts_text = Read(contracts_path)
 
   WHILE attempt < 3:                          # 1 initial + 2 retry = 3
     IF NOT bump_dispatch(task.id):            # R-F7.4 ceiling check
@@ -120,11 +133,6 @@ FOR EACH task IN ordered:
     #       requirements. Orchestrator already has this in memory — do NOT
     #       re-read requirements.md (INV-3).
     gwt = find_gwt_for_task(task, requirements)
-
-    # (C.3) Read contracts.md if present. Workers don't exist in direct mode,
-    #       so the orchestrator reads contracts itself this one time per task.
-    IF contracts_path:
-      contracts_text = Read(contracts_path)
 
     # (C.4) If this is a retry, the prior_failure_context from the previous
     #       iteration is kept in scope and factored into the implementation
@@ -166,6 +174,7 @@ FOR EACH task IN ordered:
             --summary '{result.summary}'")    # INV-9: only transition once
       audit_append("DONE {task.id} attempt={attempt} files={result.files}")
       learnings_append({ task: task.id, notes: result.learnings })
+      done_this_run.add(task.id)              # runtime set for commit message
       task_outcome = "done"
       BREAK
 
@@ -200,13 +209,17 @@ END FOR
 
 ```
 IF work != "no-commit":
-  # Only ONE commit for the whole direct-mode Phase 1
+  # Only ONE commit for the whole direct-mode Phase 1.
+  # Use `done_this_run` (runtime set populated on the DONE branch above),
+  # NOT the stale `ordered` snapshot — `ordered[i].status` is from the
+  # initial fetch and does not reflect transitions made during this run.
   Agent(subagent_type="git-master",
         description="Commit direct-mode phase 1",
         prompt="Commit all changes produced by direct-mode execution of plan \
                 {spec_dir}. Single commit covering tasks: \
-                {', '.join(t.id for t in ordered if t.status == 'done')}.")
-  audit_append("COMMIT phase1 single-commit (direct mode, INV-1)")
+                {', '.join(sorted(done_this_run))}.")
+  audit_append("COMMIT phase1 single-commit (direct mode, INV-1) \
+                tasks={sorted(done_this_run)}")
 ```
 
 ---
@@ -245,6 +258,13 @@ function issues_append(entry):
 
 function run_mechanical_checks():
   # project-appropriate build/lint/typecheck — see verify.md Tier 1
+  #
+  # IMPLEMENTATION NOTE: when this helper runs, it MUST issue its internal
+  # Bash calls with `run_in_background: true` in a SINGLE message (all
+  # checks dispatched in parallel), mirroring the verify.md Tier 1 pattern.
+  # Then wait for the background tasks to finish and aggregate results.
+  # Do NOT run build / lint / typecheck sequentially — that wastes wall time
+  # and breaks parity with verify.md.
   return { all_pass: bool, results: [...] }
 
 function build_failure_context(result, tier1):

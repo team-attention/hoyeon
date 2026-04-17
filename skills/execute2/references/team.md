@@ -69,7 +69,8 @@ FOR EACH task in pending:
       sub_req_ids=task.fulfills,       # e.g. ["R-F5.1","R-F5.2"]
       spec_dir=spec_dir,
       round=1,
-      prior_failure_context=null       # populated on round > 1 re-dispatch
+      prior_failure_context=null,      # populated on round > 1 re-dispatch
+      CONTEXT_DIR=CONTEXT_DIR
     ),
     owner=null                         # unassigned — workers claim
   )
@@ -99,19 +100,21 @@ TaskUpdate(taskId=verify_task, addBlocks=[report_task])
 
 ```
 WORKER_DESCRIPTION(task_id, plan_path, contracts_path, sub_req_ids, spec_dir, round,
-                   prior_failure_context) = """
+                   prior_failure_context, CONTEXT_DIR) = """
 You are a TEAM WORKER claiming task {task_id} in spec {spec_dir}.
 
 ## Inputs (paths + IDs only — self-read below)
 - plan_path:       {plan_path}
 - contracts_path:  {contracts_path ?? "(none)"}
 - sub_req_ids:     {sub_req_ids}
+- CONTEXT_DIR:     {CONTEXT_DIR}
 - round:           {round}
 - prior_failure:   {prior_failure_context ?? "(none)"}
 
-## Step 1 — Claim (atomic)
-  hoyeon-cli2 plan task {plan_path} --status {task_id}=in_progress
-The cli2 flock guarantees single-winner semantics.
+## Step 1 — Prereq
+Claim was already performed by WORKER_PREAMBLE LOOP Step 3 (single owner = cli2 flock).
+Do NOT re-claim here. If your session somehow reached this step without holding the
+claim, abort and let the LOOP re-run step 3.
 
 ## Step 2 — Self-read GWT
   hoyeon-cli2 plan get {plan_path} --task {task_id} --json
@@ -199,7 +202,11 @@ LOOP:
   2. PICK (longest-deps-first — R-F5.1):
        Order the ready set by:
          (a) DESC  longest dependency chain length to this task
-             (i.e. max depth in the depends_on DAG ending at this task)
+             (i.e. max depth in the depends_on DAG ending at this task).
+             Algorithm: chain_length(t) = 1 + max(chain_length(d) for d in t.depends_on)
+             with chain_length(t) = 1 for tasks with no deps. Lead pre-computes this
+             via DFS+memo over `depends_on` once per round and embeds the value in
+             each TaskCreate description so workers don't re-traverse the DAG.
          (b) DESC  count of other pending tasks blocked on this task
          (c) ASC   task.id (stable tiebreaker)
        Longest-chain-first drains critical-path work before branches.
@@ -210,7 +217,7 @@ LOOP:
        highest-priority task from a new module.
 
   3. CLAIM (atomic via cli2 flock):
-       hoyeon-cli2 plan task {plan_path} --status {picked_id}=in_progress
+       hoyeon-cli2 plan task {plan_path} --status {picked_id}=running
      IF cli2 reports "already claimed" → loop back to step 1.
 
   4. EXECUTE the task by following its TaskCreate description (WORKER_DESCRIPTION
@@ -333,34 +340,37 @@ function commit_round(round_idx, completed_task_ids):
     "ROUND {round_idx} committed: {completed_task_ids} @ {timestamp}")
 ```
 
-### FAILED handling — bounded re-dispatch
+### FAILED handling — bounded re-dispatch (R-F7.1)
 
 Recall R-F5.3: a worker already does up to 2 *internal* self-verify/fix rounds before
-reporting FAILED. So by the time the lead sees FAILED, the worker already tried twice.
-Lead re-dispatches at most **once** more (= round 2 for that task) with failure context.
+reporting FAILED. So by the time the lead sees FAILED, the worker already tried twice
+inside its claim. Per R-F7.1, the lead may re-dispatch the task up to **2** more
+times before halting. This maps to INV-6 budget: 1 initial + 2 R-F7.1 retry (+ 1
+gap + 1 verify-fix at higher layers) = 5 attempts.
 
 ```
 function handle_failed(msg):
-  retry = retry_count[msg.task_id]
-  IF retry < 1:
-    retry_count[msg.task_id] = 1
+  retry = retry_count[msg.task_id]    # 0 on first FAILED, increments per re-dispatch
+  IF retry < 2:
+    retry_count[msg.task_id] = retry + 1
     # Return to pending so any worker can re-claim
     Bash("hoyeon-cli2 plan task {plan_path} --status {msg.task_id}=pending")
     # Re-issue TaskCreate with prior_failure_context populated
     TaskCreate(
-      subject="{msg.task_id}:Work (retry)",
+      subject="{msg.task_id}:Work (retry {retry_count[msg.task_id]})",
       description=WORKER_DESCRIPTION(
-        task_id=msg.task_id, plan_path, contracts_path,
+        task_id=msg.task_id, plan_path=plan_path, contracts_path=contracts_path,
         sub_req_ids=msg.sub_req_ids, spec_dir=spec_dir,
-        round=2,
-        prior_failure_context=msg.summary
+        round=retry_count[msg.task_id] + 1,
+        prior_failure_context=msg.summary,
+        CONTEXT_DIR=CONTEXT_DIR
       ),
       owner=null
     )
-    Edit(audit.md, append="RETRY {msg.task_id} round=2: {msg.summary}")
+    Edit(audit.md, append="RETRY {msg.task_id} round={retry_count[msg.task_id] + 1}: {msg.summary}")
     wake_standing_by_workers()
   ELSE:
-    Edit(audit.md, append="HALT {msg.task_id}: failed after retry. Worker internal 2+ lead 1 = INV-6 budget used.")
+    Edit(audit.md, append="HALT {msg.task_id}: failed after R-F7.1 retries. Worker internal 2 + lead 2 = R-F7.1 budget exhausted (INV-6 floor).")
     HALT
 ```
 
@@ -413,7 +423,7 @@ IF work != "no-commit" AND `git status --porcelain` is not empty:
 - [ ] `WORKER_DESCRIPTION` carries **paths + IDs only** — no inlined GWT / contracts prose (INV-2)
 - [ ] `WORKER_PREAMBLE` includes the persistent claim LOOP with MODULE_CACHE + CONTRACTS_SEEN
 - [ ] PICK step orders by longest-deps-first, then same-module bias (R-F5.1 + R-F5.2)
-- [ ] CLAIM via `hoyeon-cli2 plan task --status <id>=in_progress` (cli2 flock = single winner)
+- [ ] CLAIM via `hoyeon-cli2 plan task --status <id>=running` (cli2 flock = single winner)
 - [ ] Workers self-read GWT via `hoyeon-cli2 plan get` (never `requirements.md` / `spec.json`)
 - [ ] Worker runs internal self-verify / fix loop up to 2 rounds before reporting FAILED (R-F5.3)
 - [ ] Lead monitors via SendMessage; no sleep/poll (INV-4)

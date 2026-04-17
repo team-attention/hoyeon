@@ -19,7 +19,6 @@ disallowed-tools:
   - Edit
   - Task
   - NotebookEdit
-permissionMode: bypassPermissions
 validate_prompt: |
   Must emit a VerifyResult JSON object with:
   1. verdict: "PASS" or "FAIL"

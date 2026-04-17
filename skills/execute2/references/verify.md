@@ -37,7 +37,7 @@ Depth caps those gates downward only (never escalates).
 | 1    | Machine toolchain (build/lint/typecheck/unit) | light, standard, thorough  |
 | 2    | Static semantic review (code-reviewer + spec-coverage) | standard, thorough |
 | 3    | Runtime journey (qa-verifier)             | thorough                      |
-| 4    | Human judgement — never auto-run          | always escalated to MANUAL    |
+| 4    | Human judgement — never auto-run          | never auto-runs — always escalated to `manual_review[]` |
 
 ```
 function effective_gates(plan_gates, depth):
@@ -133,6 +133,7 @@ IF gaps AND gap_retry_rounds < 1:
       by_task.setdefault(t.id, []).append(sid)
 
   # Check dispatch ceiling (INV-6) before re-dispatching
+  dispatched_any = False
   FOR tid, sids in by_task.items():
     IF dispatch_count[tid] >= 5:
       audit.append("DISPATCH_CEILING_EXCEEDED", tid)
@@ -148,11 +149,23 @@ IF gaps AND gap_retry_rounds < 1:
       prior_failure_context: "GAP: task {tid} did not cite fulfills for " +
                               ", ".join(sids) + ". Must address each sub_req with file:line citation."
     }
+    Bash("hoyeon-cli2 plan task --status {tid}=running")   # reset to running
     dispatch_worker(charter)   # via current dispatch mode's worker dispatch
     dispatch_count[tid] += 1
+    dispatched_any = True
 
-  gap_retry_rounds += 1
-  Bash("hoyeon-cli2 plan task --status {tid}=running")   # reset to running
+  # Only charge a retry round if we actually dispatched something. If every
+  # owner was blocked by INV-6, log a distinct audit entry and mark the gaps
+  # as persistent immediately (the retry budget is not consumed).
+  IF dispatched_any:
+    gap_retry_rounds += 1
+  ELSE:
+    FOR sid in gaps:
+      Edit(CONTEXT_DIR/audit.md, append="""
+      [{timestamp}] PERSISTENT_GAP_CEILING_BLOCKED sub_req={sid}
+        reason: every owning task hit INV-6 dispatch ceiling — no gap re-dispatch occurred
+      """)
+    # Fall through to Step 4 without incrementing gap_retry_rounds
 
   # After all re-dispatched workers return: rebuild coverage (goto Step 1)
   → goto Step 1
@@ -386,18 +399,32 @@ FOR r IN results.values():
 Runs when gate=1, gate=2, or gate=3 produced `failures`. Only one round is
 allowed — a second failure after the fix loop ends the verify as `FAILED`.
 
+Persistent session counter `fix_loop_rounds` (default 0). Only one fix round is
+permitted.
+
 ```
 IF failures AND fix_loop_rounds < 1:
   # Resolve each failure back to the task that should have covered the sub_req
   by_task = {}
+  # Per-task charter derivation context: for journey failures we need to pass
+  # the composed sub_req IDs (journey failures are recorded as
+  # {journey: j.id, ...} not {sid: ...}), so track them here.
+  sub_req_ids_for_task = {}   # tid -> set(sub_req_id)
   FOR f in failures:
     IF f.has("sid"):
       tasks = [t for t in plan.tasks if f.sid in (t.fulfills or [])]
+      FOR t in tasks:
+        by_task.setdefault(t.id, []).append(f)
+        sub_req_ids_for_task.setdefault(t.id, set()).add(f.sid)
     ELIF f.has("journey"):
-      composed = plan.journeys[f.journey].composes
+      composed = plan.journeys[f.journey].composes   # list of sub_req IDs
       tasks = [t for t in plan.tasks if any(s in (t.fulfills or []) for s in composed)]
-    FOR t in tasks:
-      by_task.setdefault(t.id, []).append(f)
+      FOR t in tasks:
+        by_task.setdefault(t.id, []).append(f)
+        # Include only the sub_reqs this task actually fulfills from the journey
+        FOR s in composed:
+          IF s in (t.fulfills or []):
+            sub_req_ids_for_task.setdefault(t.id, set()).add(s)
 
   FOR tid, fails in by_task.items():
     IF dispatch_count[tid] >= 5:    # INV-6 ceiling
@@ -408,7 +435,8 @@ IF failures AND fix_loop_rounds < 1:
       task_id: tid,
       plan_path: plan_path,
       contracts_path: contracts_path,
-      sub_req_ids: [f.sid for f in fails if f.has("sid")],
+      # Derived from sid failures directly + journey failures via composes
+      sub_req_ids: sorted(list(sub_req_ids_for_task.get(tid, set()))),
       round: current_round + 1,
       prior_failure_context: "VERIFY FAIL:\n" + format(fails)
     }
@@ -423,6 +451,11 @@ IF failures AND fix_loop_rounds < 1:
 
 ELIF failures AND fix_loop_rounds >= 1:
   run_status = "FAILED"    # one fix round already spent; no more retries
+  # INVARIANT: run_status = "FAILED" is set HERE (before Phase 2.5). Phase 2.5's
+  # aggregation precedence — FAILED > PARTIAL > gate FAIL — relies on this
+  # precondition: the fix-loop-exhausted path is the ONLY writer of "FAILED"
+  # prior to aggregation. Do NOT introduce any other writer upstream of Phase 2.5
+  # without updating the precedence comment there.
   → proceed to Final Aggregation with failures recorded
 ```
 
@@ -449,15 +482,33 @@ FOR vp in plan.verify_plan:
 
 ## Phase 2.5 — Final Aggregation
 
+INVARIANT (precondition — do not reorder without reading this):
+- `run_status == "FAILED"` is set by the Fix Loop (Phase 2.3) BEFORE Phase 2.5
+  runs. It means the single allowed fix round was already spent with failures
+  still outstanding. No other upstream phase writes `run_status = "FAILED"`.
+- `run_status == "PARTIAL"` is set by the Coverage Pre-check (Phase 2.0,
+  Step 4) when gaps persist after the allowed re-dispatch round.
+- The precedence below (FAILED > PARTIAL > gate-FAIL > VERIFIED) is safe ONLY
+  because of this invariant. If a future change introduces another `FAILED`
+  writer outside Phase 2.3, the `ELIF` ordering and the PARTIAL branch here
+  must be re-evaluated (e.g. a gate FAIL after fix-loop exhaustion must not
+  silently demote to PARTIAL).
+
 ```
-IF run_status == "FAILED":                       # fix loop already exhausted
+# Precedence (top-down): exhausted fix loop > persistent gaps > raw gate FAIL
+IF run_status == "FAILED":                       # fix loop already exhausted (Phase 2.3)
   final_status = "FAILED"
-ELIF run_status == "PARTIAL":                    # persistent gaps (R-F10.4)
+ELIF run_status == "PARTIAL":                    # persistent gaps (R-F10.4, Phase 2.0 Step 4)
   final_status = "PARTIAL"
 ELIF any gate2_result[sid] == "FAIL" OR any gate3_result[j] == "FAIL":
+  # Reachable only if fix loop was NEVER entered (impossible given gate FAILs
+  # feed Phase 2.3) OR fix_loop_rounds < 1 but failures became empty after
+  # re-run — defensive branch, keeps the matrix honest.
   final_status = "FAILED"
 ELSE:
   final_status = "VERIFIED"
+
+# assert: (run_status == "FAILED") implies (fix_loop_rounds >= 1)
 ```
 
 A PARTIAL result is **not** an abort — it is a soft pass that still renders

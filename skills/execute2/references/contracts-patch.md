@@ -31,25 +31,21 @@ Preconditions:
 
 ## Phase A: Detection (fulfills R-F9.1)
 
-Scan `worker_output` for any of three signals. Detection is a pure function over
+Scan `worker_output` for either of two signals. Detection is a pure function over
 the returned JSON — the orchestrator does **not** re-read requirements.md or
 contracts.md body during detection (INV-3).
 
 ```
 function detect_mismatch(worker_output) → mismatch | null:
-  # Signal 1: explicit field per WorkerOutput contract
+  # Signal 1: explicit field per WorkerOutput contract.
+  # Workers with multiple issues MUST concatenate them into this single
+  # string (e.g., join with "\n- ") — there is no separate array field.
   IF worker_output.contract_mismatch is non-empty string:
     return { signal: "contract_mismatch",
              text: worker_output.contract_mismatch,
              severity: "explicit" }
 
-  # Signal 2: contract_issues array (if worker emitted multiple)
-  IF worker_output.contract_issues is non-empty array:
-    return { signal: "contract_issues",
-             text: join(worker_output.contract_issues, "\n"),
-             severity: "explicit" }
-
-  # Signal 3: BLOCKED with contract-related reason
+  # Signal 2: BLOCKED with contract-related reason
   IF worker_output.status == "blocked"
      AND worker_output.blocked_reason matches /contract|invariant|interface/i:
     return { signal: "blocked_contract",
@@ -82,8 +78,10 @@ function classify_patch(mismatch, task_id) → patch_plan:
   # Kind 2: interface field add/modify
   IF text matches /field|param|add to interface|missing property|signature/i:
     interface_name = extract_interface_name(text)  # e.g., "WorkerOutput"
+    field_name     = extract_field_name(text)      # e.g., "round"
     return { kind: "modify_interface",
              section: "### " + interface_name,
+             field_name: field_name,
              rationale: text,
              origin: task_id }
 
@@ -108,6 +106,15 @@ function classify_patch(mismatch, task_id) → patch_plan:
 `next_invariant_id()` reads `contracts.md` only to scan existing `INV-N` labels
 and return `N+1`. This is a **metadata read** (counting labels), not a body
 read — INV-3 permits it.
+
+> **INV-3 carve-out.** This recipe IS the sole exception to INV-3 —
+> the orchestrator reads `contracts.md` ONLY for (i) INV-N label scanning
+> (`next_invariant_id()`) and (ii) section anchor location
+> (`find_last_invariant_line()`, `find_interface_anchor()`,
+> `find_section_anchor()`, `has_section()`). No other orchestrator context
+> may read `contracts.md`. Readers who need the contract should self-read per
+> the Worker Charter (R-F6.1). F7 is responsible for updating `contracts.md`
+> INV-3 to note this carve-out; this recipe does not edit that rule itself.
 
 ---
 
@@ -140,7 +147,7 @@ function apply_patch(patch_plan, contracts_path, audit_path, round):
     # Locate the interface heading, then append a bullet describing the
     # change. Keep it surgical — do not rewrite the whole section.
     anchor = find_interface_anchor(contracts_path, patch_plan.section)
-    addition = "- `" + extracted_field_name + "` — "
+    addition = "- `" + patch_plan.field_name + "` — "
              + one_line_summary(patch_plan.rationale)
              + " (added by " + patch_plan.origin + ")"
     Edit(
@@ -165,8 +172,10 @@ function apply_patch(patch_plan, contracts_path, audit_path, round):
     note = "- UNRESOLVED (origin: " + patch_plan.origin + ", round "
          + round + "): " + one_line_summary(patch_plan.rationale)
     # Create Notes section if missing, then append.
+    # INV-5 permits only Read/Edit/Write — no helper tools.
     IF not has_section(contracts_path, "## Notes"):
-      append_section(contracts_path, "\n## Notes\n\n" + note + "\n")
+      existing = Read(contracts_path)
+      Write(contracts_path, existing + "\n## Notes\n\n" + note + "\n")
     ELSE:
       anchor = find_section_anchor(contracts_path, "## Notes")
       Edit(file_path=contracts_path,
@@ -269,7 +278,7 @@ Edit(
 
 ```markdown
 ## Contracts Patch (round 2, 2026-04-17T20:05:11)
-- Signal: worker T5 reported "WorkerOutput is missing a `round` echo field — agent mode cannot tell which round a background result belongs to when notifications arrive out of order."
+- Signal: worker T5 reported "WorkerOutput is missing a `round` echo field — agent mode cannot order out-of-order notifications"
 - Patch kind: modify_interface
 - Section: ### WorkerOutput
 - Diff:
@@ -278,6 +287,9 @@ Edit(
   ```
 - User confirm: NONE (INV-7)
 ```
+
+(The `Signal:` line uses `one_line_summary(rationale)` — the first sentence of
+the rationale truncated to ~120 chars — matching the format spec above.)
 
 ### Step 5 — return
 

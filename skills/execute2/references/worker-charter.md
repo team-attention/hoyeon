@@ -80,21 +80,21 @@ matrix and drive the verify pipeline.
 
 ### 2.1 Required fields
 
-| field                    | type                            | meaning                                                     |
-| ------------------------ | ------------------------------- | ----------------------------------------------------------- |
-| `status`                 | `"done" \| "failed" \| "blocked"` | terminal state                                              |
-| `summary`                | string                          | one-line human summary                                      |
-| `files_modified`         | string[]                        | absolute or repo-relative paths touched                     |
-| `fulfills_attribution`   | `{sub_req, file, line}[]`       | **required** citation per sub_req in charter `sub_req_ids`  |
-| `contract_issues`        | string \| null                  | free-text contract mismatch signal (null when none)         |
-| `blocked_reason`         | string                          | **required** when `status == "blocked"`; else omitted       |
+| field                    | type                                    | meaning                                                     |
+| ------------------------ | --------------------------------------- | ----------------------------------------------------------- |
+| `status`                 | `"done" \| "failed" \| "blocked"`       | terminal state                                              |
+| `summary`                | string                                  | one-line human summary                                      |
+| `files_modified`         | string[]                                | absolute or repo-relative paths touched                     |
+| `fulfills`               | `{sub_req_id, file_path, line}[]`       | **required** citation per sub_req in charter `sub_req_ids`  |
+| `contract_mismatch`      | string \| null                          | free-text contract mismatch signal (null when none)         |
+| `blocked_reason`         | string                                  | **required** when `status == "blocked"`; else omitted       |
 
-### 2.2 fulfills_attribution citation rule
+### 2.2 fulfills citation rule
 
 *fulfills R-F6.2*
 
-`fulfills_attribution` MUST contain exactly one entry per sub_req ID in the
-charter's `sub_req_ids`. Each entry cites a concrete `file:line` that satisfies
+`fulfills` MUST contain exactly one entry per sub_req ID in the
+charter's `sub_req_ids`. Each entry cites a concrete `file_path:line` that satisfies
 the sub_req's GWT. Missing entries cause the coverage matrix to mark the sub_req
 as GAP per R-F10.2 and trigger a re-dispatch per R-F10.3.
 
@@ -107,15 +107,15 @@ as GAP per R-F10.2 and trigger a re-dispatch per R-F10.3.
   "files_modified": [
     "/abs/path/.claude/skills/execute2/references/worker-charter.md"
   ],
-  "fulfills_attribution": [
-    {"sub_req": "R-F6.1", "file": ".claude/skills/execute2/references/worker-charter.md", "line": "1.2"},
-    {"sub_req": "R-F6.2", "file": ".claude/skills/execute2/references/worker-charter.md", "line": "2.2"},
-    {"sub_req": "R-F6.3", "file": ".claude/skills/execute2/references/worker-charter.md", "line": "3.2"},
-    {"sub_req": "R-F6.4", "file": ".claude/skills/execute2/references/worker-charter.md", "line": "3.5"},
-    {"sub_req": "R-N15.1", "file": ".claude/skills/execute2/references/worker-charter.md", "line": "1.3"},
-    {"sub_req": "R-N17.1", "file": ".claude/skills/execute2/references/worker-charter.md", "line": "4"}
+  "fulfills": [
+    {"sub_req_id": "R-F6.1", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "1.2"},
+    {"sub_req_id": "R-F6.2", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "2.2"},
+    {"sub_req_id": "R-F6.3", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "3.2"},
+    {"sub_req_id": "R-F6.4", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "3.5"},
+    {"sub_req_id": "R-N15.1", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "1.3"},
+    {"sub_req_id": "R-N17.1", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "4"}
   ],
-  "contract_issues": null
+  "contract_mismatch": null
 }
 ```
 
@@ -126,8 +126,8 @@ as GAP per R-F10.2 and trigger a re-dispatch per R-F10.3.
   "status": "blocked",
   "summary": "Cannot proceed — depends_on task T3 produces output that is missing",
   "files_modified": [],
-  "fulfills_attribution": [],
-  "contract_issues": null,
+  "fulfills": [],
+  "contract_mismatch": null,
   "blocked_reason": "T3 did not emit expected interface FooAPI; see issues.json"
 }
 ```
@@ -137,10 +137,10 @@ as GAP per R-F10.2 and trigger a re-dispatch per R-F10.3.
   "status": "failed",
   "summary": "Typecheck fails after change — could not reconcile with contract FooAPI",
   "files_modified": ["src/foo.ts"],
-  "fulfills_attribution": [
-    {"sub_req": "R-X.1", "file": "src/foo.ts", "line": "42"}
+  "fulfills": [
+    {"sub_req_id": "R-X.1", "file_path": "src/foo.ts", "line": "42"}
   ],
-  "contract_issues": "FooAPI.call signature diverges from contracts.md line 88"
+  "contract_mismatch": "FooAPI.call signature diverges from contracts.md line 88"
 }
 ```
 
@@ -157,7 +157,7 @@ The canonical sequence every worker runs, regardless of dispatch mode.
 The worker receives only the charter. It MUST read the authoritative sources itself:
 
 ```bash
-# 1a. Read task body (action, fulfills, depends_on, status)
+# fetch task.action and task.fulfills[] — charter does not carry these
 hoyeon-cli2 plan get <plan_path>    # or: ... --path tasks --filter id=<task_id>
 
 # 1b. Read the sub-requirements named in sub_req_ids
@@ -243,12 +243,20 @@ Issue entry shape:
 These files are append-only JSON arrays. The worker reads the current contents,
 pushes the new entry, and writes back — all via Read / Write (never cli2).
 
+**Sequencing constraint**: Step 6 MUST NOT begin until Step 5 write
+(learnings/issues.json) is confirmed durable. Steps are strictly sequential,
+not concurrent. The worker MUST observe the Read-then-Write cycle complete (and
+the resulting file on disk) before issuing the `plan task --status` call in §3.6.
+
 ### 3.6 Step 6 — Mark task status via cli2, then return WorkerOutput
 
 *fulfills R-N17.1, INV-5*
 
+Step 6 runs only after Step 5's learnings/issues.json write has flushed to disk;
+these two steps are strictly sequential, never concurrent.
+
 ```bash
-hoyeon-cli2 plan task --status <task_id>=<done|failed|blocked>
+hoyeon-cli2 plan task <plan_path> --status <task_id>=<done|failed|blocked>
 ```
 
 Then emit the WorkerOutput JSON (§2) as the worker's last message.
@@ -261,14 +269,21 @@ Then emit the WorkerOutput JSON (§2) as the worker's last message.
 
 The worker and orchestrator both obey a strict tool boundary:
 
-| Artifact           | Read via        | Mutate via               |
-| ------------------ | --------------- | ------------------------ |
-| `plan.json`        | `cli2 plan get` | `cli2 plan task --status` (only) |
-| `contracts.md`     | `Read` tool     | `Edit` / `Write` tool    |
-| `requirements.md`  | `Read` tool     | (not mutated by execute2) |
-| `learnings.json`   | `Read` tool     | `Read + Write` tool      |
-| `issues.json`      | `Read` tool     | `Read + Write` tool      |
-| `audit.md`         | `Read` tool     | `Edit` / `Write` tool    |
+| Artifact           | Read via        | Mutate via                                    |
+| ------------------ | --------------- | --------------------------------------------- |
+| `plan.json`        | `cli2 plan get` | `cli2 plan task --status` (only)              |
+| `contracts.md`     | `Read` tool     | `Edit` / `Write` tool — **orchestrator only** |
+| `requirements.md`  | `Read` tool     | (not mutated by execute2)                     |
+| `learnings.json`   | `Read` tool     | `Read + Write` tool                           |
+| `issues.json`      | `Read` tool     | `Read + Write` tool                           |
+| `audit.md`         | `Read` tool     | `Edit` / `Write` tool                         |
+
+**Worker exclusion for contracts.md**: Workers MUST NOT Edit/Write
+`contracts.md` directly. A worker that detects a contract mismatch signals it
+via the `contract_mismatch` field in WorkerOutput (§2.1) and stops — it does
+not attempt to patch the contract itself. Only the orchestrator, via the
+`contracts-patch.md` recipe, may mutate `contracts.md`. Any edit to
+`contracts.md` that does not originate from `contracts-patch.md` is a bug.
 
 Rule, restated: **cli2 is the ONLY mutation surface for plan.json, and cli2 is
 NEVER used for any other file.** Never call `cli2 plan merge` to write learnings
