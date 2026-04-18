@@ -449,37 +449,65 @@ If mismatch, re-dispatch verify-planner with the gap list. Max 2 retries.
 
 ### Step 4.3: Preview verify plan for user
 
-Show the gate assignments so the user understands what verification will happen:
+Translate gate counts into user-facing consequences. The user should not have to decode G1/G2/G3/G4 labels — only understand what the plan will cost them and where their attention is actually required.
 
 ```
-[blueprint] Verify Plan (Phase 4)
+[blueprint] Verify Plan
 
-| Target | Type | Gates | Rationale |
-|--------|------|-------|-----------|
-| R-T2.1 | sub_req | 1, 2 | pure logic, no UI |
-| R-U5.1 | sub_req | 1, 2, 3 | visible UI behavior |
-| R-B3.1 | sub_req | 1, 2, 4 | subjective quality |
-| J1 | journey | 1, 2, 3 | E2E user flow |
-| ...
+  {N_all} checks will run automatically (code review + agent semantic)
+  {N_e2e} of those also run in the browser/sandbox (visible UI, interaction, external calls)
+  {N_human} items require YOU (playtest, sampled metrics, aesthetic review)
 
-Summary: {N} entries — G1:{n} G2:{n} G3:{n} G4:{n}
+What you need to do: {none | <bullet list of G4 items with their GWT>}
 ```
 
-**Auto-approve**: `meta.type == bugfix` AND no ambiguities → skip the ask, print the table, proceed.
-Otherwise ask:
+Example with no G4:
+```
+[blueprint] Verify Plan
+
+  46 checks will run automatically
+  26 of those also run in the browser sandbox
+  0 items require you
+
+What you need to do: nothing — fully machine/agent-verifiable.
+```
+
+Example with G4:
+```
+[blueprint] Verify Plan
+
+  18 checks will run automatically
+  7 of those also run in the browser sandbox
+  1 item requires you:
+    • R-B4.1 "retry rate averages 3+ per session" — needs a playtest with 3+ users
+
+What you need to do: 1 playtest session.
+```
+
+**Auto-approve rule** (skip the generic "proceed?" prompt):
+- No `ambiguities[]` with `user_impact: time` or `confidence` (after the filter), AND
+- No G4 gates in `verify_plan`, AND
+- `meta.type` is `bugfix`, `feature`, or `refactor`
+
+Under auto-approve: print the preview block, log "auto-approving (no user-owned commitments)", proceed to Step 4.4.
+
+**When to actually ask**: only when the user has something real to decide. Build the question from the filtered ambiguities queue (see "Ambiguity Handling" section) and/or G4 confirmations:
+
 ```
 AskUserQuestion(
-  question: "Proceed with this verify plan?",
+  # one question per user-impact ambiguity, phrased in user terms, NOT gate labels
+  # Example (time-impact):
+  question: "R-B4.1 needs real-user data ('retry rate averages 3+') — commit to a 3-user playtest, or relax this requirement to code-review only?",
   options: [
-    { label: "Approve", description: "Merge verify_plan and finalize" },
-    { label: "Revise", description: "Adjust gate assignments" },
-    { label: "Abort", description: "Stop blueprint" }
+    { label: "Commit to playtest", description: "Add human verification — you run a session with 3+ users before ship" },
+    { label: "Relax the bar", description: "Drop the sampled-user requirement, rely on code review of the difficulty curve formula" }
   ]
 )
 ```
 
-If **Revise**: ask which targets need gate changes, re-dispatch or manually patch. Max 2 rounds.
-If **Abort**: exit skill.
+Never expose "G1/G2/G3/G4", "gates: [1,2,3]", or "drop redundant G3" to the user. If the planner flagged an ambiguity that way, restate it: what real thing does the user gain/lose by each option?
+
+If the user chooses to revise: apply the chosen option to `verify_plan` (add/drop gates as implied), re-preview once. Max 2 rounds, then proceed with the last-confirmed plan.
 
 ### Step 4.4: Merge verify_plan
 
@@ -547,31 +575,41 @@ Exit skill.
 
 ## Ambiguity Handling (strict)
 
-**Rule**: if ANY Phase 1-4 agent returns a non-empty `ambiguities[]` payload, you MUST surface it to the user via `AskUserQuestion` before merging dependent state. Silently applying agent recommendations is a spec violation.
+**Rule**: surface ambiguities to the user **only when they own the decision** — i.e., the outcome changes what they must do, pay for, or commit to. Planner-internal optimizations (redundant gates, CSS-vs-measurement, pure-logic gate sufficiency) are NOT user decisions; apply the agent's recommendation silently and log it.
 
-All three agents use the same field name (`ambiguities[]`) with the same shape:
+All three agents return `ambiguities[]` with this shape:
 ```json
-{ "concern": "...", "affects": ["...", "..."], "recommendation": "..." }
+{ "concern": "...", "affects": ["...", "..."], "recommendation": "...", "user_impact": "time" | "confidence" | "none" }
 ```
 
-Sources collected after each phase:
-- **requirements.md** `## Open Decisions` section (OD-N blocks) — include if still unresolved
+`user_impact` semantics (see `verify-planner.md` for the canonical definition):
+- **`time`** — forces human work (playtest, sampled metrics, aesthetic review). Always prompt.
+- **`confidence`** — meaningfully swings verification confidence with no safe default. Prompt unless `--auto`.
+- **`none`** — planner-internal call. Never prompt; apply recommendation and log.
+
+Sources collected across phases:
+- **requirements.md** `## Open Decisions` section (OD-N blocks) — include if still unresolved (treat as `user_impact: confidence` by default)
 - **contract-deriver** return field `ambiguities[]`
 - **taskgraph-planner** return field `ambiguities[]`
 - **verify-planner** return field `ambiguities[]`
 
+Agents that do not yet emit `user_impact` (older contract-deriver / taskgraph-planner outputs) default to `confidence` unless the concern is obviously planner-internal.
+
 ### Protocol
 
 1. **Collect** — after each agent returns, extract its `ambiguities[]` into a single queue.
-2. **Dedupe** — merge semantically overlapping items (e.g., OD-2 + a contract-deriver concern about the same decision). Prefer requirements.md wording as canonical.
-3. **Prompt** — emit `AskUserQuestion` with every item in the queue. AskUserQuestion tops out at ~5 questions per call; if the queue is larger, batch across multiple calls in order. Each option must include the agent's recommendation marked `(recommended)`.
-4. **Apply answers** — patch the in-progress plan.json (or regenerate the affected section) before proceeding to the next phase.
-5. **Do NOT skip the prompt** just because "impact seems low" — the whole point of surfacing ambiguities is that the agent already decided it needed user input. Trust the agent's signal.
+2. **Filter** — drop every item with `user_impact: none`. Apply its `recommendation` to the in-progress artifact and record one line in the run log: `auto-resolved: <concern> → <recommendation>`.
+3. **Dedupe** — merge semantically overlapping items (e.g., OD-2 + a contract-deriver concern about the same decision). Prefer requirements.md wording as canonical.
+4. **Translate** — rewrite each remaining item in user-impact language: what does the user gain/lose from each option? Do NOT expose internal labels (G1-G4, gate ids, dispatch types) in the question or options.
+5. **Prompt** — emit `AskUserQuestion` for the translated queue. AskUserQuestion tops out at ~5 questions per call; batch across multiple calls in order. Each option must include the agent's recommendation marked `(recommended)`.
+6. **Apply answers** — patch the in-progress plan.json (or regenerate the affected section) before proceeding to the next phase.
+
+**Trust the filter.** If the agent labeled something `user_impact: none`, do not second-guess and promote it to a prompt. The agents are instructed to be conservative; items that reach the queue with `time` or `confidence` already passed a "does the user own this?" test.
 
 ### Flags
 
-- `--auto` → skip the prompt, apply all recommendations silently, log applied decisions in the final summary
-- Default (no flag): strict — any non-empty queue triggers `AskUserQuestion`
+- `--auto` → skip all prompts, apply every recommendation silently (including `time` / `confidence` items), log applied decisions in the final summary
+- Default (no flag): prompt only for `user_impact` in (`time`, `confidence`); always auto-resolve `none`
 
 ---
 
