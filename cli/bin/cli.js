@@ -5,7 +5,7 @@ import issueHandler from '../src/commands/issue.js';
 import sessionHandler from '../src/commands/session.js';
 
 const USAGE = `
-hoyeon-cli — CLI for specify2 + blueprint + execute2 workflow
+hoyeon-cli — CLI for specify + blueprint + execute workflow
 
 Usage:
   hoyeon-cli <group> <command> [options]

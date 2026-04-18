@@ -7044,14 +7044,14 @@ Usage:
 
 Commands:
   init <spec_dir> --type <greenfield|feature|refactor|bugfix> [--goal "<text>"]
-      Create spec_dir + requirements.md template for /specify2 to fill in.
+      Create spec_dir + requirements.md template for /specify to fill in.
 
 Options:
   --help, -h   This help.
 
 Note:
   cli does not parse requirements.md. Reading and understanding that file is
-  the LLM's job (inside /specify2 and /blueprint). cli only manages plan.json.
+  the LLM's job (inside /specify and /blueprint). cli only manages plan.json.
 `;
 function template(type, goal) {
   return `---
@@ -7062,7 +7062,7 @@ non_goals: []
 
 # Requirements
 
-<!-- /specify2 fills this in. Parent reqs use '## R-X<num>:' and sub-reqs use '#### R-X.Y:' with given/when/then fields. -->
+<!-- /specify fills this in. Parent reqs use '## R-X<num>:' and sub-reqs use '#### R-X.Y:' with given/when/then fields. -->
 `;
 }
 async function cmdInit(args) {
@@ -7661,7 +7661,7 @@ async function session(args) {
 
 // bin/cli.js
 var USAGE = `
-hoyeon-cli \u2014 CLI for specify2 + blueprint + execute2 workflow
+hoyeon-cli \u2014 CLI for specify + blueprint + execute workflow
 
 Usage:
   hoyeon-cli <group> <command> [options]
