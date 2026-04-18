@@ -45,10 +45,16 @@ CX=$(command -v chromux 2>/dev/null || echo "") && [ -n "$CX" ] && echo "CHROMUX
 
 If `MISSING`, report error and stop.
 
-Launch Chrome (head mode by default):
+Launch Chrome in headless mode (no visible window, but fully functional):
 
 ```bash
-/path/to/chromux launch default 2>/dev/null || true
+/path/to/chromux launch default --headless 2>/dev/null || true
+```
+
+To let the user see a live tab (e.g., during recon or debugging), use `show` — no restart needed:
+
+```bash
+/path/to/chromux show exp-ab12   # Opens DevTools in user's browser
 ```
 
 #### 0-3. Generate Session ID

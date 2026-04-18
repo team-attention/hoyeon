@@ -10,10 +10,16 @@ Resolve the chromux binary path (run once, remember the output):
 CX=$(command -v chromux 2>/dev/null || echo "") && [ -n "$CX" ] && echo "CHROMUX=$CX" || (npx @team-attention/chromux help >/dev/null 2>&1 && echo "CHROMUX=npx @team-attention/chromux" || echo "MISSING")
 ```
 
-Launch Chrome (skip if already running):
+Launch Chrome in headless mode (skip if already running):
 
 ```bash
-/path/to/chromux launch default 2>/dev/null || true
+/path/to/chromux launch default --headless 2>/dev/null || true
+```
+
+To let the user inspect a live tab, use `show` (opens DevTools in their browser, no restart needed):
+
+```bash
+/path/to/chromux show exp-ab12
 ```
 
 ## CRITICAL: Shell Variable Persistence
@@ -46,6 +52,7 @@ openssl rand -hex 2
 /path/to/chromux network exp-ab12            # Capture failed requests (4xx/5xx)
 /path/to/chromux network exp-ab12 --all      # Capture all network requests
 /path/to/chromux network exp-ab12 --off      # Disable network capture
+/path/to/chromux show exp-ab12               # Open DevTools in user's browser (live inspect)
 /path/to/chromux close exp-ab12              # Close tab
 /path/to/chromux list                        # List sessions
 ```

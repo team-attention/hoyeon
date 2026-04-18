@@ -42,13 +42,17 @@ CX=$(command -v chromux 2>/dev/null || echo "") && [ -n "$CX" ] && echo "CHROMUX
 1. Inline the full chromux command (e.g., `/Users/you/.local/bin/chromux` or `npx @team-attention/chromux`)
 2. Inline the session ID as a literal string (e.g., `exp-ab12`)
 
-Launch Chrome (skip if already running). Omit `--headless` unless the caller explicitly requested headless mode:
+Launch Chrome in headless mode (skip if already running):
 
 ```bash
-/path/to/chromux launch default 2>/dev/null || true
+/path/to/chromux launch default --headless 2>/dev/null || true
 ```
 
-If headless is explicitly requested: `/path/to/chromux launch default --headless 2>/dev/null || true`
+Headless is the default — no visible window, but fully functional. If the caller or user needs to see the live tab, use `show` to open DevTools in their browser (no restart needed):
+
+```bash
+/path/to/chromux show exp-ab12   # Opens DevTools — user sees the live tab in real time
+```
 
 ## Session Commands
 
@@ -78,6 +82,7 @@ Then in every subsequent Bash call, inline both the chromux path and session ID:
 /path/to/chromux network exp-ab12                # Capture failed requests (4xx/5xx/errors)
 /path/to/chromux network exp-ab12 --all          # Capture all network requests
 /path/to/chromux network exp-ab12 --off          # Disable network capture
+/path/to/chromux show exp-ab12                   # Open DevTools in user's browser (live inspect)
 /path/to/chromux close exp-ab12                  # Close tab
 /path/to/chromux list                            # List all active sessions
 ```
@@ -138,7 +143,7 @@ After `open`, do a `snapshot` and look for dismiss buttons. Click them before pr
 - **DO NOT** take a screenshot and try to guess which CSS selector to click
 - **DO NOT** use `eval` with complex DOM queries to find elements — use snapshot @ref instead
 - **DO NOT** use `$CX` or `$S` across separate Bash calls — inline literal strings
-- **DO NOT** launch with `--headless` unless explicitly told to
+- **DO NOT** launch without `--headless` unless the caller explicitly requests headed mode
 
 ## Output
 
