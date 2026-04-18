@@ -441,7 +441,7 @@ Claude Code에서 `/`를 입력하면 사용 가능한 모든 스킬을 볼 수 
 
 ```bash
 hoyeon-cli plan get <task-id> <plan-path>                    # 태스크 상세 조회
-hoyeon-cli plan status <task-id> <plan-path> --status done   # 태스크 상태 업데이트
+hoyeon-cli plan task <plan-path> --status <task-id>=done   # 태스크 상태 업데이트
 ```
 
 전체 명령어 레퍼런스는 [docs/cli.md](docs/cli.md) 참조.

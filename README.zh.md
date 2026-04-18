@@ -441,7 +441,7 @@ npm install -g @team-attention/hoyeon-cli
 
 ```bash
 hoyeon-cli plan get <task-id> <plan-path>                    # 获取任务详情
-hoyeon-cli plan status <task-id> <plan-path> --status done   # 更新任务状态
+hoyeon-cli plan task <plan-path> --status <task-id>=done   # 更新任务状态
 ```
 
 详见 [docs/cli.md](docs/cli.md) 了解完整命令参考。

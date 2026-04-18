@@ -444,7 +444,7 @@ Type `/` in Claude Code to see all available skills.
 
 ```bash
 hoyeon-cli plan get <task-id> <plan-path>                    # Get task details
-hoyeon-cli plan status <task-id> <plan-path> --status done   # Update task state
+hoyeon-cli plan task <plan-path> --status <task-id>=done   # Update task state
 ```
 
 See [docs/cli.md](docs/cli.md) for the full command reference.

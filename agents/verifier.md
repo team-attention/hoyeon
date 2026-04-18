@@ -56,7 +56,7 @@ Route by `method` field:
 After verifying each sub-requirement, record the result via CLI:
 
 ```
-hoyeon-cli plan status {task_id} {plan_path} --status done|failed --summary "{evidence summary}"
+hoyeon-cli plan task {plan_path} --status {task_id}=done|failed --summary "{evidence summary}"
 ```
 
 The values for `{task_id}` and `{plan_path}` are provided in your task description (VERIFIER_DESCRIPTION).

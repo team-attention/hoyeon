@@ -42,8 +42,8 @@ The Orchestrator delegates one Task from `plan.json`. You receive:
 
 Rules:
 
-- You may call `hoyeon-cli plan get <task-id> <plan-path>` to re-fetch the task JSON if needed. Do **not** read `plan.json` directly with Read/Edit.
-- You must **never** write to `plan.json`. Status updates go through `hoyeon-cli plan status <task-id> <plan-path> --status <pending|in_progress|done|failed> --summary "<msg>"`.
+- You may call `hoyeon-cli plan get <plan-path> --path tasks` to re-fetch the task list if needed. Do **not** read `plan.json` directly with Read/Edit.
+- You must **never** write to `plan.json`. Status updates go through `hoyeon-cli plan task <plan-path> --status <task-id>=<pending|running|done|failed|blocked> --summary "<msg>"`.
 - You do **not** re-read `requirements.md` or `plan.json`. The orchestrator reads the spec once at Phase 0 and passes you the normalized sub-requirement info via the charter. Trust that payload.
 
 ## Charter Preflight (Mandatory)
@@ -71,8 +71,8 @@ If ANY sub-req fails this check:
 1. Abort immediately — do not attempt a fallback interpretation from `behavior`.
 2. Run:
    ```bash
-   hoyeon-cli plan status <task-id> <plan-path> \
-     --status failed \
+   hoyeon-cli plan task <plan-path> \
+     --status <task-id>=failed \
      --summary "GWT incomplete on sub <sub-id>: missing <field>"
    ```
 3. Emit the failure in the Output Format JSON (`build_check: "FAIL"`, failing sub in `sub_requirement_results` with `status: "FAIL"` and reason `"GWT incomplete: missing <field>"`) and return control to the Orchestrator.
@@ -125,7 +125,7 @@ If your task description contains `TDD Mode: ON`:
 
 3. **Test pass (TDD mode only)** — Run the full test suite and confirm all tests pass
 
-**Completion condition**: All sub-requirement GWT scenarios satisfied AND build/lint passes (AND tests pass in TDD mode). On success, mark the task done via `hoyeon-cli plan status <task-id> <plan-path> --status done --summary "<one-line summary>"`.
+**Completion condition**: All sub-requirement GWT scenarios satisfied AND build/lint passes (AND tests pass in TDD mode). On success, mark the task done via `hoyeon-cli plan task <plan-path> --status <task-id>=done --summary "<one-line summary>"`.
 
 ## Output Format
 
@@ -209,4 +209,4 @@ issues    = "This problem exists" (unresolved, needs attention)
 2. **No out-of-scope work**: Only record non-delegated work in `issues`
 3. **Use CONTEXT's Inherited Wisdom**: Reference learnings from previous Tasks
 4. **JSON format required**: Work completion must return result in ```json block
-5. **plan.json is read-only for you**: Use `hoyeon-cli plan get` to read and `hoyeon-cli plan status` to update task state. Never open `plan.json` with Read/Edit/Write. Do not use the legacy `hoyeon-cli spec task` / `spec derive-tasks` commands — those are v1 and no longer apply.
+5. **plan.json is read-only for you**: Use `hoyeon-cli plan get` to read and `hoyeon-cli plan task --status <id>=<state>` to update task state. Never open `plan.json` with Read/Edit/Write. Do not use the legacy `hoyeon-cli spec task` / `spec derive-tasks` commands — those are v1 and no longer apply.

@@ -147,7 +147,7 @@ The plugin ships `hoyeon-cli` (npm: `@team-attention/hoyeon-cli`) for structured
 
 Key conventions:
 - File-based JSON passing via heredoc (`<< 'EOF'`) to avoid shell glob issues
-- Task status updates: `hoyeon-cli plan status <task-id> <plan-path> --status <state>`
+- Task status updates: `hoyeon-cli plan task <plan-path> --status <task-id>=<state>`
 - Monotonic done-lock prevents re-opening completed tasks
 
 ---

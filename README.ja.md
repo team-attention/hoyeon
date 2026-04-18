@@ -439,7 +439,7 @@ Claude Code で `/` を入力すると、利用可能なすべてのスキルが
 
 ```bash
 hoyeon-cli plan get <task-id> <plan-path>                    # タスク詳細を取得
-hoyeon-cli plan status <task-id> <plan-path> --status done   # タスク状態を更新
+hoyeon-cli plan task <plan-path> --status <task-id>=done   # タスク状態を更新
 ```
 
 完全なコマンドリファレンスは [docs/cli.md](docs/cli.md) を参照してください。
