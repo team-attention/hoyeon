@@ -23,6 +23,8 @@ Transform `<spec_dir>/requirements.md` (from /specify) into an executable bluepr
 
 **Contract-first principle**: lock "how modules talk" before anyone writes code. Parallel workers can't break each other's shapes; required invariants are called out explicitly.
 
+**Ask-only-when-owned principle**: prompt the user **only** at decisions they actually own — missing inputs (no spec_dir), conflicting signals with no safe default (meta.type conflict), or real commitments they must make (G4 playtests, flagged `time`/`confidence` ambiguities). Task-graph correctness and final summaries are not user decisions: the coverage gate (2.2) and cross-ref validator (5.1) enforce them mechanically. Print, don't ask.
+
 **Not blueprint's job**: writing source code, running tests, interviewing for missing requirements. If requirements are incomplete, run /specify first.
 
 ## Input / Output
@@ -65,12 +67,14 @@ All `plan.json` operations go through `hoyeon-cli` (NOT legacy `hoyeon-cli`):
 
 ## Scope Adaptation (`meta.type`)
 
-| `meta.type` | Contract artifact shape (when written) | Task graph | Approval |
-|---|---|---|---|
-| `greenfield` | Full surface: types + interfaces + invariants (~50-200 lines) | L0-L3, parallel L1 | Full review |
-| `feature` | Delta only: new types/interfaces this feature adds (~10-50 lines) | L0-L2, parallel if multi-module | Standard |
-| `refactor` | Pin-style: `## Frozen Public API` + `## Allowed Churn` + `## Invariants` | Flat list with invariant guards | Light |
-| `bugfix` | Minimal: typically just an `## Invariants` section | Single chain (1-3 tasks) | Auto-approve if no ambiguity |
+| `meta.type` | Contract artifact shape (when written) | Task graph |
+|---|---|---|
+| `greenfield` | Full surface: types + interfaces + invariants (~50-200 lines) | L0-L3, parallel L1 |
+| `feature` | Delta only: new types/interfaces this feature adds (~10-50 lines) | L0-L2, parallel if multi-module |
+| `refactor` | Pin-style: `## Frozen Public API` + `## Allowed Churn` + `## Invariants` | Flat list with invariant guards |
+| `bugfix` | Minimal: typically just an `## Invariants` section | Single chain (1-3 tasks) |
+
+Approval is not `meta.type`-scaled anymore — the ask-only-when-owned rule governs every type uniformly (see top-level principle).
 
 **`contracts.md` is content-driven, not type-driven.** Write it whenever `contract-deriver` finds any cross-module content (≥1 invariant or interface) — regardless of `meta.type`. Skip the file (return `artifact: null`) only when the agent genuinely has nothing to pin. A bugfix with 3 load-bearing invariants gets a file; a feature that only adds a config flag may not. `meta.type` decides the template shape, not the file's existence.
 
@@ -269,9 +273,9 @@ cli does NOT verify coverage against requirements.md. **You** must ensure:
 
 - **Parallel safety**: for each L1 task pair with `parallel_safe: true`, double-check they touch different modules and share only L0 contract state. If uncertain → set `parallel_safe: false` (serial is safe default).
 
-### Step 2.3: Preview task graph for user
+### Step 2.3: Preview task graph (informational)
 
-Before merging, show the user what was planned. Print a readable summary:
+Print the table so the user can see what got planned — but **do not ask for approval**. The coverage gate in 2.2 already verifies the graph is well-formed; asking "is this right?" forces the user to re-judge agent output they can't usefully correct without seeing code.
 
 ```
 [blueprint] Task Graph (Phase 2)
@@ -285,21 +289,7 @@ Before merging, show the user what was planned. Print a readable summary:
 Coverage: 12/12 sub-reqs fulfilled (0 uncovered)
 ```
 
-**Auto-approve**: `meta.type == bugfix` AND no ambiguities → skip the ask, print the table, proceed.
-Otherwise ask:
-```
-AskUserQuestion(
-  question: "Proceed with this task graph?",
-  options: [
-    { label: "Approve", description: "Merge tasks into plan.json and continue" },
-    { label: "Revise", description: "Re-generate with feedback" },
-    { label: "Abort", description: "Stop blueprint" }
-  ]
-)
-```
-
-If **Revise**: ask what to change, re-dispatch taskgraph-planner with the feedback. Max 2 revision rounds.
-If **Abort**: exit skill.
+**Only prompt** when `taskgraph-planner.ambiguities[]` contains items with `user_impact` of `time` or `confidence` (see "Ambiguity Handling"). Otherwise proceed to 2.4 silently.
 
 ### Step 2.4: Merge tasks into plan.json
 
@@ -484,12 +474,12 @@ Example with G4:
 What you need to do: 1 playtest session.
 ```
 
-**Auto-approve rule** (skip the generic "proceed?" prompt):
-- No `ambiguities[]` with `user_impact: time` or `confidence` (after the filter), AND
-- No G4 gates in `verify_plan`, AND
-- `meta.type` is `bugfix`, `feature`, or `refactor`
+**Default = silent.** Print the preview block and proceed to Step 4.4 unless one of the following user-owned decisions exists:
 
-Under auto-approve: print the preview block, log "auto-approving (no user-owned commitments)", proceed to Step 4.4.
+1. `verify_plan` contains any **G4** target — the user has to commit real time (playtest, sampled metrics, aesthetic review)
+2. `ambiguities[]` (collected across phases, after filtering — see "Ambiguity Handling") contains any item with `user_impact` of `time` or `confidence`
+
+If neither applies, log `auto-approving (no user-owned commitments)` and continue. No generic "proceed?" prompt.
 
 **When to actually ask**: only when the user has something real to decide. Build the question from the filtered ambiguities queue (see "Ambiguity Handling" section) and/or G4 confirmations:
 
@@ -537,9 +527,9 @@ This runs schema validation AND these internal cross-ref checks:
 
 If validation fails, diagnose the specific rule violation and re-merge corrected JSON. Never ignore a validation failure.
 
-### Step 5.2: Approval gate
+### Step 5.2: Summary (informational)
 
-Show the user a compact summary:
+Print a compact summary and proceed. **No approval prompt** — Phase 4.3 already handled every user-owned decision (G4 commitments, time/confidence ambiguities). A final "y/n" here adds nothing the user can act on without reading code.
 
 ```
 [blueprint] Plan complete.
@@ -554,10 +544,7 @@ Summary:
 Next: /execute <spec_dir>/
 ```
 
-Auto-approve rules:
-- `meta.type == bugfix` AND no ambiguities → proceed silently
-- `--auto` flag → skip summary
-- Otherwise → show summary, ask y/n
+Skip the summary entirely under `--no-summary` (used by /execute's inline call).
 
 ### Step 5.3: Handoff
 
@@ -658,7 +645,7 @@ hoyeon-cli plan validate <spec_dir>
 | `plan validate` schema error | Diagnose (cli prints specific path + message), re-merge corrected JSON |
 | `plan validate` cross-ref error (e.g., task fulfills missing from verify_plan) | Re-dispatch verify-planner with the missing ids |
 | Uncovered sub-req after taskgraph-planner | Re-dispatch with uncovered list (max 2 retries), then surface to user |
-| User rejects at Phase 5.2 | Do NOT revert files. User can re-run or edit requirements.md and re-run. |
+| User rejects after blueprint commits | Do NOT revert files. User can edit requirements.md and re-run /blueprint, or edit plan.json directly via cli. |
 
 ---
 
