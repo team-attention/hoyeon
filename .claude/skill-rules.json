@@ -70,25 +70,6 @@
     "hint": "Extracts knowledge from PR context and saves it to docs/learnings/.",
     "isGeneral": false
   },
-  "deep-interview": {
-    "keywords": [
-      "deep-interview",
-      "deep interview",
-      "interview me",
-      "clarify requirements",
-      "interview",
-      "not sure what to build",
-      "requirements unclear",
-      "refine idea",
-      "requirement clarification",
-      "project planning",
-      "idea refinement",
-      "spec clarification",
-      "user story"
-    ],
-    "hint": "Conducts an in-depth interview to clarify user requirements and refine ideas.",
-    "isGeneral": false
-  },
   "deep-research": {
     "keywords": [
       "deep-research",
@@ -143,9 +124,17 @@
       "discussion",
       "think it through together",
       "think about it",
-      "decision discussion"
+      "decision discussion",
+      "interview me",
+      "clarify requirements",
+      "interview",
+      "not sure what to build",
+      "requirements unclear",
+      "refine idea",
+      "requirement clarification",
+      "spec clarification"
     ],
-    "hint": "Systematically discusses and brainstorms ideas or topics.",
+    "hint": "Socratic discussion partner. Use --scored for ambiguity tracking (replaces /deep-interview).",
     "isGeneral": false
   },
   "google-search": {
