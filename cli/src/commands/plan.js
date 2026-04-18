@@ -9,7 +9,7 @@ const TASK_STATES = ['pending', 'running', 'done', 'failed', 'blocked'];
 
 const HELP = `
 Usage:
-  hoyeon-cli2 plan <command> [options]
+  hoyeon-cli plan <command> [options]
 
 Commands:
   init <spec_dir> --type <greenfield|feature|refactor|bugfix> [--force]
@@ -298,6 +298,6 @@ export default async function plan(args) {
     return;
   }
   const fn = COMMANDS[sub];
-  if (!fn) die(`Error: unknown plan command '${sub}'. Run 'hoyeon-cli2 plan --help'.`);
+  if (!fn) die(`Error: unknown plan command '${sub}'. Run 'hoyeon-cli plan --help'.`);
   await fn(args.slice(1));
 }

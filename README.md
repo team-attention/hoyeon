@@ -5,7 +5,7 @@ English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](READM
 **All you need is requirements.**
 A Claude Code plugin that derives requirements from your intent, verifies every derivation, and delivers traced code — without you writing a plan.
 
-[![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli2)](https://www.npmjs.com/package/@team-attention/hoyeon-cli2)
+[![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli)](https://www.npmjs.com/package/@team-attention/hoyeon-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [Quick Start](#quick-start) · [Philosophy](#requirements-are-not-written) · [The Chain](#the-derivation-chain) · [Commands](#commands) · [Agents](#twenty-one-minds)
@@ -66,7 +66,7 @@ Three mechanisms enforce this:
 
 - **`requirements.md` + `plan.json` as structured artifacts** — `/specify` produces `requirements.md` (the what). `/blueprint` produces `plan.json` with contracts and task graphs (the how). Every agent reads from these shared artifacts. No agent invents its own context. No information lives only in a conversation. These artifacts are the shared memory that survives context windows, compaction, and agent handoffs.
 
-- **CLI-enforced structure** — `hoyeon-cli2` validates plan structure and task state transitions. Field names, types, required relationships — all checked programmatically before the LLM ever sees the data. The CLI doesn't suggest structure; it **rejects** invalid structure.
+- **CLI-enforced structure** — `hoyeon-cli` validates plan structure and task state transitions. Field names, types, required relationships — all checked programmatically before the LLM ever sees the data. The CLI doesn't suggest structure; it **rejects** invalid structure.
 
 - **Derivation chain as contract** — Goal → Decisions → Requirements → Sub-requirements → Tasks are linked. Each layer references the one above it. A sub-requirement traces to a requirement. A task traces to requirements via `fulfills`. If the chain breaks, the gate blocks. This means: **if you have valid requirements, the system will produce a result** — deterministically routed, even if the LLM's individual outputs vary.
 
@@ -401,7 +401,7 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 │   ├── guards         Write protection, plan enforcement
 │   ├── validation     Output quality, failure recovery
 │   └── pipeline       Ultrawork transitions, DoD loops
-└── cli2/              plan.json validation & state management
+└── cli/              plan.json validation & state management
 ```
 
 **Key internals:**
@@ -422,7 +422,7 @@ See [docs/architecture.md](docs/architecture.md) for the full pipeline diagram.
 ```bash
 # Install the plugin
 claude plugin add team-attention/hoyeon
-npm install -g @team-attention/hoyeon-cli2
+npm install -g @team-attention/hoyeon-cli
 
 # Start — derive requirements, plan, and execute
 /specify "add dark mode toggle to settings page"
@@ -440,11 +440,11 @@ Type `/` in Claude Code to see all available skills.
 
 ## CLI
 
-`hoyeon-cli2` manages plan.json validation and task state:
+`hoyeon-cli` manages plan.json validation and task state:
 
 ```bash
-hoyeon-cli2 plan get <task-id> <plan-path>                    # Get task details
-hoyeon-cli2 plan status <task-id> <plan-path> --status done   # Update task state
+hoyeon-cli plan get <task-id> <plan-path>                    # Get task details
+hoyeon-cli plan status <task-id> <plan-path> --status done   # Update task state
 ```
 
 See [docs/cli.md](docs/cli.md) for the full command reference.

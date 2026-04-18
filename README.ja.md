@@ -5,7 +5,7 @@
 **All you need is requirements.**
 あなたの意図から要件を導出し、すべての導出を検証し、トレーサビリティのあるコードを生成する Claude Code プラグインです。計画を書く必要はありません。
 
-[![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli2)](https://www.npmjs.com/package/@team-attention/hoyeon-cli2)
+[![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli)](https://www.npmjs.com/package/@team-attention/hoyeon-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [クイックスタート](#クイックスタート) · [思想](#要件は書くものではない) · [導出チェーン](#導出チェーン) · [コマンド](#コマンド) · [エージェント](#21の思考)
@@ -66,7 +66,7 @@ Goal → Decisions → Requirements → Sub-requirements → Tasks
 
 - **`requirements.md` + `plan.json` を構造化された成果物とする** — `/specify` が `requirements.md`（何を）を生成します。`/blueprint` がコントラクトとタスクグラフを含む `plan.json`（どのように）を生成します。すべてのエージェントがこれらの共有成果物から読み取ります。独自のコンテキストを発明するエージェントはいません。会話の中だけに存在する情報はありません。これらの成果物は、コンテキストウィンドウ、コンパクション、エージェントの引き継ぎを超えて生き残る共有メモリです。
 
-- **CLI による構造の強制** — `hoyeon-cli2` はプラン構造とタスク状態遷移をバリデーションします。フィールド名、型、必要な関連性 — すべてが LLM がデータを見る前にプログラム的にチェックされます。CLI は構造を提案するのではなく、無効な構造を**拒否**します。
+- **CLI による構造の強制** — `hoyeon-cli` はプラン構造とタスク状態遷移をバリデーションします。フィールド名、型、必要な関連性 — すべてが LLM がデータを見る前にプログラム的にチェックされます。CLI は構造を提案するのではなく、無効な構造を**拒否**します。
 
 - **契約としての導出チェーン** — Goal → Decisions → Requirements → Sub-requirements → Tasks はリンクされています。各レイヤーはその上のレイヤーを参照します。サブ要件は要件にトレースされます。タスクは `fulfills` を通じて要件にトレースされます。チェーンが切れれば、ゲートがブロックします。つまり：**有効な要件があれば、システムは結果を生み出します** — LLM の個々の出力が変動しても、決定論的にルーティングされます。
 
@@ -396,7 +396,7 @@ You:  /execute
 │   ├── guards         Write protection, plan enforcement
 │   ├── validation     Output quality, failure recovery
 │   └── pipeline       Ultrawork transitions, DoD loops
-└── cli2/              plan.json validation & state management
+└── cli/              plan.json validation & state management
 ```
 
 **主要な内部機構：**
@@ -417,7 +417,7 @@ You:  /execute
 ```bash
 # プラグインのインストール
 claude plugin add team-attention/hoyeon
-npm install -g @team-attention/hoyeon-cli2
+npm install -g @team-attention/hoyeon-cli
 
 # 開始 — 要件を導出し、計画し、実行
 /specify "add dark mode toggle to settings page"
@@ -435,11 +435,11 @@ Claude Code で `/` を入力すると、利用可能なすべてのスキルが
 
 ## CLI
 
-`hoyeon-cli2` は plan.json のバリデーションとタスク状態を管理します：
+`hoyeon-cli` は plan.json のバリデーションとタスク状態を管理します：
 
 ```bash
-hoyeon-cli2 plan get <task-id> <plan-path>                    # タスク詳細を取得
-hoyeon-cli2 plan status <task-id> <plan-path> --status done   # タスク状態を更新
+hoyeon-cli plan get <task-id> <plan-path>                    # タスク詳細を取得
+hoyeon-cli plan status <task-id> <plan-path> --status done   # タスク状態を更新
 ```
 
 完全なコマンドリファレンスは [docs/cli.md](docs/cli.md) を参照してください。

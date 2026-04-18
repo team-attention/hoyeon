@@ -6,7 +6,7 @@ description: |
   Turn requirements.md into an executable blueprint (plan.json + contracts.md).
   Five phases: Contracts → Tasks → Journeys → Verify Plan → Commit.
   Sits between /specify and /execute. Scope-adaptive (greenfield → bugfix).
-  Uses hoyeon-cli2 (plan.json only; requirements.md is read as-is via Read tool).
+  Uses hoyeon-cli (plan.json only; requirements.md is read as-is via Read tool).
 ---
 
 # blueprint: Requirements → Executable Plan
@@ -43,23 +43,23 @@ Only those three files. No rendered view file, no language-specific stubs.
 
 ### File role separation
 - **requirements.md** — specify owns. Human-editable markdown with sub-requirements (GWT).
-- **plan.json** — blueprint owns. Machine state. Schema: `plan/v1` (see `cli2/schemas/plan.schema.json`).
+- **plan.json** — blueprint owns. Machine state. Schema: `plan/v1` (see `cli/schemas/plan.schema.json`).
 - **contracts.md** — blueprint creates. Sibling artifact referenced by `plan.contracts.artifact`. Markdown, language-agnostic.
 
 ---
 
-## Prerequisite: cli2
+## Prerequisite: cli
 
-All `plan.json` operations go through `hoyeon-cli2` (NOT legacy `hoyeon-cli`):
+All `plan.json` operations go through `hoyeon-cli` (NOT legacy `hoyeon-cli`):
 
 | Command | Purpose |
 |---|---|
-| `hoyeon-cli2 plan init <spec_dir> --type <t>` | Create empty stub (if missing) |
-| `hoyeon-cli2 plan merge <spec_dir> --json '<payload>' [--patch\|--append]` | Merge JSON with schema validation |
-| `hoyeon-cli2 plan get <spec_dir> --path <dotted>` | Read field |
-| `hoyeon-cli2 plan validate <spec_dir>` | Schema + internal cross-ref integrity |
+| `hoyeon-cli plan init <spec_dir> --type <t>` | Create empty stub (if missing) |
+| `hoyeon-cli plan merge <spec_dir> --json '<payload>' [--patch\|--append]` | Merge JSON with schema validation |
+| `hoyeon-cli plan get <spec_dir> --path <dotted>` | Read field |
+| `hoyeon-cli plan validate <spec_dir>` | Schema + internal cross-ref integrity |
 
-**cli2 never parses requirements.md.** Reading the markdown is the blueprint agent's job (via Read tool). cli2 only validates plan.json self-consistency. Coverage against requirements.md is enforced semantically by the LLM (Phase 2 / Phase 4 of this skill).
+**cli never parses requirements.md.** Reading the markdown is the blueprint agent's job (via Read tool). cli only validates plan.json self-consistency. Coverage against requirements.md is enforced semantically by the LLM (Phase 2 / Phase 4 of this skill).
 
 ---
 
@@ -101,7 +101,7 @@ All `plan.json` operations go through `hoyeon-cli2` (NOT legacy `hoyeon-cli`):
 
 ### Step 0.2: Read requirements.md
 
-Use **Read tool** directly. Do not shell out to cli2 for parsing — cli2 has no such command.
+Use **Read tool** directly. Do not shell out to cli for parsing — cli has no such command.
 
 Extract (you, the main agent, parse this from the markdown):
 - **Frontmatter**: `type`, `goal`, `non_goals` (YAML between `---` delimiters)
@@ -122,7 +122,7 @@ reqs = [
 ### Step 0.3: Init plan.json stub
 
 ```bash
-hoyeon-cli2 plan init <spec_dir> --type <meta.type>
+hoyeon-cli plan init <spec_dir> --type <meta.type>
 ```
 
 If plan.json already exists (re-run), skip init and treat as patch-merge mode.
@@ -133,7 +133,7 @@ If plan.json already exists (re-run), skip init and treat as patch-merge mode.
 cat > /tmp/bp-meta.json << 'EOF'
 {"meta": {"type": "<t>", "goal": "<goal>", "non_goals": ["..."]}}
 EOF
-hoyeon-cli2 plan merge <spec_dir> --patch --json "$(cat /tmp/bp-meta.json)"
+hoyeon-cli plan merge <spec_dir> --patch --json "$(cat /tmp/bp-meta.json)"
 ```
 
 ---
@@ -218,7 +218,7 @@ The agent writes `<spec_dir>/contracts.md` (markdown) and returns:
 cat > /tmp/bp-contracts.json << 'EOF'
 {"contracts": {"artifact": "contracts.md", "interfaces": [...], "invariants": [...]}}
 EOF
-hoyeon-cli2 plan merge <spec_dir> --patch --json "$(cat /tmp/bp-contracts.json)"
+hoyeon-cli plan merge <spec_dir> --patch --json "$(cat /tmp/bp-contracts.json)"
 ```
 
 ---
@@ -257,7 +257,7 @@ Tasks carry **WHAT**, not HOW. The `action` string is the only description field
 
 ### Step 2.2: Coverage gate (semantic, by you)
 
-cli2 does NOT verify coverage against requirements.md. **You** must ensure:
+cli does NOT verify coverage against requirements.md. **You** must ensure:
 
 - **Every** `R-X.Y` sub-requirement appears in at least one `tasks[].fulfills`. Build a set diff:
   ```
@@ -307,7 +307,7 @@ If **Abort**: exit skill.
 cat > /tmp/bp-tasks.json << 'EOF'
 {"tasks": [ ... ]}
 EOF
-hoyeon-cli2 plan merge <spec_dir> --append --json "$(cat /tmp/bp-tasks.json)"
+hoyeon-cli plan merge <spec_dir> --append --json "$(cat /tmp/bp-tasks.json)"
 ```
 
 Use `--append` on first write. Use `--patch` later if you need to update individual task fields by id.
@@ -383,7 +383,7 @@ Constraints (enforced by schema):
 cat > /tmp/bp-journeys.json << 'EOF'
 {"journeys": [ ... ]}
 EOF
-hoyeon-cli2 plan merge <spec_dir> --append --json "$(cat /tmp/bp-journeys.json)"
+hoyeon-cli plan merge <spec_dir> --append --json "$(cat /tmp/bp-journeys.json)"
 ```
 
 ---
@@ -515,7 +515,7 @@ If the user chooses to revise: apply the chosen option to `verify_plan` (add/dro
 cat > /tmp/bp-verify.json << 'EOF'
 {"verify_plan": [ ... ]}
 EOF
-hoyeon-cli2 plan merge <spec_dir> --append --json "$(cat /tmp/bp-verify.json)"
+hoyeon-cli plan merge <spec_dir> --append --json "$(cat /tmp/bp-verify.json)"
 ```
 
 ---
@@ -525,7 +525,7 @@ hoyeon-cli2 plan merge <spec_dir> --append --json "$(cat /tmp/bp-verify.json)"
 ### Step 5.1: Full validation
 
 ```bash
-hoyeon-cli2 plan validate <spec_dir>
+hoyeon-cli plan validate <spec_dir>
 ```
 
 This runs schema validation AND these internal cross-ref checks:
@@ -627,23 +627,23 @@ Agents are globally registered at plugin-root `/agents/{name}.md`. Dispatch via 
 
 ## Command Reference (blueprint-only subset)
 
-All state changes go through cli2 with one `--json` per merge. Never hand-write plan.json.
+All state changes go through cli with one `--json` per merge. Never hand-write plan.json.
 
 ```bash
 # Init (idempotent — skip if exists)
-hoyeon-cli2 plan init <spec_dir> --type greenfield
+hoyeon-cli plan init <spec_dir> --type greenfield
 
 # Patch meta (replace field values, keep unchanged fields)
-hoyeon-cli2 plan merge <spec_dir> --patch --json '{"meta":{...}}'
+hoyeon-cli plan merge <spec_dir> --patch --json '{"meta":{...}}'
 
 # Append to arrays (tasks/journeys/verify_plan)
-hoyeon-cli2 plan merge <spec_dir> --append --json '{"tasks":[...]}'
+hoyeon-cli plan merge <spec_dir> --append --json '{"tasks":[...]}'
 
 # Patch array items by id (update single task field)
-hoyeon-cli2 plan merge <spec_dir> --patch --json '{"tasks":[{"id":"T3","status":"in_progress"}]}'
+hoyeon-cli plan merge <spec_dir> --patch --json '{"tasks":[{"id":"T3","status":"in_progress"}]}'
 
 # Final sanity
-hoyeon-cli2 plan validate <spec_dir>
+hoyeon-cli plan validate <spec_dir>
 ```
 
 **JSON passing**: always write to `/tmp/bp-<step>.json` via heredoc first, then pass with `--json "$(cat ...)"`. Direct inlining breaks on zsh glob expansion (`[`, `{`, `$`).
@@ -655,7 +655,7 @@ hoyeon-cli2 plan validate <spec_dir>
 | Failure | Recovery |
 |---|---|
 | `requirements.md` missing | Tell user to run /specify; abort |
-| `plan validate` schema error | Diagnose (cli2 prints specific path + message), re-merge corrected JSON |
+| `plan validate` schema error | Diagnose (cli prints specific path + message), re-merge corrected JSON |
 | `plan validate` cross-ref error (e.g., task fulfills missing from verify_plan) | Re-dispatch verify-planner with the missing ids |
 | Uncovered sub-req after taskgraph-planner | Re-dispatch with uncovered list (max 2 retries), then surface to user |
 | User rejects at Phase 5.2 | Do NOT revert files. User can re-run or edit requirements.md and re-run. |
@@ -673,5 +673,5 @@ When /execute is invoked without a `plan.json`, it may call this skill inline wi
 - Re-interviewing requirements (that's /specify)
 - Implementation work in src/ (contracts.md at spec_dir/ is the only artifact blueprint produces)
 - Running verifications (that's /execute)
-- Parsing requirements.md inside cli2 (LLM reads directly via Read tool)
+- Parsing requirements.md inside cli (LLM reads directly via Read tool)
 - Rendering a human-readable view file (read `plan.json` directly — it's structured and small)

@@ -12,10 +12,10 @@ contracts that a worker benefits from remembering across claims.
 
 **Invariants honored by this mode**:
 - **INV-2**: charter contains only paths + IDs (no inlined GWT / requirements / contracts prose).
-  Workers self-read GWT via `hoyeon-cli2 plan get` + self-Read of `contracts_path`.
-- **INV-3**: orchestrator (lead) reads only `plan.json` structural fields via cli2.
+  Workers self-read GWT via `hoyeon-cli plan get` + self-Read of `contracts_path`.
+- **INV-3**: orchestrator (lead) reads only `plan.json` structural fields via cli.
   Lead never Reads `requirements.md` or `contracts.md` body.
-- **INV-5**: `plan.json` mutations go through `hoyeon-cli2 plan` only.
+- **INV-5**: `plan.json` mutations go through `hoyeon-cli plan` only.
   `audit.md`, `learnings.json`, `issues.json`, `contracts.md` → direct Read/Write/Edit.
 - **C2**: round-level commit only. Workers never run `git`. The lead batches one commit per
   worker-pool round (all workers idle + no pending unblocked tasks = round boundary).
@@ -31,7 +31,7 @@ frontier. A bucket = set of tasks that share a primary module/file-scope **and**
 a `depends_on` edge with each other.
 
 ```
-pending = Bash("hoyeon-cli2 plan list {spec_dir} --status pending --json").tasks
+pending = Bash("hoyeon-cli plan list {spec_dir} --status pending --json").tasks
 ready   = pending.filter(t => all(d.status == "done" for d in t.depends_on))
 
 buckets = group_by_module(ready)
@@ -56,7 +56,7 @@ TeamCreate(team_name=team_name)
 ### Create Tracking Tasks (TURN 1 — single message)
 
 All `TaskCreate` calls go in ONE message. Charter description carries **paths + IDs only**
-(INV-2). Workers will fetch GWT themselves via cli2.
+(INV-2). Workers will fetch GWT themselves via cli.
 
 ```
 FOR EACH task in pending:
@@ -112,7 +112,7 @@ You are a TEAM WORKER claiming task {task_id} in spec {spec_dir}.
 - prior_failure:   {prior_failure_context ?? "(none)"}
 
 ## Step 1 — Prereq
-Claim was already performed by WORKER_PREAMBLE LOOP Step 3 (single owner = cli2 flock).
+Claim was already performed by WORKER_PREAMBLE LOOP Step 3 (single owner = cli flock).
 Do NOT re-claim here. If your session somehow reached this step without holding the
 claim, abort and let the LOOP re-run step 3.
 
@@ -150,7 +150,7 @@ Do NOT run git — lead commits per round (C2).
   Edit {CONTEXT_DIR}/issues.json     (append JSON if blockers)
 
 ## Step 8 — Mark done
-  hoyeon-cli2 plan task {spec_dir} --status {task_id}=done \
+  hoyeon-cli plan task {spec_dir} --status {task_id}=done \
     --summary '{one-line summary}'
   TaskUpdate(taskId=tracking, status="completed")
 
@@ -189,7 +189,7 @@ loop that lets a single worker claim many tasks while keeping its in-session mem
 ```
 WORKER_PREAMBLE(team_name, worker_name, plan_path, contracts_path, spec_dir, CONTEXT_DIR) = """
 You are TEAM WORKER "{worker_name}" in team "{team_name}".
-Report to "team-lead" via SendMessage. Never Read/Write plan.json directly — cli2 only.
+Report to "team-lead" via SendMessage. Never Read/Write plan.json directly — cli only.
 
 Session constants (already resolved by lead):
   - contracts_path: {contracts_path ?? "(none)"}
@@ -204,7 +204,7 @@ State you keep across claims (in-session memory, DO NOT re-read unless invalidat
 
 LOOP:
   1. LIST ready tasks:
-       hoyeon-cli2 plan list {spec_dir} --status pending --json
+       hoyeon-cli plan list {spec_dir} --status pending --json
      Filter to tasks whose depends_on are all `done`.
      IF empty → emit "standing by" → WAIT for SendMessage wake-up, then restart LOOP.
 
@@ -225,9 +225,9 @@ LOOP:
        prior reads (code + contracts) stay valid. If no such task exists, pick the
        highest-priority task from a new module.
 
-  3. CLAIM (atomic via cli2 flock):
-       hoyeon-cli2 plan task {spec_dir} --status {picked_id}=running
-     IF cli2 reports "already claimed" → loop back to step 1.
+  3. CLAIM (atomic via cli flock):
+       hoyeon-cli plan task {spec_dir} --status {picked_id}=running
+     IF cli reports "already claimed" → loop back to step 1.
 
   4. EXECUTE the task by following its TaskCreate description (WORKER_DESCRIPTION
      above): self-read GWT via `plan get`, self-read contracts (only if not in
@@ -251,7 +251,7 @@ On shutdown_request:
     request_id=<from request>, approve=true)
 
 == RULES ==
-- Never Read/Write plan.json directly (INV-5 — cli2 only).
+- Never Read/Write plan.json directly (INV-5 — cli only).
 - Never Read requirements.md or spec.json (INV-2 — your TaskCreate + `plan get`
   expose the GWT you need).
 - Never run git — lead commits per round (C2).
@@ -345,7 +345,7 @@ WHILE has_pending_tasks_in_plan():
     handle_failed(msg)    # bounded retry via round 2 re-dispatch w/ prior_failure_context
 
   ELIF msg.content starts with "BLOCKED":
-    handle_blocked(msg)   # append fix task via cli2 plan merge, wake workers
+    handle_blocked(msg)   # append fix task via cli plan merge, wake workers
 
 # End of loop: all plan tasks are done
 final_commit_if_dirty()
@@ -361,7 +361,7 @@ function commit_round(round_idx, completed_task_ids):
         description="Commit round {round_idx}",
         prompt="Commit all changes from team-mode round {round_idx}. "
                "Tasks included: {completed_task_ids}. Spec: {spec_dir}.")
-  # Lead logs the commit to audit.md (direct Edit — INV-5, not cli2)
+  # Lead logs the commit to audit.md (direct Edit — INV-5, not cli)
   Edit(CONTEXT_DIR + "/audit.md", append=
     "ROUND {round_idx} committed: {completed_task_ids} @ {timestamp}")
 ```
@@ -380,7 +380,7 @@ function handle_failed(msg):
   IF retry < 2:
     retry_count[msg.task_id] = retry + 1
     # Return to pending so any worker can re-claim
-    Bash("hoyeon-cli2 plan task {spec_dir} --status {msg.task_id}=pending")
+    Bash("hoyeon-cli plan task {spec_dir} --status {msg.task_id}=pending")
     # Re-issue TaskCreate with prior_failure_context populated
     TaskCreate(
       subject="{msg.task_id}:Work (retry {retry_count[msg.task_id]})",
@@ -406,7 +406,7 @@ function handle_failed(msg):
 function handle_blocked(msg):
   fix_task_json = derive_fix_task(msg)    # id, action, depends_on, fulfills
   fix_id = fix_task_json.id
-  Bash("hoyeon-cli2 plan merge {spec_dir} --append --json '{fix_task_json}'")
+  Bash("hoyeon-cli plan merge {spec_dir} --append --json '{fix_task_json}'")
   TaskCreate(
     subject="{fix_id}:Work — fix for {msg.task_id}",
     description=WORKER_DESCRIPTION(
@@ -463,12 +463,12 @@ IF work != "no-commit" AND `git status --porcelain` is not empty:
 - [ ] `WORKER_DESCRIPTION` carries **paths + IDs only** — no inlined GWT / contracts prose (INV-2)
 - [ ] `WORKER_PREAMBLE` includes the persistent claim LOOP with MODULE_CACHE + CONTRACTS_SEEN
 - [ ] PICK step orders by longest-deps-first, then same-module bias (R-F5.1 + R-F5.2)
-- [ ] CLAIM via `hoyeon-cli2 plan task --status <id>=running` (cli2 flock = single winner)
-- [ ] Workers self-read GWT via `hoyeon-cli2 plan get` (never `requirements.md` / `spec.json`)
+- [ ] CLAIM via `hoyeon-cli plan task --status <id>=running` (cli flock = single winner)
+- [ ] Workers self-read GWT via `hoyeon-cli plan get` (never `requirements.md` / `spec.json`)
 - [ ] Worker runs internal self-verify / fix loop up to 2 rounds before reporting FAILED (R-F5.3)
 - [ ] Lead monitors via SendMessage; no sleep/poll (INV-4)
 - [ ] Standing-by workers woken via SendMessage when tasks unblock
 - [ ] Commit is round-level via `git-master` agent; workers never run git (C2)
-- [ ] audit.md / learnings.json / issues.json written via Edit (not cli2 — INV-5)
+- [ ] audit.md / learnings.json / issues.json written via Edit (not cli — INV-5)
 - [ ] Graceful shutdown: shutdown_request → shutdown_response → TeamDelete
 - [ ] Verify + Report handled directly by lead (not by a team worker)

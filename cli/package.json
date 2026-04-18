@@ -1,10 +1,10 @@
 {
-  "name": "@team-attention/hoyeon-cli2",
+  "name": "@team-attention/hoyeon-cli",
   "version": "0.1.0",
   "type": "module",
-  "description": "Dedicated CLI for specify2 + blueprint workflow (requirements.md + plan.json)",
+  "description": "Dedicated CLI for specify + blueprint workflow (requirements.md + plan.json)",
   "bin": {
-    "hoyeon-cli2": "./dist/cli.js"
+    "hoyeon-cli": "./dist/cli.js"
   },
   "files": [
     "dist/",

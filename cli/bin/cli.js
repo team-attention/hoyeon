@@ -5,13 +5,13 @@ import issueHandler from '../src/commands/issue.js';
 import sessionHandler from '../src/commands/session.js';
 
 const USAGE = `
-hoyeon-cli2 — CLI for specify2 + blueprint + execute2 workflow
+hoyeon-cli — CLI for specify2 + blueprint + execute2 workflow
 
 Usage:
-  hoyeon-cli2 <group> <command> [options]
+  hoyeon-cli <group> <command> [options]
 
 Groups:
-  req       requirements.md scaffolding (init only — cli2 does not parse .md)
+  req       requirements.md scaffolding (init only — cli does not parse .md)
   plan      plan.json operations (init, merge, get, list, task, validate)
   learning  Add structured learning entries to context/learnings.json
   issue     Add structured issue entries to context/issues.json
@@ -22,13 +22,13 @@ Options:
   --version     Show version
 
 Examples:
-  hoyeon-cli2 req init .hoyeon/specs/my-spec --type greenfield
-  hoyeon-cli2 plan init .hoyeon/specs/my-spec --type greenfield
-  hoyeon-cli2 plan merge .hoyeon/specs/my-spec --json '{"tasks":[...]}'
-  hoyeon-cli2 plan task .hoyeon/specs/my-spec --status T1=running
-  hoyeon-cli2 learning --task T1 --json '{"problem":"..."}' .hoyeon/specs/my-spec
-  hoyeon-cli2 issue --task T1 --json '{"type":"blocker","description":"..."}' .hoyeon/specs/my-spec
-  hoyeon-cli2 session set --sid abc123 --key spec_dir --value .hoyeon/specs/foo
+  hoyeon-cli req init .hoyeon/specs/my-spec --type greenfield
+  hoyeon-cli plan init .hoyeon/specs/my-spec --type greenfield
+  hoyeon-cli plan merge .hoyeon/specs/my-spec --json '{"tasks":[...]}'
+  hoyeon-cli plan task .hoyeon/specs/my-spec --status T1=running
+  hoyeon-cli learning --task T1 --json '{"problem":"..."}' .hoyeon/specs/my-spec
+  hoyeon-cli issue --task T1 --json '{"type":"blocker","description":"..."}' .hoyeon/specs/my-spec
+  hoyeon-cli session set --sid abc123 --key spec_dir --value .hoyeon/specs/foo
 `;
 
 const GROUPS = {
@@ -49,7 +49,7 @@ async function main() {
 
   if (args[0] === '--version') {
     const version = typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : 'dev';
-    process.stdout.write(`hoyeon-cli2 v${version}\n`);
+    process.stdout.write(`hoyeon-cli v${version}\n`);
     process.exit(0);
   }
 
@@ -57,7 +57,7 @@ async function main() {
 
   if (!Object.prototype.hasOwnProperty.call(GROUPS, group)) {
     process.stderr.write(`Error: unknown group '${group}'\n`);
-    process.stderr.write(`Run 'hoyeon-cli2 --help' for usage.\n`);
+    process.stderr.write(`Run 'hoyeon-cli --help' for usage.\n`);
     process.exit(1);
   }
 

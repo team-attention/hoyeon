@@ -5,7 +5,7 @@
 **All you need is requirements.**
 의도에서 요구사항을 도출하고, 모든 도출 과정을 검증하며, 추적 가능한 코드를 만들어내는 Claude Code 플러그인 — 계획을 직접 작성할 필요가 없습니다.
 
-[![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli2)](https://www.npmjs.com/package/@team-attention/hoyeon-cli2)
+[![npm](https://img.shields.io/npm/v/@team-attention/hoyeon-cli)](https://www.npmjs.com/package/@team-attention/hoyeon-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [빠른 시작](#빠른-시작) · [철학](#요구사항은-작성하는-것이-아니다) · [도출 체인](#도출-체인) · [명령어](#명령어) · [에이전트](#스물한-개의-사고)
@@ -66,7 +66,7 @@ Goal → Decisions → Requirements → Sub-requirements → Tasks
 
 - **`requirements.md` + `plan.json`이 구조화된 산출물** — `/specify`가 `requirements.md`를 (무엇을) 생성한다. `/blueprint`가 계약과 태스크 그래프를 포함한 `plan.json`을 (어떻게) 생성한다. 모든 에이전트가 이 공유 산출물에서 읽는다. 어떤 에이전트도 자체적으로 컨텍스트를 만들어내지 않는다. 대화 안에만 존재하는 정보는 없다. 이 산출물들은 컨텍스트 윈도우, 압축, 에이전트 핸드오프를 넘어 살아남는 공유 메모리다.
 
-- **CLI 강제 구조** — `hoyeon-cli2`는 계획 구조와 태스크 상태 전환을 검증한다. 필드명, 타입, 필수 관계 — 모두 LLM이 데이터를 보기 전에 프로그래밍적으로 검사된다. CLI는 구조를 제안하지 않는다; 잘못된 구조를 **거부**한다.
+- **CLI 강제 구조** — `hoyeon-cli`는 계획 구조와 태스크 상태 전환을 검증한다. 필드명, 타입, 필수 관계 — 모두 LLM이 데이터를 보기 전에 프로그래밍적으로 검사된다. CLI는 구조를 제안하지 않는다; 잘못된 구조를 **거부**한다.
 
 - **계약으로서의 도출 체인** — Goal → Decisions → Requirements → Sub-requirements → Tasks는 연결되어 있다. 각 레이어는 상위 레이어를 참조한다. 하위 요구사항은 요구사항으로 추적되고, 태스크는 `fulfills`를 통해 요구사항으로 추적된다. 체인이 끊기면 게이트가 차단한다. 이것의 의미: **유효한 요구사항이 있으면, 시스템은 결과를 만들어낸다** — LLM의 개별 출력이 달라지더라도 결정론적으로 라우팅된다.
 
@@ -398,7 +398,7 @@ You:  /execute
 │   ├── guards         쓰기 보호, 계획 강제
 │   ├── validation     출력 품질, 실패 복구
 │   └── pipeline       Ultrawork 전환, 완료 기준 루프
-└── cli2/              plan.json 검증 & 상태 관리
+└── cli/              plan.json 검증 & 상태 관리
 ```
 
 **주요 내부 구성요소:**
@@ -419,7 +419,7 @@ You:  /execute
 ```bash
 # 플러그인 설치
 claude plugin add team-attention/hoyeon
-npm install -g @team-attention/hoyeon-cli2
+npm install -g @team-attention/hoyeon-cli
 
 # 시작 — 요구사항을 도출하고, 계획하고, 실행
 /specify "add dark mode toggle to settings page"
@@ -437,11 +437,11 @@ Claude Code에서 `/`를 입력하면 사용 가능한 모든 스킬을 볼 수 
 
 ## CLI
 
-`hoyeon-cli2`는 plan.json 검증과 태스크 상태를 관리한다:
+`hoyeon-cli`는 plan.json 검증과 태스크 상태를 관리한다:
 
 ```bash
-hoyeon-cli2 plan get <task-id> <plan-path>                    # 태스크 상세 조회
-hoyeon-cli2 plan status <task-id> <plan-path> --status done   # 태스크 상태 업데이트
+hoyeon-cli plan get <task-id> <plan-path>                    # 태스크 상세 조회
+hoyeon-cli plan status <task-id> <plan-path> --status done   # 태스크 상태 업데이트
 ```
 
 전체 명령어 레퍼런스는 [docs/cli.md](docs/cli.md) 참조.

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hoyeon.dev/schemas/plan.schema.json",
   "title": "plan.json (v1)",
-  "description": "Execution blueprint produced by /blueprint. References requirements by ID only — does NOT duplicate sub-requirement bodies. Self-consistent: cli2 validates internal cross-refs; LLM (blueprint skill) validates coverage against requirements.md.",
+  "description": "Execution blueprint produced by /blueprint. References requirements by ID only — does NOT duplicate sub-requirement bodies. Self-consistent: cli validates internal cross-refs; LLM (blueprint skill) validates coverage against requirements.md.",
   "type": "object",
   "required": ["schema", "meta", "tasks", "verify_plan"],
   "additionalProperties": false,

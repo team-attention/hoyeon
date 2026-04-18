@@ -61,7 +61,7 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 
 | Script | Type | Purpose |
 |--------|------|---------|
-| `cli-version-sync.sh` | SessionStart | Auto-sync hoyeon-cli2 npm version with plugin version |
+| `cli-version-sync.sh` | SessionStart | Auto-sync hoyeon-cli npm version with plugin version |
 | `session-compact-hook.sh` | SessionStart | Unified compact recovery — outputs skill name + state.json path |
 | `ultrawork-init-hook.sh` | UserPromptSubmit | Initialize ultrawork pipeline state when `/ultrawork` is typed |
 | `skill-session-init.sh` | UserPromptSubmit + PreToolUse[Skill] | Initialize session state for specify/execute/blueprint skills |
@@ -89,7 +89,7 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
   2. `.claude/settings.json` — project-level registration (uses `.claude/scripts/...`)
   3. `CLAUDE.md` — add entry to the Active Hooks table above
 - A hook script that is not registered in settings will **not fire** — creating the file alone is not enough
-- Run `hoyeon-cli2 session get --sid <id>` to verify session state after changes
+- Run `hoyeon-cli session get --sid <id>` to verify session state after changes
 - Hook behavior gotchas are documented in commit history and session learnings
 
 ## Git Branching & Release
@@ -107,9 +107,9 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 
 ```
 1. All features merged to develop
-2. Version bump commit on develop (plugin.json + marketplace.json + cli2/package.json)
+2. Version bump commit on develop (plugin.json + marketplace.json + cli/package.json)
 3. Update CLAUDE.md (Recent Changes) and README.md (if new skills/agents added)
-4. cd cli2 && npm run build && npm publish --access public
+4. cd cli && npm run build && npm publish --access public
 5. git checkout main && git merge develop --no-ff -m "Release X.Y.Z"
 6. git tag vX.Y.Z && git push origin main --tags && git push origin develop
 7. gh release create vX.Y.Z --title "vX.Y.Z" --notes "## What's New in X.Y.Z ..."
@@ -117,9 +117,9 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 
 ## Versioning
 
-- Plugin version is in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `cli2/package.json`
+- Plugin version is in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `cli/package.json`
 - **Bump all three files** in a single commit on `develop` before merging to `main`
-- CLI version (`@team-attention/hoyeon-cli2`) is always synced with plugin version
+- CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
 ## Recent Changes (unreleased — v2.0.0)
 
@@ -127,7 +127,7 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **BREAKING**: Removed old specify (v1), execute (v1), quick-plan skills and hoyeon-cli (v1)
 - **Renamed**: specify2 → specify, execute2 → execute (clean names)
 - New pipeline: `/specify` (requirements.md) → `/blueprint` (plan.json + contracts.md) → `/execute` (dispatch workers)
-- New CLI: `hoyeon-cli2` with groups: req, plan, learning, issue, session
+- New CLI: `hoyeon-cli` with groups: req, plan, learning, issue, session
 - Rewired `/bugfix` from spec.json → requirements.md pipeline
 - Updated all hooks, agents, and downstream skills for v2
 - Codebase reconnaissance added to `/blueprint` (Phase 0.5, non-greenfield)
@@ -139,28 +139,28 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - 6 dispatch/verify reference recipes: direct.md, agent.md, team.md, worker-charter.md, verify.md, contracts-patch.md
 - Pre-work gate, inline planning fallback, resume behavior with idempotent done-skip
 
-### CLI2 (`hoyeon-cli2`)
+### CLI (`hoyeon-cli`)
 - `req init` — requirements.md scaffolding
 - `plan init/merge/get/list/task/validate` — plan.json operations
 - `learning` — structured learnings to context/learnings.json
 - `issue` — structured issues to context/issues.json
 - `session set/get` — session state management
 
-## CLI Reference (hoyeon-cli2)
+## CLI Reference (hoyeon-cli)
 
 | Group | Command | Description |
 |-------|---------|-------------|
-| `req` | `hoyeon-cli2 req init <spec_dir> --type <type> [--goal "..."]` | Create spec_dir + requirements.md template |
-| `plan` | `hoyeon-cli2 plan init <spec_dir> --type <type>` | Create empty plan.json stub |
-| `plan` | `hoyeon-cli2 plan merge <spec_dir> --json '<payload>' [--patch\|--append]` | Merge payload into plan.json |
-| `plan` | `hoyeon-cli2 plan get <spec_dir> --path <dotted.path>` | Read field by dot notation |
-| `plan` | `hoyeon-cli2 plan list <spec_dir> [--status <state>] [--json]` | List tasks with optional filter |
-| `plan` | `hoyeon-cli2 plan task <spec_dir> --status <id>=<state>` | Update task status (monotonic done-lock) |
-| `plan` | `hoyeon-cli2 plan validate <spec_dir>` | Schema + cross-ref integrity check |
-| `learning` | `hoyeon-cli2 learning --task <id> --json '{...}' <spec_dir>` | Add learning to context/learnings.json |
-| `issue` | `hoyeon-cli2 issue --task <id> --json '{...}' <spec_dir>` | Add issue to context/issues.json |
-| `session` | `hoyeon-cli2 session set --sid <id> [--key k --value v] [--json '{...}']` | Update session state |
-| `session` | `hoyeon-cli2 session get --sid <id>` | Read session state |
+| `req` | `hoyeon-cli req init <spec_dir> --type <type> [--goal "..."]` | Create spec_dir + requirements.md template |
+| `plan` | `hoyeon-cli plan init <spec_dir> --type <type>` | Create empty plan.json stub |
+| `plan` | `hoyeon-cli plan merge <spec_dir> --json '<payload>' [--patch\|--append]` | Merge payload into plan.json |
+| `plan` | `hoyeon-cli plan get <spec_dir> --path <dotted.path>` | Read field by dot notation |
+| `plan` | `hoyeon-cli plan list <spec_dir> [--status <state>] [--json]` | List tasks with optional filter |
+| `plan` | `hoyeon-cli plan task <spec_dir> --status <id>=<state>` | Update task status (monotonic done-lock) |
+| `plan` | `hoyeon-cli plan validate <spec_dir>` | Schema + cross-ref integrity check |
+| `learning` | `hoyeon-cli learning --task <id> --json '{...}' <spec_dir>` | Add learning to context/learnings.json |
+| `issue` | `hoyeon-cli issue --task <id> --json '{...}' <spec_dir>` | Add issue to context/issues.json |
+| `session` | `hoyeon-cli session set --sid <id> [--key k --value v] [--json '{...}']` | Update session state |
+| `session` | `hoyeon-cli session get --sid <id>` | Read session state |
 
 **Key conventions:**
 - **File-based JSON passing** — write JSON to `/tmp/spec-merge.json` via heredoc (`<< 'EOF'`), pass via `--json "$(cat /tmp/spec-merge.json)"`. Never pass JSON directly as CLI argument (zsh glob expansion corrupts `[`, `{`, `$`)
@@ -171,11 +171,11 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 
 **Learning & Issue examples:**
 ```bash
-hoyeon-cli2 learning --task T1 --stdin <spec_dir> << 'EOF'
+hoyeon-cli learning --task T1 --stdin <spec_dir> << 'EOF'
 {"problem": "...", "cause": "...", "rule": "...", "tags": [...]}
 EOF
 
-hoyeon-cli2 issue --task T1 --stdin <spec_dir> << 'EOF'
+hoyeon-cli issue --task T1 --stdin <spec_dir> << 'EOF'
 {"type": "failed_approach|out_of_scope|blocker", "description": "..."}
 EOF
 ```

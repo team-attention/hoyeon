@@ -20,7 +20,7 @@ allowed-tools:
 validate_prompt: |
   Must contain Phase 1 (DoD Collection) and Phase 2 (Work Execution).
   Must use AskUserQuestion for DoD confirmation.
-  Must write state via hoyeon-cli2 session set with .ralph namespace.
+  Must write state via hoyeon-cli session set with .ralph namespace.
   Must write DoD file to session files directory.
   Must include prompt storage for Stop hook re-injection.
 ---
@@ -109,7 +109,7 @@ DODEOF
 Bash: SESSION_ID="[session ID from hook]" && PROMPT=$(cat << 'PROMPTEOF'
 [The user's ORIGINAL request/prompt — exactly as they typed it, before any processing]
 PROMPTEOF
-) && hoyeon-cli2 session set --sid "$SESSION_ID" --json "$(jq -n \
+) && hoyeon-cli session set --sid "$SESSION_ID" --json "$(jq -n \
   --arg prompt "$PROMPT" \
   --arg dod_file "$HOME/.hoyeon/$SESSION_ID/files/ralph-dod.md" \
   --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

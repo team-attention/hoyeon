@@ -5,8 +5,8 @@ import { readPlanIfExists } from '../lib/json-io.js';
 
 const HELP = `
 Usage:
-  hoyeon-cli2 issue --task <id> --json '{...}' <spec_dir>
-  hoyeon-cli2 issue --task <id> --stdin <spec_dir> << 'EOF'
+  hoyeon-cli issue --task <id> --json '{...}' <spec_dir>
+  hoyeon-cli issue --task <id> --stdin <spec_dir> << 'EOF'
 
 Add a structured issue entry to <spec_dir>/context/issues.json.
 Task ID is validated against plan.json if it exists.

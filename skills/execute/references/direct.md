@@ -14,7 +14,7 @@ Best for plans with 1–3 tasks, simple edits, or config-only changes.
 
 - **C2 / INV-1**: direct mode commits **ONCE** at the end of Phase 1 (after the
   last task finishes). No per-task commits.
-- **INV-5**: only `hoyeon-cli2 plan` commands mutate `plan.json`. `audit.md`,
+- **INV-5**: only `hoyeon-cli plan` commands mutate `plan.json`. `audit.md`,
   `learnings.json`, `issues.json`, and `contracts.md` are written via
   `Edit` / `Write` directly.
 - **INV-9**: `status=done` is monotonic. A task that is already `done` is **skipped**,
@@ -64,8 +64,8 @@ retries (step 8), and later by `verify.md` for gap re-dispatch / verify fix.
 ### 1.1 Build ordered work list
 
 ```
-# Fetch tasks via cli2
-all_tasks = Bash("hoyeon-cli2 plan get {spec_dir} --path tasks").tasks
+# Fetch tasks via cli
+all_tasks = Bash("hoyeon-cli plan get {spec_dir} --path tasks").tasks
 
 # Topological sort honoring depends_on; ties broken by (layer asc, id asc).
 ordered = topo_sort(all_tasks, key=lambda t: (t.layer, t.id))
@@ -84,7 +84,7 @@ FOR EACH task IN ordered:
   # ───────────────────────────────────────────────────────────
   # (A) Idempotent skip — fulfills R-F3.2 / INV-9
   # ───────────────────────────────────────────────────────────
-  current = Bash("hoyeon-cli2 plan get {spec_dir} --path tasks")
+  current = Bash("hoyeon-cli plan get {spec_dir} --path tasks")
             .find(t => t.id == task.id)
   IF current.status == "done":
     audit_append("SKIP {task.id} (already done)")
@@ -97,7 +97,7 @@ FOR EACH task IN ordered:
   # ───────────────────────────────────────────────────────────
   IF any(dep IN blocked_set for dep in task.depends_on):
     blocked_set.add(task.id)
-    Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=blocked \
+    Bash("hoyeon-cli plan task {spec_dir} --status {task.id}=blocked \
           --summary 'upstream dep BLOCKED'")
     audit_append("BLOCKED-PROPAGATE {task.id} (depends_on blocked ancestor)")
     CONTINUE
@@ -124,8 +124,8 @@ FOR EACH task IN ordered:
 
     attempt += 1
 
-    # (C.1) Mark running via cli2 only (INV-5)
-    Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=running")
+    # (C.1) Mark running via cli only (INV-5)
+    Bash("hoyeon-cli plan task {spec_dir} --status {task.id}=running")
     audit_append("DISPATCH {task.id} attempt={attempt} \
                   total={dispatch_count[task.id]}")
 
@@ -177,7 +177,7 @@ FOR EACH task IN ordered:
     IF result.status == "blocked":
       # fulfills R-F7.3 — mark this task BLOCKED in plan + audit, do NOT
       # abort the whole run; dependents will be caught in step (B) above.
-      Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=blocked \
+      Bash("hoyeon-cli plan task {spec_dir} --status {task.id}=blocked \
             --summary '{result.reason}'")
       audit_append("BLOCKED {task.id} reason='{result.reason}'")
       issues_append({ task: task.id, type: "blocked", reason: result.reason })
@@ -186,7 +186,7 @@ FOR EACH task IN ordered:
       BREAK
 
     ELIF result.status == "done" AND tier1.all_pass:
-      Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=done \
+      Bash("hoyeon-cli plan task {spec_dir} --status {task.id}=done \
             --summary '{result.summary}'")    # INV-9: only transition once
       audit_append("DONE {task.id} attempt={attempt} files={result.files}")
       learnings_append({ task: task.id, notes: result.learnings })
@@ -209,7 +209,7 @@ FOR EACH task IN ordered:
   # fulfills R-F7.2: abort entire run, audit.md "ABORT"
   # ───────────────────────────────────────────────────────────
   IF task_outcome != "done" AND task_outcome != "blocked":
-    Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=failed \
+    Bash("hoyeon-cli plan task {spec_dir} --status {task.id}=failed \
           --summary 'persistent fail after {attempt} attempts'")
     audit_append("ABORT task={task.id} reason=persistent_fail attempts={attempt}")
     emit_partial_report()
@@ -263,7 +263,7 @@ context (no new subagents).
 
 ```
 function audit_append(line):
-  # INV-5: audit.md via Edit, not cli2
+  # INV-5: audit.md via Edit, not cli
   Edit({spec_dir}/audit.md, append="- [{ISO timestamp}] {line}\n")
 
 function learnings_append(entry):

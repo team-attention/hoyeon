@@ -6853,7 +6853,7 @@ var plan_schema_default = {
   $schema: "http://json-schema.org/draft-07/schema#",
   $id: "https://hoyeon.dev/schemas/plan.schema.json",
   title: "plan.json (v1)",
-  description: "Execution blueprint produced by /blueprint. References requirements by ID only \u2014 does NOT duplicate sub-requirement bodies. Self-consistent: cli2 validates internal cross-refs; LLM (blueprint skill) validates coverage against requirements.md.",
+  description: "Execution blueprint produced by /blueprint. References requirements by ID only \u2014 does NOT duplicate sub-requirement bodies. Self-consistent: cli validates internal cross-refs; LLM (blueprint skill) validates coverage against requirements.md.",
   type: "object",
   required: ["schema", "meta", "tasks", "verify_plan"],
   additionalProperties: false,
@@ -7040,7 +7040,7 @@ function readPlanIfExists(specDir) {
 // src/commands/req.js
 var HELP = `
 Usage:
-  hoyeon-cli2 req <command> [options]
+  hoyeon-cli req <command> [options]
 
 Commands:
   init <spec_dir> --type <greenfield|feature|refactor|bugfix> [--goal "<text>"]
@@ -7050,8 +7050,8 @@ Options:
   --help, -h   This help.
 
 Note:
-  cli2 does not parse requirements.md. Reading and understanding that file is
-  the LLM's job (inside /specify2 and /blueprint). cli2 only manages plan.json.
+  cli does not parse requirements.md. Reading and understanding that file is
+  the LLM's job (inside /specify2 and /blueprint). cli only manages plan.json.
 `;
 function template(type, goal) {
   return `---
@@ -7091,7 +7091,7 @@ async function req(args) {
     return;
   }
   const fn = COMMANDS[sub];
-  if (!fn) die(`Error: unknown req command '${sub}'. Run 'hoyeon-cli2 req --help'.`);
+  if (!fn) die(`Error: unknown req command '${sub}'. Run 'hoyeon-cli req --help'.`);
   await fn(args.slice(1));
 }
 
@@ -7100,7 +7100,7 @@ import { existsSync as existsSync3 } from "fs";
 var TASK_STATES = ["pending", "running", "done", "failed", "blocked"];
 var HELP2 = `
 Usage:
-  hoyeon-cli2 plan <command> [options]
+  hoyeon-cli plan <command> [options]
 
 Commands:
   init <spec_dir> --type <greenfield|feature|refactor|bugfix> [--force]
@@ -7351,7 +7351,7 @@ async function plan(args) {
     return;
   }
   const fn = COMMANDS2[sub];
-  if (!fn) die2(`Error: unknown plan command '${sub}'. Run 'hoyeon-cli2 plan --help'.`);
+  if (!fn) die2(`Error: unknown plan command '${sub}'. Run 'hoyeon-cli plan --help'.`);
   await fn(args.slice(1));
 }
 
@@ -7360,8 +7360,8 @@ import { existsSync as existsSync4, readFileSync as readFileSync2, writeFileSync
 import { resolve as resolve3, join as join2 } from "path";
 var HELP3 = `
 Usage:
-  hoyeon-cli2 learning --task <id> --json '{...}' <spec_dir>
-  hoyeon-cli2 learning --task <id> --stdin <spec_dir> << 'EOF'
+  hoyeon-cli learning --task <id> --json '{...}' <spec_dir>
+  hoyeon-cli learning --task <id> --stdin <spec_dir> << 'EOF'
 
 Add a structured learning entry to <spec_dir>/context/learnings.json.
 Task ID is validated against plan.json if it exists.
@@ -7466,8 +7466,8 @@ import { existsSync as existsSync5, readFileSync as readFileSync3, writeFileSync
 import { resolve as resolve4, join as join3 } from "path";
 var HELP4 = `
 Usage:
-  hoyeon-cli2 issue --task <id> --json '{...}' <spec_dir>
-  hoyeon-cli2 issue --task <id> --stdin <spec_dir> << 'EOF'
+  hoyeon-cli issue --task <id> --json '{...}' <spec_dir>
+  hoyeon-cli issue --task <id> --stdin <spec_dir> << 'EOF'
 
 Add a structured issue entry to <spec_dir>/context/issues.json.
 Task ID is validated against plan.json if it exists.
@@ -7570,8 +7570,8 @@ import { homedir } from "os";
 import { join as join4, dirname } from "path";
 var HELP5 = `
 Usage:
-  hoyeon-cli2 session set --sid <session-id> [options]    Update session state
-  hoyeon-cli2 session get --sid <session-id>              Read session state
+  hoyeon-cli session set --sid <session-id> [options]    Update session state
+  hoyeon-cli session get --sid <session-id>              Read session state
 
 Options for 'set':
   --sid <id>          Session ID (required)
@@ -7580,9 +7580,9 @@ Options for 'set':
   --json '{...}'      Deep-merge JSON fragment into state
 
 Examples:
-  hoyeon-cli2 session set --sid abc123 --key spec_dir --value .hoyeon/specs/foo
-  hoyeon-cli2 session set --sid abc123 --json '{"ralph": {"round": 0}}'
-  hoyeon-cli2 session get --sid abc123
+  hoyeon-cli session set --sid abc123 --key spec_dir --value .hoyeon/specs/foo
+  hoyeon-cli session set --sid abc123 --json '{"ralph": {"round": 0}}'
+  hoyeon-cli session get --sid abc123
 `;
 function die5(msg) {
   process.stderr.write(msg + "\n");
@@ -7656,18 +7656,18 @@ async function session(args) {
   }
   if (sub === "set") return handleSet(args.slice(1));
   if (sub === "get") return handleGet(args.slice(1));
-  die5(`Error: unknown session command '${sub}'. Run 'hoyeon-cli2 session --help'.`);
+  die5(`Error: unknown session command '${sub}'. Run 'hoyeon-cli session --help'.`);
 }
 
 // bin/cli.js
 var USAGE = `
-hoyeon-cli2 \u2014 CLI for specify2 + blueprint + execute2 workflow
+hoyeon-cli \u2014 CLI for specify2 + blueprint + execute2 workflow
 
 Usage:
-  hoyeon-cli2 <group> <command> [options]
+  hoyeon-cli <group> <command> [options]
 
 Groups:
-  req       requirements.md scaffolding (init only \u2014 cli2 does not parse .md)
+  req       requirements.md scaffolding (init only \u2014 cli does not parse .md)
   plan      plan.json operations (init, merge, get, list, task, validate)
   learning  Add structured learning entries to context/learnings.json
   issue     Add structured issue entries to context/issues.json
@@ -7678,13 +7678,13 @@ Options:
   --version     Show version
 
 Examples:
-  hoyeon-cli2 req init .hoyeon/specs/my-spec --type greenfield
-  hoyeon-cli2 plan init .hoyeon/specs/my-spec --type greenfield
-  hoyeon-cli2 plan merge .hoyeon/specs/my-spec --json '{"tasks":[...]}'
-  hoyeon-cli2 plan task .hoyeon/specs/my-spec --status T1=running
-  hoyeon-cli2 learning --task T1 --json '{"problem":"..."}' .hoyeon/specs/my-spec
-  hoyeon-cli2 issue --task T1 --json '{"type":"blocker","description":"..."}' .hoyeon/specs/my-spec
-  hoyeon-cli2 session set --sid abc123 --key spec_dir --value .hoyeon/specs/foo
+  hoyeon-cli req init .hoyeon/specs/my-spec --type greenfield
+  hoyeon-cli plan init .hoyeon/specs/my-spec --type greenfield
+  hoyeon-cli plan merge .hoyeon/specs/my-spec --json '{"tasks":[...]}'
+  hoyeon-cli plan task .hoyeon/specs/my-spec --status T1=running
+  hoyeon-cli learning --task T1 --json '{"problem":"..."}' .hoyeon/specs/my-spec
+  hoyeon-cli issue --task T1 --json '{"type":"blocker","description":"..."}' .hoyeon/specs/my-spec
+  hoyeon-cli session set --sid abc123 --key spec_dir --value .hoyeon/specs/foo
 `;
 var GROUPS = {
   req,
@@ -7701,7 +7701,7 @@ async function main() {
   }
   if (args[0] === "--version") {
     const version = true ? "0.1.0" : "dev";
-    process.stdout.write(`hoyeon-cli2 v${version}
+    process.stdout.write(`hoyeon-cli v${version}
 `);
     process.exit(0);
   }
@@ -7709,7 +7709,7 @@ async function main() {
   if (!Object.prototype.hasOwnProperty.call(GROUPS, group)) {
     process.stderr.write(`Error: unknown group '${group}'
 `);
-    process.stderr.write(`Run 'hoyeon-cli2 --help' for usage.
+    process.stderr.write(`Run 'hoyeon-cli --help' for usage.
 `);
     process.exit(1);
   }

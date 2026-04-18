@@ -11,7 +11,7 @@ cross-module contract mismatch. Runs automatically — **no user confirmation**
 - `contracts_path` — absolute path to `<spec_dir>/contracts.md` (may be null)
 - `audit_path` — absolute path to `<spec_dir>/audit.md`
 
-**Tools used** (INV-5): `Read`, `Edit`, `Write` only. **Never `hoyeon-cli2`** for
+**Tools used** (INV-5): `Read`, `Edit`, `Write` only. **Never `hoyeon-cli`** for
 contracts.md or audit.md.
 
 ---
@@ -184,7 +184,7 @@ function apply_patch(patch_plan, contracts_path, audit_path, round):
     diff_preview = "+ " + note
 
   # ─── Step 2: Append audit.md entry ──────────────────────────────────
-  # NOTE: Read/Write/Edit only. cli2 MUST NOT touch audit.md (INV-5).
+  # NOTE: Read/Write/Edit only. cli MUST NOT touch audit.md (INV-5).
   audit_entry = build_audit_entry(round, timestamp, patch_plan, diff_preview)
 
   existing_audit = Read(audit_path) if exists(audit_path) else ""
@@ -302,7 +302,7 @@ field and use it.
 ## Helper Definitions
 
 Each helper below is a plain function the orchestrator runs in its own
-context — no sub-agents, no cli2. All file access uses `Read` only (anchor /
+context — no sub-agents, no cli. All file access uses `Read` only (anchor /
 label scanning is a metadata read, permitted by the INV-3 carve-out above).
 
 ### `next_invariant_id(contracts_path) → string`
@@ -428,6 +428,6 @@ happens exclusively in `apply_patch` (Phase B) via `Edit` / `Write`.
 | Invariant | Enforcement                                                     |
 |-----------|-----------------------------------------------------------------|
 | INV-3     | Detection reads worker output only; contracts/audit are *written*, not scanned for business prose |
-| INV-5     | All file mutations via `Read` / `Edit` / `Write` — cli2 never touches contracts.md or audit.md |
+| INV-5     | All file mutations via `Read` / `Edit` / `Write` — cli never touches contracts.md or audit.md |
 | INV-7     | No AskUserQuestion; `User confirm: NONE (INV-7)` marker in every audit entry |
 | C4        | Same as INV-7 — auto-patch policy enforced                      |

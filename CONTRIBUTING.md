@@ -21,12 +21,12 @@ This registers all skills, agents, and hooks defined by the plugin.
 
 2. Install the CLI globally:
    ```bash
-   npm install -g @team-attention/hoyeon-cli2
+   npm install -g @team-attention/hoyeon-cli
    ```
 
 3. Verify installation:
    ```bash
-   hoyeon-cli2 --version
+   hoyeon-cli --version
    ```
 
 ### Directory Structure
@@ -41,7 +41,7 @@ hoyeon/
   .claude-plugin/
     plugin.json       # Plugin metadata + version
     marketplace.json  # Marketplace listing + version
-  cli2/
+  cli/
     package.json  # CLI package + version
   docs/           # Documentation and learnings
   .playground/    # Experiments (git-ignored)
@@ -81,7 +81,7 @@ Three files must be bumped together in a single commit on `develop`:
 2. `.claude-plugin/marketplace.json`
 3. `cli/package.json`
 
-The CLI package (`@team-attention/hoyeon-cli2`) version is always kept in sync with the plugin version.
+The CLI package (`@team-attention/hoyeon-cli`) version is always kept in sync with the plugin version.
 
 ## Testing
 

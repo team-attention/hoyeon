@@ -135,7 +135,7 @@ The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) th
 
 ## CLI
 
-The plugin ships `hoyeon-cli2` (npm: `@team-attention/hoyeon-cli`) for structured data management.
+The plugin ships `hoyeon-cli` (npm: `@team-attention/hoyeon-cli`) for structured data management.
 
 | Command Group | Purpose |
 |---------------|---------|
@@ -182,7 +182,7 @@ Key conventions:
 
 ### Requirements-Driven Development
 
-All implementation flows through `requirements.md` -- a structured document containing requirements with sub-requirements expressed in GWT (Given/When/Then) format. The CLI (`hoyeon-cli2`) manages requirements and plan state. `/blueprint` transforms requirements into an executable `plan.json` with `contracts.md` defining interface boundaries between tasks.
+All implementation flows through `requirements.md` -- a structured document containing requirements with sub-requirements expressed in GWT (Given/When/Then) format. The CLI (`hoyeon-cli`) manages requirements and plan state. `/blueprint` transforms requirements into an executable `plan.json` with `contracts.md` defining interface boundaries between tasks.
 
 ### 3-Axis Configuration (Execute)
 

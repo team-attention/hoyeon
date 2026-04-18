@@ -46,7 +46,7 @@ Phase 1: DIAGNOSE ────────────────────�
   → User confirmation
 
 Phase 2: REQUIREMENTS GENERATION ──────────────────
-  Diagnosis results → requirements.md (hoyeon-cli2 req init + Write)
+  Diagnosis results → requirements.md (hoyeon-cli req init + Write)
 
 Phase 3: EXECUTE ──────────────────────────────────
   Skill("execute", args=spec_dir)
@@ -88,7 +88,7 @@ Extract from user input:
 SESSION_ID = [from hook — $CLAUDE_SESSION_ID]
 slug = convert bug description to kebab-case (e.g. "null-pointer-in-auth")
 DEBUG_STATE = "$HOME/.hoyeon/$SESSION_ID/debug-state.md"
-hoyeon-cli2 session set --sid $SESSION_ID --json '{"skill":"bugfix","debug":"'"$DEBUG_STATE"'"}'
+hoyeon-cli session set --sid $SESSION_ID --json '{"skill":"bugfix","debug":"'"$DEBUG_STATE"'"}'
 
 Write(DEBUG_STATE):
 # Debug: {bug description}
@@ -197,7 +197,7 @@ Convert diagnosis results into requirements.md format. requirements.md is the st
 ```
 SPEC_DIR = "$HOME/.hoyeon/$SESSION_ID"
 
-hoyeon-cli2 req init ${SPEC_DIR} --type bugfix --goal "Fix: {bug description}"
+hoyeon-cli req init ${SPEC_DIR} --type bugfix --goal "Fix: {bug description}"
 ```
 
 This creates `${SPEC_DIR}/requirements.md` with a stub template.
@@ -257,7 +257,7 @@ non_goals:
 ### Step 2.3: Register
 
 ```bash
-hoyeon-cli2 session set --sid $SESSION_ID --spec "$SPEC_DIR"
+hoyeon-cli session set --sid $SESSION_ID --spec "$SPEC_DIR"
 ```
 
 Update debug-state.md with `spec_dir: ${SPEC_DIR}`.
@@ -361,8 +361,8 @@ Update DEBUG_STATE: attempt: {attempt}
 #    directly from bugfix — /execute handles task status and re-derivation.
 #    If you need to reset failed tasks to pending so /execute will re-run them,
 #    do it via the plan CLI:
-#      hoyeon-cli2 plan list ${SPEC_DIR}
-#      hoyeon-cli2 plan task ${SPEC_DIR} --status <task-id>=pending
+#      hoyeon-cli plan list ${SPEC_DIR}
+#      hoyeon-cli plan task ${SPEC_DIR} --status <task-id>=pending
 #    In most cases /execute will resume on its own from the existing plan.json.
 
 # 5. Re-invoke execute
@@ -505,7 +505,7 @@ Since requirements.md is the standard format, `/specify` can read and enrich the
 | 3 | **/execute** (Skill) | existing | always | requirements.md-based execution (worker, verify, commit, review) |
 | 5 | **/qa** (Skill) | existing | user opts in | Browser/app QA verification of the fix |
 
-Phase 2 (REQUIREMENTS GENERATION) and Phase 4 (RESULT HANDLING) are handled directly by bugfix without agents (hoyeon-cli2 calls + Write tool + judgment logic).
+Phase 2 (REQUIREMENTS GENERATION) and Phase 4 (RESULT HANDLING) are handled directly by bugfix without agents (hoyeon-cli calls + Write tool + judgment logic).
 
 ---
 

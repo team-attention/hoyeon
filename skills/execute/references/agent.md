@@ -21,7 +21,7 @@ independent modules. This is the default recipe in execute.
 | INV-2  | Worker charter = paths + IDs only. No GWT, no requirements prose, no contracts body inlined. |
 | INV-3  | Orchestrator never reads requirements.md / contracts.md body. |
 | INV-4  | No sleep / no polling. All round dispatches sent in a **single message**; results arrive via notification. |
-| INV-5  | cli2 only for plan.json: `plan get`, `plan task --status`, `plan validate`. |
+| INV-5  | cli only for plan.json: `plan get`, `plan task --status`, `plan validate`. |
 | INV-6  | Per-task dispatch ceiling = 5. 6th dispatch aborts with `DISPATCH_CEILING_EXCEEDED`. |
 | INV-9  | `done` is terminal. Idempotent restart skips `done` tasks. |
 
@@ -35,7 +35,7 @@ whose dependencies are all satisfied and whose status is not already `done`.
 ```
 function compute_ready_set(plan_path) → Task[]:
   # Read structural fields only — INV-3.
-  all_tasks = cli2("plan get {plan_path} --path tasks")   # full task array
+  all_tasks = cli("plan get {plan_path} --path tasks")   # full task array
   done_ids  = { t.id for t in all_tasks if t.status == "done" }
 
   ready = []
@@ -118,10 +118,10 @@ groups = group_by_module(ready_set.parallel)
 round_id = next_round_number()
 round_workers = []
 
-# 1) Mark each task running via cli2 (batched into this same message).
+# 1) Mark each task running via cli (batched into this same message).
 for g in groups:
   for t in g.tasks:
-    cli2("plan task {plan_path} --status {t.id}=running")
+    cli("plan task {plan_path} --status {t.id}=running")
 
 # 2) Emit every Agent dispatch in the same message, background mode.
 for g in groups:
@@ -191,7 +191,7 @@ You are a Worker subagent. Round {round_id}. Dispatch mode: agent.
 
 ## Self-read protocol (MANDATORY — charter gives paths/IDs only, INV-2)
 1. For each task_id in [{tasks.map(t => t.id)}]:
-     task = `hoyeon-cli2 plan get {spec_dir} --path tasks` → find by id
+     task = `hoyeon-cli plan get {spec_dir} --path tasks` → find by id
      fulfills = task.fulfills
 2. Read ONLY the sub-requirement sections of {spec_dir}/requirements.md that
    correspond to fulfills[]. Do NOT read the whole file into working memory.
@@ -217,18 +217,18 @@ redundant null guards, single-use helpers, leftover TODO/console.log/debugger.
 1. Each sub_req GWT in fulfills[] is satisfied (cite file:line).
 2. Build / lint / typecheck pass (Tier 1 mechanical).
 
-## Record learnings/issues (NOT via cli2 — Read+Write pattern per worker-charter §3.5; INV-5)
+## Record learnings/issues (NOT via cli — Read+Write pattern per worker-charter §3.5; INV-5)
 - On success with a non-obvious discovery → Read {CONTEXT_DIR}/learnings.json, append entry to array, Write back.
 - On BLOCKED or FAILED → Read {CONTEXT_DIR}/issues.json, append entry to array, Write back.
 - Never `Edit` these files with line-anchor replacement — they are JSON arrays; use the Read+Write pattern.
 
-## Mark tasks done (cli2, per INV-5)
+## Mark tasks done (cli, per INV-5)
 For each task you completed:
-  `hoyeon-cli2 plan task {spec_dir} --status {task_id}=done --summary '<one line>'`
+  `hoyeon-cli plan task {spec_dir} --status {task_id}=done --summary '<one line>'`
 For BLOCKED:
-  `hoyeon-cli2 plan task {spec_dir} --status {task_id}=blocked --summary '<reason>'`
+  `hoyeon-cli plan task {spec_dir} --status {task_id}=blocked --summary '<reason>'`
 For FAILED:
-  `hoyeon-cli2 plan task {spec_dir} --status {task_id}=failed --summary '<reason>'`
+  `hoyeon-cli plan task {spec_dir} --status {task_id}=failed --summary '<reason>'`
 
 ## Output (last message — WorkerOutput contract)
 ```json
@@ -319,14 +319,14 @@ on_worker_done(worker_id, parsed):
       audit_path     = CONTEXT_DIR + "/audit.md")
 
   # Per-task outcome is derived from plan.json (the worker marked each task via
-  # cli2 per its charter). WorkerOutput's top-level `status` is the group-level
+  # cli per its charter). WorkerOutput's top-level `status` is the group-level
   # summary; re-read plan.json to get per-task status.
-  fresh_tasks = cli2("plan get {plan_path} --path tasks")
+  fresh_tasks = cli("plan get {plan_path} --path tasks")
   for task in worker.tasks:
     current = fresh_tasks.find(t => t.id == task.id)
     switch current.status:
       case "done":
-        # already marked done by the worker via cli2. nothing to do.
+        # already marked done by the worker via cli. nothing to do.
       case "failed":
         handle_failed(task, parsed)
       case "blocked":
@@ -346,7 +346,7 @@ handle_failed(task, result):
     # status is now `failed`. Re-queue with prior_failure_context so the
     # next worker charter can point to it.
     prior_failure_context[task.id] = result.summary
-    cli2("plan task {plan_path} --status {task.id}=pending")   # re-arm
+    cli("plan task {plan_path} --status {task.id}=pending")   # re-arm
     per_task_retry_count[task.id] += 1
   else:
     append_audit("PERSISTENT_FAIL: {task.id} after 2 retries — aborting run (R-F7.2)")
@@ -361,7 +361,7 @@ handle_blocked(task, result):
   # Only dependents of task are marked blocked. Independent tasks continue.
   dependents = tasks_where(depends_on_contains=task.id)
   for d in transitive_closure(dependents):
-    cli2("plan task {plan_path} --status {d.id}=blocked")
+    cli("plan task {plan_path} --status {d.id}=blocked")
   # The round itself is not aborted; other groups keep running.
 ```
 

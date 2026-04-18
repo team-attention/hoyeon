@@ -40,7 +40,7 @@ Delegate to workers, manage parallelization, verify the result.
 
 1. **DELEGATE** — Agent/Team: workers do the work. Direct: orchestrator does.
 2. **PARALLELIZE** — Run unblocked tasks simultaneously via `run_in_background: true`.
-3. **plan.json is the ledger** — Task state via `hoyeon-cli2 plan` commands. Never direct file writes.
+3. **plan.json is the ledger** — Task state via `hoyeon-cli plan` commands. Never direct file writes.
 4. **Contracts guide workers** — If `contracts.md` exists, workers reference it for cross-module agreements.
 5. **Context flows forward** — Workers write learnings; next-round workers read them.
 
@@ -93,12 +93,12 @@ Handle each `input_mode` — the goal is to end this sub-phase with a validated 
 ```
 IF input_mode == "plan":                             # R-F1.1
   # Direct use — NO user confirm.
-  Bash("hoyeon-cli2 plan validate {spec_dir}")
+  Bash("hoyeon-cli plan validate {spec_dir}")
 
 ELIF input_mode == "requirements":                   # R-F1.2
   # Try /blueprint first; fall back to inline planning if unavailable.
   IF Skill(blueprint, args="{spec_dir}") succeeds AND exists(spec_dir/plan.json):
-    Bash("hoyeon-cli2 plan validate {spec_dir}")
+    Bash("hoyeon-cli plan validate {spec_dir}")
   ELSE:
     # Inline planning — lightweight alternative to /blueprint.
     # Read requirements.md directly (exception to INV-3 — only during init).
@@ -141,11 +141,11 @@ ELIF input_mode == "requirements":                   # R-F1.2
     IF choice == "Abort": HALT
     IF choice == "Edit": draft_tasks = interactive_edit(draft_tasks)
 
-    # Write via cli2
-    Bash("hoyeon-cli2 plan init {spec_dir} --type {meta_type}")
+    # Write via cli
+    Bash("hoyeon-cli plan init {spec_dir} --type {meta_type}")
     write_json_to_tmp({tasks: draft_tasks, verify_plan: draft_verify}) → /tmp/plan-inline.json
-    Bash("hoyeon-cli2 plan merge {spec_dir} --json \"$(cat /tmp/plan-inline.json)\"")
-    Bash("hoyeon-cli2 plan validate {spec_dir}")
+    Bash("hoyeon-cli plan merge {spec_dir} --json \"$(cat /tmp/plan-inline.json)\"")
+    Bash("hoyeon-cli plan validate {spec_dir}")
 
 ELIF input_mode == "virtual":                        # R-F1.3
   # Session-context synthesis with user confirm.
@@ -177,11 +177,11 @@ ELIF input_mode == "virtual":                        # R-F1.3
   IF choice == "Edit":
     draft_plan = interactive_edit(draft_plan)  # loop until user says proceed
 
-  # Persist via cli2 (INV-5). Write, then validate.
+  # Persist via cli (INV-5). Write, then validate.
   write_json_to_tmp(draft_plan) → /tmp/plan-virtual.json
-  Bash("hoyeon-cli2 plan init {spec_dir} --type {draft_plan.meta.type}")
-  Bash("hoyeon-cli2 plan merge {spec_dir} --json \"$(cat /tmp/plan-virtual.json)\"")
-  Bash("hoyeon-cli2 plan validate {spec_dir}")
+  Bash("hoyeon-cli plan init {spec_dir} --type {draft_plan.meta.type}")
+  Bash("hoyeon-cli plan merge {spec_dir} --json \"$(cat /tmp/plan-virtual.json)\"")
+  Bash("hoyeon-cli plan validate {spec_dir}")
 ```
 
 At the end of 0.2 we have: `spec_dir/plan.json` (valid) + `input_mode` + (optionally) `spec_dir/contracts.md`.
@@ -345,7 +345,7 @@ with a "read before coding" instruction; its body is **never** inlined (INV-2).
 The orchestrator is a **router over structure**. It must NOT read the body of any
 spec prose. Enforced everywhere in this skill and all dispatch/verify references.
 
-**MAY read** (structural, via `hoyeon-cli2 plan get` or `Read` on plan.json only):
+**MAY read** (structural, via `hoyeon-cli plan get` or `Read` on plan.json only):
 - `plan.json` fields: `tasks`, `journeys`, `verify_plan`, `meta`, `contracts.artifact`, `context`
 - Session state in `$HOME/.hoyeon/$CLAUDE_SESSION_ID/state.json`
 - Worker output JSON returned by dispatch (WorkerOutput payload)
@@ -389,10 +389,10 @@ Additional guarantees:
 
 - Verify (`references/verify.md`) builds its coverage matrix from `done_tasks` only, so a
   partial run resumes verification on exactly the tasks that completed.
-- `hoyeon-cli2 plan task --status X=done` is idempotent (INV-5, INV-9); re-issuing
+- `hoyeon-cli plan task --status X=done` is idempotent (INV-5, INV-9); re-issuing
   it on a task that is already `done` is a no-op, never a re-transition.
 - The orchestrator NEVER rewrites plan.json directly — resume reads are through
-  `hoyeon-cli2 plan get` (INV-5).
+  `hoyeon-cli plan get` (INV-5).
 
 ---
 
@@ -407,7 +407,7 @@ Hard bans — enforced across SKILL.md and every dispatch / verify reference:
 
 - No `sleep <n>` between dispatches.
 - No `while not done: ... sleep` over plan.json or worker state.
-- No `hoyeon-cli2 plan get` called in a loop to poll for `status == "done"`.
+- No `hoyeon-cli plan get` called in a loop to poll for `status == "done"`.
 - No serial `Bash` calls in separate messages where a single-message parallel
   burst would work (e.g. per-round worker fan-out, gate-1 toolchain fan-out).
 
@@ -490,7 +490,7 @@ Follow ALL instructions. (detect → patch → audit-log → return control)
 
 This hook runs without user confirmation (INV-7), is idempotent per worker output,
 and routes only through `Read` / `Edit` / `Write` on `contracts.md` and `audit.md`
-— never through `hoyeon-cli2` (INV-5). See `references/contracts-patch.md` for
+— never through `hoyeon-cli` (INV-5). See `references/contracts-patch.md` for
 detection signals (explicit `contract_mismatch`, `contract_issues[]`, or
 `BLOCKED`-with-contract-reason).
 
@@ -503,7 +503,7 @@ There is **no `report.md`** — the final report is stdout-only (INV-8 / R-F13.4
 
 | Artifact          | Owner             | Tool             | Lifecycle                                                                |
 |-------------------|-------------------|------------------|--------------------------------------------------------------------------|
-| `plan.json`       | orchestrator      | `hoyeon-cli2`    | Status mutated via `plan task --status` (INV-5, INV-9; never direct edit) |
+| `plan.json`       | orchestrator      | `hoyeon-cli`    | Status mutated via `plan task --status` (INV-5, INV-9; never direct edit) |
 | `contracts.md`    | orchestrator      | `Edit` / `Write` | Inline patched by contracts-patch recipe (no user confirm; INV-7)         |
 | `audit.md`        | orchestrator      | `Read` + `Edit`  | Append-only timestamped event log (R-F13.2)                              |
 | `learnings.json`  | workers           | `Read` + `Write` | Workers append on success per `worker-charter.md` §3.5 (R-F6.4, R-F13.3) |
@@ -530,7 +530,7 @@ edit or delete prior entries. `audit.md` is initialized as an empty file by Phas
 | `ABORT`             | run aborted (persistent fail / dispatch ceiling)      | `- {ts} ABORT reason="<reason>"`                                         |
 
 The orchestrator writes audit entries via `Read` + `Edit` (append) — **never** via
-`hoyeon-cli2` (INV-5 / R-N17.1). The contracts-patch recipe writes its own
+`hoyeon-cli` (INV-5 / R-N17.1). The contracts-patch recipe writes its own
 `CONTRACTS_PATCH` line directly (see `references/contracts-patch.md` §"audit.md append").
 
 ### learnings.json + issues.json (R-F13.3) — worker-managed JSON arrays
@@ -542,7 +542,7 @@ orchestrator only **reads** these files (round-to-round context, final report).
 - `learnings.json` — appended on worker success. Schema is owned by worker-charter.md.
 - `issues.json` — appended when worker returns `BLOCKED` or `FAILED`. Same constraint.
 
-Workers MUST NOT use `hoyeon-cli2` to mutate either file (INV-5).
+Workers MUST NOT use `hoyeon-cli` to mutate either file (INV-5).
 
 ### NO report.md (R-F13.4 / INV-8 / C5)
 
@@ -581,9 +581,9 @@ exact order (R-F14.1):
 | Section             | Source                                                                |
 |---------------------|-----------------------------------------------------------------------|
 | Status              | Computed from plan.json task statuses + verify results + audit events |
-| Summary             | `hoyeon-cli2 plan list` counts + verify result tallies                 |
+| Summary             | `hoyeon-cli plan list` counts + verify result tallies                 |
 | Post-Work           | Computed from MANUAL gate=4 entries, PERSISTENT_GAP entries, BLOCKED tasks |
-| Tasks               | `hoyeon-cli2 plan get <plan> --path tasks` + git log per round         |
+| Tasks               | `hoyeon-cli plan get <plan> --path tasks` + git log per round         |
 | Verify Coverage Matrix | Coverage matrix data from `verify.md` (see `references/verify.md` §"Coverage Matrix Render") |
 | Contracts Auto-Patches | `audit.md` lines matching `CONTRACTS_PATCH`                          |
 | Issues Encountered  | `issues.json` + `audit.md` `BLOCKED` / `ABORT` lines                  |
@@ -646,19 +646,19 @@ R-F14.3).
 
 ## Generic Rules
 
-1. **plan.json is the ledger** — all task CRUD via `hoyeon-cli2 plan` (status/list/get/merge). Never direct file writes (INV-5).
+1. **plan.json is the ledger** — all task CRUD via `hoyeon-cli plan` (status/list/get/merge). Never direct file writes (INV-5).
 2. **Structural reads only** — orchestrator reads plan.json fields, never requirements.md / contracts.md body (see Orchestrator Boundaries above; INV-3, R-N15.2).
 3. **Two-turn task setup** — Turn 1: all TaskCreate. Turn 2: all TaskUpdate dependencies.
 4. **Background for parallel** — `run_in_background: true` for concurrent workers, single-message burst (INV-4; see Concurrency Rules).
 5. **Contracts are reference** — workers receive `contracts_path` to Read, not inlined content (INV-2).
 6. **Workers self-read** — workers fetch their own task state + context files per `references/worker-charter.md` §2.
 7. **Context files** — `learnings.json`, `audit.md`, `issues.json` in CONTEXT_DIR. Workers append learnings; orchestrator reads them round-to-round.
-8. **Compaction recovery** — `session-compact-hook.sh` re-injects state. Use `hoyeon-cli2 plan list` to rebuild; done tasks skip on re-entry (R-F8.2; see Resume Behavior above).
+8. **Compaction recovery** — `session-compact-hook.sh` re-injects state. Use `hoyeon-cli plan list` to rebuild; done tasks skip on re-entry (R-F8.2; see Resume Behavior above).
 
 ## Checklist Before Stopping
 
 - [ ] Input detected and normalized (plan.json / requirements.md / virtual)
-- [ ] Plan generated or validated via hoyeon-cli2
+- [ ] Plan generated or validated via hoyeon-cli
 - [ ] Dispatch/verify/work modes selected
 - [ ] All tasks dispatched and completed (status "done"/"failed"/"blocked" in plan.json)
 - [ ] Verify recipe ran (single verify.md with selected depth)

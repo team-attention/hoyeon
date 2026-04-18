@@ -5,7 +5,7 @@ import { specPaths } from '../lib/json-io.js';
 
 const HELP = `
 Usage:
-  hoyeon-cli2 req <command> [options]
+  hoyeon-cli req <command> [options]
 
 Commands:
   init <spec_dir> --type <greenfield|feature|refactor|bugfix> [--goal "<text>"]
@@ -15,8 +15,8 @@ Options:
   --help, -h   This help.
 
 Note:
-  cli2 does not parse requirements.md. Reading and understanding that file is
-  the LLM's job (inside /specify2 and /blueprint). cli2 only manages plan.json.
+  cli does not parse requirements.md. Reading and understanding that file is
+  the LLM's job (inside /specify2 and /blueprint). cli only manages plan.json.
 `;
 
 function template(type, goal) {
@@ -59,6 +59,6 @@ export default async function req(args) {
     return;
   }
   const fn = COMMANDS[sub];
-  if (!fn) die(`Error: unknown req command '${sub}'. Run 'hoyeon-cli2 req --help'.`);
+  if (!fn) die(`Error: unknown req command '${sub}'. Run 'hoyeon-cli req --help'.`);
   await fn(args.slice(1));
 }

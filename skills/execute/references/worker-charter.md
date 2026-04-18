@@ -61,7 +61,7 @@ The charter is a **pointer**, never a payload. The following are hard bans:
 - **No inlined contracts.md content** — no interface definitions, no invariants,
   no data-type schemas copied into the charter.
 - **No task.action body** — the worker reads `task.action` from plan.json via
-  `hoyeon-cli2 plan get`.
+  `hoyeon-cli plan get`.
 - **No file scope hints beyond IDs** — no "edit file X, line Y" directives; the
   worker derives scope from the task action + sub_req GWT it reads itself.
 
@@ -158,7 +158,7 @@ The worker receives only the charter. It MUST read the authoritative sources its
 
 ```bash
 # fetch task.action and task.fulfills[] — charter does not carry these
-hoyeon-cli2 plan get <plan_path>    # or: ... --path tasks --filter id=<task_id>
+hoyeon-cli plan get <plan_path>    # or: ... --path tasks --filter id=<task_id>
 
 # 1b. Read the sub-requirements named in sub_req_ids
 #     The worker reads requirements.md with the Read tool for each sub_req's GWT
@@ -215,9 +215,9 @@ Before reporting `done`, the worker:
 **Post-completion classification**:
 
 - `status == "done"` → append a structured learning to
-  `<spec_dir>/learnings.json` using Read + Write (NOT cli2 — see §4).
+  `<spec_dir>/learnings.json` using Read + Write (NOT cli — see §4).
 - `status == "failed"` or `status == "blocked"` → append a structured issue to
-  `<spec_dir>/issues.json` using Read + Write (NOT cli2 — see §4).
+  `<spec_dir>/issues.json` using Read + Write (NOT cli — see §4).
 
 Learning entry shape:
 
@@ -245,14 +245,14 @@ Issue entry shape:
 ```
 
 These files are append-only JSON arrays. The worker reads the current contents,
-pushes the new entry, and writes back — all via Read / Write (never cli2).
+pushes the new entry, and writes back — all via Read / Write (never cli).
 
 **Sequencing constraint**: Step 6 MUST NOT begin until Step 5 write
 (learnings/issues.json) is confirmed durable. Steps are strictly sequential,
 not concurrent. The worker MUST observe the Read-then-Write cycle complete (and
 the resulting file on disk) before issuing the `plan task --status` call in §3.6.
 
-### 3.6 Step 6 — Mark task status via cli2, then return WorkerOutput
+### 3.6 Step 6 — Mark task status via cli, then return WorkerOutput
 
 *fulfills R-N17.1, INV-5*
 
@@ -260,14 +260,14 @@ Step 6 runs only after Step 5's learnings/issues.json write has flushed to disk;
 these two steps are strictly sequential, never concurrent.
 
 ```bash
-hoyeon-cli2 plan task <plan_path> --status <task_id>=<done|failed|blocked>
+hoyeon-cli plan task <plan_path> --status <task_id>=<done|failed|blocked>
 ```
 
 Then emit the WorkerOutput JSON (§2) as the worker's last message.
 
 ---
 
-## 4. Tool Boundary: cli2 vs Read/Write/Edit
+## 4. Tool Boundary: cli vs Read/Write/Edit
 
 *fulfills R-N17.1, INV-5*
 
@@ -275,7 +275,7 @@ The worker and orchestrator both obey a strict tool boundary:
 
 | Artifact           | Read via        | Mutate via                                    |
 | ------------------ | --------------- | --------------------------------------------- |
-| `plan.json`        | `cli2 plan get` | `cli2 plan task --status` (only)              |
+| `plan.json`        | `cli plan get` | `cli plan task --status` (only)              |
 | `contracts.md`     | `Read` tool     | `Edit` / `Write` tool — **orchestrator only** |
 | `requirements.md`  | `Read` tool     | (not mutated by execute)                     |
 | `learnings.json`   | `Read` tool     | `Read + Write` tool                           |
@@ -289,8 +289,8 @@ not attempt to patch the contract itself. Only the orchestrator, via the
 `contracts-patch.md` recipe, may mutate `contracts.md`. Any edit to
 `contracts.md` that does not originate from `contracts-patch.md` is a bug.
 
-Rule, restated: **cli2 is the ONLY mutation surface for plan.json, and cli2 is
-NEVER used for any other file.** Never call `cli2 plan merge` to write learnings
+Rule, restated: **cli is the ONLY mutation surface for plan.json, and cli is
+NEVER used for any other file.** Never call `cli plan merge` to write learnings
 or issues — those are flat JSON arrays maintained by Read + Write.
 
 ---
@@ -324,7 +324,7 @@ charter.prompt = "Implement task T7: charter must contain no spec body..."
 ```
 
 **Correct**: charter references `task_id: "T7"`. The worker runs
-`hoyeon-cli2 plan get` to fetch `task.action`.
+`hoyeon-cli plan get` to fetch `task.action`.
 
 ### 5.3 Inlined contracts.md content
 

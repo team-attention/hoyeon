@@ -135,7 +135,7 @@ Rubric locked. Starting evaluation.
 **State init** — write the loop state so the Stop hook can track progress. The state file is session-scoped to prevent cross-session interference:
 
 ```
-Bash: SESSION_ID="[session ID from UserPromptSubmit hook]" && hoyeon-cli2 session set --sid $SESSION_ID --json '{"rulph": {"round": 0, "max_rounds": 5, "score": 0, "threshold": [threshold], "status": "active", "iteration": 0, "max_iterations": 15}}'
+Bash: SESSION_ID="[session ID from UserPromptSubmit hook]" && hoyeon-cli session set --sid $SESSION_ID --json '{"rulph": {"round": 0, "max_rounds": 5, "score": 0, "threshold": [threshold], "status": "active", "iteration": 0, "max_iterations": 15}}'
 ```
 
 Replace `[threshold]` with the actual threshold value. The state is stored under the `.rulph` key in the session-scoped `state.json`. This file is read by the Stop hook to decide whether the loop should continue. The `iteration`/`max_iterations` fields are the Stop hook's safety counter — always preserve them in subsequent state updates.
@@ -242,7 +242,7 @@ Collect suggestions from all AVAILABLE models. Prioritize the criterion with the
 **State update** — after every scoring round, update the session-scoped state file (preserve `iteration`/`max_iterations` for the Stop hook's safety counter):
 
 ```
-Bash: SESSION_ID="[session ID from UserPromptSubmit hook]" && hoyeon-cli2 session set --sid $SESSION_ID --json '{"rulph": {"round": [round], "score": [overall], "threshold": [threshold], "status": "active", "iteration": 0}}'
+Bash: SESSION_ID="[session ID from UserPromptSubmit hook]" && hoyeon-cli session set --sid $SESSION_ID --json '{"rulph": {"round": [round], "score": [overall], "threshold": [threshold], "status": "active", "iteration": 0}}'
 ```
 
 Replace `[round]`, `[overall]`, etc. with actual values. Note: `iteration` resets to 0 here — the Stop hook increments it each time it fires within a round, providing a per-round safety net.
@@ -336,7 +336,7 @@ After the worker completes:
 **State update** — mark as completed so the Stop hook allows exit:
 
 ```
-Bash: SESSION_ID="[session ID from UserPromptSubmit hook]" && hoyeon-cli2 session set --sid $SESSION_ID --json '{"rulph": {"status": "completed"}}'
+Bash: SESSION_ID="[session ID from UserPromptSubmit hook]" && hoyeon-cli session set --sid $SESSION_ID --json '{"rulph": {"status": "completed"}}'
 ```
 
 ### Final Report

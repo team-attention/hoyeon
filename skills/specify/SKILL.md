@@ -5,7 +5,7 @@ description: |
   "뭘 만들어야 하는지", "기획 정리", "인터뷰해서 스펙"
   Turn a goal into structured requirements through systematic interview.
   Three phases: Interview → Extract → Cross-check.
-  Writes requirements.md in the cli2 format (consumed by /blueprint).
+  Writes requirements.md in the cli format (consumed by /blueprint).
 ---
 
 # specify: Goal → Requirements via Systematic Interview
@@ -18,7 +18,7 @@ Transform a vague goal into structured, traceable requirements through:
 1. **Interview** — systematic Q&A across Business/Interaction/Tech axes (depth-calibrated by WHERE)
 2. **Extract** — parallel requirements extraction by domain experts
 3. **Cross-check** — conflict/gap/duplicate detection
-4. **Confirmation** — user accepts assumptions + final `requirements.md` committed in cli2 format
+4. **Confirmation** — user accepts assumptions + final `requirements.md` committed in cli format
 
 ## Handoff contract
 
@@ -135,9 +135,9 @@ If the user picks none, proceed with base calibration. Otherwise, modifiers will
 
 - Determine **spec name** (kebab-case, e.g., `user-dashboard`)
 - Decide `spec_dir`: default `.hoyeon/specs/{spec-name}/`
-- **Bootstrap via cli2** — creates the directory AND writes a `requirements.md` stub with the correct frontmatter so /blueprint can read it later:
+- **Bootstrap via cli** — creates the directory AND writes a `requirements.md` stub with the correct frontmatter so /blueprint can read it later:
   ```bash
-  hoyeon-cli2 req init <spec_dir> --type <greenfield|feature|refactor|bugfix> --goal "<one-line goal>"
+  hoyeon-cli req init <spec_dir> --type <greenfield|feature|refactor|bugfix> --goal "<one-line goal>"
   ```
   Map `WHERE.SITUATION` → `--type`:
   - `greenfield` → `greenfield`
@@ -504,8 +504,8 @@ If **Re-interview**: return to Phase 1 with the gap identified.
 
 Only after user has explicitly approved the preview:
 
-1. Read `${baseDir}/templates/requirements.md` template (cli2 format)
-2. Overwrite `<spec_dir>/requirements.md` (replacing the stub created by `hoyeon-cli2 req init` at Phase 0.3). Final shape:
+1. Read `${baseDir}/templates/requirements.md` template (cli format)
+2. Overwrite `<spec_dir>/requirements.md` (replacing the stub created by `hoyeon-cli req init` at Phase 0.3). Final shape:
    ```markdown
    ---
    type: greenfield | feature | refactor | bugfix
@@ -548,7 +548,7 @@ Only after user has explicitly approved the preview:
    - Parent: `## R-X<num>:` at H2, where `X` is axis code (`B`=Business, `U`=Interaction, `T`=Tech)
    - Sub: `#### R-X<num>.Y:` at H4 with `given/when/then` lines
    - No axis grouping headings in the body (flat list); axis is encoded in the ID letter
-4. **Frontmatter** carries only `type`, `goal`, `non_goals[]`. Do NOT add extra keys like `spec`, `phase`, `date`, `total_requirements` — those broke with cli2's frontmatter format.
+4. **Frontmatter** carries only `type`, `goal`, `non_goals[]`. Do NOT add extra keys like `spec`, `phase`, `date`, `total_requirements` — those broke with cli's frontmatter format.
 5. Pre-work is optional — include only when the interview surfaced actions the user must complete before execution (e.g., "get API key", "run migration"). Mark each item `(blocking)` or `(non-blocking)`. execute will gate on blocking items.
 6. Open Decisions is optional — omit the section if no unresolved decisions
 7. Confirm completion with the user, showing final file path + next step: `/blueprint <spec_dir>/`
@@ -559,7 +559,7 @@ All outputs go to `<spec_dir>/` (default `.hoyeon/specs/{spec-name}/`):
 
 | File | Phase | Description | Consumed by |
 |------|-------|-------------|-------------|
-| `requirements.md` | 0.3 (stub) / 4.3 (final) | Requirements in cli2 format (frontmatter + flat `## R-X` / `#### R-X.Y` with GWT) | `/blueprint` |
+| `requirements.md` | 0.3 (stub) / 4.3 (final) | Requirements in cli format (frontmatter + flat `## R-X` / `#### R-X.Y` with GWT) | `/blueprint` |
 | `qa-log.md` | 1 | Full interview transcript | audit/traceability only |
 | `reqs-business.md` | 2 | Axis extraction scratch | merged into requirements.md |
 | `reqs-interaction.md` | 2 | Axis extraction scratch | merged into requirements.md |
@@ -569,8 +569,8 @@ All outputs go to `<spec_dir>/` (default `.hoyeon/specs/{spec-name}/`):
 
 ## CLI Dependency
 
-- `hoyeon-cli2 req init <spec_dir> --type <t> --goal "<g>"` (Phase 0.3) — creates dir + requirements.md stub
-- No other cli2 commands are called by /specify. Phase 4.3 overwrites `requirements.md` directly via Write tool.
+- `hoyeon-cli req init <spec_dir> --type <t> --goal "<g>"` (Phase 0.3) — creates dir + requirements.md stub
+- No other cli commands are called by /specify. Phase 4.3 overwrites `requirements.md` directly via Write tool.
 
 ## Agents Used
 

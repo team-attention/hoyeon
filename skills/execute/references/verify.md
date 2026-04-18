@@ -17,8 +17,8 @@ pipeline runs every time; depth determines which gates are *effective*.
 **Invariants (enforced throughout)**:
 - **INV-4**: no `sleep`, no polling loops. Every parallel burst is a **single message**
   with all `Bash(run_in_background:true)` and/or agent dispatches at once.
-- **INV-5**: `plan.json` is mutated only via `hoyeon-cli2 plan task --status`. Verify
-  results live inline in the session; task-status transitions go through cli2.
+- **INV-5**: `plan.json` is mutated only via `hoyeon-cli plan task --status`. Verify
+  results live inline in the session; task-status transitions go through cli.
 - **INV-2/INV-3**: charter-to-verify agents carry **paths and IDs only** (no inlined
   spec prose). Agents self-read.
 - **C4**: on contracts mismatch detection during verify, route the worker output
@@ -67,7 +67,7 @@ has unrecoverable persistent gaps, but verify still renders the matrix.
 
 ```
 # Read done tasks from plan.json
-done_tasks = Bash("hoyeon-cli2 plan list {spec_dir} --status done --json").tasks
+done_tasks = Bash("hoyeon-cli plan list {spec_dir} --status done --json").tasks
 
 # Pull every sub_req ID that appears in verify_plan
 all_sub_ids = unique([vp.target for vp in plan.verify_plan if vp.type == "sub_req"])
@@ -95,7 +95,7 @@ For each `(sid, task_id)` in the matrix, confirm the worker output for `task_id`
 actually contains a `fulfills` entry for `sid` with a `file_path` + `line`
 citation (per `WorkerOutput` in contracts). Worker outputs are cached in the
 session's round-summaries (`CONTEXT_DIR/round-summaries.json`) or re-read via
-`hoyeon-cli2 plan get`'s attached summaries.
+`hoyeon-cli plan get`'s attached summaries.
 
 ```
 FOR sid, row in coverage.items():
@@ -148,7 +148,7 @@ IF gaps AND gap_retry_rounds < 1:
       prior_failure_context: "GAP: task {tid} did not cite fulfills for " +
                               ", ".join(sids) + ". Must address each sub_req with file:line citation."
     }
-    Bash("hoyeon-cli2 plan task --status {tid}=running")   # reset to running
+    Bash("hoyeon-cli plan task --status {tid}=running")   # reset to running
     dispatch_worker(charter)   # via current dispatch mode's worker dispatch
     dispatch_count[tid] += 1
     dispatched_any = True
@@ -447,7 +447,7 @@ IF failures AND fix_loop_rounds < 1:
       round: current_round + 1,
       prior_failure_context: "VERIFY FAIL:\n" + format(fails)
     }
-    Bash("hoyeon-cli2 plan task --status {tid}=running")
+    Bash("hoyeon-cli plan task --status {tid}=running")
     dispatch_worker(charter)
     dispatch_count[tid] += 1
     fix_dispatched_any = True
