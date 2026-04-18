@@ -2,7 +2,7 @@
 name: scaffold
 description: |
   Greenfield project architecture + harness scaffolding for AI Agent productivity.
-  Interview-driven decisions → spec.json → execute.
+  Interview-driven decisions → requirements.md → execute.
   Produces: Code Structure (vertical slice exemplar), Test Infrastructure, Guard Rails,
   conditional extensions, AND Harness (CLAUDE.md with domain/team context, rules, skills, hooks).
   L2: architecture decisions, L3: harness setup, L4: requirements + harness decisions (tasks generated later by /execute into plan.json).
@@ -19,16 +19,14 @@ allowed-tools:
 
 # /scaffold — Greenfield Architecture Scaffolding
 
-Generate a scaffold spec.json through an architecture-focused derivation chain.
+Generate a scaffold requirements.md through an architecture-focused derivation chain.
 Produces a complete development foundation that AI agents can extend consistently.
-
-Before starting, run `hoyeon-cli spec guide full --schema v2` to see the complete schema.
 
 ---
 
 ## Core Identity
 
-scaffold is specify's **architecture variant**. Same spec.json format, different weight center.
+scaffold is specify's **architecture variant**. Same requirements.md format, different weight center.
 
 | | specify | scaffold |
 |---|---------|----------|
@@ -44,22 +42,12 @@ scaffold is specify's **architecture variant**. Same spec.json format, different
 
 ## Core Rules
 
-1. **CLI is the writer** — `spec init`, `spec merge`, `spec validate`. Never hand-write spec.json.
-2. **Stdin merge** — Pass JSON via heredoc stdin. No temp files.
-   ```bash
-   hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
-   {"context": {"decisions": [...]}}
-   EOF
-   ```
-3. **Guide before merge** — Run `hoyeon-cli spec guide <section> --schema v2` before constructing JSON.
-4. **Validate at layer transitions** — `hoyeon-cli spec validate` once per layer.
-5. **One merge per section** — Never merge multiple sections in parallel.
-6. **--append for arrays** — When adding to existing arrays.
-7. **Revision Merge Protocol** — When user selects "Revise" at an approval gate:
-   - **Modify existing item** (e.g. update D3's rationale) → `--patch`
-   - **Add new item** (e.g. add D12) → `--append`
-   - **Remove + rewrite entire section** → no flag (intentional full replace)
-   - **NEVER** use no-flag merge with a subset of items — this silently replaces the entire array.
+1. **CLI creates the spec dir** — `hoyeon-cli2 req init` to create the spec directory and stub requirements.md. Then Write/Edit requirements.md directly.
+2. **Direct markdown editing** — Write requirements.md content using Write or Edit tools. No JSON merge protocol needed.
+3. **No schema validation** — requirements.md is freeform markdown. No `spec validate` or `spec guide` commands.
+4. **Revision Protocol** — When user selects "Revise" at an approval gate:
+   - Use Edit tool to modify, add, or remove sections in requirements.md directly.
+   - No merge flags needed — just edit the markdown.
 
 ---
 
@@ -69,29 +57,31 @@ scaffold is specify's **architecture variant**. Same spec.json format, different
 |-------|------|------|
 | L0 | Mirror → confirmed_goal, non_goals | User confirms mirror |
 | L1 | Environment scan (greenfield detection) | Auto-advance |
-| L2 | **Architecture interview** → decisions + constraints (HEAVY) | CLI validate + User approval |
+| L2 | **Architecture interview** → decisions + constraints (HEAVY) | User approval |
 | L3 | **Harness setup** → domain, team, rules, skills, hooks | User approval |
-| L4 | **Requirements + Harness Decisions** → requirements[] (with GWT sub-reqs) + harness decisions merged into context.decisions[] | CLI validate + User approval |
+| L4 | **Requirements + Harness Decisions** → requirements (with GWT sub-reqs) + harness decisions | User approval |
 
-**v2 note**: scaffold produces no `tasks[]` in `spec.json`. Task breakdown is handled later by `/execute`, which writes a sibling `plan.json` next to the spec. See `docs/MIGRATION-v1-to-v2.md`.
+scaffold produces requirements.md only (no tasks). Task breakdown is handled later by `/execute` (via `/blueprint` or inline planning), which writes a sibling `plan.json` next to requirements.md.
 
 ### Session Init (before L0)
 
 ```bash
-hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v2 --interaction {interaction} \
-  .hoyeon/specs/{name}/spec.json
+SPEC_DIR=".hoyeon/specs/{name}"
+hoyeon-cli2 req init $SPEC_DIR --type greenfield --goal "{goal}"
 ```
+
+This creates `${SPEC_DIR}/requirements.md` with a stub template.
 
 ```bash
 SESSION_ID="[from UserPromptSubmit hook]"
-hoyeon-cli2 session set --sid $SESSION_ID --spec ".hoyeon/specs/{name}/spec.json"
+hoyeon-cli2 session set --sid $SESSION_ID --key spec_dir --value "$SPEC_DIR"
 ```
 
 ---
 
 ## L0: Goal
 
-**Output**: `meta.goal`, `meta.non_goals`, `context.confirmed_goal`
+**Output**: Goal, Non-Goals, Confirmed Goal sections in requirements.md
 
 ### Mirror Protocol
 
@@ -107,15 +97,9 @@ Mirror the user's goal with scaffold-specific framing:
 
 **Key distinction**: scaffold's goal is the **foundation**, not the product. If user says "I want to build a todo app", the scaffold goal is "Set up a web application foundation (server + client + DB) that an agent can extend to build features like a todo app."
 
-### Merge
+### Write to requirements.md
 
-First run `hoyeon-cli spec guide meta --schema v2` and `hoyeon-cli spec guide context --schema v2` to verify field names, then merge:
-
-```bash
-hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
-{"meta": {"goal": "...", "non_goals": ["Feature implementation", "Production deployment"]}, "context": {"confirmed_goal": "Set up a [framework] foundation with [key patterns] that an agent can extend to build [product] features"}}
-EOF
-```
+Use the Edit tool to write the Goal, Non-Goals, and Confirmed Goal sections into `${SPEC_DIR}/requirements.md`.
 
 ### Gate
 
@@ -125,7 +109,7 @@ User confirms mirror → advance to L1.
 
 ## L1: Environment Scan
 
-**Output**: `context.research`
+**Output**: Research section in requirements.md
 
 Unlike specify's L1 (which scans existing code), scaffold's L1 scans the **environment**:
 
@@ -140,37 +124,19 @@ Unlike specify's L1 (which scans existing code), scaffold's L1 scans the **envir
 | Git | `git status` | Repo state |
 | OS/platform | `uname -a` | Platform constraints |
 
-### Past Scaffold Search
+### Write to requirements.md
 
-```bash
-hoyeon-cli spec search "[goal keywords]" --json --limit 5
-```
-
-Find previous scaffold decisions to compound on.
-
-### Merge
-
-Merge findings as `context.research`:
-
-```bash
-hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
-{"context": {"research": "Environment: node v22, pnpm available, Docker installed, empty directory (greenfield confirmed). No past scaffold specs found."}}
-EOF
-```
+Use the Edit tool to add a Research/Context section to `${SPEC_DIR}/requirements.md` with the environment scan findings.
 
 ### Gate
 
-```bash
-hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer decisions
-```
-
-Auto-advance to L2 (no user approval needed, but validate to catch merge errors).
+Auto-advance to L2 (no user approval needed).
 
 ---
 
 ## L2: Architecture Decisions (HEAVY)
 
-**Output**: `context.decisions[]`, `constraints[]`, `context.known_gaps[]`
+**Output**: Decisions, Constraints, Known Gaps sections in requirements.md
 
 This is scaffold's core. The interview determines the entire project architecture.
 
@@ -311,15 +277,13 @@ Return: PASS or NEEDS_FIX with specific issues.
 
 ### L2 Gate
 
-```bash
-hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer decisions
-```
+Use Edit tool to write all decisions, constraints, and known gaps into the Decisions section of `${SPEC_DIR}/requirements.md`.
 
 ---
 
 ## L3: Harness Setup
 
-**Output**: Harness decisions merged into `context.decisions[]`
+**Output**: Harness decisions added to Decisions section in requirements.md
 
 L3 determines the AI work environment for this project. While L2 decides how the code is structured, L3 decides how Claude will work with that code across sessions.
 
@@ -374,7 +338,7 @@ AskUserQuestion(
   options: [
     { label: "Yes, all of them", description: "All constraints become rules files" },
     { label: "Let me pick", description: "Choose which constraints to enforce" },
-    { label: "Skip", description: "Keep constraints in spec.json only" }
+    { label: "Skip", description: "Keep constraints in requirements.md only" }
   ]
 )
 ```
@@ -446,22 +410,17 @@ AskUserQuestion(
 
 Record as decision: `D_H5: "Hooks: [list of hooks to configure]"`
 
-### L3 Merge
+### L3 Write to requirements.md
 
-Merge all harness decisions into `context.decisions[]`:
+Use Edit tool to append all harness decisions to the Decisions section in `${SPEC_DIR}/requirements.md`:
 
-```bash
-hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin --append << 'EOF'
-{"context": {"decisions": [
-  {"id": "D_H1", "decision": "Domain context: ...", "rationale": "Persisted in CLAUDE.md for cross-session continuity"},
-  {"id": "D_H2", "decision": "Team conventions: ...", "rationale": "Persisted in CLAUDE.md for cross-session continuity"},
-  {"id": "D_H3", "decision": "Rules: C1, C3 converted to .claude/rules/", "rationale": "Auto-enforced per session"},
-  {"id": "D_H4", "decision": "Skills: /migrate, /seed-data", "rationale": "Recurring tasks detected from tech stack"},
-  {"id": "D_H5", "decision": "Hooks: prettier, tsc, .env protection", "rationale": "Code quality automation from L2 tooling"}
-]}}
-// Only include D_H1/D_H2 if user provided content. Omit if "None yet" or "Solo project".
-EOF
-```
+- D_H1: Domain context (if user provided)
+- D_H2: Team conventions (if user provided)
+- D_H3: Rules to convert from constraints
+- D_H4: Skills to generate
+- D_H5: Hooks to configure
+
+Only include D_H1/D_H2 if user provided content. Omit if "None yet" or "Solo project".
 
 ### L3 Gate
 
@@ -471,17 +430,16 @@ Present harness summary → AskUserQuestion (Approve/Revise/Abort).
 
 ## L4: Requirements + Harness Decisions
 
-**Output**: `requirements[]` (with GWT sub-requirements), harness decisions merged into `context.decisions[]`, optional `external_dependencies`.
+**Output**: Requirements section (with GWT sub-requirements) written to requirements.md
 
-**v2 scope**: L4 does NOT produce tasks. spec.json v2 has no `tasks[]` — task breakdown is the job of `/execute`, which writes a sibling `plan.json`. L4's job is to finalize the *what* (requirements + harness intent) so `/execute` has a complete spec to derive tasks from. See `docs/MIGRATION-v1-to-v2.md`.
+L4 does NOT produce tasks. Task breakdown is the job of `/execute` (via `/blueprint` or inline planning), which writes a sibling `plan.json`. L4's job is to finalize the *what* (requirements + harness intent) so `/execute` has a complete requirements.md to derive tasks from.
 
-Requirements come from both L2 (architecture) and L3 (harness). Every sub-requirement MUST have `given` / `when` / `then` (GWT is mandatory in v2).
+Requirements come from both L2 (architecture) and L3 (harness). Every sub-requirement MUST have `given` / `when` / `then` (GWT is mandatory).
 
 ### Step 1: Derive Requirements
 
-Construct requirements manually from L2 decisions + L3 harness decisions, then merge via `spec merge --stdin`.
-Run `hoyeon-cli spec guide requirements --schema v2` and `hoyeon-cli spec guide sub --schema v2` for field reference.
-Remember: every entry in `sub[]` requires `given`, `when`, `then` — behavior alone is not enough in v2.
+Construct requirements from L2 decisions + L3 harness decisions, then write them into the Requirements section of `${SPEC_DIR}/requirements.md` using the Edit tool.
+Every sub-requirement must include `given`, `when`, `then` — behavior alone is not enough.
 
 **Code Requirements (from L2):**
 
@@ -541,13 +499,13 @@ R10: "Project Hooks — Automated code quality enforcement" (if D_H5)
 
 **Behavior Quality**: Same rules as specify — trigger + observable outcome.
 
-**Note on fulfills[]**: Use parent requirement IDs only (R1, R2, R3), NOT sub-requirement IDs (R1.1, R3.4). `spec check` only recognizes parent IDs.
+**Note on fulfills[]**: Use parent requirement IDs only (R1, R2, R3), NOT sub-requirement IDs (R1.1, R3.4).
 
 ### Step 2: Harness Intent (no task generation)
 
-**Do NOT call `hoyeon-cli spec derive-tasks` or `hoyeon-cli spec sandbox-tasks`.** Those v1 commands are obsolete — v2 spec.json has no `tasks[]` at all. `/execute` owns task derivation and writes `plan.json` next to `spec.json`.
+Task derivation is handled by `/execute` (via `/blueprint` or inline planning). `/execute` reads requirements.md and writes `plan.json` next to it.
 
-Instead, ensure the requirements merged in Step 1 carry enough harness detail that `/execute` can derive the right tasks:
+Ensure the requirements written in Step 1 carry enough harness detail that `/execute` can derive the right tasks:
 
 - **R1 (Code Structure)** must include the vertical slice exemplar as a sub-requirement with full GWT.
 - **R3 (Guard Rails)** CLAUDE.md sub-req must spell out domain context (D_H1), team conventions (D_H2), available skills (D_H4), and active hooks (D_H5).
@@ -556,7 +514,7 @@ Instead, ensure the requirements merged in Step 1 carry enough harness detail th
 
 ### Task Shape Guidance for `/execute`
 
-`/execute` will read the merged spec and derive `plan.json` tasks. The scaffold-specific shape it is expected to produce (documented here so reviewers know what "good" looks like, NOT merged into spec.json):
+`/execute` will read `requirements.md` and derive `plan.json` tasks. The scaffold-specific shape it is expected to produce (documented here so reviewers know what "good" looks like):
 
 - `T1` Project initialization → fulfills R1
 - `T2` Guard Rails + CLAUDE.md + rules → fulfills R3 (+ R8 when present), depends on T1
@@ -591,11 +549,11 @@ Each generated skill must reference actual tools/commands from L2 decisions:
 ### L4 Approval — Plan Summary
 
 ```
-spec.json ready! .hoyeon/specs/{name}/spec.json
+requirements.md ready! .hoyeon/specs/{name}/requirements.md
 
 Goal
 ----------------------------------------
-{context.confirmed_goal}
+{confirmed_goal}
 
 Architecture Decisions ({n} total)
 ----------------------------------------
@@ -619,8 +577,8 @@ Hooks: {list of hooks}
 
 Task Derivation
 ----------------------------------------
-(none in spec.json — v2 does not store tasks. /execute will derive them into plan.json
- next to spec.json: project init, guard rails + rules, test infra, vertical slice exemplar,
+(none in requirements.md — /execute will derive tasks into plan.json
+ next to requirements.md: project init, guard rails + rules, test infra, vertical slice exemplar,
  conditional extensions, domain skills, project hooks, and a final scaffold verification.)
 
 Quality Criteria
@@ -670,20 +628,18 @@ AskUserQuestion(
 
 ## Checklist Before Stopping
 
-- [ ] spec.json at `.hoyeon/specs/{name}/spec.json`
-- [ ] `hoyeon-cli spec validate` passes
-- [ ] `context.confirmed_goal` is architecture-framed (not feature-framed)
-- [ ] `meta.non_goals` includes "feature implementation" or similar
-- [ ] L2: `context.decisions[]` cover all 5 architecture dimensions
+- [ ] requirements.md at `.hoyeon/specs/{name}/requirements.md`
+- [ ] Confirmed Goal is architecture-framed (not feature-framed)
+- [ ] Non-Goals includes "feature implementation" or similar
+- [ ] L2: Decisions cover all 5 architecture dimensions
 - [ ] L2: Conditional extensions detected and recorded as decisions
-- [ ] L3: Applicable harness decisions (D_H1-D_H5, skip if user opted out) merged into decisions[]
+- [ ] L3: Applicable harness decisions (D_H1-D_H5, skip if user opted out) written to Decisions section
 - [ ] L3: Constraints → rules conversion offered to user
 - [ ] L3: Skills auto-suggested from tech stack + user input
 - [ ] L3: Hooks auto-detected from formatter/linter choices
 - [ ] L4: Requirements include Code (R1-R3) + Conditional (R4-R7) + Harness (R8-R10)
-- [ ] L4: Every sub-requirement has `given`, `when`, `then` (mandatory in v2)
-- [ ] L4: No `tasks[]` merged into spec.json (v2 disallows it — /execute writes plan.json)
-- [ ] L4: No calls to `spec derive-tasks` or `spec sandbox-tasks` (v1-only commands)
+- [ ] L4: Every sub-requirement has `given`, `when`, `then` (mandatory)
+- [ ] L4: No tasks written to requirements.md (/execute writes plan.json)
 - [ ] R1 includes mandatory vertical slice exemplar sub-requirement with full GWT
 - [ ] Exemplar sub-req requires importable utilities (logger, config, errors)
 - [ ] R3.1 CLAUDE.md includes domain context (D_H1), team conventions (D_H2), available skills (D_H4), and active hooks (D_H5)
