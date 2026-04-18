@@ -276,9 +276,10 @@ ELSE:
   work = AskUserQuestion(
     question: "Work mode?",
     options: [
-      { label: "Worktree",        description: "Isolated worktree, commit per round" },
-      { label: "Branch + Commit", description: "Current branch, commit per round" },
-      { label: "No Commit",       description: "No git commits" }
+      { label: "Worktree",           description: "Isolated worktree, commit per round" },
+      { label: "New Branch + Commit", description: "Create feat/ branch from current, commit per round" },
+      { label: "Branch + Commit",     description: "Current branch as-is, commit per round" },
+      { label: "No Commit",           description: "No git commits" }
     ]
   )
 ```
@@ -299,11 +300,16 @@ Bash: jq -n \
     input_mode:$input, contracts_path: ($contracts|select(length>0))}' \
   > $STATE_FILE
 
-# (b) Worktree (if selected)
+# (b) Branch/Worktree setup
 IF work == "Worktree":
   spec_dir       = Bash("realpath {spec_dir}").trim()
   contracts_path = Bash("realpath {contracts_path}").trim() if contracts_path
   EnterWorktree(name=basename(spec_dir))
+
+IF work == "New Branch + Commit":
+  branch_name = "feat/{spec_name}"   # derived from spec_dir basename
+  Bash: git checkout -b {branch_name}
+  audit_append("BRANCH_CREATE {branch_name} from {current_branch}")
 
 # (c) Context files (next to plan.json)
 CONTEXT_DIR = spec_dir
