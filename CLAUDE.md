@@ -121,7 +121,14 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
-## Recent Changes (unreleased — v2.0.0)
+## Recent Changes (v1.6.0)
+
+### CLI Rename (hoyeon-cli2 → hoyeon-cli)
+- **BREAKING**: npm package renamed `@team-attention/hoyeon-cli2` → `@team-attention/hoyeon-cli` (v1 slot reclaimed now that v1 CLI is retired)
+- Directory: `cli2/` → `cli/`, binary: `hoyeon-cli2` → `hoyeon-cli`
+- Users must `npm uninstall -g @team-attention/hoyeon-cli2 && npm install -g @team-attention/hoyeon-cli` (or rely on SessionStart `cli-version-sync.sh`)
+- Fixed long-standing broken refs in `.github/workflows/ci.yml`, `publish.yml`, and `scripts/pre-commit-cli-build.sh` that pointed at `cli/` while directory was `cli2/`
+- Fixed `hoyeon-cli plan status` stale command references in agents and docs → correct form is `hoyeon-cli plan task <spec_dir> --status <id>=<state>`
 
 ### Pipeline v2 Migration
 - **BREAKING**: Removed old specify (v1), execute (v1), quick-plan skills and hoyeon-cli (v1)
