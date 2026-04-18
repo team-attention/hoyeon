@@ -2,13 +2,14 @@
 
 ## Overview
 
-Hoyeon is a Claude Code plugin that implements a **specify-then-execute** development pipeline. The core idea: separate planning from implementation so that each phase can be independently validated, parallelized, and guarded by hooks.
+Hoyeon is a Claude Code plugin that implements a **specify-blueprint-execute** development pipeline. The core idea: separate requirements, planning, and implementation into distinct phases so each can be independently validated, parallelized, and guarded by hooks.
 
-1. **Specify** -- An interview-driven skill generates a `spec.json` (v5 schema) describing tasks, acceptance criteria, requirements, and constraints.
-2. **Execute** -- A spec-driven orchestrator reads `spec.json`, dispatches worker agents in parallel (DAG-based), and runs verification after each task.
-3. **Hooks** -- Shell scripts registered in `.claude/settings.json` enforce guardrails at every lifecycle event: blocking premature writes, validating outputs, and auto-advancing the pipeline.
+1. **Specify** -- An interview-driven skill derives structured requirements, outputting `requirements.md`.
+2. **Blueprint** -- A contract-first planner reads `requirements.md` and produces `plan.json` (task graph with dependencies) and `contracts.md` (interface contracts between tasks).
+3. **Execute** -- A plan-driven orchestrator reads `plan.json`, dispatches worker agents using one of three dispatch modes (direct/agent/team), and runs verification at configurable depth.
+4. **Hooks** -- Shell scripts registered in `.claude/settings.json` enforce guardrails at every lifecycle event: blocking premature writes, validating outputs, and auto-advancing the pipeline.
 
-The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) that can be invoked independently outside the specify/execute pipeline.
+The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) that can be invoked independently outside the main pipeline.
 
 ---
 
@@ -18,57 +19,49 @@ The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) th
   User Request
        |
        v
- +------------+     spec.json      +------------+
- |  /specify   | -----------------> |  /execute   |
- |             |   (v5 schema)      |             |
- | interview   |                    | read spec   |
- | research    |                    | route by    |
- | gap analysis|                    |  meta.type  |
- | AC quality  |                    |             |
- |   gate      |                    +------+------+
- +-------------+                           |
-                                           v
-                                  +--------+--------+
-                                  | DAG Scheduler    |
-                                  | (parallel rounds)|
-                                  +--------+--------+
-                                           |
-                          +----------------+----------------+
-                          |                |                |
-                          v                v                v
-                     +---------+     +---------+     +---------+
-                     | worker  |     | worker  |     | worker  |
-                     | agent   |     | agent   |     | agent   |
-                     +----+----+     +----+----+     +----+----+
-                          |                |                |
-                          v                v                v
-                     +---------+     +---------+     +---------+
-                     | verify  |     | verify  |     | verify  |
-                     +---------+     +---------+     +---------+
-                          |                |                |
-                          +--------+-------+-------+--------+
-                                   |               |
-                                   v               v
-                            +------+------+  +-----+------+
-                            | git-master  |  |Final Verify|
-                            |  (commit)   |  | (holistic) |
-                            +-------------+  +------------+
-                                                    |
-                                                    v
-                                              Final Report
+ +------------+   requirements.md   +------------+   plan.json        +------------+
+ |  /specify   | -----------------> | /blueprint  | ----------------> |  /execute   |
+ |             |                    |             |  contracts.md     |             |
+ | interview   |                    | contract    |                   | 3-axis cfg  |
+ | requirements|                    |  derivation |                   | dispatch:   |
+ | derivation  |                    | task graph  |                   |  direct /   |
+ |             |                    | verify plan |                   |  agent /    |
+ +-------------+                    +-------------+                   |  team       |
+                                                                      +------+------+
+                                                                             |
+                                                          +------------------+------------------+
+                                                          |                  |                  |
+                                                          v                  v                  v
+                                                     +---------+       +---------+       +---------+
+                                                     | worker  |       | worker  |       | worker  |
+                                                     | agent   |       | agent   |       | agent   |
+                                                     +----+----+       +----+----+       +----+----+
+                                                          |                  |                  |
+                                                          +--------+---------+--------+--------+
+                                                                   |                  |
+                                                                   v                  v
+                                                            +------+------+    +------+------+
+                                                            | git-master  |    |   Verify    |
+                                                            |  (commit)   |    | (light /    |
+                                                            +-------------+    | standard /  |
+                                                                               | thorough)   |
+                                                                               +------+------+
+                                                                                      |
+                                                                                      v
+                                                                                Final Report
 
-  /ultrawork = /specify --> Stop hook --> /execute (fully automated)
+  /ultrawork = /specify --> /blueprint --> /execute (fully automated via Stop hooks)
 ```
 
 ### Hook Lifecycle Within a Session
 
 ```
   SessionStart
-       |  session-compact-hook.sh (recover state after compaction)
+       |  cli-version-sync.sh, session-compact-hook.sh
        v
   UserPromptSubmit
-       |  skill-hint-hook.sh, ultrawork-init-hook.sh,
-       |  skill-session-init.sh, rv-detector.sh
+       |  ultrawork-init-hook.sh, skill-session-init.sh,
+       |  rv-detector.sh
        v
   PreToolUse
        |  [Skill]  skill-session-init.sh, rulph-init.sh
@@ -76,6 +69,12 @@ The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) th
        v
   PostToolUse
        |  [Task|Skill]  validate-output.sh
+       |  [Grep|Glob|WebFetch|Bash]  tool-output-truncator.sh
+       v
+  PostToolUseFailure
+       |  [Edit|Write]  edit-error-recovery.sh
+       |  [Read]  large-file-recovery.sh
+       |  [*]  tool-failure-tracker.sh
        v
   Stop
        |  ultrawork-stop-hook.sh, skill-session-stop.sh,
@@ -93,30 +92,24 @@ The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) th
 
 | Skill | Description |
 |-------|-------------|
-| `specify` | Interview-driven spec generator; outputs spec.json v5 via CLI |
-| `execute` | Spec-driven orchestrator; routes by meta.type, dispatches worker agents |
-| `ultrawork` | Automated end-to-end pipeline chaining specify then execute via Stop hooks |
-| `quick-plan` | Lightweight task planning with DAG output and optional spec.json generation |
-| `bugfix` | Root-cause-based one-shot bug fix: debugger diagnosis, spec generation, execute |
+| `specify` | Interview-driven requirements derivation; outputs `requirements.md` |
+| `blueprint` | Contract-first task graph and verify plan from `requirements.md`; outputs `plan.json` + `contracts.md` |
+| `execute` | Plan-driven orchestrator (direct/agent/team dispatch, light/standard/thorough verify) |
+| `ultrawork` | Full specify -> blueprint -> execute pipeline (automated via Stop hooks) |
+| `bugfix` | Root-cause diagnosis -> `requirements.md` -> `/execute` |
+| `scaffold` | Greenfield architecture -> `requirements.md` -> `/execute` |
 | `council` | Multi-perspective decision committee with Team Mode debate and step-back judge |
-| `ralph` | Iterative task loop with Definition of Done verification and Stop hook re-injection |
-| `rulph` | Rubric-based evaluation and self-improvement loop with multi-model scoring |
-| `scope` | Fast parallel change-scope analyzer (5+ concurrent agents) |
-| `check` | Verification skill for validating changes (runs in fork context) |
-| `tribunal` | Three-way adversarial review: risk, value, and feasibility perspectives |
-| `discuss` | Free-form problem exploration and idea discussion |
-| `mirror` | Paraphrase-back skill for confirming mutual understanding |
-| `stepback` | One-shot perspective reset that surfaces blind spots mid-work |
-| `deep-interview` | Multi-round Socratic interview for requirement clarification |
-| `deep-research` | Parallel web research with browser-explorer and WebSearch agents |
-| `google-search` | Google search via real Chrome browser (chromux) |
-| `browser-work` | Recon-first browser automation with chromux and browser-explorer agent |
-| `reference-seek` | Find reference implementations and similar open-source projects |
-| `dev-scan` | Aggregate developer community opinions (Reddit, HN, Dev.to, etc.) |
-| `tech-decision` | Systematic multi-source research for technical decisions (A vs B) |
-| `compound` | Document learnings and insights after completing work |
+| `ralph` | Iterative DoD loop with Stop hook re-injection |
+| `rulph` | Rubric-based evaluation loop with multi-model scoring |
+| `scope` | Fast parallel change-scope analyzer |
+| `discuss` | Socratic discussion (supports `--scored` for deep interview mode) |
+| `mirror` | Echo back understanding for mutual confirmation |
+| `check` | Pre-push validation against project rule checklists |
+| `tribunal` | Three-way adversarial review (risk, value, feasibility) |
 | `issue` | Structured GitHub issue creation with codebase impact analysis |
-| `skill-session-analyzer` | Analyze and evaluate past skill session logs |
+| `qa` | Systematic QA testing (browser/native/CLI/shell) |
+| `browser-work` | Recon-first browser automation with chromux |
+| `deep-interview` | Deep requirements interview (merged into `discuss --scored`) |
 
 ---
 
@@ -124,74 +117,95 @@ The plugin also ships standalone skills (council, bugfix, ralph, scope, etc.) th
 
 | Agent | Role |
 |-------|------|
-| `worker` | Implementation agent; handles code writing, bug fixes, and test writing |
-| `code-explorer` | Read-only codebase search specialist; finds files, patterns, and relationships |
-| `code-reviewer` | Cross-cutting code reviewer for integration issues and hidden bugs |
-| `debugger` | Root cause analysis specialist; traces bugs backward through call stacks |
-| `git-master` | Git commit specialist; enforces atomic commits and detects project style |
-| `verification-planner` | Builds verification strategy with A-items (Agent), H-items (Human), S-items (Sandbox) |
-| `gap-analyzer` | Identifies missing requirements and potential pitfalls before plan generation |
-| `interviewer` | Socratic interviewer; questions only, no code |
-| `browser-explorer` | Controls real Chrome browser via chromux (CDP); parallel-safe with isolated tabs |
-| `docs-researcher` | Searches project internal docs for architecture decisions and conventions |
-| `external-researcher` | Researches external libraries and best practices via web search |
-| `tradeoff-analyzer` | Evaluates changes for risk level, simpler alternatives, and over-engineering |
-| `ux-reviewer` | Evaluates how proposed changes affect existing user experience |
-| `ralph-verifier` | Independent DoD verifier for /ralph; runs in separate context to avoid self-verification bias |
-| `codex-risk-analyst` | Codex-powered risk analyst for /tribunal |
-| `codex-strategist` | Codex-powered strategist; synthesizes multiple analysis reports |
-| `feasibility-checker` | Feasibility evaluator for /tribunal |
-| `value-assessor` | Value/impact assessor for /tribunal |
+| `worker` | Implementation agent; code writing, bug fixes, test writing |
+| `git-master` | Atomic commit specialist; detects project commit style |
+| `code-reviewer` | Cross-cutting diff review for integration issues |
+| `qa-verifier` | Spec-driven QA verification (browser/cli/desktop/shell) |
+| `verification-planner` | 2-axis verification strategy (auto/agent/manual x host/sandbox) |
+| `verifier` | Independent sub-requirement verifier |
+| `spec-coverage` | GWT citation enforcement for gate-2 double review |
+| `debugger` | Root cause analysis; traces bugs backward through call stacks |
+| `gap-analyzer` | Missing requirements detection before plan generation |
+| `code-explorer` | Read-only codebase search specialist |
+| `contract-deriver` | Blueprint Phase 1: derives interface contracts from requirements |
+| `taskgraph-planner` | Blueprint Phase 2: builds task graph with dependencies |
+| `verify-planner` | Blueprint Phase 4: creates verification plan |
+
+---
+
+## CLI
+
+The plugin ships `hoyeon-cli2` (npm: `@team-attention/hoyeon-cli`) for structured data management.
+
+| Command Group | Purpose |
+|---------------|---------|
+| `req` | Requirements management (read/merge `requirements.md`) |
+| `plan` | Plan management (read/update `plan.json`, task status) |
+| `learning` | Structured learnings (record, search via BM25) |
+| `issue` | Structured issue tracking |
+| `session` | Session state management |
+
+Key conventions:
+- File-based JSON passing via heredoc (`<< 'EOF'`) to avoid shell glob issues
+- Task status updates: `hoyeon-cli plan status <task-id> <plan-path> --status <state>`
+- Monotonic done-lock prevents re-opening completed tasks
 
 ---
 
 ## Hooks
 
-| Script | Type | Matcher | Purpose |
-|--------|------|---------|---------|
-| `session-compact-hook.sh` | SessionStart | `compact` | Recover skill name and state.json path after context compaction |
-| `skill-session-cleanup.sh` | SessionEnd | (all) | Clean up session directory (`~/.hoyeon/{session_id}/`) |
-| `skill-hint-hook.sh` | UserPromptSubmit | (all) | Surface relevant skill suggestions based on user input |
-| `ultrawork-init-hook.sh` | UserPromptSubmit | (all) | Initialize ultrawork pipeline state when `/ultrawork` is typed |
-| `skill-session-init.sh` | UserPromptSubmit + PreToolUse | (all) / `Skill` | Initialize session state for specify/execute skills |
-| `rv-detector.sh` | UserPromptSubmit | (all) | Detect `!rv` keyword to trigger re-validation loop |
-| `rulph-init.sh` | PreToolUse | `Skill` | Initialize rulph loop state on skill invocation |
-| `skill-session-guard.sh` | PreToolUse | `Edit\|Write` | Plan guard (specify) / orchestrator guard (execute) -- blocks direct writes |
-| `ralph-dod-guard.sh` | PreToolUse | `Edit\|Write` | Enforce Definition of Done before allowing writes in /ralph loop |
-| `validate-output.sh` | PostToolUse | `Task\|Skill` | Validate agent/skill output against `validate_prompt` frontmatter |
-| `ultrawork-stop-hook.sh` | Stop | (all) | Advance ultrawork pipeline to next stage on session stop |
-| `skill-session-stop.sh` | Stop | (all) | Block exit if execute has incomplete tasks (circuit breaker: 30 iterations) |
-| `rv-validator.sh` | Stop | (all) | Run re-validation pass on stop |
-| `rulph-stop.sh` | Stop | (all) | Handle rulph loop termination |
-| `ralph-stop.sh` | Stop | (all) | Ralph loop DoD verification and prompt re-injection |
+| Script | Type | Purpose |
+|--------|------|---------|
+| `cli-version-sync.sh` | SessionStart | Auto-sync hoyeon-cli npm version with plugin version |
+| `session-compact-hook.sh` | SessionStart | Recover skill name and state.json path after compaction |
+| `ultrawork-init-hook.sh` | UserPromptSubmit | Initialize ultrawork pipeline state when `/ultrawork` is typed |
+| `skill-session-init.sh` | UserPromptSubmit + PreToolUse[Skill] | Initialize session state for specify/execute skills |
+| `rv-detector.sh` | UserPromptSubmit | Detect `!rv` keyword to trigger re-validation loop |
+| `rulph-init.sh` | PreToolUse[Skill] | Initialize rulph loop state on skill invocation |
+| `skill-session-guard.sh` | PreToolUse[Edit\|Write] | Plan guard (specify) / orchestrator guard (execute) |
+| `ralph-dod-guard.sh` | PreToolUse[Edit\|Write] | Enforce DoD before allowing writes in /ralph loop |
+| `validate-output.sh` | PostToolUse[Task\|Skill] | Validate agent/skill output against `validate_prompt` frontmatter |
+| `tool-output-truncator.sh` | PostToolUse[Grep\|Glob\|WebFetch\|Bash] | Truncate oversized tool output (50K/10K limits) |
+| `edit-error-recovery.sh` | PostToolUseFailure[Edit\|Write] | Detect Edit failures and inject recovery guidance |
+| `large-file-recovery.sh` | PostToolUseFailure[Read] | Suggest chunked read or Grep for large/binary files |
+| `tool-failure-tracker.sh` | PostToolUseFailure[*] | Track repeated failures per tool; escalate at 3/5 in 60s |
+| `ultrawork-stop-hook.sh` | Stop | Advance ultrawork pipeline to next stage |
+| `skill-session-stop.sh` | Stop | Block exit if execute has incomplete tasks (circuit breaker: 30 iter) |
+| `rv-validator.sh` | Stop | Run re-validation pass on stop |
+| `rulph-stop.sh` | Stop | Handle rulph loop termination |
+| `ralph-stop.sh` | Stop | Ralph loop DoD verification and prompt re-injection |
+| `skill-session-cleanup.sh` | SessionEnd | Clean up session directory (`~/.hoyeon/{session_id}/`) |
 
 ---
 
 ## Patterns
 
-### Spec-Driven Development
+### Requirements-Driven Development
 
-All implementation flows through `spec.json` -- a schema-validated contract that contains tasks, acceptance criteria, requirements, constraints, and verification strategy. The CLI (`hoyeon-cli`) owns spec creation and mutation; skills never hand-write JSON. This guarantees structural validity and enables machine-readable task orchestration.
+All implementation flows through `requirements.md` -- a structured document containing requirements with sub-requirements expressed in GWT (Given/When/Then) format. The CLI (`hoyeon-cli2`) manages requirements and plan state. `/blueprint` transforms requirements into an executable `plan.json` with `contracts.md` defining interface boundaries between tasks.
+
+### 3-Axis Configuration (Execute)
+
+The execute orchestrator supports three independent configuration axes:
+- **Dispatch**: `direct` (orchestrator implements), `agent` (worker subagents with module grouping), `team` (TeamCreate persistent workers with claim-based assignment)
+- **Work**: `worktree` (git worktree isolation), `branch` (branch-per-task), `no-commit` (in-place)
+- **Verify**: `light` (build/lint only), `standard` (spec-based + code review), `thorough` (standard + cross-task + QA sandbox)
 
 ### Hook-Guarded Writes
 
 The `skill-session-guard.sh` hook intercepts every `Edit` and `Write` tool call during specify and execute sessions. During specify, it prevents the orchestrator from writing code (planning only). During execute, it prevents the orchestrator from writing implementation directly (must delegate to worker agents). This enforces the separation of concerns between planning, orchestrating, and implementing.
 
+### Contract-First Planning
+
+`/blueprint` derives interface contracts (`contracts.md`) before building the task graph. Each task declares which contracts it produces and consumes. Workers receive contract paths and IDs in their charter -- never inlined content -- ensuring clean separation between orchestrator and worker concerns.
+
 ### DAG-Based Parallel Execution
 
-Tasks in `spec.json` declare dependencies. The execute orchestrator resolves these into a DAG and runs independent tasks in parallel rounds using `run_in_background: true`. Each round waits for all tasks to complete before starting the next round of unblocked tasks.
-
-### Worktree Isolation
-
-Parallel worker agents can operate in separate git worktrees (via `EnterWorktree`/`ExitWorktree` tools) to avoid file conflicts. Each worker gets an isolated copy of the repository, and changes are merged back after task completion.
+Tasks in `plan.json` declare dependencies via `depends_on`. The execute orchestrator resolves these into a DAG and runs independent tasks in parallel. In agent mode, tasks are grouped by module for round-level commits. In team mode, workers claim tasks longest-deps-first.
 
 ### Stop Hook Re-injection (Ralph Pattern)
 
 The `/ralph` skill uses the Stop hook to re-inject prompts into the session. When the agent tries to stop, `ralph-stop.sh` checks whether the Definition of Done is satisfied. If not, it outputs a continuation prompt that keeps the agent working. A circuit breaker (max iterations) prevents infinite loops.
-
-### Multi-Model Parallel Review
-
-Several skills (council, rulph, tribunal) dispatch the same artifact to multiple models (Claude, Codex, Gemini) in parallel, then synthesize the results. This provides diverse perspectives and reduces single-model blind spots.
 
 ### Validate-on-Complete
 
