@@ -1,7 +1,7 @@
 ---
 name: bugfix
 description: |
-  Root cause based one-shot bug fix. debugger diagnosis → spec.json generation → /execute.
+  Root cause based one-shot bug fix. debugger diagnosis → requirements.md generation → /execute.
   /bugfix "error description"
   Full investigation pipeline: debugger + gap-analyzer + standard verify.
   QA suggestion after successful fix.
@@ -17,15 +17,16 @@ allowed_tools:
   - Skill
 validate_prompt: |
   Must complete with one of:
-  1. Execute completed successfully (spec.json all tasks done)
+  1. Execute completed successfully (all plan.json tasks done)
   2. Circuit breaker triggered (max attempts exhausted, report saved)
-  3. Escalated to /specify (with spec.json + debug report saved)
-  Must NOT: skip root cause analysis, apply multiple fixes simultaneously.
+  3. Escalated to /specify (with requirements.md + debug report saved)
+  Must NOT: skip root cause analysis, apply multiple fixes simultaneously,
+  or manually write plan.json (execute derives it from requirements.md).
 ---
 
 # /bugfix Skill
 
-Root cause based one-shot bug fix. Diagnose → generate spec.json → delegate to /execute for fix, verification, and commit.
+Root cause based one-shot bug fix. Diagnose → generate requirements.md → delegate to /execute for fix, verification, and commit.
 
 ## The Iron Law
 
@@ -42,13 +43,14 @@ Must stop after 3 failed attempts
 
 Phase 1: DIAGNOSE ─────────────────────────────────
   debugger + verification-planner + gap-analyzer (all parallel)
-  → User confirmation
+  → Blast-radius grep scan + Triage recommendation
+  → User confirmation (includes triage hint)
 
-Phase 2: SPEC GENERATION ──────────────────────────
-  Diagnosis results → spec.json (hoyeon-cli spec init + merge)
+Phase 2: REQUIREMENTS GENERATION ──────────────────
+  Diagnosis results → requirements.md (hoyeon-cli req init + Write)
 
 Phase 3: EXECUTE ──────────────────────────────────
-  Skill("execute", args=spec_path)
+  Skill("execute", args=spec_dir)
   → Success: Phase 5
   → HALT: Phase 4
 
@@ -64,9 +66,11 @@ Phase 5: CLEANUP & REPORT ──────────────────
 
 Always runs the full investigation + execution pipeline. No SIMPLE/COMPLEX branching.
 
-| dispatch | verify | Phase 1 | Retry |
-|---------|--------|---------|-------|
-| agent | standard | debugger + verification-planner + gap-analyzer | bugfix-managed (max 3) |
+| Phase 1 | Retry |
+|---------|-------|
+| debugger + verification-planner + gap-analyzer | bugfix-managed (max 3) |
+
+`/execute` will prompt for dispatch/work/verify via AskUserQuestion when invoked — bugfix does not pre-select these modes.
 
 ---
 
@@ -85,7 +89,7 @@ Extract from user input:
 SESSION_ID = [from hook — $CLAUDE_SESSION_ID]
 slug = convert bug description to kebab-case (e.g. "null-pointer-in-auth")
 DEBUG_STATE = "$HOME/.hoyeon/$SESSION_ID/debug-state.md"
-hoyeon-cli session set --sid $SESSION_ID --skill bugfix --debug "$DEBUG_STATE"
+hoyeon-cli session set --sid $SESSION_ID --json '{"skill":"bugfix","debug":"'"$DEBUG_STATE"'"}'
 
 Write(DEBUG_STATE):
 # Debug: {bug description}
@@ -101,7 +105,7 @@ slug: {slug}
 
 ## Diagnosis
 root_cause: pending
-spec_path: pending
+spec_dir: pending
 
 ## Attempts
 ```
@@ -160,14 +164,72 @@ Task(gap-analyzer):
    - Whether similar bugs exist with the same pattern"
 ```
 
+### Step 1.3b: Blast-radius Quick Scan
+
+After debugger identifies `root_cause.location` (e.g. `src/auth/token.ts:42`), extract the function/module name and run grep-based structural scan. Always use `wc -l` so the LLM compares integers, not raw grep output.
+
+```bash
+# Extract from debugger's Root Cause section:
+#   fn   = function or symbol name at the root cause (e.g. "parseToken")
+#   mod  = module path without extension (e.g. "src/auth/token")
+# If the function name cannot be reliably extracted, set fn="" and skip caller_count.
+
+total_files=$(git ls-files | wc -l | tr -d ' ')
+callers=$(git grep -l -F "$fn" 2>/dev/null | wc -l | tr -d ' ')
+importers=$(git grep -l -F "$mod" 2>/dev/null | wc -l | tr -d ' ')
+test_refs=$(git grep -l -F "$fn" -- '**/*test*' '**/*spec*' 2>/dev/null | wc -l | tr -d ' ')
+hot_path=$(git grep -l -F "$fn" -- 'migrations/**' 'auth/**' 'payment/**' 'billing/**' 'schema/**' 2>/dev/null | wc -l | tr -d ' ')
+```
+
+Use `-F` (fixed string) to avoid regex injection from extracted symbols. Empty or malformed symbols → skip that signal, do NOT fail the phase.
+
+Store the scan in `DEBUG_STATE`:
+
+```
+Update DEBUG_STATE:
+  ## Diagnosis:
+    blast:
+      total_files: {total_files}
+      callers: {callers}
+      importers: {importers}
+      tests: {test_refs}
+      hot_path: {hot_path}
+```
+
+**Blind-spot note**: grep misses dynamic dispatch, reflection, and non-JS/Python import forms. Low counts = **no data**, not safety.
+
+### Step 1.3c: Triage Recommendation
+
+Compute a routing hint from the scan. This is **advisory only** — actual routing decision happens at Step 1.4 with user input.
+
+Rules (first match wins):
+
+| Condition | Hint |
+|-----------|------|
+| `hot_path > 0` | **/specify recommended** — touches critical path (auth/payment/migration/schema) |
+| `debugger.severity == COMPLEX` AND `callers > 10` AND `callers > total_files × 0.05` | **/specify recommended** — wide blast radius ({callers} callers, >5% of repo) |
+| `debugger.assumptions` section non-empty AND root cause text contains uncertainty markers (`?`, `추정`, `possibly`, `may`, `unclear`) | **/discuss recommended** — root cause unclear |
+| none of the above | **bugfix appropriate** |
+
+Store the hint in `DEBUG_STATE`:
+
+```
+Update DEBUG_STATE:
+  triage:
+    hint: {specify|discuss|bugfix}
+    reason: "{1-line reason}"
+```
+
 ### Step 1.4: User Confirmation
 
-Present debugger results summary for user confirmation:
+Present debugger results + blast-radius scan + triage hint for user confirmation.
+
+The triage hint is **advisory** — the user always makes the final routing decision.
 
 ```
 AskUserQuestion:
-  header: "Root Cause"
-  question: "Is the debugger's Root Cause analysis correct?"
+  header: "Root Cause & Triage"
+  question: "Review diagnosis and choose how to proceed."
 
   Display:
   - Bug Type: [classification]
@@ -177,87 +239,126 @@ AskUserQuestion:
   - Assumptions: [debugger's Assumptions section]
   - Key warnings from Gap Analysis
 
+  - Blast Radius: callers={N}, importers={M}, tests={T}, hot_path={H}
+  - Triage: {hint from Step 1.3c} — {reason}
+    (e.g. "/specify recommended — touches auth/ (hot path)")
+
   options:
-  - "Correct, proceed" → Phase 2
+  - "Continue with bugfix" → Phase 2
+      (if triage hint != bugfix, show as "Continue with bugfix (override triage)")
+  - "Switch to /specify" → Hand off requirements.md + debug-state.md to /specify
+  - "Switch to /discuss" → Exit bugfix, suggest running /discuss with the bug context
   - "Root cause is different" → Re-run Step 1.2 with user's additional info
-  - "Not sure" → Suggest "/discuss to explore first", then exit
+  - "Stop" → Exit
+```
+
+**Handoff on /specify selection:**
+
+```
+# requirements.md hasn't been written yet (Phase 2 is skipped on handoff),
+# but debug-state.md contains all Phase 1 findings. Save a skeleton so /specify
+# has a starting point, then exit bugfix.
+
+hoyeon-cli req init ${SPEC_DIR} --type bugfix --goal "Fix: {bug description}"
+# Append debugger report + blast scan to ${SPEC_DIR}/requirements.md as context
+# (sections: ## Debug Context, ## Blast Radius)
+
+Update DEBUG_STATE: status: escalated, reason: "user_triage_specify"
+
+print("Handed off to /specify. Run: /specify {SPEC_DIR}")
 ```
 
 ---
 
-## Phase 2: SPEC GENERATION
+## Phase 2: REQUIREMENTS GENERATION
 
-Convert diagnosis results into spec.json format. spec.json is the standard format consumed by `/execute`, and serves as escalation context for `/specify` on failure.
+Convert diagnosis results into requirements.md format. requirements.md is the standard format consumed by `/execute`, and serves as escalation context for `/specify` on failure.
 
 ### Step 2.1: Initialize
 
 ```
 SPEC_DIR = "$HOME/.hoyeon/$SESSION_ID"
-SPEC_PATH = "$SPEC_DIR/spec.json"
 
-hoyeon-cli spec init fix-{slug} \
-  --goal "Fix: {bug description}" \
-  --type dev \
-  --schema v1 \
-  ${SPEC_PATH}
+hoyeon-cli req init ${SPEC_DIR} --type bugfix --goal "Fix: {bug description}"
 ```
 
-### Step 2.2: Merge diagnosis into spec
+This creates `${SPEC_DIR}/requirements.md` with a stub template.
 
-> **⚠️ Merge Convention**: When calling `spec merge`:
-> 1. **Always run `hoyeon-cli spec guide <section>` before constructing merge JSON** to verify field names and types
-> 2. **Always use file-based passing**: write JSON to `/tmp/spec-merge.json` via `<< 'EOF'` heredoc, then pass via `--json "$(cat /tmp/spec-merge.json)"`, then `rm /tmp/spec-merge.json`
-> 3. **On merge failure**: run `spec guide <failed-section>`, fix JSON to match schema, retry once
+### Step 2.2: Write requirements content
 
-Use `hoyeon-cli spec merge` to populate the spec from diagnosis results. Single merge call.
+Overwrite `${SPEC_DIR}/requirements.md` with the full requirements derived from diagnosis results. Use the Write tool directly.
 
 **What to include:**
 
-- **meta**: `non_goals` (no refactoring, no unrelated features)
-- **context**: `confirmed_goal` (original bug description), `research` (debugger analysis summary as string array), `decisions` (root cause location + rationale), `known_gaps` (from debugger's assumptions/unknowns)
-- **tasks**: Single task (T1) with:
-  - `action`: debugger's proposed fix (include implementation steps: write regression test RED → apply minimal fix GREEN → verify. Include must-not-do constraints inline: minimal diff <5%, no refactoring, no unrelated changes, no git commands, fix root cause not symptom)
-  - `type`: `"work"`, `status`: `"pending"`
-  - `fulfills`: requirement IDs from `requirements[].id` this task covers
-  - If debugger found **similar issues**: add T2 (`depends_on: ["T1"]`) to fix those locations — T2 must include `type: "work"`, `status: "pending"`, and `fulfills`
-- **constraints**: minimal diff rule, root cause targeting rule (id + rule)
-- **requirements**: Generate from debugger diagnosis. Each requirement describes a behavior that was broken:
-  1. Run `hoyeon-cli spec guide requirements` to check field structure
-  2. Construct JSON with `requirements[]` (id, behavior, sub[])
-     - Convert debugger's reproduction steps → behavior description for each sub-requirement
-     - Use optional GWT fields (given, when, then) when precondition/action/outcome is clear
-     - If debugger identified edge cases, add additional sub-requirements
-  3. Merge via `hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)"`
-  - This enables Final Verify to check requirement sub-requirements, preventing regression
+```markdown
+---
+type: bugfix
+goal: "Fix: {bug description}"
+non_goals:
+  - "No refactoring beyond the fix"
+  - "No unrelated feature changes"
+---
 
-### Step 2.3: Validate & Register
+# Requirements
 
-```bash
-# Always use agent dispatch + standard verify for thorough investigation
-hoyeon-cli spec merge ${SPEC_PATH} --json '{"meta": {"mode": {"dispatch": "agent", "work": "branch", "verify": "standard"}}}'
+## R-B1: {Bug fix requirement title — describes the broken behavior}
+- behavior: {one-sentence description of what should work correctly after fix}
 
-hoyeon-cli spec validate ${SPEC_PATH}
-hoyeon-cli session set --sid $SESSION_ID --spec "$SPEC_PATH"
+#### R-B1.1: {sub-requirement — the core bug scenario}
+- given: {the precondition/state that triggers the bug}
+- when: {the action that exercises the broken path}
+- then: {the expected (post-fix) outcome — what "fixed" looks like}
+
+#### R-B1.2: {sub-requirement — edge case or similar issue, if any}
+- given: {precondition for the edge case}
+- when: {action that triggers it}
+- then: {expected outcome}
+
+## R-T1: Minimal diff constraint
+- behavior: Fix targets root cause only with minimal code changes
+
+#### R-T1.1: Root cause targeting
+- given: {root cause identified at file:line}
+- when: the fix is applied
+- then: only the root cause location is modified, no unrelated changes
+
+## Constraints
+- Minimal diff (<5% of codebase)
+- Fix root cause, not symptom
+- No refactoring beyond what the fix requires
 ```
 
-If validation fails, fix the JSON and retry once.
+**Mapping rules:**
+- Convert debugger's reproduction steps into GWT (given/when/then) for each sub-requirement
+- `given`: the precondition/state that triggers the bug
+- `when`: the action that exercises the broken path
+- `then`: the expected (post-fix) outcome
+- If debugger identified edge cases / similar issues, add sub-requirements for each (one sub per scenario)
+- Include a constraints section with fix-scope guardrails
 
-Update debug-state.md with `spec_path: ${SPEC_PATH}`.
+### Step 2.3: Register
+
+```bash
+hoyeon-cli session set --sid $SESSION_ID --spec "$SPEC_DIR"
+```
+
+Update debug-state.md with `spec_dir: ${SPEC_DIR}`.
 
 ---
 
 ## Phase 3: EXECUTE
 
-Hand off spec.json to `/execute`. Execute routes by `meta.type: dev` and follows the dev.md pipeline.
+Hand off requirements.md to `/execute`. Execute2 reads `requirements.md` from the spec dir and derives `plan.json` internally.
 
 ```
-Skill("execute", args="${SPEC_PATH}")
+Skill("execute", args="${SPEC_DIR}")
 ```
 
 What execute handles:
-- Worker dispatch (self-read pattern, mode set by meta.mode)
-- Round-level commit (git-master)
-- Verify recipe (light/standard/thorough based on meta.mode.verify)
+- Prompts the user for dispatch / work / verify via AskUserQuestion
+- Worker dispatch according to the chosen dispatch mode
+- Round-level commit
+- Verify recipe according to the chosen verify depth
 - Final report
 
 **Result judgment:**
@@ -281,7 +382,7 @@ When execute HALTs.
 ```
 # Extract failure reason from execute's HALT output
 # or read from context dir's audit.md, issues.json
-CONTEXT_DIR = ".hoyeon/specs/fix-{slug}/context"
+CONTEXT_DIR = "${SPEC_DIR}/context"
 failure_reason = {execute HALT output or last triage result from audit.md}
 ```
 
@@ -294,6 +395,7 @@ MAX_ATTEMPTS = 3
 
 IF attempt >= MAX_ATTEMPTS:
   → Step 4.5 (Circuit Breaker)
+
 ```
 
 **Stagnation Detection (attempt >= 2):**
@@ -316,7 +418,7 @@ Pattern-specific retry_hint:
   (no pattern) → "Different approach needed. Do NOT repeat previous attempt."
 ```
 
-### Step 4.4: Update Spec & Re-execute
+### Step 4.4: Update Requirements & Re-execute
 
 ```
 # 1. Record attempt in debug-state.md
@@ -330,27 +432,31 @@ Append to DEBUG_STATE ## Attempts section:
 # 2. Update attempt counter
 Update DEBUG_STATE: attempt: {attempt}
 
-# 3. Add failure context to spec.json
-#    Run `hoyeon-cli spec guide context` to check known_gaps structure
-#    Construct JSON with `context.known_gaps[]` (gap, severity, mitigation)
-#    Merge via:
-hoyeon-cli spec merge ${SPEC_PATH} --json "$(cat /tmp/spec-merge.json)"
+# 3. Add failure context to requirements.md
+#    Read current requirements.md, append failure context to the Constraints
+#    section or add a "## Known Issues" section with the failure info and
+#    retry hint so the next worker has context.
+#    Use Edit tool to append to requirements.md.
 
-# 4. Reset task status
-hoyeon-cli spec task T1 --status pending ${SPEC_PATH}
-{IF T2 exists AND T2 not done:}
-hoyeon-cli spec task T2 --status pending ${SPEC_PATH}
+# 4. Re-invoke execute
+#    /execute reads plan.json next to requirements.md. Do NOT touch plan.json
+#    directly from bugfix — /execute handles task status and re-derivation.
+#    If you need to reset failed tasks to pending so /execute will re-run them,
+#    do it via the plan CLI:
+#      hoyeon-cli plan list ${SPEC_DIR}
+#      hoyeon-cli plan task ${SPEC_DIR} --status <task-id>=pending
+#    In most cases /execute will resume on its own from the existing plan.json.
 
 # 5. Re-invoke execute
 → Phase 3
 ```
 
-Execute handles resume naturally:
-- Skips done tasks
-- Context files (learnings.json, issues.json) retain previous failure info for the new worker
-- `known_gaps` carry failure context and retry_hint for the worker
+Execute2 handles resume naturally:
+- Reads existing plan.json and skips done tasks
+- Context files (learnings.json, issues.json — in the context dir) retain previous failure info for the new worker
+- Known Issues section in requirements.md carries failure context and retry_hint for the worker
 
-### Step 4.4: Circuit Breaker
+### Step 4.5: Circuit Breaker
 
 Max attempts exceeded. Present escalation options to user.
 
@@ -364,7 +470,7 @@ Write to .hoyeon/debug/{slug}.md:
   Date: {timestamp}
   Status: ESCALATED
   Attempts: {attempt count}
-  Spec: {SPEC_PATH}
+  Spec Dir: {SPEC_DIR}
 
   ## Debugger Analysis
   {debugger's full Bug Analysis Report}
@@ -385,8 +491,8 @@ AskUserQuestion:
   question: "Fix attempts have failed. This may be an architecture-level issue."
   options:
   - "Switch to /specify (full planning)"
-    → "spec.json and debug report are available:
-       Spec: {SPEC_PATH}
+    → "requirements.md and debug report are available:
+       Spec Dir: {SPEC_DIR}
        Report: .hoyeon/debug/{slug}.md
        /specify can reference this context for deeper analysis."
   - "Try once more"
@@ -410,13 +516,13 @@ Write to .hoyeon/debug/{slug}.md:
   Date: {timestamp}
   Status: RESOLVED
   Attempts: {attempt count + 1}
-  Spec: {SPEC_PATH}
+  Spec Dir: {SPEC_DIR}
 
   ## Root Cause
   {debugger's Root Cause analysis}
 
   ## Fix
-  {spec.json T1.action + result summary}
+  {proposed fix from debugger + result summary from /execute's final report}
 
   ## Verification
   {verification results from execute's final report}
@@ -434,7 +540,7 @@ print("""
 **Bug**: {description}
 **Root Cause**: {file:line — 1-line description}
 **Attempts**: {count}
-**Spec**: {SPEC_PATH}
+**Spec Dir**: {SPEC_DIR}
 **Report**: .hoyeon/debug/{slug}.md
 """)
 ```
@@ -459,15 +565,15 @@ AskUserQuestion:
 ## Escalation Path
 
 ```
-/bugfix (diagnose + spec.json + execute)
+/bugfix (diagnose + requirements.md + execute)
    ↓ circuit breaker (3 failures)
-   ↓ spec.json + .hoyeon/debug/{slug}.md saved
-/specify (spec.json enrichment, leveraging existing diagnosis context)
+   ↓ requirements.md + .hoyeon/debug/{slug}.md saved
+/specify (requirements.md enrichment, leveraging existing diagnosis context)
    ↓
-/execute (enriched spec execution)
+/execute (enriched requirements execution)
 ```
 
-Since spec.json is the standard format, `/specify` can read and enrich the existing spec on escalation. All diagnosis context (`context.research`, `context.assumptions`, `context.known_gaps`) is preserved.
+Since requirements.md is the standard format, `/specify` can read and enrich the existing requirements on escalation. All diagnosis context (constraints, known issues, GWT scenarios) is preserved.
 
 ---
 
@@ -478,10 +584,11 @@ Since spec.json is the standard format, `/specify` can read and enrich the exist
 | 1 | **debugger** | existing | always | Root cause analysis, Bug Type classification |
 | 1 | **verification-planner** | existing | always | Generate Auto items list (verification commands) |
 | 1 | **gap-analyzer** | existing | always | Check for missed factors, risk assessment |
-| 3 | **/execute** (Skill) | existing | always | spec.json-based execution (worker, verify, commit, review) |
+| 1.5 | **Bash (git grep + wc -l)** | new | always | Blast-radius scan + triage hint (no agent, direct grep) |
+| 3 | **/execute** (Skill) | existing | always | requirements.md-based execution (worker, verify, commit, review) |
 | 5 | **/qa** (Skill) | existing | user opts in | Browser/app QA verification of the fix |
 
-Phase 2 (SPEC GENERATION) and Phase 4 (RESULT HANDLING) are handled directly by bugfix without agents (hoyeon-cli calls + judgment logic).
+Phase 2 (REQUIREMENTS GENERATION) and Phase 4 (RESULT HANDLING) are handled directly by bugfix without agents (hoyeon-cli calls + Write tool + judgment logic).
 
 ---
 
@@ -497,7 +604,8 @@ This skill combines core patterns from 3 proven open-source projects:
 | Anti-pattern rationalizations | superpowers (common rationalizations) | debugger's checklist |
 | Bug Type → Tool routing | oh-my-opencode (Metis intent classification) | debugger's tool table |
 | Full investigation | oh-my-opencode (Momus "80% is good enough") | Always gap-analyzer + standard verify |
-| Minimal diff (<5%) | oh-my-claudecode (executor/build-fixer) | spec constraint C1 |
+| Minimal diff (<5%) | oh-my-claudecode (executor/build-fixer) | requirements constraint |
 | Circuit breaker (3 attempts) | oh-my-claudecode (debugger) + superpowers | Phase 4 |
-| spec.json as universal format | internal (specify/execute unification) | Phase 2 |
+| requirements.md as universal format | internal (specify/execute unification) | Phase 2 |
 | Execute reuse | internal (single execution engine) | Phase 3 |
+| Advisory triage (grep blast-radius + user choice) | internal (bugfix lightweight escalation) | Phase 1.5 / Step 1.4 |

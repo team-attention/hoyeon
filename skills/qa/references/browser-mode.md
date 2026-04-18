@@ -12,11 +12,13 @@ CX=$(command -v chromux 2>/dev/null || echo "") && [ -n "$CX" ] && echo "CHROMUX
 
 If `MISSING`, fall back to computer mode or report error.
 
-Launch Chrome in headless mode:
+Launch Chrome in headless mode (uses `default` profile):
 
 ```bash
-/path/to/chromux launch headless 2>/dev/null || true
+/path/to/chromux launch default --headless 2>/dev/null || true
 ```
+
+To watch live, open `http://localhost:<port>` (from `chromux ps`) in your regular Chrome.
 
 Generate session ID:
 
@@ -58,10 +60,15 @@ After every screenshot, use Read on the file so the user can see it inline.
 /path/to/chromux eval qa-XXXX "JSON.stringify(performance.getEntriesByType('navigation')[0])"
 ```
 
-### Console Errors
+### Console & Network Diagnostics (on-demand)
 ```bash
-/path/to/chromux eval qa-XXXX "JSON.stringify(window.__consoleErrors || [])"
+/path/to/chromux console qa-XXXX              # Enable + read console logs (errors, warnings, info)
+/path/to/chromux network qa-XXXX              # Failed requests only (4xx/5xx/connection errors)
+/path/to/chromux network qa-XXXX --all        # All requests with status and duration
 ```
+
+First call enables capture; subsequent calls return new entries since last read.
+Disable when done to preserve stealth: `console qa-XXXX --off` / `network qa-XXXX --off`
 
 ### Scroll
 ```bash

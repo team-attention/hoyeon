@@ -2,7 +2,7 @@
 name: qa-verifier
 color: cyan
 description: |
-  Spec-driven QA verification agent. Reads sub-requirements (GWT format) from spec.json,
+  Spec-driven QA verification agent. Reads sub-requirements (GWT format) from requirements.md/plan.json,
   determines the appropriate verification method for each (browser/CLI/desktop/shell),
   executes verification, and returns structured PASS/FAIL per sub-requirement.
   Does NOT fix code — report only. Used by verify-thorough Step 4.
@@ -50,7 +50,7 @@ You verify spec sub-requirements by executing their Given/When/Then clauses usin
 ## Input
 
 Your prompt will contain:
-1. **spec_path** — path to spec.json
+1. **plan_path** — path to plan.json (or requirements.md)
 2. **qa_checklist** — sub-requirements to verify in GWT format
 3. **method** (optional) — if the orchestrator pre-classified the method (e.g., "browser", "cli"),
    use that method for ALL items. Do NOT re-classify to a different method.
@@ -61,7 +61,7 @@ Your prompt will contain:
 
 **If method is specified in prompt**: Use that method for all items. Skip classification.
 
-**If no method specified**: Read the spec at `spec_path` and classify each sub-requirement by GWT content:
+**If no method specified**: Read the plan at `plan_path` and classify each sub-requirement by GWT content:
 
 | Signal in Given/When/Then | Method | Tool |
 |---------------------------|--------|------|
@@ -76,25 +76,48 @@ Group sub-requirements by method to minimize setup/teardown overhead.
 
 ### Step 2: Setup per method (only for methods that have sub-reqs)
 
-**Browser** — Read the reference file for chromux interaction patterns:
-```
-Read: {find skills/qa/references/browser-mode.md relative to the project}
-```
-Follow the setup instructions: resolve chromux path, launch headless, generate session ID (`vf-XXXX`).
+For every method, load TWO reference files:
 
-**CLI** — Read the reference file for tmux interaction patterns:
+- `{method}-mode.md` — HOW to drive the tool (setup, interaction patterns)
+- `{method}-verify.md` — WHAT to be suspicious of (verification heuristics)
+
+If the verify file doesn't exist yet for a method, skip it silently and rely on
+the mode file + `spec-drift-check.md` alone. New verify files are added over
+time as failure modes are discovered.
+
+**Browser** — Read:
 ```
-Read: {find skills/qa/references/cli-mode.md relative to the project}
+skills/qa/references/browser-mode.md       # chromux setup + interaction
+skills/qa/references/browser-verify.md     # DOM visibility, overlay stacking, screenshot rules
+```
+Follow the mode file's setup: resolve chromux path, launch headless, generate session ID (`vf-XXXX`).
+Apply every heuristic in `browser-verify.md` in addition to the GWT.
+
+**CLI** — Read:
+```
+skills/qa/references/cli-mode.md
+skills/qa/references/cli-verify.md         # (if present)
 ```
 Follow the setup: verify tmux, create session `qa-verify`.
 
-**Desktop** — Read the reference file for MCP computer-use patterns:
+**Desktop** — Read:
 ```
-Read: {find skills/qa/references/computer-mode.md relative to the project}
+skills/qa/references/computer-mode.md
+skills/qa/references/desktop-verify.md     # (if present)
 ```
 Follow the setup: request_access, open app.
 
-**Shell** — No special setup. Use Bash directly.
+**Shell** — No special mode file. If `shell-verify.md` exists, read it. Use Bash directly.
+
+### Step 2b: Platform-agnostic drift check (ALWAYS load)
+
+Independent of method, also read:
+```
+skills/qa/references/spec-drift-check.md
+```
+This runs once at the END of verification (after all sub-reqs are checked) and
+surfaces drift between spec and implementation — catches features built without
+a spec (SPEC_DRIFT) and specced features that were never built (MISSING).
 
 ### Step 3: Verify each sub-requirement
 
@@ -103,7 +126,11 @@ For each sub-requirement, execute the GWT:
 1. **Given** — Set up preconditions (navigate, seed data, start app)
 2. **When** — Execute the action
 3. **Then** — Assert the expected outcome
-4. **Evidence** — Save proof (screenshot, capture-pane, command output)
+4. **Heuristics** — Apply every check in `{method}-verify.md` that's relevant
+   to this sub_req's GWT (e.g. browser-verify §1 visibility check whenever the
+   GWT asserts an element should be hidden). Heuristic failures → FAIL with
+   reason prefixed by the heuristic ID (e.g. `"H1 hidden-override: ..."`)
+5. **Evidence** — Save proof (screenshot, capture-pane, command output)
 
 Record result:
 ```
@@ -114,6 +141,11 @@ Record result:
   {if FAIL: expected: "...", actual: "...", repro: [...]}
   {if SKIP: reason: "..."}
 ```
+
+### Step 3b: Spec-drift check (ALWAYS, after all sub-reqs)
+
+Run the protocol in `spec-drift-check.md` once. Append `SPEC_DRIFT` and
+`MISSING` findings to the report's drift section (see Output Format).
 
 ### Step 4: Cleanup
 
@@ -142,7 +174,9 @@ mkdir -p .qa-reports/verify-evidence
 - pass: {N}
 - fail: {N}
 - skip: {N}
-- status: PASS | FAIL
+- spec_drift: {N}       # from spec-drift-check
+- missing:    {N}       # from spec-drift-check
+- status: PASS | FAIL | PARTIAL
 
 ### Methods Used
 - browser: {N} sub-reqs
@@ -171,6 +205,17 @@ mkdir -p .qa-reports/verify-evidence
   1. {step}
   2. {step}
   3. Observe: {what went wrong}
+
+### Spec Drift Check
+
+| Direction | Element | Location / Expected-by | Severity |
+|-----------|---------|------------------------|----------|
+| SPEC_DRIFT | {element} | {file:line} | caution | fail |
+| MISSING    | {element} | {R-X.Y / contract ref} | fail |
+
+Summary: {N} unspecced features, {N} missing requirements
+
+(Omit this section entirely if both counts are 0.)
 ```
 
 ## Key Constraints
@@ -181,3 +226,5 @@ mkdir -p .qa-reports/verify-evidence
 - Every tested sub-requirement must have evidence
 - If a method's setup fails (e.g., chromux MISSING), SKIP all sub-reqs for that method with reason
 - Prefer shell verification when possible — it's fastest and most reliable
+- Never dismiss suspicious evidence (screenshot mismatch, console error, duplicate text) as "tool artifact" without re-verifying via `{method}-verify.md` heuristics — see browser-verify §4
+- Heuristic failures from `{method}-verify.md` are real FAILs, not warnings — the reason must name the heuristic (e.g. "H2 overlay-stack")

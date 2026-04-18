@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hoyeon.dev/schemas/plan.schema.json",
+  "title": "plan.json (v1)",
+  "description": "Execution blueprint produced by /blueprint. References requirements by ID only — does NOT duplicate sub-requirement bodies. Self-consistent: cli validates internal cross-refs; LLM (blueprint skill) validates coverage against requirements.md.",
+  "type": "object",
+  "required": ["schema", "meta", "tasks", "verify_plan"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "plan/v1" },
+
+    "meta": {
+      "type": "object",
+      "required": ["type", "goal"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["greenfield", "feature", "refactor", "bugfix"] },
+        "goal": { "type": "string", "minLength": 1 },
+        "non_goals": { "type": "array", "items": { "type": "string" } },
+        "mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dispatch": { "enum": ["direct", "agent", "team"] },
+            "work": { "enum": ["worktree", "branch", "no-commit"] },
+            "verify": { "enum": ["light", "standard", "thorough"] }
+          }
+        }
+      }
+    },
+
+    "contracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        },
+        "interfaces": { "type": "array", "items": { "type": "string" } },
+        "invariants": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "action", "depends_on"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^T\\d+$" },
+          "layer": { "enum": ["L0", "L1", "L2", "L3"] },
+          "action": { "type": "string", "minLength": 1 },
+          "fulfills": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^R-[A-Z]\\d+(\\.\\d+)?$" }
+          },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^T\\d+$" }
+          },
+          "parallel_safe": { "type": "boolean" },
+          "status": {
+            "enum": ["pending", "running", "done", "failed", "blocked"],
+            "default": "pending"
+          },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+
+    "journeys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "composes", "given", "when", "then"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^J\\d+$" },
+          "name": { "type": "string", "minLength": 1 },
+          "composes": {
+            "type": "array",
+            "minItems": 2,
+            "items": { "type": "string", "pattern": "^R-[A-Z]\\d+(\\.\\d+)?$" }
+          },
+          "given": { "type": "string", "minLength": 1 },
+          "when":  { "type": "string", "minLength": 1 },
+          "then":  { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+
+    "verify_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["target", "type", "gates"],
+        "additionalProperties": false,
+        "properties": {
+          "target": { "type": "string", "pattern": "^(R-[A-Z]\\d+(\\.\\d+)?|J\\d+)$" },
+          "type": { "enum": ["sub_req", "journey"] },
+          "gates": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "integer", "minimum": 1, "maximum": 4 }
+          }
+        }
+      }
+    }
+  }
+}

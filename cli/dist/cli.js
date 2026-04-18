@@ -402,11 +402,11 @@ var require_codegen = __commonJS({
         const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
         return `${varKind} ${this.name}${rhs};` + _n;
       }
-      optimizeNames(names, constants2) {
+      optimizeNames(names, constants) {
         if (!names[this.name.str])
           return;
         if (this.rhs)
-          this.rhs = optimizeExpr(this.rhs, names, constants2);
+          this.rhs = optimizeExpr(this.rhs, names, constants);
         return this;
       }
       get names() {
@@ -423,10 +423,10 @@ var require_codegen = __commonJS({
       render({ _n }) {
         return `${this.lhs} = ${this.rhs};` + _n;
       }
-      optimizeNames(names, constants2) {
+      optimizeNames(names, constants) {
         if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects)
           return;
-        this.rhs = optimizeExpr(this.rhs, names, constants2);
+        this.rhs = optimizeExpr(this.rhs, names, constants);
         return this;
       }
       get names() {
@@ -487,8 +487,8 @@ var require_codegen = __commonJS({
       optimizeNodes() {
         return `${this.code}` ? this : void 0;
       }
-      optimizeNames(names, constants2) {
-        this.code = optimizeExpr(this.code, names, constants2);
+      optimizeNames(names, constants) {
+        this.code = optimizeExpr(this.code, names, constants);
         return this;
       }
       get names() {
@@ -517,12 +517,12 @@ var require_codegen = __commonJS({
         }
         return nodes.length > 0 ? this : void 0;
       }
-      optimizeNames(names, constants2) {
+      optimizeNames(names, constants) {
         const { nodes } = this;
         let i = nodes.length;
         while (i--) {
           const n = nodes[i];
-          if (n.optimizeNames(names, constants2))
+          if (n.optimizeNames(names, constants))
             continue;
           subtractNames(names, n.names);
           nodes.splice(i, 1);
@@ -575,12 +575,12 @@ var require_codegen = __commonJS({
           return void 0;
         return this;
       }
-      optimizeNames(names, constants2) {
+      optimizeNames(names, constants) {
         var _a;
-        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants2);
-        if (!(super.optimizeNames(names, constants2) || this.else))
+        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants);
+        if (!(super.optimizeNames(names, constants) || this.else))
           return;
-        this.condition = optimizeExpr(this.condition, names, constants2);
+        this.condition = optimizeExpr(this.condition, names, constants);
         return this;
       }
       get names() {
@@ -603,10 +603,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.iteration})` + super.render(opts);
       }
-      optimizeNames(names, constants2) {
-        if (!super.optimizeNames(names, constants2))
+      optimizeNames(names, constants) {
+        if (!super.optimizeNames(names, constants))
           return;
-        this.iteration = optimizeExpr(this.iteration, names, constants2);
+        this.iteration = optimizeExpr(this.iteration, names, constants);
         return this;
       }
       get names() {
@@ -642,10 +642,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
       }
-      optimizeNames(names, constants2) {
-        if (!super.optimizeNames(names, constants2))
+      optimizeNames(names, constants) {
+        if (!super.optimizeNames(names, constants))
           return;
-        this.iterable = optimizeExpr(this.iterable, names, constants2);
+        this.iterable = optimizeExpr(this.iterable, names, constants);
         return this;
       }
       get names() {
@@ -687,11 +687,11 @@ var require_codegen = __commonJS({
         (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNodes();
         return this;
       }
-      optimizeNames(names, constants2) {
+      optimizeNames(names, constants) {
         var _a, _b;
-        super.optimizeNames(names, constants2);
-        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants2);
-        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants2);
+        super.optimizeNames(names, constants);
+        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants);
+        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants);
         return this;
       }
       get names() {
@@ -992,7 +992,7 @@ var require_codegen = __commonJS({
     function addExprNames(names, from) {
       return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
     }
-    function optimizeExpr(expr, names, constants2) {
+    function optimizeExpr(expr, names, constants) {
       if (expr instanceof code_1.Name)
         return replaceName(expr);
       if (!canOptimize(expr))
@@ -1007,14 +1007,14 @@ var require_codegen = __commonJS({
         return items;
       }, []));
       function replaceName(n) {
-        const c = constants2[n.str];
+        const c = constants[n.str];
         if (c === void 0 || names[n.str] !== 1)
           return n;
         delete names[n.str];
         return c;
       }
       function canOptimize(e) {
-        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants2[c.str] !== void 0);
+        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants[c.str] !== void 0);
       }
     }
     function subtractNames(names, from) {
@@ -3218,8 +3218,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path2) {
-      let input = path2;
+    function removeDotSegments(path) {
+      let input = path;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3418,8 +3418,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path2, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
+        const [path, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path && path !== "/" ? path : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -3584,49 +3584,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative2, options, skipNormalization) {
+    function resolveComponent(base, relative, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse(serialize(base, options), options);
-        relative2 = parse(serialize(relative2, options), options);
+        relative = parse(serialize(relative, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative2.scheme) {
-        target.scheme = relative2.scheme;
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (!options.tolerant && relative.scheme) {
+        target.scheme = relative.scheme;
+        target.userinfo = relative.userinfo;
+        target.host = relative.host;
+        target.port = relative.port;
+        target.path = removeDotSegments(relative.path || "");
+        target.query = relative.query;
       } else {
-        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-          target.userinfo = relative2.userinfo;
-          target.host = relative2.host;
-          target.port = relative2.port;
-          target.path = removeDotSegments(relative2.path || "");
-          target.query = relative2.query;
+        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
+          target.userinfo = relative.userinfo;
+          target.host = relative.host;
+          target.port = relative.port;
+          target.path = removeDotSegments(relative.path || "");
+          target.query = relative.query;
         } else {
-          if (!relative2.path) {
+          if (!relative.path) {
             target.path = base.path;
-            if (relative2.query !== void 0) {
-              target.query = relative2.query;
+            if (relative.query !== void 0) {
+              target.query = relative.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative2.path[0] === "/") {
-              target.path = removeDotSegments(relative2.path);
+            if (relative.path[0] === "/") {
+              target.path = removeDotSegments(relative.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative2.path;
+                target.path = "/" + relative.path;
               } else if (!base.path) {
-                target.path = relative2.path;
+                target.path = relative.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative2.query;
+            target.query = relative.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3634,7 +3634,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative2.fragment;
+      target.fragment = relative.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -3936,7 +3936,7 @@ var require_core = __commonJS({
         uriResolver
       };
     }
-    var Ajv = class {
+    var Ajv2 = class {
       constructor(opts = {}) {
         this.schemas = {};
         this.refs = {};
@@ -4005,7 +4005,7 @@ var require_core = __commonJS({
         if (typeof this.opts.loadSchema != "function") {
           throw new Error("options.loadSchema should be a function");
         }
-        const { loadSchema: loadSchema2 } = this.opts;
+        const { loadSchema } = this.opts;
         return runCompileAsync.call(this, schema, meta);
         async function runCompileAsync(_schema, _meta) {
           await loadMetaSchema.call(this, _schema.$schema);
@@ -4045,7 +4045,7 @@ var require_core = __commonJS({
           if (p)
             return p;
           try {
-            return await (this._loading[ref] = loadSchema2(ref));
+            return await (this._loading[ref] = loadSchema(ref));
           } finally {
             delete this._loading[ref];
           }
@@ -4306,9 +4306,9 @@ var require_core = __commonJS({
         }
       }
     };
-    Ajv.ValidationError = validation_error_1.default;
-    Ajv.MissingRefError = ref_error_1.default;
-    exports.default = Ajv;
+    Ajv2.ValidationError = validation_error_1.default;
+    Ajv2.MissingRefError = ref_error_1.default;
+    exports.default = Ajv2;
     function checkOptions(checkOpts, options, msg, log = "error") {
       for (const key in checkOpts) {
         const opt = key;
@@ -5985,325 +5985,6 @@ var require_applicator = __commonJS({
   }
 });
 
-// node_modules/ajv/dist/vocabularies/dynamic/dynamicAnchor.js
-var require_dynamicAnchor = __commonJS({
-  "node_modules/ajv/dist/vocabularies/dynamic/dynamicAnchor.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.dynamicAnchor = void 0;
-    var codegen_1 = require_codegen();
-    var names_1 = require_names();
-    var compile_1 = require_compile();
-    var ref_1 = require_ref();
-    var def = {
-      keyword: "$dynamicAnchor",
-      schemaType: "string",
-      code: (cxt) => dynamicAnchor(cxt, cxt.schema)
-    };
-    function dynamicAnchor(cxt, anchor) {
-      const { gen, it } = cxt;
-      it.schemaEnv.root.dynamicAnchors[anchor] = true;
-      const v = (0, codegen_1._)`${names_1.default.dynamicAnchors}${(0, codegen_1.getProperty)(anchor)}`;
-      const validate = it.errSchemaPath === "#" ? it.validateName : _getValidate(cxt);
-      gen.if((0, codegen_1._)`!${v}`, () => gen.assign(v, validate));
-    }
-    exports.dynamicAnchor = dynamicAnchor;
-    function _getValidate(cxt) {
-      const { schemaEnv, schema, self } = cxt.it;
-      const { root, baseId, localRefs, meta } = schemaEnv.root;
-      const { schemaId } = self.opts;
-      const sch = new compile_1.SchemaEnv({ schema, schemaId, root, baseId, localRefs, meta });
-      compile_1.compileSchema.call(self, sch);
-      return (0, ref_1.getValidate)(cxt, sch);
-    }
-    exports.default = def;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/dynamic/dynamicRef.js
-var require_dynamicRef = __commonJS({
-  "node_modules/ajv/dist/vocabularies/dynamic/dynamicRef.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.dynamicRef = void 0;
-    var codegen_1 = require_codegen();
-    var names_1 = require_names();
-    var ref_1 = require_ref();
-    var def = {
-      keyword: "$dynamicRef",
-      schemaType: "string",
-      code: (cxt) => dynamicRef(cxt, cxt.schema)
-    };
-    function dynamicRef(cxt, ref) {
-      const { gen, keyword, it } = cxt;
-      if (ref[0] !== "#")
-        throw new Error(`"${keyword}" only supports hash fragment reference`);
-      const anchor = ref.slice(1);
-      if (it.allErrors) {
-        _dynamicRef();
-      } else {
-        const valid = gen.let("valid", false);
-        _dynamicRef(valid);
-        cxt.ok(valid);
-      }
-      function _dynamicRef(valid) {
-        if (it.schemaEnv.root.dynamicAnchors[anchor]) {
-          const v = gen.let("_v", (0, codegen_1._)`${names_1.default.dynamicAnchors}${(0, codegen_1.getProperty)(anchor)}`);
-          gen.if(v, _callRef(v, valid), _callRef(it.validateName, valid));
-        } else {
-          _callRef(it.validateName, valid)();
-        }
-      }
-      function _callRef(validate, valid) {
-        return valid ? () => gen.block(() => {
-          (0, ref_1.callRef)(cxt, validate);
-          gen.let(valid, true);
-        }) : () => (0, ref_1.callRef)(cxt, validate);
-      }
-    }
-    exports.dynamicRef = dynamicRef;
-    exports.default = def;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/dynamic/recursiveAnchor.js
-var require_recursiveAnchor = __commonJS({
-  "node_modules/ajv/dist/vocabularies/dynamic/recursiveAnchor.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var dynamicAnchor_1 = require_dynamicAnchor();
-    var util_1 = require_util();
-    var def = {
-      keyword: "$recursiveAnchor",
-      schemaType: "boolean",
-      code(cxt) {
-        if (cxt.schema)
-          (0, dynamicAnchor_1.dynamicAnchor)(cxt, "");
-        else
-          (0, util_1.checkStrictMode)(cxt.it, "$recursiveAnchor: false is ignored");
-      }
-    };
-    exports.default = def;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/dynamic/recursiveRef.js
-var require_recursiveRef = __commonJS({
-  "node_modules/ajv/dist/vocabularies/dynamic/recursiveRef.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var dynamicRef_1 = require_dynamicRef();
-    var def = {
-      keyword: "$recursiveRef",
-      schemaType: "string",
-      code: (cxt) => (0, dynamicRef_1.dynamicRef)(cxt, cxt.schema)
-    };
-    exports.default = def;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/dynamic/index.js
-var require_dynamic = __commonJS({
-  "node_modules/ajv/dist/vocabularies/dynamic/index.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var dynamicAnchor_1 = require_dynamicAnchor();
-    var dynamicRef_1 = require_dynamicRef();
-    var recursiveAnchor_1 = require_recursiveAnchor();
-    var recursiveRef_1 = require_recursiveRef();
-    var dynamic = [dynamicAnchor_1.default, dynamicRef_1.default, recursiveAnchor_1.default, recursiveRef_1.default];
-    exports.default = dynamic;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/validation/dependentRequired.js
-var require_dependentRequired = __commonJS({
-  "node_modules/ajv/dist/vocabularies/validation/dependentRequired.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var dependencies_1 = require_dependencies();
-    var def = {
-      keyword: "dependentRequired",
-      type: "object",
-      schemaType: "object",
-      error: dependencies_1.error,
-      code: (cxt) => (0, dependencies_1.validatePropertyDeps)(cxt)
-    };
-    exports.default = def;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/applicator/dependentSchemas.js
-var require_dependentSchemas = __commonJS({
-  "node_modules/ajv/dist/vocabularies/applicator/dependentSchemas.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var dependencies_1 = require_dependencies();
-    var def = {
-      keyword: "dependentSchemas",
-      type: "object",
-      schemaType: "object",
-      code: (cxt) => (0, dependencies_1.validateSchemaDeps)(cxt)
-    };
-    exports.default = def;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/validation/limitContains.js
-var require_limitContains = __commonJS({
-  "node_modules/ajv/dist/vocabularies/validation/limitContains.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var util_1 = require_util();
-    var def = {
-      keyword: ["maxContains", "minContains"],
-      type: "array",
-      schemaType: "number",
-      code({ keyword, parentSchema, it }) {
-        if (parentSchema.contains === void 0) {
-          (0, util_1.checkStrictMode)(it, `"${keyword}" without "contains" is ignored`);
-        }
-      }
-    };
-    exports.default = def;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/next.js
-var require_next = __commonJS({
-  "node_modules/ajv/dist/vocabularies/next.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var dependentRequired_1 = require_dependentRequired();
-    var dependentSchemas_1 = require_dependentSchemas();
-    var limitContains_1 = require_limitContains();
-    var next = [dependentRequired_1.default, dependentSchemas_1.default, limitContains_1.default];
-    exports.default = next;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/unevaluated/unevaluatedProperties.js
-var require_unevaluatedProperties = __commonJS({
-  "node_modules/ajv/dist/vocabularies/unevaluated/unevaluatedProperties.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var codegen_1 = require_codegen();
-    var util_1 = require_util();
-    var names_1 = require_names();
-    var error = {
-      message: "must NOT have unevaluated properties",
-      params: ({ params }) => (0, codegen_1._)`{unevaluatedProperty: ${params.unevaluatedProperty}}`
-    };
-    var def = {
-      keyword: "unevaluatedProperties",
-      type: "object",
-      schemaType: ["boolean", "object"],
-      trackErrors: true,
-      error,
-      code(cxt) {
-        const { gen, schema, data, errsCount, it } = cxt;
-        if (!errsCount)
-          throw new Error("ajv implementation error");
-        const { allErrors, props } = it;
-        if (props instanceof codegen_1.Name) {
-          gen.if((0, codegen_1._)`${props} !== true`, () => gen.forIn("key", data, (key) => gen.if(unevaluatedDynamic(props, key), () => unevaluatedPropCode(key))));
-        } else if (props !== true) {
-          gen.forIn("key", data, (key) => props === void 0 ? unevaluatedPropCode(key) : gen.if(unevaluatedStatic(props, key), () => unevaluatedPropCode(key)));
-        }
-        it.props = true;
-        cxt.ok((0, codegen_1._)`${errsCount} === ${names_1.default.errors}`);
-        function unevaluatedPropCode(key) {
-          if (schema === false) {
-            cxt.setParams({ unevaluatedProperty: key });
-            cxt.error();
-            if (!allErrors)
-              gen.break();
-            return;
-          }
-          if (!(0, util_1.alwaysValidSchema)(it, schema)) {
-            const valid = gen.name("valid");
-            cxt.subschema({
-              keyword: "unevaluatedProperties",
-              dataProp: key,
-              dataPropType: util_1.Type.Str
-            }, valid);
-            if (!allErrors)
-              gen.if((0, codegen_1.not)(valid), () => gen.break());
-          }
-        }
-        function unevaluatedDynamic(evaluatedProps, key) {
-          return (0, codegen_1._)`!${evaluatedProps} || !${evaluatedProps}[${key}]`;
-        }
-        function unevaluatedStatic(evaluatedProps, key) {
-          const ps = [];
-          for (const p in evaluatedProps) {
-            if (evaluatedProps[p] === true)
-              ps.push((0, codegen_1._)`${key} !== ${p}`);
-          }
-          return (0, codegen_1.and)(...ps);
-        }
-      }
-    };
-    exports.default = def;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/unevaluated/unevaluatedItems.js
-var require_unevaluatedItems = __commonJS({
-  "node_modules/ajv/dist/vocabularies/unevaluated/unevaluatedItems.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var codegen_1 = require_codegen();
-    var util_1 = require_util();
-    var error = {
-      message: ({ params: { len } }) => (0, codegen_1.str)`must NOT have more than ${len} items`,
-      params: ({ params: { len } }) => (0, codegen_1._)`{limit: ${len}}`
-    };
-    var def = {
-      keyword: "unevaluatedItems",
-      type: "array",
-      schemaType: ["boolean", "object"],
-      error,
-      code(cxt) {
-        const { gen, schema, data, it } = cxt;
-        const items = it.items || 0;
-        if (items === true)
-          return;
-        const len = gen.const("len", (0, codegen_1._)`${data}.length`);
-        if (schema === false) {
-          cxt.setParams({ len: items });
-          cxt.fail((0, codegen_1._)`${len} > ${items}`);
-        } else if (typeof schema == "object" && !(0, util_1.alwaysValidSchema)(it, schema)) {
-          const valid = gen.var("valid", (0, codegen_1._)`${len} <= ${items}`);
-          gen.if((0, codegen_1.not)(valid), () => validateItems(valid, items));
-          cxt.ok(valid);
-        }
-        it.items = true;
-        function validateItems(valid, from) {
-          gen.forRange("i", from, len, (i) => {
-            cxt.subschema({ keyword: "unevaluatedItems", dataProp: i, dataPropType: util_1.Type.Num }, valid);
-            if (!it.allErrors)
-              gen.if((0, codegen_1.not)(valid), () => gen.break());
-          });
-        }
-      }
-    };
-    exports.default = def;
-  }
-});
-
-// node_modules/ajv/dist/vocabularies/unevaluated/index.js
-var require_unevaluated = __commonJS({
-  "node_modules/ajv/dist/vocabularies/unevaluated/index.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var unevaluatedProperties_1 = require_unevaluatedProperties();
-    var unevaluatedItems_1 = require_unevaluatedItems();
-    var unevaluated = [unevaluatedProperties_1.default, unevaluatedItems_1.default];
-    exports.default = unevaluated;
-  }
-});
-
 // node_modules/ajv/dist/vocabularies/format/format.js
 var require_format = __commonJS({
   "node_modules/ajv/dist/vocabularies/format/format.js"(exports) {
@@ -6351,14 +6032,14 @@ var require_format = __commonJS({
           }
         }
         function validateFormat() {
-          const formatDef2 = self.formats[schema];
-          if (!formatDef2) {
+          const formatDef = self.formats[schema];
+          if (!formatDef) {
             unknownFormat();
             return;
           }
-          if (formatDef2 === true)
+          if (formatDef === true)
             return;
-          const [fmtType, format, fmtRef] = getFormat(formatDef2);
+          const [fmtType, format, fmtRef] = getFormat(formatDef);
           if (fmtType === ruleType)
             cxt.pass(validCondition());
           function unknownFormat() {
@@ -6380,7 +6061,7 @@ var require_format = __commonJS({
             return ["string", fmtDef, fmt];
           }
           function validCondition() {
-            if (typeof formatDef2 == "object" && !(formatDef2 instanceof RegExp) && formatDef2.async) {
+            if (typeof formatDef == "object" && !(formatDef instanceof RegExp) && formatDef.async) {
               if (!schemaEnv.$async)
                 throw new Error("async format in sync schema");
               return (0, codegen_1._)`await ${fmtRef}(${data})`;
@@ -6428,31 +6109,25 @@ var require_metadata = __commonJS({
   }
 });
 
-// node_modules/ajv/dist/vocabularies/draft2020.js
-var require_draft2020 = __commonJS({
-  "node_modules/ajv/dist/vocabularies/draft2020.js"(exports) {
+// node_modules/ajv/dist/vocabularies/draft7.js
+var require_draft7 = __commonJS({
+  "node_modules/ajv/dist/vocabularies/draft7.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     var core_1 = require_core2();
     var validation_1 = require_validation();
     var applicator_1 = require_applicator();
-    var dynamic_1 = require_dynamic();
-    var next_1 = require_next();
-    var unevaluated_1 = require_unevaluated();
     var format_1 = require_format2();
     var metadata_1 = require_metadata();
-    var draft2020Vocabularies = [
-      dynamic_1.default,
+    var draft7Vocabularies = [
       core_1.default,
       validation_1.default,
-      (0, applicator_1.default)(true),
+      (0, applicator_1.default)(),
       format_1.default,
       metadata_1.metadataVocabulary,
-      metadata_1.contentVocabulary,
-      next_1.default,
-      unevaluated_1.default
+      metadata_1.contentVocabulary
     ];
-    exports.default = draft2020Vocabularies;
+    exports.default = draft7Vocabularies;
   }
 });
 
@@ -6575,248 +6250,53 @@ var require_discriminator = __commonJS({
   }
 });
 
-// node_modules/ajv/dist/refs/json-schema-2020-12/schema.json
-var require_schema = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-2020-12/schema.json"(exports, module) {
+// node_modules/ajv/dist/refs/json-schema-draft-07.json
+var require_json_schema_draft_07 = __commonJS({
+  "node_modules/ajv/dist/refs/json-schema-draft-07.json"(exports, module) {
     module.exports = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      $id: "https://json-schema.org/draft/2020-12/schema",
-      $vocabulary: {
-        "https://json-schema.org/draft/2020-12/vocab/core": true,
-        "https://json-schema.org/draft/2020-12/vocab/applicator": true,
-        "https://json-schema.org/draft/2020-12/vocab/unevaluated": true,
-        "https://json-schema.org/draft/2020-12/vocab/validation": true,
-        "https://json-schema.org/draft/2020-12/vocab/meta-data": true,
-        "https://json-schema.org/draft/2020-12/vocab/format-annotation": true,
-        "https://json-schema.org/draft/2020-12/vocab/content": true
-      },
-      $dynamicAnchor: "meta",
-      title: "Core and Validation specifications meta-schema",
-      allOf: [
-        { $ref: "meta/core" },
-        { $ref: "meta/applicator" },
-        { $ref: "meta/unevaluated" },
-        { $ref: "meta/validation" },
-        { $ref: "meta/meta-data" },
-        { $ref: "meta/format-annotation" },
-        { $ref: "meta/content" }
-      ],
-      type: ["object", "boolean"],
-      $comment: "This meta-schema also defines keywords that have appeared in previous drafts in order to prevent incompatible extensions as they remain in common use.",
-      properties: {
-        definitions: {
-          $comment: '"definitions" has been replaced by "$defs".',
-          type: "object",
-          additionalProperties: { $dynamicRef: "#meta" },
-          deprecated: true,
-          default: {}
-        },
-        dependencies: {
-          $comment: '"dependencies" has been split and replaced by "dependentSchemas" and "dependentRequired" in order to serve their differing semantics.',
-          type: "object",
-          additionalProperties: {
-            anyOf: [{ $dynamicRef: "#meta" }, { $ref: "meta/validation#/$defs/stringArray" }]
-          },
-          deprecated: true,
-          default: {}
-        },
-        $recursiveAnchor: {
-          $comment: '"$recursiveAnchor" has been replaced by "$dynamicAnchor".',
-          $ref: "meta/core#/$defs/anchorString",
-          deprecated: true
-        },
-        $recursiveRef: {
-          $comment: '"$recursiveRef" has been replaced by "$dynamicRef".',
-          $ref: "meta/core#/$defs/uriReferenceString",
-          deprecated: true
-        }
-      }
-    };
-  }
-});
-
-// node_modules/ajv/dist/refs/json-schema-2020-12/meta/applicator.json
-var require_applicator2 = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-2020-12/meta/applicator.json"(exports, module) {
-    module.exports = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      $id: "https://json-schema.org/draft/2020-12/meta/applicator",
-      $vocabulary: {
-        "https://json-schema.org/draft/2020-12/vocab/applicator": true
-      },
-      $dynamicAnchor: "meta",
-      title: "Applicator vocabulary meta-schema",
-      type: ["object", "boolean"],
-      properties: {
-        prefixItems: { $ref: "#/$defs/schemaArray" },
-        items: { $dynamicRef: "#meta" },
-        contains: { $dynamicRef: "#meta" },
-        additionalProperties: { $dynamicRef: "#meta" },
-        properties: {
-          type: "object",
-          additionalProperties: { $dynamicRef: "#meta" },
-          default: {}
-        },
-        patternProperties: {
-          type: "object",
-          additionalProperties: { $dynamicRef: "#meta" },
-          propertyNames: { format: "regex" },
-          default: {}
-        },
-        dependentSchemas: {
-          type: "object",
-          additionalProperties: { $dynamicRef: "#meta" },
-          default: {}
-        },
-        propertyNames: { $dynamicRef: "#meta" },
-        if: { $dynamicRef: "#meta" },
-        then: { $dynamicRef: "#meta" },
-        else: { $dynamicRef: "#meta" },
-        allOf: { $ref: "#/$defs/schemaArray" },
-        anyOf: { $ref: "#/$defs/schemaArray" },
-        oneOf: { $ref: "#/$defs/schemaArray" },
-        not: { $dynamicRef: "#meta" }
-      },
-      $defs: {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      $id: "http://json-schema.org/draft-07/schema#",
+      title: "Core schema meta-schema",
+      definitions: {
         schemaArray: {
           type: "array",
           minItems: 1,
-          items: { $dynamicRef: "#meta" }
+          items: { $ref: "#" }
+        },
+        nonNegativeInteger: {
+          type: "integer",
+          minimum: 0
+        },
+        nonNegativeIntegerDefault0: {
+          allOf: [{ $ref: "#/definitions/nonNegativeInteger" }, { default: 0 }]
+        },
+        simpleTypes: {
+          enum: ["array", "boolean", "integer", "null", "number", "object", "string"]
+        },
+        stringArray: {
+          type: "array",
+          items: { type: "string" },
+          uniqueItems: true,
+          default: []
         }
-      }
-    };
-  }
-});
-
-// node_modules/ajv/dist/refs/json-schema-2020-12/meta/unevaluated.json
-var require_unevaluated2 = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-2020-12/meta/unevaluated.json"(exports, module) {
-    module.exports = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      $id: "https://json-schema.org/draft/2020-12/meta/unevaluated",
-      $vocabulary: {
-        "https://json-schema.org/draft/2020-12/vocab/unevaluated": true
       },
-      $dynamicAnchor: "meta",
-      title: "Unevaluated applicator vocabulary meta-schema",
-      type: ["object", "boolean"],
-      properties: {
-        unevaluatedItems: { $dynamicRef: "#meta" },
-        unevaluatedProperties: { $dynamicRef: "#meta" }
-      }
-    };
-  }
-});
-
-// node_modules/ajv/dist/refs/json-schema-2020-12/meta/content.json
-var require_content = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-2020-12/meta/content.json"(exports, module) {
-    module.exports = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      $id: "https://json-schema.org/draft/2020-12/meta/content",
-      $vocabulary: {
-        "https://json-schema.org/draft/2020-12/vocab/content": true
-      },
-      $dynamicAnchor: "meta",
-      title: "Content vocabulary meta-schema",
-      type: ["object", "boolean"],
-      properties: {
-        contentEncoding: { type: "string" },
-        contentMediaType: { type: "string" },
-        contentSchema: { $dynamicRef: "#meta" }
-      }
-    };
-  }
-});
-
-// node_modules/ajv/dist/refs/json-schema-2020-12/meta/core.json
-var require_core3 = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-2020-12/meta/core.json"(exports, module) {
-    module.exports = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      $id: "https://json-schema.org/draft/2020-12/meta/core",
-      $vocabulary: {
-        "https://json-schema.org/draft/2020-12/vocab/core": true
-      },
-      $dynamicAnchor: "meta",
-      title: "Core vocabulary meta-schema",
       type: ["object", "boolean"],
       properties: {
         $id: {
-          $ref: "#/$defs/uriReferenceString",
-          $comment: "Non-empty fragments not allowed.",
-          pattern: "^[^#]*#?$"
+          type: "string",
+          format: "uri-reference"
         },
-        $schema: { $ref: "#/$defs/uriString" },
-        $ref: { $ref: "#/$defs/uriReferenceString" },
-        $anchor: { $ref: "#/$defs/anchorString" },
-        $dynamicRef: { $ref: "#/$defs/uriReferenceString" },
-        $dynamicAnchor: { $ref: "#/$defs/anchorString" },
-        $vocabulary: {
-          type: "object",
-          propertyNames: { $ref: "#/$defs/uriString" },
-          additionalProperties: {
-            type: "boolean"
-          }
+        $schema: {
+          type: "string",
+          format: "uri"
+        },
+        $ref: {
+          type: "string",
+          format: "uri-reference"
         },
         $comment: {
           type: "string"
         },
-        $defs: {
-          type: "object",
-          additionalProperties: { $dynamicRef: "#meta" }
-        }
-      },
-      $defs: {
-        anchorString: {
-          type: "string",
-          pattern: "^[A-Za-z_][-A-Za-z0-9._]*$"
-        },
-        uriString: {
-          type: "string",
-          format: "uri"
-        },
-        uriReferenceString: {
-          type: "string",
-          format: "uri-reference"
-        }
-      }
-    };
-  }
-});
-
-// node_modules/ajv/dist/refs/json-schema-2020-12/meta/format-annotation.json
-var require_format_annotation = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-2020-12/meta/format-annotation.json"(exports, module) {
-    module.exports = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      $id: "https://json-schema.org/draft/2020-12/meta/format-annotation",
-      $vocabulary: {
-        "https://json-schema.org/draft/2020-12/vocab/format-annotation": true
-      },
-      $dynamicAnchor: "meta",
-      title: "Format vocabulary meta-schema for annotation results",
-      type: ["object", "boolean"],
-      properties: {
-        format: { type: "string" }
-      }
-    };
-  }
-});
-
-// node_modules/ajv/dist/refs/json-schema-2020-12/meta/meta-data.json
-var require_meta_data = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-2020-12/meta/meta-data.json"(exports, module) {
-    module.exports = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      $id: "https://json-schema.org/draft/2020-12/meta/meta-data",
-      $vocabulary: {
-        "https://json-schema.org/draft/2020-12/vocab/meta-data": true
-      },
-      $dynamicAnchor: "meta",
-      title: "Meta-data vocabulary meta-schema",
-      type: ["object", "boolean"],
-      properties: {
         title: {
           type: "string"
         },
@@ -6824,53 +6304,11 @@ var require_meta_data = __commonJS({
           type: "string"
         },
         default: true,
-        deprecated: {
-          type: "boolean",
-          default: false
-        },
         readOnly: {
           type: "boolean",
           default: false
         },
-        writeOnly: {
-          type: "boolean",
-          default: false
-        },
         examples: {
-          type: "array",
-          items: true
-        }
-      }
-    };
-  }
-});
-
-// node_modules/ajv/dist/refs/json-schema-2020-12/meta/validation.json
-var require_validation2 = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-2020-12/meta/validation.json"(exports, module) {
-    module.exports = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      $id: "https://json-schema.org/draft/2020-12/meta/validation",
-      $vocabulary: {
-        "https://json-schema.org/draft/2020-12/vocab/validation": true
-      },
-      $dynamicAnchor: "meta",
-      title: "Validation vocabulary meta-schema",
-      type: ["object", "boolean"],
-      properties: {
-        type: {
-          anyOf: [
-            { $ref: "#/$defs/simpleTypes" },
-            {
-              type: "array",
-              items: { $ref: "#/$defs/simpleTypes" },
-              minItems: 1,
-              uniqueItems: true
-            }
-          ]
-        },
-        const: true,
-        enum: {
           type: "array",
           items: true
         },
@@ -6890,134 +6328,121 @@ var require_validation2 = __commonJS({
         exclusiveMinimum: {
           type: "number"
         },
-        maxLength: { $ref: "#/$defs/nonNegativeInteger" },
-        minLength: { $ref: "#/$defs/nonNegativeIntegerDefault0" },
+        maxLength: { $ref: "#/definitions/nonNegativeInteger" },
+        minLength: { $ref: "#/definitions/nonNegativeIntegerDefault0" },
         pattern: {
           type: "string",
           format: "regex"
         },
-        maxItems: { $ref: "#/$defs/nonNegativeInteger" },
-        minItems: { $ref: "#/$defs/nonNegativeIntegerDefault0" },
+        additionalItems: { $ref: "#" },
+        items: {
+          anyOf: [{ $ref: "#" }, { $ref: "#/definitions/schemaArray" }],
+          default: true
+        },
+        maxItems: { $ref: "#/definitions/nonNegativeInteger" },
+        minItems: { $ref: "#/definitions/nonNegativeIntegerDefault0" },
         uniqueItems: {
           type: "boolean",
           default: false
         },
-        maxContains: { $ref: "#/$defs/nonNegativeInteger" },
-        minContains: {
-          $ref: "#/$defs/nonNegativeInteger",
-          default: 1
+        contains: { $ref: "#" },
+        maxProperties: { $ref: "#/definitions/nonNegativeInteger" },
+        minProperties: { $ref: "#/definitions/nonNegativeIntegerDefault0" },
+        required: { $ref: "#/definitions/stringArray" },
+        additionalProperties: { $ref: "#" },
+        definitions: {
+          type: "object",
+          additionalProperties: { $ref: "#" },
+          default: {}
         },
-        maxProperties: { $ref: "#/$defs/nonNegativeInteger" },
-        minProperties: { $ref: "#/$defs/nonNegativeIntegerDefault0" },
-        required: { $ref: "#/$defs/stringArray" },
-        dependentRequired: {
+        properties: {
+          type: "object",
+          additionalProperties: { $ref: "#" },
+          default: {}
+        },
+        patternProperties: {
+          type: "object",
+          additionalProperties: { $ref: "#" },
+          propertyNames: { format: "regex" },
+          default: {}
+        },
+        dependencies: {
           type: "object",
           additionalProperties: {
-            $ref: "#/$defs/stringArray"
+            anyOf: [{ $ref: "#" }, { $ref: "#/definitions/stringArray" }]
           }
-        }
-      },
-      $defs: {
-        nonNegativeInteger: {
-          type: "integer",
-          minimum: 0
         },
-        nonNegativeIntegerDefault0: {
-          $ref: "#/$defs/nonNegativeInteger",
-          default: 0
-        },
-        simpleTypes: {
-          enum: ["array", "boolean", "integer", "null", "number", "object", "string"]
-        },
-        stringArray: {
+        propertyNames: { $ref: "#" },
+        const: true,
+        enum: {
           type: "array",
-          items: { type: "string" },
-          uniqueItems: true,
-          default: []
-        }
-      }
+          items: true,
+          minItems: 1,
+          uniqueItems: true
+        },
+        type: {
+          anyOf: [
+            { $ref: "#/definitions/simpleTypes" },
+            {
+              type: "array",
+              items: { $ref: "#/definitions/simpleTypes" },
+              minItems: 1,
+              uniqueItems: true
+            }
+          ]
+        },
+        format: { type: "string" },
+        contentMediaType: { type: "string" },
+        contentEncoding: { type: "string" },
+        if: { $ref: "#" },
+        then: { $ref: "#" },
+        else: { $ref: "#" },
+        allOf: { $ref: "#/definitions/schemaArray" },
+        anyOf: { $ref: "#/definitions/schemaArray" },
+        oneOf: { $ref: "#/definitions/schemaArray" },
+        not: { $ref: "#" }
+      },
+      default: true
     };
   }
 });
 
-// node_modules/ajv/dist/refs/json-schema-2020-12/index.js
-var require_json_schema_2020_12 = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-2020-12/index.js"(exports) {
+// node_modules/ajv/dist/ajv.js
+var require_ajv = __commonJS({
+  "node_modules/ajv/dist/ajv.js"(exports, module) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    var metaSchema = require_schema();
-    var applicator = require_applicator2();
-    var unevaluated = require_unevaluated2();
-    var content = require_content();
-    var core = require_core3();
-    var format = require_format_annotation();
-    var metadata = require_meta_data();
-    var validation = require_validation2();
-    var META_SUPPORT_DATA = ["/properties"];
-    function addMetaSchema2020($data) {
-      ;
-      [
-        metaSchema,
-        applicator,
-        unevaluated,
-        content,
-        core,
-        with$data(this, format),
-        metadata,
-        with$data(this, validation)
-      ].forEach((sch) => this.addMetaSchema(sch, void 0, false));
-      return this;
-      function with$data(ajv, sch) {
-        return $data ? ajv.$dataMetaSchema(sch, META_SUPPORT_DATA) : sch;
-      }
-    }
-    exports.default = addMetaSchema2020;
-  }
-});
-
-// node_modules/ajv/dist/2020.js
-var require__ = __commonJS({
-  "node_modules/ajv/dist/2020.js"(exports, module) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = exports.Ajv2020 = void 0;
+    exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = exports.Ajv = void 0;
     var core_1 = require_core();
-    var draft2020_1 = require_draft2020();
+    var draft7_1 = require_draft7();
     var discriminator_1 = require_discriminator();
-    var json_schema_2020_12_1 = require_json_schema_2020_12();
-    var META_SCHEMA_ID = "https://json-schema.org/draft/2020-12/schema";
-    var Ajv20203 = class extends core_1.default {
-      constructor(opts = {}) {
-        super({
-          ...opts,
-          dynamicRef: true,
-          next: true,
-          unevaluated: true
-        });
-      }
+    var draft7MetaSchema = require_json_schema_draft_07();
+    var META_SUPPORT_DATA = ["/properties"];
+    var META_SCHEMA_ID = "http://json-schema.org/draft-07/schema";
+    var Ajv2 = class extends core_1.default {
       _addVocabularies() {
         super._addVocabularies();
-        draft2020_1.default.forEach((v) => this.addVocabulary(v));
+        draft7_1.default.forEach((v) => this.addVocabulary(v));
         if (this.opts.discriminator)
           this.addKeyword(discriminator_1.default);
       }
       _addDefaultMetaSchema() {
         super._addDefaultMetaSchema();
-        const { $data, meta } = this.opts;
-        if (!meta)
+        if (!this.opts.meta)
           return;
-        json_schema_2020_12_1.default.call(this, $data);
+        const metaSchema = this.opts.$data ? this.$dataMetaSchema(draft7MetaSchema, META_SUPPORT_DATA) : draft7MetaSchema;
+        this.addMetaSchema(metaSchema, META_SCHEMA_ID, false);
         this.refs["http://json-schema.org/schema"] = META_SCHEMA_ID;
       }
       defaultMeta() {
         return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : void 0);
       }
     };
-    exports.Ajv2020 = Ajv20203;
-    module.exports = exports = Ajv20203;
-    module.exports.Ajv2020 = Ajv20203;
+    exports.Ajv = Ajv2;
+    module.exports = exports = Ajv2;
+    module.exports.Ajv = Ajv2;
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.default = Ajv20203;
+    exports.default = Ajv2;
     var validate_1 = require_validate();
     Object.defineProperty(exports, "KeywordCxt", { enumerable: true, get: function() {
       return validate_1.KeywordCxt;
@@ -7255,255 +6680,6 @@ var require_formats = __commonJS({
   }
 });
 
-// node_modules/ajv/dist/vocabularies/draft7.js
-var require_draft7 = __commonJS({
-  "node_modules/ajv/dist/vocabularies/draft7.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    var core_1 = require_core2();
-    var validation_1 = require_validation();
-    var applicator_1 = require_applicator();
-    var format_1 = require_format2();
-    var metadata_1 = require_metadata();
-    var draft7Vocabularies = [
-      core_1.default,
-      validation_1.default,
-      (0, applicator_1.default)(),
-      format_1.default,
-      metadata_1.metadataVocabulary,
-      metadata_1.contentVocabulary
-    ];
-    exports.default = draft7Vocabularies;
-  }
-});
-
-// node_modules/ajv/dist/refs/json-schema-draft-07.json
-var require_json_schema_draft_07 = __commonJS({
-  "node_modules/ajv/dist/refs/json-schema-draft-07.json"(exports, module) {
-    module.exports = {
-      $schema: "http://json-schema.org/draft-07/schema#",
-      $id: "http://json-schema.org/draft-07/schema#",
-      title: "Core schema meta-schema",
-      definitions: {
-        schemaArray: {
-          type: "array",
-          minItems: 1,
-          items: { $ref: "#" }
-        },
-        nonNegativeInteger: {
-          type: "integer",
-          minimum: 0
-        },
-        nonNegativeIntegerDefault0: {
-          allOf: [{ $ref: "#/definitions/nonNegativeInteger" }, { default: 0 }]
-        },
-        simpleTypes: {
-          enum: ["array", "boolean", "integer", "null", "number", "object", "string"]
-        },
-        stringArray: {
-          type: "array",
-          items: { type: "string" },
-          uniqueItems: true,
-          default: []
-        }
-      },
-      type: ["object", "boolean"],
-      properties: {
-        $id: {
-          type: "string",
-          format: "uri-reference"
-        },
-        $schema: {
-          type: "string",
-          format: "uri"
-        },
-        $ref: {
-          type: "string",
-          format: "uri-reference"
-        },
-        $comment: {
-          type: "string"
-        },
-        title: {
-          type: "string"
-        },
-        description: {
-          type: "string"
-        },
-        default: true,
-        readOnly: {
-          type: "boolean",
-          default: false
-        },
-        examples: {
-          type: "array",
-          items: true
-        },
-        multipleOf: {
-          type: "number",
-          exclusiveMinimum: 0
-        },
-        maximum: {
-          type: "number"
-        },
-        exclusiveMaximum: {
-          type: "number"
-        },
-        minimum: {
-          type: "number"
-        },
-        exclusiveMinimum: {
-          type: "number"
-        },
-        maxLength: { $ref: "#/definitions/nonNegativeInteger" },
-        minLength: { $ref: "#/definitions/nonNegativeIntegerDefault0" },
-        pattern: {
-          type: "string",
-          format: "regex"
-        },
-        additionalItems: { $ref: "#" },
-        items: {
-          anyOf: [{ $ref: "#" }, { $ref: "#/definitions/schemaArray" }],
-          default: true
-        },
-        maxItems: { $ref: "#/definitions/nonNegativeInteger" },
-        minItems: { $ref: "#/definitions/nonNegativeIntegerDefault0" },
-        uniqueItems: {
-          type: "boolean",
-          default: false
-        },
-        contains: { $ref: "#" },
-        maxProperties: { $ref: "#/definitions/nonNegativeInteger" },
-        minProperties: { $ref: "#/definitions/nonNegativeIntegerDefault0" },
-        required: { $ref: "#/definitions/stringArray" },
-        additionalProperties: { $ref: "#" },
-        definitions: {
-          type: "object",
-          additionalProperties: { $ref: "#" },
-          default: {}
-        },
-        properties: {
-          type: "object",
-          additionalProperties: { $ref: "#" },
-          default: {}
-        },
-        patternProperties: {
-          type: "object",
-          additionalProperties: { $ref: "#" },
-          propertyNames: { format: "regex" },
-          default: {}
-        },
-        dependencies: {
-          type: "object",
-          additionalProperties: {
-            anyOf: [{ $ref: "#" }, { $ref: "#/definitions/stringArray" }]
-          }
-        },
-        propertyNames: { $ref: "#" },
-        const: true,
-        enum: {
-          type: "array",
-          items: true,
-          minItems: 1,
-          uniqueItems: true
-        },
-        type: {
-          anyOf: [
-            { $ref: "#/definitions/simpleTypes" },
-            {
-              type: "array",
-              items: { $ref: "#/definitions/simpleTypes" },
-              minItems: 1,
-              uniqueItems: true
-            }
-          ]
-        },
-        format: { type: "string" },
-        contentMediaType: { type: "string" },
-        contentEncoding: { type: "string" },
-        if: { $ref: "#" },
-        then: { $ref: "#" },
-        else: { $ref: "#" },
-        allOf: { $ref: "#/definitions/schemaArray" },
-        anyOf: { $ref: "#/definitions/schemaArray" },
-        oneOf: { $ref: "#/definitions/schemaArray" },
-        not: { $ref: "#" }
-      },
-      default: true
-    };
-  }
-});
-
-// node_modules/ajv/dist/ajv.js
-var require_ajv = __commonJS({
-  "node_modules/ajv/dist/ajv.js"(exports, module) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = exports.Ajv = void 0;
-    var core_1 = require_core();
-    var draft7_1 = require_draft7();
-    var discriminator_1 = require_discriminator();
-    var draft7MetaSchema = require_json_schema_draft_07();
-    var META_SUPPORT_DATA = ["/properties"];
-    var META_SCHEMA_ID = "http://json-schema.org/draft-07/schema";
-    var Ajv = class extends core_1.default {
-      _addVocabularies() {
-        super._addVocabularies();
-        draft7_1.default.forEach((v) => this.addVocabulary(v));
-        if (this.opts.discriminator)
-          this.addKeyword(discriminator_1.default);
-      }
-      _addDefaultMetaSchema() {
-        super._addDefaultMetaSchema();
-        if (!this.opts.meta)
-          return;
-        const metaSchema = this.opts.$data ? this.$dataMetaSchema(draft7MetaSchema, META_SUPPORT_DATA) : draft7MetaSchema;
-        this.addMetaSchema(metaSchema, META_SCHEMA_ID, false);
-        this.refs["http://json-schema.org/schema"] = META_SCHEMA_ID;
-      }
-      defaultMeta() {
-        return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : void 0);
-      }
-    };
-    exports.Ajv = Ajv;
-    module.exports = exports = Ajv;
-    module.exports.Ajv = Ajv;
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.default = Ajv;
-    var validate_1 = require_validate();
-    Object.defineProperty(exports, "KeywordCxt", { enumerable: true, get: function() {
-      return validate_1.KeywordCxt;
-    } });
-    var codegen_1 = require_codegen();
-    Object.defineProperty(exports, "_", { enumerable: true, get: function() {
-      return codegen_1._;
-    } });
-    Object.defineProperty(exports, "str", { enumerable: true, get: function() {
-      return codegen_1.str;
-    } });
-    Object.defineProperty(exports, "stringify", { enumerable: true, get: function() {
-      return codegen_1.stringify;
-    } });
-    Object.defineProperty(exports, "nil", { enumerable: true, get: function() {
-      return codegen_1.nil;
-    } });
-    Object.defineProperty(exports, "Name", { enumerable: true, get: function() {
-      return codegen_1.Name;
-    } });
-    Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function() {
-      return codegen_1.CodeGen;
-    } });
-    var validation_error_1 = require_validation_error();
-    Object.defineProperty(exports, "ValidationError", { enumerable: true, get: function() {
-      return validation_error_1.default;
-    } });
-    var ref_error_1 = require_ref_error();
-    Object.defineProperty(exports, "MissingRefError", { enumerable: true, get: function() {
-      return ref_error_1.default;
-    } });
-  }
-});
-
 // node_modules/ajv-formats/dist/limit.js
 var require_limit = __commonJS({
   "node_modules/ajv-formats/dist/limit.js"(exports) {
@@ -7568,9 +6744,9 @@ var require_limit = __commonJS({
       },
       dependencies: ["format"]
     };
-    var formatLimitPlugin = (ajv) => {
-      ajv.addKeyword(exports.formatLimitDefinition);
-      return ajv;
+    var formatLimitPlugin = (ajv2) => {
+      ajv2.addKeyword(exports.formatLimitDefinition);
+      return ajv2;
     };
     exports.default = formatLimitPlugin;
   }
@@ -7586,17 +6762,17 @@ var require_dist = __commonJS({
     var codegen_1 = require_codegen();
     var fullName = new codegen_1.Name("fullFormats");
     var fastName = new codegen_1.Name("fastFormats");
-    var formatsPlugin = (ajv, opts = { keywords: true }) => {
+    var formatsPlugin = (ajv2, opts = { keywords: true }) => {
       if (Array.isArray(opts)) {
-        addFormats3(ajv, opts, formats_1.fullFormats, fullName);
-        return ajv;
+        addFormats2(ajv2, opts, formats_1.fullFormats, fullName);
+        return ajv2;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
       const list = opts.formats || formats_1.formatNames;
-      addFormats3(ajv, list, formats, exportName);
+      addFormats2(ajv2, list, formats, exportName);
       if (opts.keywords)
-        (0, limit_1.default)(ajv);
-      return ajv;
+        (0, limit_1.default)(ajv2);
+      return ajv2;
     };
     formatsPlugin.get = (name, mode = "full") => {
       const formats = mode === "fast" ? formats_1.fastFormats : formats_1.fullFormats;
@@ -7605,12 +6781,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats3(ajv, list, fs2, exportName) {
+    function addFormats2(ajv2, list, fs, exportName) {
       var _a;
       var _b;
-      (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
+      (_a = (_b = ajv2.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs2[f]);
+        ajv2.addFormat(f, fs[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7618,229 +6794,165 @@ var require_dist = __commonJS({
   }
 });
 
-// src/handlers/spec.js
-var import__ = __toESM(require__(), 1);
-var import_ajv_formats = __toESM(require_dist(), 1);
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
-import { resolve, dirname } from "path";
+// src/commands/req.js
+import { existsSync as existsSync2, mkdirSync, writeFileSync as writeFileSync2 } from "fs";
+import { resolve as resolve2 } from "path";
 
-// schemas/dev-spec-v1.schema.json
-var dev_spec_v1_schema_default = {
-  $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "dev-spec/v1",
-  title: "dev-spec v1",
-  description: "Spec schema for specify. Focused on goal \u2192 decisions \u2192 requirements (with sub-req behaviors as acceptance criteria) \u2192 tasks.",
+// src/lib/args.js
+function parseArgs(args) {
+  const out = { _: [] };
+  let i = 0;
+  while (i < args.length) {
+    const a = args[i];
+    if (a === "--") {
+      out._.push(...args.slice(i + 1));
+      break;
+    }
+    if (a.startsWith("--")) {
+      const key = a.slice(2);
+      const next = args[i + 1];
+      if (next !== void 0 && !next.startsWith("--")) {
+        out[key] = next;
+        i += 2;
+      } else {
+        out[key] = true;
+        i += 1;
+      }
+    } else {
+      out._.push(a);
+      i += 1;
+    }
+  }
+  return out;
+}
+function getPath(obj, path) {
+  if (!path) return obj;
+  const parts = [];
+  for (const raw of path.split(".")) {
+    const m = /^([^\[]+)((?:\[\d+\])*)$/.exec(raw);
+    if (!m) return void 0;
+    parts.push(m[1]);
+    for (const idx of m[2].match(/\d+/g) || []) parts.push(parseInt(idx, 10));
+  }
+  let cur = obj;
+  for (const p of parts) {
+    if (cur == null) return void 0;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+// src/lib/json-io.js
+var import_ajv = __toESM(require_ajv(), 1);
+var import_ajv_formats = __toESM(require_dist(), 1);
+import { readFileSync, writeFileSync, existsSync, renameSync } from "fs";
+import { resolve, join } from "path";
+
+// schemas/plan.schema.json
+var plan_schema_default = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  $id: "https://hoyeon.dev/schemas/plan.schema.json",
+  title: "plan.json (v1)",
+  description: "Execution blueprint produced by /blueprint. References requirements by ID only \u2014 does NOT duplicate sub-requirement bodies. Self-consistent: cli validates internal cross-refs; LLM (blueprint skill) validates coverage against requirements.md.",
   type: "object",
-  required: ["meta", "tasks"],
+  required: ["schema", "meta", "tasks", "verify_plan"],
   additionalProperties: false,
   properties: {
-    $schema: { type: "string" },
-    meta: { $ref: "#/$defs/meta" },
-    context: { $ref: "#/$defs/context" },
-    requirements: {
-      type: "array",
-      items: { $ref: "#/$defs/requirement" }
-    },
-    tasks: {
-      type: "array",
-      minItems: 1,
-      items: { $ref: "#/$defs/task" }
-    },
-    constraints: {
-      type: "array",
-      items: { $ref: "#/$defs/constraint" }
-    },
-    external_dependencies: { $ref: "#/$defs/externalDependencies" }
-  },
-  $defs: {
+    schema: { const: "plan/v1" },
     meta: {
       type: "object",
-      required: ["name", "goal"],
+      required: ["type", "goal"],
       additionalProperties: false,
       properties: {
-        name: { type: "string" },
-        goal: { type: "string" },
-        non_goals: {
-          type: "array",
-          items: { type: "string" },
-          description: "What this project is explicitly NOT trying to achieve"
-        },
-        type: {
-          type: "string",
-          enum: ["dev", "plain"]
-        },
-        schema_version: {
-          type: "string",
-          enum: ["v1"],
-          description: "Schema version."
-        },
+        type: { enum: ["greenfield", "feature", "refactor", "bugfix"] },
+        goal: { type: "string", minLength: 1 },
+        non_goals: { type: "array", items: { type: "string" } },
         mode: {
           type: "object",
           additionalProperties: false,
-          description: "Execution configuration axes. Replaces legacy 'depth' field.",
           properties: {
-            dispatch: {
-              type: "string",
-              enum: ["direct", "agent", "team"],
-              description: "How tasks are dispatched: direct (orchestrator-direct), agent (worker subagents with grouping), team (TeamCreate persistent workers)"
-            },
-            work: {
-              type: "string",
-              enum: ["worktree", "branch", "no-commit"],
-              description: "Git work mode: worktree, branch, or no-commit"
-            },
-            verify: {
-              type: "string",
-              enum: ["light", "standard", "thorough", "ralph"],
-              description: "Verification depth: light (build check), standard (spec-based FV), thorough (CR + cross-task + sandbox), ralph (standard + persistent DoD loop)"
-            },
-            depth: {
-              type: "string",
-              description: "Deprecated \u2014 use dispatch + verify instead. Kept for backward compatibility."
-            }
+            dispatch: { enum: ["direct", "agent", "team"] },
+            work: { enum: ["worktree", "branch", "no-commit"] },
+            verify: { enum: ["light", "standard", "thorough"] }
           }
         }
       }
     },
-    context: {
+    contracts: {
       type: "object",
       additionalProperties: false,
       properties: {
-        confirmed_goal: {
-          type: "string",
-          description: "Confirmed goal statement from mirror phase"
+        artifact: {
+          oneOf: [
+            { type: "string" },
+            { type: "null" }
+          ]
         },
-        decisions: {
-          type: "array",
-          items: {
-            type: "object",
-            required: ["id", "decision", "rationale"],
-            additionalProperties: false,
-            properties: {
-              id: { type: "string" },
-              decision: { type: "string" },
-              rationale: { type: "string" }
-            }
-          }
-        },
-        research: {
-          type: "array",
-          items: { type: "string" },
-          description: "Key findings from L1 codebase/environment investigation"
-        },
-        known_gaps: {
-          type: "array",
-          items: { type: "string" },
-          description: "Things that couldn't be decided yet"
-        },
-        sandbox_capability: {
-          type: "object",
-          additionalProperties: false,
-          description: "Auto-detected sandbox capabilities for verification",
-          properties: {
-            tools: {
-              type: "array",
-              items: { type: "string", enum: ["browser", "terminal", "desktop", "cli"] }
-            },
-            scaffold_required: { type: "boolean" }
-          }
+        interfaces: { type: "array", items: { type: "string" } },
+        invariants: { type: "array", items: { type: "string" } }
+      }
+    },
+    tasks: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "action", "depends_on"],
+        additionalProperties: false,
+        properties: {
+          id: { type: "string", pattern: "^T\\d+$" },
+          layer: { enum: ["L0", "L1", "L2", "L3"] },
+          action: { type: "string", minLength: 1 },
+          fulfills: {
+            type: "array",
+            items: { type: "string", pattern: "^R-[A-Z]\\d+(\\.\\d+)?$" }
+          },
+          depends_on: {
+            type: "array",
+            items: { type: "string", pattern: "^T\\d+$" }
+          },
+          parallel_safe: { type: "boolean" },
+          status: {
+            enum: ["pending", "running", "done", "failed", "blocked"],
+            default: "pending"
+          },
+          summary: { type: "string" }
         }
       }
     },
-    constraint: {
-      type: "object",
-      required: ["id", "rule"],
-      additionalProperties: false,
-      properties: {
-        id: { type: "string" },
-        rule: { type: "string", description: "Non-functional guardrail that must not be violated" }
-      }
-    },
-    requirement: {
-      type: "object",
-      required: ["id", "behavior", "sub"],
-      additionalProperties: false,
-      properties: {
-        id: { type: "string" },
-        behavior: { type: "string" },
-        sub: {
-          type: "array",
-          minItems: 1,
-          items: { $ref: "#/$defs/subRequirement" },
-          description: "Sub-requirements decomposing this requirement into testable behaviors. These serve as the behavioral acceptance criteria for tasks that fulfill this requirement."
+    journeys: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "name", "composes", "given", "when", "then"],
+        additionalProperties: false,
+        properties: {
+          id: { type: "string", pattern: "^J\\d+$" },
+          name: { type: "string", minLength: 1 },
+          composes: {
+            type: "array",
+            minItems: 2,
+            items: { type: "string", pattern: "^R-[A-Z]\\d+(\\.\\d+)?$" }
+          },
+          given: { type: "string", minLength: 1 },
+          when: { type: "string", minLength: 1 },
+          then: { type: "string", minLength: 1 }
         }
       }
     },
-    subRequirement: {
-      type: "object",
-      description: "Sub-requirement with required behavior summary. Optionally uses Given/When/Then (GWT) format for structured precondition, action, and expected outcome.",
-      required: ["id", "behavior"],
-      additionalProperties: false,
-      properties: {
-        id: { type: "string" },
-        behavior: { type: "string", description: "Concrete, testable behavior (summary line, always required)" },
-        given: { type: "string", description: "Precondition or initial context (GWT format, optional)" },
-        when: { type: "string", description: "Action or trigger (GWT format, optional)" },
-        then: { type: "string", description: "Expected outcome or assertion (GWT format, optional)" }
-      }
-    },
-    task: {
-      type: "object",
-      required: ["id", "action"],
-      additionalProperties: false,
-      properties: {
-        id: { type: "string" },
-        action: { type: "string" },
-        tool: {
-          type: "string",
-          description: "Dispatch hint for plain mode: skill name (e.g. /bugfix), agent subtype (e.g. worker), or omit for orchestrator-direct"
-        },
-        type: {
-          type: "string",
-          enum: ["work", "verification"]
-        },
-        status: {
-          type: "string",
-          enum: ["pending", "in_progress", "done"],
-          default: "pending"
-        },
-        depends_on: {
-          type: "array",
-          items: { type: "string" }
-        },
-        fulfills: {
-          type: "array",
-          items: { type: "string" }
-        },
-        started_at: { type: "string" },
-        completed_at: { type: "string" },
-        summary: { type: "string" }
-      }
-    },
-    externalDependencies: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        pre_work: {
-          type: "array",
-          items: {
-            type: "object",
-            required: ["action"],
-            additionalProperties: false,
-            properties: {
-              action: { type: "string" }
-            }
-          }
-        },
-        post_work: {
-          type: "array",
-          items: {
-            type: "object",
-            required: ["action"],
-            additionalProperties: false,
-            properties: {
-              action: { type: "string" }
-            }
+    verify_plan: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["target", "type", "gates"],
+        additionalProperties: false,
+        properties: {
+          target: { type: "string", pattern: "^(R-[A-Z]\\d+(\\.\\d+)?|J\\d+)$" },
+          type: { enum: ["sub_req", "journey"] },
+          gates: {
+            type: "array",
+            minItems: 1,
+            uniqueItems: true,
+            items: { type: "integer", minimum: 1, maximum: 4 }
           }
         }
       }
@@ -7848,1535 +6960,476 @@ var dev_spec_v1_schema_default = {
   }
 };
 
-// src/lib/state-io.js
-import fs from "fs";
-import path from "path";
-function readState(statePath) {
-  let raw;
+// src/lib/json-io.js
+var ajv = new import_ajv.default({ allErrors: true, strict: false });
+(0, import_ajv_formats.default)(ajv);
+var _planValidator = null;
+function validatePlan(obj) {
+  if (!_planValidator) _planValidator = ajv.compile(plan_schema_default);
+  const ok = _planValidator(obj);
+  return { ok, errors: ok ? [] : formatAjvErrors(_planValidator.errors) };
+}
+function formatAjvErrors(errs) {
+  return (errs || []).map((e) => `${e.instancePath || "/"} ${e.message}${e.params ? " (" + JSON.stringify(e.params) + ")" : ""}`);
+}
+function readJsonIfExists(path) {
+  if (!existsSync(path)) return null;
   try {
-    raw = fs.readFileSync(statePath, "utf8");
+    return JSON.parse(readFileSync(path, "utf8"));
   } catch (err) {
-    if (err.code === "ENOENT") return null;
-    throw err;
-  }
-  try {
-    return JSON.parse(raw);
-  } catch (err) {
-    throw new Error(`Invalid JSON in state file ${statePath}: ${err.message}`);
+    throw new Error(`${path} parse failed: ${err.message}`);
   }
 }
-function writeState(statePath, data) {
-  const dir = path.dirname(statePath);
-  const tmpPath = statePath + ".tmp";
-  fs.mkdirSync(dir, { recursive: true });
-  if (fs.existsSync(statePath)) {
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-    const backupPath = statePath + `.backup-${timestamp}`;
-    fs.copyFileSync(statePath, backupPath);
+function writeJsonAtomic(path, data) {
+  const tmp = path + ".tmp";
+  writeFileSync(tmp, JSON.stringify(data, null, 2) + "\n", "utf8");
+  renameSync(tmp, path);
+}
+function mergePlan(existing, payload, mode) {
+  const base = existing ? structuredClone(existing) : {};
+  if (mode === "append") return appendMerge(base, payload);
+  if (mode === "patch") return patchMerge(base, payload);
+  return replaceMerge(base, payload);
+}
+function replaceMerge(base, payload) {
+  return { ...base, ...payload };
+}
+function appendMerge(base, payload) {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(payload)) {
+    if (Array.isArray(v) && Array.isArray(out[k])) out[k] = [...out[k], ...v];
+    else out[k] = v;
   }
-  const json = JSON.stringify(data, null, 2);
-  fs.writeFileSync(tmpPath, json, "utf8");
-  fs.renameSync(tmpPath, statePath);
-  const base = path.basename(statePath);
-  const backups = fs.readdirSync(dir).filter((f) => f.startsWith(base + ".backup-")).sort().map((f) => path.join(dir, f));
-  while (backups.length > 3) {
-    fs.unlinkSync(backups.shift());
+  return out;
+}
+function patchMerge(base, payload) {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(payload)) {
+    if (Array.isArray(v) && Array.isArray(out[k])) {
+      out[k] = mergeArrayById(out[k], v);
+    } else if (v && typeof v === "object" && out[k] && typeof out[k] === "object" && !Array.isArray(out[k])) {
+      out[k] = patchMerge(out[k], v);
+    } else {
+      out[k] = v;
+    }
   }
+  return out;
+}
+function mergeArrayById(existing, incoming) {
+  const hasId = (x) => x && typeof x === "object" && typeof x.id === "string";
+  if (!incoming.every(hasId) || !existing.every(hasId)) return incoming;
+  const map = new Map(existing.map((x) => [x.id, x]));
+  for (const item of incoming) {
+    const prev = map.get(item.id);
+    map.set(item.id, prev ? { ...prev, ...item } : item);
+  }
+  return [...map.values()];
+}
+function specPaths(specDir) {
+  const dir = resolve(specDir);
+  return {
+    dir,
+    requirements: join(dir, "requirements.md"),
+    plan: join(dir, "plan.json")
+  };
+}
+function readPlanIfExists(specDir) {
+  return readJsonIfExists(specPaths(specDir).plan);
 }
 
-// src/handlers/spec.js
-var SPEC_HELP = `
+// src/commands/req.js
+var HELP = `
 Usage:
-  hoyeon-cli spec init <name> --goal "..." <path>   Create a minimal valid spec.json
-  hoyeon-cli spec merge <path> --json '{...}'       Deep-merge a JSON fragment into spec.json
-  hoyeon-cli spec merge <path> --stdin              Read JSON from stdin (heredoc-friendly)
-                                                    --append: concatenate arrays
-                                                    --patch:  ID-based merge (match by id, update in place)
-  hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]  Schema validation + coverage checks
-  hoyeon-cli spec plan <path> [--format text|mermaid|json]  Show execution plan with parallel groups
-  hoyeon-cli spec task <task-id> --status <status> [--summary "..."] <path>  Update task status
-  hoyeon-cli spec task <task-id> --get <path>                               Get task details as JSON
-  hoyeon-cli spec status <path>                     Show task completion status (exit 0=done, 1=incomplete)
-  hoyeon-cli spec meta <path>                       Show spec meta (name, goal, non_goals, mode, etc.)
-  hoyeon-cli spec check <path>                      Check internal consistency
-  hoyeon-cli spec amend --reason <feedback-id> --spec <path>  Amend spec.json based on feedback
-  hoyeon-cli spec guide [section]                             Show schema guide for a section
-  hoyeon-cli spec sub <sub-req-id> --get <path>                    Get sub-requirement details as JSON
-  hoyeon-cli spec derive-tasks <path>                Generate task stubs from requirements (fulfills auto-linked)
-  hoyeon-cli spec learning --task <id> --json '{...}' <path>  Add structured learning to context/learnings.json
-  hoyeon-cli spec issue --task <id> --json '{...}' <path>    Add structured issue to context/issues.json
-  hoyeon-cli spec search "query" [--specs-dir .hoyeon/specs] [--limit 10] [--json]  BM25 search across all specs
+  hoyeon-cli req <command> [options]
+
+Commands:
+  init <spec_dir> --type <greenfield|feature|refactor|bugfix> [--goal "<text>"]
+      Create spec_dir + requirements.md template for /specify to fill in.
 
 Options:
-  --help, -h    Show this help message
+  --help, -h   This help.
 
-Examples:
-  hoyeon-cli spec init api-auth --goal "Add JWT auth" .hoyeon/specs/api-auth/spec.json
-  hoyeon-cli spec merge .hoyeon/specs/api-auth/spec.json --json '{"context":{"request":"Add auth"}}'
-  hoyeon-cli spec validate ./spec.json
-  hoyeon-cli spec validate ./spec.json --layer decisions --json
-  hoyeon-cli spec plan ./spec.json
-  hoyeon-cli spec task T1 --status done --summary "implemented" ./spec.json
-  hoyeon-cli spec task T1 --get ./spec.json
-  hoyeon-cli spec status ./spec.json
-  hoyeon-cli spec meta ./spec.json
-  hoyeon-cli spec check ./spec.json
-  hoyeon-cli spec amend --reason fb-001 --spec ./spec.json
+Note:
+  cli does not parse requirements.md. Reading and understanding that file is
+  the LLM's job (inside /specify and /blueprint). cli only manages plan.json.
 `;
-function loadSchema() {
-  return dev_spec_v1_schema_default;
+function template(type, goal) {
+  return `---
+type: ${type}
+goal: "${goal || "<WRITE YOUR GOAL HERE>"}"
+non_goals: []
+---
+
+# Requirements
+
+<!-- /specify fills this in. Parent reqs use '## R-X<num>:' and sub-reqs use '#### R-X.Y:' with given/when/then fields. -->
+`;
 }
-function printGuideHints(errors) {
-  const sections = /* @__PURE__ */ new Set();
-  for (const e of errors) {
-    const path2 = e.instancePath || "";
-    const match = path2.match(/^\/([^/]+)/);
-    if (match) sections.add(match[1]);
-  }
-  if (sections.size > 0) {
-    process.stderr.write("\nHint: check schema with:\n");
-    for (const s of sections) {
-      process.stderr.write(`  hoyeon-cli spec guide ${s}
+async function cmdInit(args) {
+  const { _: [specDir], type, goal } = parseArgs(args);
+  if (!specDir) die("Error: <spec_dir> required");
+  if (!type) die("Error: --type required (greenfield|feature|refactor|bugfix)");
+  const valid = ["greenfield", "feature", "refactor", "bugfix"];
+  if (!valid.includes(type)) die(`Error: --type must be one of ${valid.join("|")}`);
+  const dir = resolve2(specDir);
+  if (!existsSync2(dir)) mkdirSync(dir, { recursive: true });
+  const mdPath = specPaths(dir).requirements;
+  if (existsSync2(mdPath)) die(`Error: ${mdPath} already exists`);
+  writeFileSync2(mdPath, template(type, goal === true ? void 0 : goal), "utf8");
+  process.stdout.write(`Wrote ${mdPath}
 `);
-    }
-  }
 }
-function appendHistory(specPath, entry) {
-  const contextDir = resolve(dirname(specPath), "context");
-  if (!existsSync(contextDir)) {
-    mkdirSync(contextDir, { recursive: true });
-  }
-  const historyPath = resolve(contextDir, "history.json");
-  let history = [];
-  if (existsSync(historyPath)) {
-    try {
-      history = JSON.parse(readFileSync(historyPath, "utf8"));
-    } catch {
-      history = [];
-    }
-  }
-  if (!entry.ts) {
-    entry.ts = (/* @__PURE__ */ new Date()).toISOString();
-  }
-  history.push(entry);
-  writeFileSync(historyPath, JSON.stringify(history, null, 2) + "\n");
-}
-function validateSpec(specData) {
-  let schema;
-  try {
-    schema = loadSchema(specData);
-  } catch (err) {
-    process.stderr.write(`Error: could not load schema: ${err.message}
-`);
-    process.exit(1);
-  }
-  const ajv = new import__.default({ allErrors: true });
-  (0, import_ajv_formats.default)(ajv);
-  const validate = ajv.compile(schema);
-  const valid = validate(specData);
-  if (!valid) {
-    process.stderr.write("Validation failed:\n");
-    for (const e of validate.errors) {
-      const path2 = e.instancePath || "(root)";
-      process.stderr.write(`  ${path2}: ${e.message}
-`);
-    }
-    printGuideHints(validate.errors);
-    process.exit(1);
-  }
-}
-function deepMerge(target, source, append = false, patch = false) {
-  for (const key of Object.keys(source)) {
-    if (source[key] === null || source[key] === void 0) {
-      continue;
-    }
-    if (Array.isArray(source[key])) {
-      if (patch && Array.isArray(target[key])) {
-        for (const item of source[key]) {
-          if (item && typeof item === "object" && item.id) {
-            const idx = target[key].findIndex((t) => t && t.id === item.id);
-            if (idx >= 0) {
-              for (const itemKey of Object.keys(item)) {
-                if (item[itemKey] === null || item[itemKey] === void 0) continue;
-                if (Array.isArray(item[itemKey]) && Array.isArray(target[key][idx][itemKey])) {
-                  const nested = { [itemKey]: item[itemKey] };
-                  const nestedTarget = { [itemKey]: target[key][idx][itemKey] };
-                  deepMerge(nestedTarget, nested, false, true);
-                  target[key][idx][itemKey] = nestedTarget[itemKey];
-                } else if (typeof item[itemKey] === "object" && !Array.isArray(item[itemKey]) && target[key][idx][itemKey] && typeof target[key][idx][itemKey] === "object" && !Array.isArray(target[key][idx][itemKey])) {
-                  if ("type" in item[itemKey]) {
-                    target[key][idx][itemKey] = item[itemKey];
-                  } else {
-                    deepMerge(target[key][idx][itemKey], item[itemKey], false, true);
-                  }
-                } else {
-                  target[key][idx][itemKey] = item[itemKey];
-                }
-              }
-            } else {
-              target[key].push(item);
-            }
-          } else {
-            target[key].push(item);
-          }
-        }
-      } else if (append && Array.isArray(target[key])) {
-        target[key] = target[key].concat(source[key]);
-      } else {
-        target[key] = source[key];
-      }
-    } else if (typeof source[key] === "object") {
-      if (!target[key] || typeof target[key] !== "object" || Array.isArray(target[key])) {
-        target[key] = {};
-      }
-      deepMerge(target[key], source[key], append, patch);
-    } else {
-      target[key] = source[key];
-    }
-  }
-  return target;
-}
-async function handleInit(args) {
-  const parsed = parseArgs(args);
-  const name = parsed._[0];
-  if (!name) {
-    process.stderr.write("Error: <name> is required\n");
-    process.stderr.write('Usage: hoyeon-cli spec init <name> --goal "..." <path>\n');
-    process.exit(1);
-  }
-  if (!parsed.goal) {
-    process.stderr.write('Error: --goal "..." is required\n');
-    process.stderr.write('Usage: hoyeon-cli spec init <name> --goal "..." <path>\n');
-    process.exit(1);
-  }
-  const filePath = parsed._[1];
-  if (!filePath) {
-    process.stderr.write("Error: <path> is required\n");
-    process.stderr.write('Usage: hoyeon-cli spec init <name> --goal "..." <path>\n');
-    process.exit(1);
-  }
-  const specPath = resolve(filePath);
-  try {
-    readFileSync(specPath, "utf8");
-    process.stderr.write(`Error: file already exists: ${specPath}
-`);
-    process.stderr.write('Use "hoyeon-cli spec merge" to update an existing spec.\n');
-    process.exit(1);
-  } catch (err) {
-    if (err.code !== "ENOENT") {
-      process.stderr.write(`Error: ${err.message}
-`);
-      process.exit(1);
-    }
-  }
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const specData = {
-    meta: {
-      name,
-      goal: parsed.goal
-    },
-    tasks: [
-      { id: "T1", action: "TODO", type: "work" }
-    ]
-  };
-  if (parsed.type !== void 0) {
-    const validTypes = ["dev", "plain"];
-    if (!validTypes.includes(parsed.type)) {
-      process.stderr.write(`Error: invalid --type '${parsed.type}'. Valid values: ${validTypes.join(", ")}
-`);
-      process.exit(1);
-    }
-    specData.meta.type = parsed.type;
-  }
-  if (parsed.schema) {
-    if (parsed.schema !== "v1") {
-      process.stderr.write(`Error: invalid --schema '${parsed.schema}'. Only 'v1' is supported.
-`);
-      process.exit(1);
-    }
-    specData.meta.schema_version = parsed.schema;
-  }
-  validateSpec(specData);
-  writeState(specPath, specData);
-  appendHistory(specPath, { ts: now, type: "spec_created" });
-  process.stdout.write(`Spec created: ${specPath}
-`);
-  process.stdout.write(`  name: ${name}
-`);
-  process.stdout.write(`  goal: ${parsed.goal}
-`);
-  process.exit(0);
-}
-async function handleMerge(args) {
-  const parsed = parseArgs(args);
-  const filePath = parsed._[0];
-  if (!filePath) {
-    process.stderr.write("Error: <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec merge <path> --json '{...}' [--append]\n");
-    process.stderr.write("       hoyeon-cli spec merge <path> --stdin [--append]  (read JSON from stdin)\n");
-    process.exit(1);
-  }
-  const useStdin = parsed.stdin === true;
-  let jsonStr;
-  if (useStdin) {
-    const { readFileSync: readSync } = await import("fs");
-    try {
-      jsonStr = readSync(0, "utf8");
-    } catch (err) {
-      process.stderr.write(`Error: failed to read stdin: ${err.message}
-`);
-      process.exit(1);
-    }
-  } else if (parsed.json) {
-    jsonStr = parsed.json;
-  } else {
-    process.stderr.write("Error: --json '{...}' or --stdin is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec merge <path> --json '{...}' [--append] [--patch]\n");
-    process.stderr.write("       hoyeon-cli spec merge <path> --stdin [--append] [--patch]\n");
-    process.exit(1);
-  }
-  let fragment;
-  try {
-    fragment = JSON.parse(jsonStr);
-  } catch (err) {
-    process.stderr.write(`Error: invalid JSON fragment: ${err.message}
-`);
-    process.exit(1);
-  }
-  if (typeof fragment !== "object" || Array.isArray(fragment)) {
-    process.stderr.write("Error: JSON fragment must be an object\n");
-    process.exit(1);
-  }
-  const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
-  const append = parsed.append === true;
-  const patch = parsed.patch === true;
-  if (append && patch) {
-    process.stderr.write("Error: --append and --patch are mutually exclusive\n");
-    process.exit(1);
-  }
-  if (!append && !patch) {
-    for (const key of Object.keys(fragment)) {
-      const src = fragment[key];
-      const tgt = specData[key];
-      if (Array.isArray(src) && Array.isArray(tgt) && tgt.length > 0) {
-        process.stderr.write(`\u26A0\uFE0F  Warning: replacing ${key}[] (${tgt.length} items \u2192 ${src.length} items) without --append or --patch
-`);
-        process.stderr.write(`   Use --append to add items, --patch to update by id, or no flag to replace entirely.
-`);
-      }
-      if (src && typeof src === "object" && !Array.isArray(src) && tgt && typeof tgt === "object") {
-        for (const nested of Object.keys(src)) {
-          if (Array.isArray(src[nested]) && Array.isArray(tgt[nested]) && tgt[nested].length > 0) {
-            process.stderr.write(`\u26A0\uFE0F  Warning: replacing ${key}.${nested}[] (${tgt[nested].length} items \u2192 ${src[nested].length} items) without --append or --patch
-`);
-            process.stderr.write(`   Use --append to add items, --patch to update by id, or no flag to replace entirely.
-`);
-          }
-        }
-      }
-    }
-  }
-  deepMerge(specData, fragment, append, patch);
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const mergedKeys = Object.keys(fragment).join(", ");
-  validateSpec(specData);
-  const strict = parsed.strict === true;
-  if (strict) {
-    const gaps = runCoverageChecks(specData);
-    if (gaps.length > 0) {
-      process.stderr.write("Strict merge failed \u2014 coverage gaps found (spec NOT written):\n");
-      for (const g of gaps) {
-        process.stderr.write(`  [${g.layer}/${g.check}] ${g.message}
-`);
-      }
-      process.exit(1);
-    }
-  }
-  writeState(specPath, specData);
-  appendHistory(specPath, { ts: now, type: "spec_updated", detail: `merged: ${mergedKeys}` });
-  process.stdout.write(`Spec merged: ${specPath}
-`);
-  process.stdout.write(`  merged keys: ${mergedKeys}
-`);
-  if (append) process.stdout.write("  mode: append (arrays concatenated)\n");
-  if (patch) process.stdout.write("  mode: patch (ID-based merge)\n");
-  if (strict) process.stdout.write("  mode: strict (coverage verified)\n");
-  process.exit(0);
-}
-async function handleValidate(args) {
-  const parsed = parseArgs(args);
-  const filePath = parsed._[0];
-  if (!filePath) {
-    process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]\n");
-    process.exit(1);
-  }
-  const layer = parsed.layer;
-  if (layer !== void 0 && !VALID_COVERAGE_LAYERS.includes(layer)) {
-    process.stderr.write(`Error: invalid --layer '${layer}'. Valid values: ${VALID_COVERAGE_LAYERS.join(", ")}
-`);
-    process.exit(1);
-  }
-  const useJson = parsed.json === true;
-  let data;
-  try {
-    const raw = readFileSync(resolve(filePath), "utf8");
-    data = JSON.parse(raw);
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      process.stderr.write(`Error: file not found: ${filePath}
-`);
-    } else if (err instanceof SyntaxError) {
-      process.stderr.write(`Error: invalid JSON in ${filePath}: ${err.message}
-`);
-    } else {
-      process.stderr.write(`Error: could not read file: ${err.message}
-`);
-    }
-    process.exit(1);
-  }
-  let schema;
-  try {
-    schema = loadSchema(data);
-  } catch (err) {
-    process.stderr.write(`Error: could not load schema: ${err.message}
-`);
-    process.exit(1);
-  }
-  const ajv = new import__.default({ allErrors: true });
-  (0, import_ajv_formats.default)(ajv);
-  const validate = ajv.compile(schema);
-  const valid = validate(data);
-  if (!valid) {
-    const errors = validate.errors.map((e) => ({
-      instancePath: e.instancePath,
-      schemaPath: e.schemaPath,
-      keyword: e.keyword,
-      message: e.message,
-      params: e.params
-    }));
-    if (useJson) {
-      process.stdout.write(JSON.stringify({ valid: false, errors, coverage: null, gaps: [] }) + "\n");
-    } else {
-      process.stdout.write(JSON.stringify({ valid: false, errors }) + "\n");
-    }
-    process.stderr.write("Validation failed:\n");
-    for (const e of validate.errors) {
-      const path2 = e.instancePath || "(root)";
-      process.stderr.write(`  ${path2}: ${e.message}
-`);
-    }
-    printGuideHints(validate.errors);
-    process.exit(1);
-  }
-  const gaps = runCoverageChecks(data, layer);
-  if (useJson) {
-    const result = {
-      valid: true,
-      errors: [],
-      coverage: gaps.length === 0 ? "pass" : "fail",
-      gaps
-    };
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-    process.exit(gaps.length === 0 ? 0 : 1);
-  }
-  if (gaps.length > 0) {
-    process.stderr.write("Schema valid. Coverage gaps found:\n");
-    for (const gap of gaps) {
-      process.stderr.write(`  [${gap.layer}/${gap.check}] ${gap.message}
-`);
-    }
-    process.exit(1);
-  }
-  process.stdout.write("Schema valid. Coverage passed.\n");
-  process.exit(0);
-}
-function loadSpec(filePath) {
-  try {
-    const raw = readFileSync(filePath, "utf8");
-    return JSON.parse(raw);
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      process.stderr.write(`Error: file not found: ${filePath}
-`);
-    } else if (err instanceof SyntaxError) {
-      process.stderr.write(`Error: invalid JSON in ${filePath}: ${err.message}
-`);
-    } else {
-      process.stderr.write(`Error: could not read file: ${err.message}
-`);
-    }
-    process.exit(1);
-  }
-}
-function buildPlan(tasks) {
-  const taskMap = /* @__PURE__ */ new Map();
-  for (const t of tasks) {
-    taskMap.set(t.id, { ...t, depends_on: t.depends_on || [] });
-  }
-  for (const t of taskMap.values()) {
-    for (const dep of t.depends_on) {
-      if (!taskMap.has(dep)) {
-        process.stderr.write(`Warning: task ${t.id} depends on unknown task ${dep}
-`);
-      }
-    }
-  }
-  const inDegree = /* @__PURE__ */ new Map();
-  for (const t of taskMap.values()) {
-    if (!inDegree.has(t.id)) inDegree.set(t.id, 0);
-    for (const dep of t.depends_on) {
-      inDegree.set(t.id, inDegree.get(t.id) || 0);
-    }
-  }
-  for (const t of taskMap.values()) {
-    inDegree.set(t.id, t.depends_on.filter((d) => taskMap.has(d)).length);
-  }
-  const rounds = [];
-  const done = /* @__PURE__ */ new Set();
-  while (done.size < taskMap.size) {
-    const round = [];
-    for (const t of taskMap.values()) {
-      if (done.has(t.id)) continue;
-      const allDepsDone = t.depends_on.every((d) => done.has(d) || !taskMap.has(d));
-      if (allDepsDone) round.push(t.id);
-    }
-    if (round.length === 0) {
-      const remaining = [...taskMap.keys()].filter((id) => !done.has(id));
-      process.stderr.write(`Error: circular dependency detected among: ${remaining.join(", ")}
-`);
-      process.exit(1);
-    }
-    rounds.push(round);
-    for (const id of round) done.add(id);
-  }
-  return rounds;
-}
-function findCriticalPath(tasks) {
-  const taskMap = /* @__PURE__ */ new Map();
-  for (const t of tasks) {
-    taskMap.set(t.id, { ...t, depends_on: t.depends_on || [] });
-  }
-  const dist = /* @__PURE__ */ new Map();
-  const pred = /* @__PURE__ */ new Map();
-  for (const id of taskMap.keys()) {
-    dist.set(id, 0);
-    pred.set(id, null);
-  }
-  const rounds = buildPlan(tasks);
-  for (const round of rounds) {
-    for (const id of round) {
-      const t = taskMap.get(id);
-      for (const dep of t.depends_on) {
-        if (!taskMap.has(dep)) continue;
-        if (dist.get(dep) + 1 > dist.get(id)) {
-          dist.set(id, dist.get(dep) + 1);
-          pred.set(id, dep);
-        }
-      }
-    }
-  }
-  let maxDist = -1;
-  let endNode = null;
-  for (const [id, d] of dist) {
-    if (d > maxDist) {
-      maxDist = d;
-      endNode = id;
-    }
-  }
-  const path2 = [];
-  let cur = endNode;
-  while (cur) {
-    path2.unshift(cur);
-    cur = pred.get(cur);
-  }
-  return path2;
-}
-function formatText(spec2, rounds, criticalPath) {
-  const taskMap = /* @__PURE__ */ new Map();
-  for (const t of spec2.tasks) taskMap.set(t.id, t);
-  const lines = [];
-  lines.push(`Plan: ${spec2.meta.name}`);
-  lines.push(`Goal: ${spec2.meta.goal}`);
-  lines.push("");
-  const totalTasks = spec2.tasks.length;
-  const parallelTasks = rounds.filter((r) => r.length > 1).reduce((sum, r) => sum + r.length, 0);
-  lines.push(`Tasks: ${totalTasks}  Rounds: ${rounds.length}  Max parallel: ${Math.max(...rounds.map((r) => r.length))}`);
-  lines.push("");
-  for (let i = 0; i < rounds.length; i++) {
-    const round = rounds[i];
-    const parallel = round.length > 1;
-    lines.push(`Round ${i + 1}${parallel ? " (parallel)" : ""}:`);
-    for (const id of round) {
-      const t = taskMap.get(id);
-      const type = t.type === "verification" ? "verify" : "work";
-      const deps = (t.depends_on || []).length > 0 ? ` \u2190 ${t.depends_on.join(", ")}` : "";
-      const cp = criticalPath.includes(id) ? " *" : "";
-      lines.push(`  ${id}: ${t.action} (${type})${deps}${cp}`);
-    }
-    lines.push("");
-  }
-  lines.push(`Critical path: ${criticalPath.join(" \u2192 ")}`);
-  const hasFulfills = spec2.tasks.some((t) => t.fulfills && t.fulfills.length > 0);
-  if (hasFulfills) {
-    lines.push("");
-    lines.push("Requirement coverage:");
-    const reqMap = /* @__PURE__ */ new Map();
-    for (const t of spec2.tasks) {
-      for (const r of t.fulfills || []) {
-        if (!reqMap.has(r)) reqMap.set(r, []);
-        reqMap.get(r).push(t.id);
-      }
-    }
-    for (const [r, tasks] of reqMap) {
-      lines.push(`  ${r} \u2190 ${tasks.join(", ")}`);
-    }
-  }
-  return lines.join("\n");
-}
-function formatMermaid(spec2, rounds, criticalPath) {
-  const taskMap = /* @__PURE__ */ new Map();
-  for (const t of spec2.tasks) taskMap.set(t.id, t);
-  const cpSet = new Set(criticalPath);
-  const lines = ["graph LR"];
-  for (const t of spec2.tasks) {
-    const label = `${t.id}[${t.id}: ${t.action}]`;
-    lines.push(`  ${label}`);
-  }
-  for (const t of spec2.tasks) {
-    for (const dep of t.depends_on || []) {
-      if (taskMap.has(dep)) {
-        lines.push(`  ${dep} --> ${t.id}`);
-      }
-    }
-  }
-  if (criticalPath.length > 0) {
-    lines.push(`  style ${criticalPath.join(",")} stroke:#f66,stroke-width:3px`);
-  }
-  const verifyTasks = spec2.tasks.filter((t) => t.type === "verification").map((t) => t.id);
-  if (verifyTasks.length > 0) {
-    lines.push(`  style ${verifyTasks.join(",")} stroke:#6a6,stroke-dasharray: 5 5`);
-  }
-  return lines.join("\n");
-}
-function formatJson(spec2, rounds, criticalPath) {
-  const taskMap = /* @__PURE__ */ new Map();
-  for (const t of spec2.tasks) taskMap.set(t.id, t);
-  return JSON.stringify({
-    name: spec2.meta.name,
-    goal: spec2.meta.goal,
-    total_tasks: spec2.tasks.length,
-    total_rounds: rounds.length,
-    max_parallel: Math.max(...rounds.map((r) => r.length)),
-    critical_path: criticalPath,
-    rounds: rounds.map((round, i) => ({
-      round: i + 1,
-      parallel: round.length > 1,
-      tasks: round.map((id) => {
-        const t = taskMap.get(id);
-        return {
-          id: t.id,
-          action: t.action,
-          type: t.type || "work",
-          status: t.status || "pending",
-          depends_on: t.depends_on || [],
-          fulfills: t.fulfills || []
-        };
-      })
-    }))
-  }, null, 2);
-}
-function formatSlim(spec2, rounds, criticalPath) {
-  return JSON.stringify({
-    name: spec2.meta.name,
-    goal: spec2.meta.goal,
-    total_tasks: spec2.tasks.length,
-    total_rounds: rounds.length,
-    max_parallel: Math.max(...rounds.map((r) => r.length)),
-    critical_path: criticalPath,
-    rounds: rounds.map((round, i) => ({
-      round: i + 1,
-      parallel: round.length > 1,
-      tasks: round.map((id) => {
-        const t = (spec2.tasks || []).find((task) => task.id === id) || {};
-        return {
-          id: t.id,
-          action: t.action,
-          type: t.type || "work",
-          status: t.status || "pending",
-          depends_on: t.depends_on || [],
-          fulfills: t.fulfills || []
-        };
-      })
-    }))
-  }, null, 2);
-}
-async function handlePlan(args) {
-  const parsed = parseArgs(args);
-  const filePath = parsed._[0] || parsed.spec;
-  if (!filePath) {
-    process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: hoyeon-cli spec plan <path> [--format text|mermaid|json|slim]\n");
-    process.exit(1);
-  }
-  const spec2 = loadSpec(filePath);
-  if (!spec2.tasks || spec2.tasks.length === 0) {
-    process.stderr.write("Error: spec has no tasks\n");
-    process.exit(1);
-  }
-  const rounds = buildPlan(spec2.tasks);
-  const criticalPath = findCriticalPath(spec2.tasks);
-  const format = parsed.format || "text";
-  let output;
-  if (format === "mermaid") {
-    output = formatMermaid(spec2, rounds, criticalPath);
-  } else if (format === "json") {
-    output = formatJson(spec2, rounds, criticalPath);
-  } else if (format === "slim") {
-    output = formatSlim(spec2, rounds, criticalPath);
-  } else {
-    output = formatText(spec2, rounds, criticalPath);
-  }
-  process.stdout.write(output + "\n");
-}
-function parseArgs(args) {
-  const result = { _: [] };
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
-    if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      const next = args[i + 1];
-      if (next !== void 0 && !next.startsWith("--")) {
-        result[key] = next;
-        i += 2;
-      } else {
-        result[key] = true;
-        i += 1;
-      }
-    } else {
-      result._.push(arg);
-      i += 1;
-    }
-  }
-  return result;
-}
-async function handleAmend(args) {
-  const parsed = parseArgs(args);
-  if (!parsed.reason) {
-    process.stderr.write("Error: --reason <feedback-id> is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec amend --reason <feedback-id> --spec <path>\n");
-    process.exit(1);
-  }
-  if (!parsed.spec) {
-    process.stderr.write("Error: --spec <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec amend --reason <feedback-id> --spec <path>\n");
-    process.exit(1);
-  }
-  const specPath = resolve(parsed.spec);
-  const feedbackId = parsed.reason;
-  const specDir = dirname(specPath);
-  const feedbackPath = resolve(specDir, "feedback", `${feedbackId}.json`);
-  let feedbackData;
-  try {
-    const raw = readFileSync(feedbackPath, "utf8");
-    feedbackData = JSON.parse(raw);
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      process.stderr.write(`Error: feedback file not found: ${feedbackPath}
-`);
-    } else if (err instanceof SyntaxError) {
-      process.stderr.write(`Error: invalid JSON in feedback file: ${err.message}
-`);
-    } else {
-      process.stderr.write(`Error: could not read feedback file: ${err.message}
-`);
-    }
-    process.exit(1);
-  }
-  let specData;
-  try {
-    const raw = readFileSync(specPath, "utf8");
-    specData = JSON.parse(raw);
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      process.stderr.write(`Error: spec file not found: ${specPath}
-`);
-    } else if (err instanceof SyntaxError) {
-      process.stderr.write(`Error: invalid JSON in spec file: ${err.message}
-`);
-    } else {
-      process.stderr.write(`Error: could not read spec file: ${err.message}
-`);
-    }
-    process.exit(1);
-  }
-  process.stdout.write(`Feedback (${feedbackId}): ${feedbackData.message}
-`);
-  if (!specData.meta) {
-    specData.meta = {};
-  }
-  try {
-    writeFileSync(specPath, JSON.stringify(specData, null, 2), "utf8");
-  } catch (err) {
-    process.stderr.write(`Error: could not write spec file: ${err.message}
-`);
-    process.exit(1);
-  }
-  process.stdout.write(`Spec amended: ${specPath}
-`);
-  process.stdout.write(`Note: actual spec modification logic will be added in later phases
-`);
-  process.exit(0);
-}
-async function handleTask(args) {
-  const taskId = args[0];
-  if (!taskId || taskId.startsWith("--")) {
-    process.stderr.write("Error: <task-id> is required\n");
-    process.stderr.write('Usage: hoyeon-cli spec task <task-id> --status <status> [--summary "..."] <path>\n');
-    process.stderr.write("       hoyeon-cli spec task <task-id> --get <path>\n");
-    process.exit(1);
-  }
-  const parsed = parseArgs(args.slice(1));
-  if (parsed.get !== void 0) {
-    if (typeof parsed.get !== "string") {
-      process.stderr.write("Error: --get requires <path> argument\n");
-      process.stderr.write("Usage: hoyeon-cli spec task <task-id> --get <path>\n");
-      process.exit(1);
-    }
-    const filePath2 = parsed.get;
-    const specData2 = loadSpec(resolve(filePath2));
-    const task2 = specData2.tasks.find((t) => t.id === taskId);
-    if (!task2) {
-      process.stderr.write(`Error: task '${taskId}' not found in spec
-`);
-      process.exit(1);
-    }
-    process.stdout.write(JSON.stringify(task2, null, 2) + "\n");
-    process.exit(0);
-  }
-  let status = parsed.status;
-  if (parsed.done === true) status = "done";
-  if (parsed["in-progress"] === true) status = "in_progress";
-  if (!status) {
-    process.stderr.write("Error: --status <status> is required (or use --done / --in-progress / --get)\n");
-    process.exit(1);
-  }
-  const validStatuses = ["pending", "in_progress", "done"];
-  if (!validStatuses.includes(status)) {
-    process.stderr.write(`Error: invalid status '${status}'. Valid values: ${validStatuses.join(", ")}
-`);
-    process.exit(1);
-  }
-  const filePath = parsed._[0];
-  if (!filePath) {
-    process.stderr.write("Error: <path> to spec.json is required\n");
-    process.exit(1);
-  }
-  const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
-  const task = specData.tasks.find((t) => t.id === taskId);
-  if (!task) {
-    process.stderr.write(`Error: task '${taskId}' not found in spec
-`);
-    process.exit(1);
-  }
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  task.status = status;
-  if (status === "in_progress" && !task.started_at) {
-    task.started_at = now;
-  }
-  if (status === "done") {
-    task.completed_at = now;
-    if (parsed.summary) {
-      task.summary = parsed.summary;
-    }
-  }
-  const historyType = status === "in_progress" ? "task_start" : status === "done" ? "task_done" : "spec_updated";
-  const entry = { ts: now, type: historyType, task: taskId };
-  if (parsed.summary) {
-    entry.summary = parsed.summary;
-  }
-  let schema;
-  try {
-    schema = loadSchema(specData);
-  } catch (err) {
-    process.stderr.write(`Error: could not load schema: ${err.message}
-`);
-    process.exit(1);
-  }
-  const ajv = new import__.default({ allErrors: true });
-  (0, import_ajv_formats.default)(ajv);
-  const validate = ajv.compile(schema);
-  const valid = validate(specData);
-  if (!valid) {
-    process.stderr.write("Validation failed after update:\n");
-    for (const e of validate.errors) {
-      const path2 = e.instancePath || "(root)";
-      process.stderr.write(`  ${path2}: ${e.message}
-`);
-    }
-    printGuideHints(validate.errors);
-    process.exit(1);
-  }
-  writeState(specPath, specData);
-  appendHistory(specPath, entry);
-  process.stdout.write(`Updated task '${taskId}' status to '${status}'
-`);
-  process.exit(0);
-}
-async function handleStatus(args) {
-  const filePath = args[0];
-  if (!filePath) {
-    process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: hoyeon-cli spec status <path>\n");
-    process.exit(1);
-  }
-  const specData = loadSpec(resolve(filePath));
-  const tasks = specData.tasks || [];
-  const done = tasks.filter((t) => t.status === "done");
-  const inProgress = tasks.filter((t) => t.status === "in_progress");
-  const pending = tasks.filter((t) => t.status === "pending" || !t.status);
-  const remaining = tasks.filter((t) => t.status !== "done");
-  const result = {
-    name: specData.meta?.name || "unknown",
-    done: done.length,
-    in_progress: inProgress.length,
-    pending: pending.length,
-    total: tasks.length,
-    complete: remaining.length === 0,
-    remaining: remaining.map((t) => ({ id: t.id, action: t.action, status: t.status || "pending" }))
-  };
-  process.stdout.write(JSON.stringify(result) + "\n");
-  process.exit(remaining.length === 0 ? 0 : 1);
-}
-async function handleMeta(args) {
-  const filePath = args[0];
-  if (!filePath) {
-    process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: hoyeon-cli spec meta <path>\n");
-    process.exit(1);
-  }
-  const specData = loadSpec(resolve(filePath));
-  const meta = specData.meta || {};
-  process.stdout.write(JSON.stringify(meta, null, 2) + "\n");
-  process.exit(0);
-}
-function collectRequirementSets(specData) {
-  const allReqIds = /* @__PURE__ */ new Set();
-  for (const req of specData.requirements || []) {
-    if (req.id) allReqIds.add(req.id);
-  }
-  const referencedReqIds = /* @__PURE__ */ new Set();
-  for (const task of specData.tasks || []) {
-    for (const reqRef of task.fulfills || []) {
-      if (reqRef) referencedReqIds.add(reqRef);
-    }
-  }
-  return { allReqIds, referencedReqIds };
-}
-var VALID_COVERAGE_LAYERS = ["decisions", "requirements", "tasks"];
-function runCoverageChecks(specData, layer) {
-  const gaps = [];
-  const decisions = specData.context?.decisions || [];
-  const requirements = specData.requirements || [];
-  const decisionIds = new Set(decisions.map((d) => d.id).filter(Boolean));
-  const runRequirements = !layer || layer === "requirements";
-  const runTasks = !layer || layer === "tasks";
-  if (runRequirements) {
-    for (const req of requirements) {
-      const subs = req.sub || [];
-      if (subs.length < 1) {
-        gaps.push({
-          layer: "requirements",
-          check: "sub-requirement-coverage",
-          message: `requirement '${req.id}' has no sub-requirements (sub[] must have at least 1 entry)`
-        });
-      }
-    }
-  }
-  if (runRequirements && runTasks) {
-    const { allReqIds, referencedReqIds } = collectRequirementSets(specData);
-    const tasksWithFulfills = (specData.tasks || []).filter((t) => t.fulfills && t.fulfills.length > 0);
-    if (allReqIds.size > 0 && tasksWithFulfills.length > 0) {
-      for (const id of allReqIds) {
-        if (!referencedReqIds.has(id)) {
-          gaps.push({
-            layer: "requirements",
-            check: "orphan-requirement",
-            message: `'${id}' is defined but not referenced by any task fulfills[]`
-          });
-        }
-      }
-    }
-  }
-  return gaps;
-}
-async function handleCoverage(args) {
-  const parsed = parseArgs(args);
-  const filePath = parsed._[0];
-  if (!filePath) {
-    process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: hoyeon-cli spec validate <path> [--layer decisions|requirements|tasks] [--json]\n");
-    process.stderr.write('Note: "spec coverage" is deprecated \u2014 use "spec validate" instead.\n');
-    process.exit(1);
-  }
-  const layer = parsed.layer;
-  if (layer !== void 0 && !VALID_COVERAGE_LAYERS.includes(layer)) {
-    process.stderr.write(`Error: invalid --layer '${layer}'. Valid values: ${VALID_COVERAGE_LAYERS.join(", ")}
-`);
-    process.exit(1);
-  }
-  const useJson = parsed.json === true;
-  const specData = loadSpec(resolve(filePath));
-  const gaps = runCoverageChecks(specData, layer);
-  if (useJson) {
-    const result = {
-      coverage: gaps.length === 0 ? "pass" : "fail",
-      gaps
-    };
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-    process.exit(gaps.length === 0 ? 0 : 1);
-  }
-  if (gaps.length > 0) {
-    process.stderr.write("Coverage gaps found:\n");
-    for (const gap of gaps) {
-      process.stderr.write(`  [${gap.layer}/${gap.check}] ${gap.message}
-`);
-    }
-    process.exit(1);
-  }
-  process.stdout.write("Coverage passed: all coverage checks OK\n");
-  process.exit(0);
-}
-async function handleCheck(args) {
-  const filePath = args[0];
-  if (!filePath) {
-    process.stderr.write("Error: missing <path> argument\n");
-    process.stderr.write("Usage: hoyeon-cli spec check <path>\n");
-    process.exit(1);
-  }
-  const specData = loadSpec(resolve(filePath));
-  const issues = [];
-  const taskIds = new Set(specData.tasks.map((t) => t.id));
-  if (taskIds.size !== specData.tasks.length) {
-    issues.push("duplicate task IDs detected");
-  }
-  for (const task of specData.tasks) {
-    for (const dep of task.depends_on || []) {
-      if (!taskIds.has(dep)) {
-        issues.push(`task '${task.id}' depends on unknown task '${dep}'`);
-      }
-    }
-  }
-  for (const task of specData.tasks) {
-    if (task.status === "done" && !task.completed_at) {
-      issues.push(`task '${task.id}' is done but missing completed_at`);
-    }
-  }
-  for (const task of specData.tasks) {
-    if (task.status === "in_progress" || task.status === "done") {
-      for (const dep of task.depends_on || []) {
-        const depTask = specData.tasks.find((t) => t.id === dep);
-        if (depTask && depTask.status !== "done") {
-          issues.push(`task '${task.id}' is ${task.status} but dependency '${dep}' is not done`);
-        }
-      }
-    }
-  }
-  const reqIds = new Set((specData.requirements || []).map((r) => r.id).filter(Boolean));
-  for (const task of specData.tasks) {
-    for (const reqRef of task.fulfills || []) {
-      if (!reqIds.has(reqRef)) {
-        issues.push(`task '${task.id}' fulfills[] references unknown requirement '${reqRef}'`);
-      }
-    }
-  }
-  {
-    const tasksWithRefs = (specData.tasks || []).filter((t) => t.fulfills && t.fulfills.length > 0);
-    if (reqIds.size > 0 && tasksWithRefs.length > 0) {
-      for (const id of reqIds) {
-        const referenced = tasksWithRefs.some((t) => t.fulfills.includes(id));
-        if (!referenced) {
-          issues.push(`requirement '${id}' is defined but not referenced by any task fulfills[]`);
-        }
-      }
-    }
-  }
-  if (issues.length > 0) {
-    process.stderr.write("Spec check failed:\n");
-    for (const issue of issues) {
-      process.stderr.write(`  - ${issue}
-`);
-    }
-    process.exit(1);
-  }
-  process.stdout.write("Spec check passed: internal consistency OK\n");
-  process.exit(0);
-}
-function generateGuide(section, schemaVersion) {
-  const schema = loadSchema(schemaVersion);
-  const defs = schema.$defs || {};
-  const SECTIONS = {
-    meta: { ref: "meta", desc: "Spec metadata (name, goal, type, schema_version, mode with dispatch/work/verify)" },
-    context: { ref: "context", desc: "Confirmed goal, research, decisions, known gaps" },
-    tasks: { ref: "task", desc: "Task DAG (work items + verification)", isArray: true },
-    requirements: { ref: "requirement", desc: "Requirements with sub-requirements (sub[] = behavioral acceptance criteria)", isArray: true },
-    constraints: { ref: "constraint", desc: "Must-not-do / preserve constraints", isArray: true },
-    external: { ref: "externalDependencies", desc: "Human-only pre/post-work dependencies" },
-    sub: { ref: "subRequirement", desc: "Sub-requirement (behavior required; optional given/when/then for GWT format)" },
-    merge: { ref: null, desc: "Merge modes: replace (default), --append, --patch", custom: "merge" }
-  };
-  if (!section || section === "list") {
-    const lines = ["Available guide sections:"];
-    for (const [name, info2] of Object.entries(SECTIONS)) {
-      lines.push(`  ${name.padEnd(16)} ${info2.desc}`);
-    }
-    lines.push("");
-    lines.push("Usage: hoyeon-cli spec guide <section>");
-    lines.push("       hoyeon-cli spec guide full      (all sections)");
-    lines.push("       hoyeon-cli spec guide root      (top-level structure)");
-    return lines.join("\n");
-  }
-  if (section === "root") {
-    return formatRoot(schema);
-  }
-  if (section === "full") {
-    const lines = [formatRoot(schema), ""];
-    for (const [name, info2] of Object.entries(SECTIONS)) {
-      const def2 = defs[info2.ref];
-      if (def2) {
-        lines.push(`--- ${name} ---`);
-        lines.push(formatDef(name, def2, defs, info2.isArray));
-        lines.push("");
-      }
-    }
-    return lines.join("\n");
-  }
-  const info = SECTIONS[section];
-  if (!info) {
-    return `Error: unknown section '${section}'. Run 'hoyeon-cli spec guide' to see available sections.`;
-  }
-  if (info.custom === "merge") {
-    return formatMergeGuide();
-  }
-  const def = defs[info.ref];
-  if (!def) {
-    return `Error: schema definition '${info.ref}' not found.`;
-  }
-  return formatDef(section, def, defs, info.isArray);
-}
-function formatRoot(schema) {
-  const lines = ["spec.json top-level structure:"];
-  lines.push(`  required: ${(schema.required || []).join(", ")}`);
-  lines.push("  fields:");
-  for (const [key, val] of Object.entries(schema.properties || {})) {
-    if (key === "$schema") continue;
-    const req = (schema.required || []).includes(key) ? "*" : " ";
-    const desc = val.description || "";
-    lines.push(`    ${req} ${key}${desc ? ` \u2014 ${desc}` : ""}`);
-  }
-  lines.push("");
-  lines.push("  * = required");
-  return lines.join("\n");
-}
-function formatDef(name, def, defs, isArray) {
-  const lines = [];
-  if (isArray) {
-    lines.push(`${name}: array of objects`);
-  } else {
-    lines.push(`${name}: object`);
-  }
-  const required = new Set(def.required || []);
-  if (required.size > 0) {
-    lines.push(`  required: ${[...required].join(", ")}`);
-  }
-  const props = def.properties || {};
-  for (const [key, prop] of Object.entries(props)) {
-    const req = required.has(key) ? "*" : " ";
-    const typeStr = resolveType(prop, defs, "    ");
-    lines.push(`  ${req} ${key}: ${typeStr}`);
-  }
-  const example = generateExample(name, def, defs, required);
-  if (example) {
-    lines.push("");
-    if (isArray) {
-      lines.push(`  example merge: --json '{"${name}":[${example}]}'`);
-    } else {
-      lines.push(`  example merge: --json '{"${name}":${example}}'`);
-    }
-  }
-  return lines.join("\n");
-}
-function resolveType(prop, defs, indent) {
-  if (prop.$ref) {
-    const refName = prop.$ref.replace("#/$defs/", "");
-    const refDef = defs[refName];
-    if (refDef) {
-      if (refDef.enum) return `enum(${refDef.enum.join("|")})`;
-      if (refDef.type === "object") return `{${refName}}`;
-      return refDef.type || refName;
-    }
-    return refName;
-  }
-  if (prop.oneOf) {
-    const types = prop.oneOf.map((o) => {
-      if (o.$ref) return `{${o.$ref.replace("#/$defs/", "")}}`;
-      if (o.type) return o.type;
-      return "?";
-    });
-    return types.join(" | ");
-  }
-  if (prop.enum) return `enum(${prop.enum.join("|")})`;
-  if (prop.type === "array") {
-    if (prop.items) {
-      if (prop.items.$ref) {
-        const refName = prop.items.$ref.replace("#/$defs/", "");
-        return `[{${refName}}]`;
-      }
-      if (prop.items.oneOf) return `[mixed]`;
-      if (prop.items.type === "object" && prop.items.properties) {
-        return formatInlineObject(prop.items, indent);
-      }
-      return `[${prop.items.type || "any"}]`;
-    }
-    return "[]";
-  }
-  if (prop.const) return `"${prop.const}"`;
-  if (prop.type === "object" && prop.properties) {
-    return formatInlineObject(prop, indent);
-  }
-  let t = prop.type || "any";
-  if (prop.minimum !== void 0 || prop.maximum !== void 0) {
-    const parts = [];
-    if (prop.minimum !== void 0) parts.push(`min:${prop.minimum}`);
-    if (prop.maximum !== void 0) parts.push(`max:${prop.maximum}`);
-    t += `(${parts.join(",")})`;
-  }
-  return t;
-}
-function formatInlineObject(schema, indent = "    ") {
-  const req = new Set(schema.required || []);
-  const props = schema.properties || {};
-  const fields = [];
-  for (const [k, v] of Object.entries(props)) {
-    const r = req.has(k) ? "*" : " ";
-    const t = v.enum ? `enum(${v.enum.join("|")})` : v.const ? `"${v.const}"` : v.type || "any";
-    fields.push(`${indent}  ${r} ${k}: ${t}`);
-  }
-  const isArray = schema === schema ? "" : "";
-  return `[object]
-${fields.join("\n")}`;
-}
-function generateExample(name, def, defs, required) {
-  const props = def.properties || {};
-  const obj = {};
-  for (const key of required) {
-    const prop = props[key];
-    if (!prop) continue;
-    obj[key] = exampleValue(key, prop, defs);
-  }
-  const optionals = Object.keys(props).filter((k) => !required.has(k));
-  let added = 0;
-  for (const key of optionals) {
-    if (added >= 2) break;
-    const prop = props[key];
-    if (prop.type === "string" || prop.enum) {
-      obj[key] = exampleValue(key, prop, defs);
-      added++;
-    }
-  }
-  try {
-    return JSON.stringify(obj);
-  } catch {
-    return null;
-  }
-}
-function exampleValue(key, prop, defs) {
-  if (prop.enum) return prop.enum[0];
-  if (prop.const) return prop.const;
-  if (prop.$ref) {
-    const refName = prop.$ref.replace("#/$defs/", "");
-    const refDef = defs[refName];
-    if (refDef?.enum) return refDef.enum[0];
-    return `<${refName}>`;
-  }
-  if (prop.type === "string") return `<${key}>`;
-  if (prop.type === "integer") return prop.minimum || 1;
-  if (prop.type === "boolean") return false;
-  if (prop.type === "array") return [];
-  if (prop.type === "object") return {};
-  return `<${key}>`;
-}
-function formatMergeGuide() {
-  const lines = [
-    "spec merge modes:",
-    "",
-    "  (default) \u2014 replace",
-    "    Arrays are replaced entirely. Objects are deep-merged.",
-    `    hoyeon-cli spec merge <path> --json '{"tasks":[...]}'`,
-    "",
-    "  --append \u2014 concatenate arrays",
-    "    New array items are appended to existing arrays.",
-    `    hoyeon-cli spec merge <path> --json '{"tasks":[{"id":"T2",...}]}' --append`,
-    "",
-    "  --patch \u2014 ID-based merge",
-    '    Array items with matching "id" are updated in place.',
-    "    Items with new ids are appended. Non-array fields deep-merge normally.",
-    `    hoyeon-cli spec merge <path> --json '{"tasks":[{"id":"T1","status":"done"}]}' --patch`,
-    "",
-    "  --append and --patch are mutually exclusive.",
-    "",
-    "  When to use which:",
-    "    replace   \u2014 rewrite a section completely (e.g. set all tasks at once)",
-    "    --append  \u2014 add new items without touching existing (e.g. add requirements)",
-    "    --patch   \u2014 update specific items by id (e.g. update one task's status)"
-  ];
-  return lines.join("\n");
-}
-async function handleGuide(args) {
-  const parsed = parseArgs(args);
-  const section = parsed._[0];
-  const schemaVersion = parsed.schema || void 0;
-  const output = generateGuide(section, schemaVersion);
-  process.stdout.write(output + "\n");
-  process.exit(0);
-}
-async function handleDeriveTasks(args) {
-  const filePath = args[0];
-  if (!filePath) {
-    process.stderr.write("Error: <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec derive-tasks <path>\n");
-    process.exit(1);
-  }
-  const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
-  const requirements = specData.requirements || [];
-  if (requirements.length === 0) {
-    process.stderr.write("Error: no requirements found. Run derive-requirements first.\n");
-    process.exit(1);
-  }
-  const tasks = [];
-  for (let i = 0; i < requirements.length; i++) {
-    const r = requirements[i];
-    const taskId = `T${i + 1}`;
-    tasks.push({
-      id: taskId,
-      action: `TODO \u2014 implement ${r.id}: ${r.behavior.slice(0, 60)}`,
-      depends_on: [],
-      fulfills: [r.id]
-    });
-  }
-  specData.tasks = tasks;
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  validateSpec(specData);
-  writeState(specPath, specData);
-  appendHistory(specPath, { ts: now, type: "tasks_changed", detail: `derive-tasks: ${tasks.length} stubs` });
-  process.stdout.write(`Derived ${tasks.length} tasks from ${requirements.length} requirements
-`);
-  for (const t of tasks) {
-    process.stdout.write(`  ${t.id}: fulfills=[${(t.fulfills || []).join(",")}] "${t.action.slice(0, 60)}"
-`);
-  }
-  process.exit(0);
-}
-async function handleSub(args) {
-  const subId = args[0];
-  if (!subId || subId.startsWith("--")) {
-    process.stderr.write("Error: <sub-id> is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec sub <sub-id> --get <path>\n");
-    process.exit(1);
-  }
-  const parsed = parseArgs(args.slice(1));
-  if (parsed.get === void 0) {
-    process.stderr.write("Error: --get <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec sub <sub-id> --get <path>\n");
-    process.exit(1);
-  }
-  if (typeof parsed.get !== "string") {
-    process.stderr.write("Error: --get requires <path> argument\n");
-    process.stderr.write("Usage: hoyeon-cli spec sub <sub-id> --get <path>\n");
-    process.exit(1);
-  }
-  const filePath = parsed.get;
-  const specData = loadSpec(resolve(filePath));
-  let found = null;
-  for (const req of specData.requirements || []) {
-    for (const sr of req.sub || []) {
-      if (sr.id === subId) {
-        found = sr;
-        break;
-      }
-    }
-    if (found) break;
-  }
-  if (!found) {
-    process.stderr.write(`Error: sub-requirement '${subId}' not found in spec
-`);
-    process.exit(1);
-  }
-  process.stdout.write(JSON.stringify(found, null, 2) + "\n");
-  process.exit(0);
-}
-function findSubById(specData, subId) {
-  for (const req of specData.requirements || []) {
-    for (const sr of req.sub || []) {
-      if (sr.id === subId) {
-        return { sub: sr, requirement: req };
-      }
-    }
-  }
-  return null;
-}
-async function handleRequirement(args) {
-  const parsed = parseArgs(args);
-  const firstPositional = parsed._[0];
-  const isStatusFlag = parsed.status === true;
-  if (!firstPositional && isStatusFlag) {
-    const filePath = parsed._[0] || parsed._[1];
-    const resolvedPath = typeof parsed.status === "string" ? parsed.status : parsed._[0];
-    if (!resolvedPath) {
-      process.stderr.write("Error: <path> is required\n");
-      process.stderr.write("Usage: hoyeon-cli spec requirement --status <path> [--json]\n");
-      process.exit(1);
-    }
-    const specData = loadSpec(resolve(resolvedPath));
-    const useJson = parsed.json === true;
-    return handleRequirementStatusView(specData, useJson);
-  }
-  if (!firstPositional && typeof parsed.status === "string") {
-    const resolvedPath = parsed.status;
-    if (!resolvedPath) {
-      process.stderr.write("Error: <path> is required\n");
-      process.exit(1);
-    }
-    const specData = loadSpec(resolve(resolvedPath));
-    const useJson = parsed.json === true;
-    return handleRequirementStatusView(specData, useJson);
-  }
-  const subId = firstPositional;
-  if (!subId) {
-    process.stderr.write("Error: <sub-id> or --status flag is required\n");
-    process.stderr.write("Usage: hoyeon-cli spec requirement --status <path>\n");
-    process.stderr.write("       hoyeon-cli spec requirement <id> --get <path>\n");
-    process.exit(1);
-  }
-  if (parsed.get !== void 0) {
-    if (typeof parsed.get !== "string") {
-      process.stderr.write("Error: --get requires <path> argument\n");
-      process.exit(1);
-    }
-    const specData = loadSpec(resolve(parsed.get));
-    const found = findSubById(specData, subId);
-    if (!found) {
-      process.stderr.write(`Error: sub-requirement '${subId}' not found in spec
-`);
-      process.exit(1);
-    }
-    process.stdout.write(JSON.stringify(found.sub, null, 2) + "\n");
-    process.exit(0);
-  }
-  process.stderr.write("Error: could not determine mode. Use --status <path> or <id> --get <path>\n");
+function die(msg) {
+  process.stderr.write(msg + "\n");
   process.exit(1);
 }
-function handleRequirementStatusView(specData, useJson) {
-  const requirements = specData.requirements || [];
-  const requirementRows = requirements.map((req) => {
-    const subs = (req.sub || []).map((sc) => {
-      const entry = { id: sc.id, behavior: sc.behavior };
-      if (sc.given) entry.given = sc.given;
-      if (sc.when) entry.when = sc.when;
-      if (sc.then) entry.then = sc.then;
-      return entry;
-    });
-    return { id: req.id, behavior: req.behavior, subs };
-  });
-  if (useJson) {
-    process.stdout.write(JSON.stringify({ requirements: requirementRows }, null, 2) + "\n");
-    process.exit(0);
+var COMMANDS = { init: cmdInit };
+async function req(args) {
+  const sub = args[0];
+  if (!sub || sub === "--help" || sub === "-h") {
+    process.stdout.write(HELP);
+    return;
   }
-  const lines = [];
-  for (const req of requirementRows) {
-    const scCount = req.subs.length;
-    lines.push(`${req.id}: ${req.behavior} (${scCount} sub${scCount !== 1 ? "s" : ""})`);
-    for (const sc of req.subs) {
-      lines.push(`  ${sc.id}: ${sc.behavior}`);
-      if (sc.given || sc.when || sc.then) {
-        if (sc.given) lines.push(`    Given: ${sc.given}`);
-        if (sc.when) lines.push(`    When: ${sc.when}`);
-        if (sc.then) lines.push(`    Then: ${sc.then}`);
+  const fn = COMMANDS[sub];
+  if (!fn) die(`Error: unknown req command '${sub}'. Run 'hoyeon-cli req --help'.`);
+  await fn(args.slice(1));
+}
+
+// src/commands/plan.js
+import { existsSync as existsSync3 } from "fs";
+var TASK_STATES = ["pending", "running", "done", "failed", "blocked"];
+var HELP2 = `
+Usage:
+  hoyeon-cli plan <command> [options]
+
+Commands:
+  init <spec_dir> --type <greenfield|feature|refactor|bugfix> [--force]
+      Create an empty plan.json stub (schema: plan/v1).
+      --force: overwrite existing plan.json.
+
+  merge <spec_dir> --json '<payload>' [--patch|--append]
+      Merge payload into plan.json with schema validation.
+      Default: replace (field-by-field). --append: push arrays. --patch: deep merge.
+
+  get <spec_dir> --path <dotted.path>
+      Read a field (e.g. meta.type, tasks[0].id, journeys[0].composes).
+
+  list <spec_dir> [--status <${TASK_STATES.join("|")}>] [--json]
+      List tasks. Filter by status. --json for machine-readable output.
+
+  task <spec_dir> --status <task_id>=<state> [--summary '...']
+      Mutate a task's status. <state> must be one of:
+        ${TASK_STATES.join(" | ")}
+      Idempotent: re-setting the same status exits 0 with no write.
+      Monotonic: a task already in 'done' cannot transition to anything else.
+
+  validate <spec_dir>
+      Schema check + internal cross-ref integrity.
+
+Options:
+  --help, -h   This help.
+`;
+async function cmdInit2(args) {
+  const parsed = parseArgs(args);
+  const { _: [specDir], type } = parsed;
+  if (!specDir) die2("Error: <spec_dir> required");
+  if (!type) die2("Error: --type required (greenfield|feature|refactor|bugfix)");
+  const force = parsed.force === true;
+  const path = specPaths(specDir).plan;
+  if (existsSync3(path) && !force) die2(`Error: ${path} already exists (use --force to overwrite)`);
+  const stub = {
+    schema: "plan/v1",
+    meta: { type, goal: "<TBD>", non_goals: [] },
+    contracts: { artifact: null, interfaces: [], invariants: [] },
+    tasks: [],
+    journeys: [],
+    verify_plan: []
+  };
+  writeJsonAtomic(path, stub);
+  process.stdout.write(`Wrote ${path}
+`);
+}
+async function cmdMerge(args) {
+  const parsed = parseArgs(args);
+  const specDir = parsed._[0];
+  if (!specDir) die2("Error: <spec_dir> required");
+  if (!parsed.json || typeof parsed.json !== "string") die2("Error: --json <payload> required");
+  let payload;
+  try {
+    payload = JSON.parse(parsed.json);
+  } catch (err) {
+    die2(`Error: invalid --json payload: ${err.message}`);
+  }
+  const mode = parsed.patch ? "patch" : parsed.append ? "append" : "replace";
+  const path = specPaths(specDir).plan;
+  const existing = readPlanIfExists(specDir);
+  const next = mergePlan(existing, payload, mode);
+  const { ok, errors } = validatePlan(next);
+  if (!ok) {
+    process.stderr.write(`Schema validation failed:
+`);
+    for (const e of errors) process.stderr.write(`  - ${e}
+`);
+    process.exit(1);
+  }
+  writeJsonAtomic(path, next);
+  process.stdout.write(`Wrote ${path} (mode=${mode})
+`);
+}
+async function cmdGet(args) {
+  const { _: [specDir], path } = parseArgs(args);
+  if (!specDir) die2("Error: <spec_dir> required");
+  if (!path) die2("Error: --path required");
+  const plan2 = readPlanIfExists(specDir);
+  if (!plan2) die2(`Error: plan.json not found in ${specDir}`);
+  const val = getPath(plan2, path);
+  if (val === void 0) {
+    process.stderr.write(`path not found: ${path}
+`);
+    process.exit(1);
+  }
+  process.stdout.write(typeof val === "string" ? val + "\n" : JSON.stringify(val, null, 2) + "\n");
+}
+async function cmdValidate(args) {
+  const { _: [specDir] } = parseArgs(args);
+  if (!specDir) die2("Error: <spec_dir> required");
+  const plan2 = readPlanIfExists(specDir);
+  if (!plan2) die2(`Error: plan.json not found in ${specDir}`);
+  const errors = [];
+  const { ok, errors: schemaErrs } = validatePlan(plan2);
+  if (!ok) errors.push(...schemaErrs.map((e) => `schema: ${e}`));
+  const tasks = plan2.tasks || [];
+  const journeys = plan2.journeys || [];
+  const vp = plan2.verify_plan || [];
+  const taskIds = new Set(tasks.map((t) => t.id));
+  const subReqTargets = new Set(vp.filter((v) => v.type === "sub_req").map((v) => v.target));
+  const journeyTargets = new Set(vp.filter((v) => v.type === "journey").map((v) => v.target));
+  const journeyIds = new Set(journeys.map((j) => j.id));
+  for (const t of tasks) {
+    for (const f of t.fulfills || []) {
+      if (!subReqTargets.has(f)) {
+        errors.push(`task ${t.id} fulfills '${f}' but no verify_plan entry of type=sub_req targets it`);
       }
     }
-    lines.push("");
   }
-  process.stdout.write(lines.join("\n") + "\n");
-  process.exit(0);
-}
-function tokenize(text) {
-  if (!text) return [];
-  return text.toLowerCase().replace(/[^a-z0-9가-힣\s\-_]/g, " ").split(/\s+/).filter((t) => t.length > 1);
-}
-async function handleLearning(args) {
-  const parsed = parseArgs(args);
-  const taskId = parsed.task;
-  if (!taskId) {
-    process.stderr.write("Error: --task <task-id> is required\n");
-    process.stderr.write(`Usage: hoyeon-cli spec learning --task T1 --json '{"problem":"...","cause":"...","rule":"...","tags":[...]}' <path>
+  for (const j of journeys) {
+    for (const c of j.composes || []) {
+      if (!subReqTargets.has(c)) {
+        errors.push(`journey ${j.id} composes '${c}' but no verify_plan entry of type=sub_req targets it`);
+      }
+    }
+  }
+  for (const jid of journeyIds) {
+    if (!journeyTargets.has(jid)) {
+      errors.push(`journey ${jid} declared but no verify_plan entry of type=journey targets it`);
+    }
+  }
+  for (const jt of journeyTargets) {
+    if (!journeyIds.has(jt)) {
+      errors.push(`verify_plan targets journey '${jt}' but no matching journey declaration exists`);
+    }
+  }
+  for (const t of tasks) {
+    for (const d of t.depends_on || []) {
+      if (!taskIds.has(d)) errors.push(`task ${t.id} depends_on unknown task '${d}'`);
+    }
+  }
+  if (errors.length) {
+    for (const e of errors) process.stderr.write(`\u2717 ${e}
 `);
-    process.stderr.write("   or: hoyeon-cli spec learning --task T1 --stdin <path> << 'EOF'\n");
+    process.stderr.write(`
+${errors.length} error(s)
+`);
     process.exit(1);
   }
+  process.stdout.write(
+    `\u2713 plan.json valid \u2014 ${tasks.length} tasks, ${journeys.length} journeys, ${vp.length} verify entries
+`
+  );
+}
+async function cmdList(args) {
+  const parsed = parseArgs(args);
+  const specDir = parsed._[0];
+  if (!specDir) die2("Error: <spec_dir> required");
+  const plan2 = readPlanIfExists(specDir);
+  if (!plan2) die2(`Error: plan.json not found in ${specDir}`);
+  let tasks = plan2.tasks || [];
+  const filterStatus = parsed.status;
+  if (filterStatus) {
+    tasks = tasks.filter((t) => t.status === filterStatus);
+  }
+  if (parsed.json) {
+    process.stdout.write(JSON.stringify({ tasks, total: (plan2.tasks || []).length, filtered: tasks.length }, null, 2) + "\n");
+  } else {
+    if (tasks.length === 0) {
+      process.stdout.write(filterStatus ? `No tasks with status '${filterStatus}'
+` : "No tasks\n");
+      return;
+    }
+    const pad = (s, n) => (s + " ".repeat(n)).slice(0, n);
+    process.stdout.write(pad("ID", 6) + pad("STATUS", 14) + pad("LAYER", 6) + "ACTION\n");
+    process.stdout.write("-".repeat(60) + "\n");
+    for (const t of tasks) {
+      process.stdout.write(
+        pad(t.id, 6) + pad(t.status || "pending", 14) + pad(t.layer || "-", 6) + (t.action.length > 50 ? t.action.slice(0, 47) + "..." : t.action) + "\n"
+      );
+    }
+    process.stdout.write(`
+${tasks.length}/${(plan2.tasks || []).length} tasks shown
+`);
+  }
+}
+async function cmdTask(args) {
+  const parsed = parseArgs(args);
+  const specDir = parsed._[0];
+  if (!specDir) die2("Error: <spec_dir> required");
+  if (!parsed.status || parsed.status === true) {
+    die2("Error: --status <task_id>=<state> required");
+  }
+  const eq = parsed.status.indexOf("=");
+  if (eq <= 0 || eq === parsed.status.length - 1) {
+    die2(`Error: --status must be '<task_id>=<state>' (got '${parsed.status}')`);
+  }
+  const taskId = parsed.status.slice(0, eq);
+  const nextState = parsed.status.slice(eq + 1);
+  if (!/^T\d+$/.test(taskId)) {
+    die2(`Error: invalid task ID format '${taskId}' (must match schema /^T\\d+$/)`);
+  }
+  if (!TASK_STATES.includes(nextState)) {
+    die2(`Error: invalid state '${nextState}'. Must be one of: ${TASK_STATES.join(", ")}`);
+  }
+  const plan2 = readPlanIfExists(specDir);
+  if (!plan2) die2(`Error: plan.json not found in ${specDir}`);
+  const task = (plan2.tasks || []).find((t) => t.id === taskId);
+  if (!task) die2(`Error: task '${taskId}' not found in plan.json`);
+  const currentState = task.status || "pending";
+  if (currentState === nextState) {
+    process.stdout.write(`${taskId}: ${nextState} (no change)
+`);
+    return;
+  }
+  if (currentState === "done") {
+    process.stderr.write(
+      `Error: task '${taskId}' is already 'done' \u2014 INV-9 forbids re-transition to '${nextState}'
+`
+    );
+    process.exit(1);
+  }
+  task.status = nextState;
+  if (parsed.summary && parsed.summary !== true) task.summary = parsed.summary;
+  const { ok, errors } = validatePlan(plan2);
+  if (!ok) {
+    process.stderr.write(`Schema validation failed:
+`);
+    for (const e of errors) process.stderr.write(`  - ${e}
+`);
+    process.exit(1);
+  }
+  const path = specPaths(specDir).plan;
+  writeJsonAtomic(path, plan2);
+  process.stdout.write(
+    `${taskId}: ${currentState} \u2192 ${nextState}${parsed.summary && parsed.summary !== true ? " \u2014 " + parsed.summary : ""}
+`
+  );
+}
+function die2(msg) {
+  process.stderr.write(msg + "\n");
+  process.exit(1);
+}
+var COMMANDS2 = {
+  init: cmdInit2,
+  merge: cmdMerge,
+  get: cmdGet,
+  list: cmdList,
+  task: cmdTask,
+  validate: cmdValidate
+};
+async function plan(args) {
+  const sub = args[0];
+  if (!sub || sub === "--help" || sub === "-h") {
+    process.stdout.write(HELP2);
+    return;
+  }
+  const fn = COMMANDS2[sub];
+  if (!fn) die2(`Error: unknown plan command '${sub}'. Run 'hoyeon-cli plan --help'.`);
+  await fn(args.slice(1));
+}
+
+// src/commands/learning.js
+import { existsSync as existsSync4, readFileSync as readFileSync2, writeFileSync as writeFileSync3, mkdirSync as mkdirSync2 } from "fs";
+import { resolve as resolve3, join as join2 } from "path";
+var HELP3 = `
+Usage:
+  hoyeon-cli learning --task <id> --json '{...}' <spec_dir>
+  hoyeon-cli learning --task <id> --stdin <spec_dir> << 'EOF'
+
+Add a structured learning entry to <spec_dir>/context/learnings.json.
+Task ID is validated against plan.json if it exists.
+
+Fields (JSON):
+  problem   What went wrong
+  cause     Root cause
+  rule      Rule to prevent recurrence
+  tags      Array of tags
+
+Options:
+  --task <id>     Task ID (required)
+  --json '{...}'  Learning data as JSON string
+  --stdin         Read JSON from stdin
+  --help, -h      This help
+`;
+function die3(msg) {
+  process.stderr.write(msg + "\n");
+  process.exit(1);
+}
+function readJsonInput(parsed) {
   let jsonStr = parsed.json;
   if (parsed.stdin !== void 0) {
-    if (typeof parsed.stdin === "string") {
-      parsed._.unshift(parsed.stdin);
-    }
+    if (typeof parsed.stdin === "string") parsed._.unshift(parsed.stdin);
     try {
-      jsonStr = readFileSync(0, "utf8").trim();
+      jsonStr = readFileSync2(0, "utf8").trim();
     } catch (err) {
-      process.stderr.write(`Error: failed to read stdin: ${err.message}
-`);
-      process.exit(1);
+      die3(`Error: failed to read stdin: ${err.message}`);
     }
   }
-  if (!jsonStr) {
-    process.stderr.write("Error: --json or --stdin is required\n");
-    process.exit(1);
-  }
-  let learningData;
+  if (!jsonStr) die3("Error: --json or --stdin is required");
   try {
-    learningData = JSON.parse(jsonStr);
+    return JSON.parse(jsonStr);
   } catch (err) {
-    process.stderr.write(`Error: invalid JSON: ${err.message}
-`);
-    process.exit(1);
+    die3(`Error: invalid JSON: ${err.message}`);
   }
-  const filePath = parsed._[0];
-  if (!filePath) {
-    process.stderr.write("Error: <path> to spec.json is required\n");
-    process.exit(1);
+}
+async function cmdAdd(args) {
+  const parsed = parseArgs(args);
+  const taskId = parsed.task;
+  if (!taskId) die3("Error: --task <task-id> is required");
+  const data = readJsonInput(parsed);
+  const specDir = parsed._[0];
+  if (!specDir) die3("Error: <spec_dir> is required");
+  const dir = resolve3(specDir);
+  let requirementIds = [];
+  let taskIdValidated = false;
+  const plan2 = readPlanIfExists(dir);
+  if (plan2) {
+    const tasks = Array.isArray(plan2.tasks) ? plan2.tasks : [];
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) {
+      const available = tasks.map((t) => t.id).join(", ") || "(none)";
+      die3(`Error: task not found: ${taskId} (available: ${available})`);
+    }
+    taskIdValidated = true;
+    requirementIds = [...new Set(task.fulfills || [])];
   }
-  const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
-  const task = specData.tasks.find((t) => t.id === taskId);
-  if (!task) {
-    process.stderr.write(`Error: task '${taskId}' not found in spec
-`);
-    process.exit(1);
-  }
-  const requirementIds = [...new Set(task.fulfills || [])];
-  const contextDir = resolve(dirname(specPath), "context");
-  const learningsPath = resolve(contextDir, "learnings.json");
+  const ctxDir = join2(dir, "context");
+  if (!existsSync4(ctxDir)) mkdirSync2(ctxDir, { recursive: true });
+  const filePath = join2(ctxDir, "learnings.json");
   let learnings = [];
-  if (existsSync(learningsPath)) {
+  if (existsSync4(filePath)) {
     try {
-      learnings = JSON.parse(readFileSync(learningsPath, "utf8"));
+      learnings = JSON.parse(readFileSync2(filePath, "utf8"));
     } catch {
       learnings = [];
     }
-  } else if (!existsSync(contextDir)) {
-    mkdirSync(contextDir, { recursive: true });
   }
   const maxNum = learnings.reduce((max, l) => {
     const m = l.id?.match(/^L(\d+)$/);
@@ -9386,86 +7439,103 @@ async function handleLearning(args) {
   const entry = {
     id: newId,
     task: taskId,
+    task_id_validated: taskIdValidated,
     requirements: requirementIds,
-    problem: learningData.problem || "",
-    cause: learningData.cause || "",
-    rule: learningData.rule || "",
-    tags: learningData.tags || [],
+    problem: data.problem || "",
+    cause: data.cause || "",
+    rule: data.rule || "",
+    tags: data.tags || [],
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
   learnings.push(entry);
-  writeFileSync(learningsPath, JSON.stringify(learnings, null, 2) + "\n");
+  writeFileSync3(filePath, JSON.stringify(learnings, null, 2) + "\n");
   process.stdout.write(`Added learning '${newId}' for task '${taskId}' \u2192 requirements: [${requirementIds.join(", ")}]
 `);
   process.stdout.write(JSON.stringify(entry, null, 2) + "\n");
-  process.exit(0);
 }
-async function handleIssue(args) {
-  const parsed = parseArgs(args);
-  const taskId = parsed.task;
-  if (!taskId) {
-    process.stderr.write("Error: --task <task-id> is required\n");
-    process.stderr.write(`Usage: hoyeon-cli spec issue --task T1 --json '{"type":"blocker","description":"..."}' <path>
-`);
-    process.stderr.write("   or: hoyeon-cli spec issue --task T1 --stdin <path> << 'EOF'\n");
-    process.exit(1);
+async function learning(args) {
+  if (!args.length || args[0] === "--help" || args[0] === "-h") {
+    process.stdout.write(HELP3);
+    return;
   }
+  await cmdAdd(args);
+}
+
+// src/commands/issue.js
+import { existsSync as existsSync5, readFileSync as readFileSync3, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
+import { resolve as resolve4, join as join3 } from "path";
+var HELP4 = `
+Usage:
+  hoyeon-cli issue --task <id> --json '{...}' <spec_dir>
+  hoyeon-cli issue --task <id> --stdin <spec_dir> << 'EOF'
+
+Add a structured issue entry to <spec_dir>/context/issues.json.
+Task ID is validated against plan.json if it exists.
+
+Fields (JSON):
+  type          One of: failed_approach, out_of_scope, blocker
+  description   What happened
+
+Options:
+  --task <id>     Task ID (required)
+  --json '{...}'  Issue data as JSON string
+  --stdin         Read JSON from stdin
+  --help, -h      This help
+`;
+var VALID_TYPES = ["failed_approach", "out_of_scope", "blocker"];
+function die4(msg) {
+  process.stderr.write(msg + "\n");
+  process.exit(1);
+}
+function readJsonInput2(parsed) {
   let jsonStr = parsed.json;
   if (parsed.stdin !== void 0) {
-    if (typeof parsed.stdin === "string") {
-      parsed._.unshift(parsed.stdin);
-    }
+    if (typeof parsed.stdin === "string") parsed._.unshift(parsed.stdin);
     try {
-      jsonStr = readFileSync(0, "utf8").trim();
+      jsonStr = readFileSync3(0, "utf8").trim();
     } catch (err) {
-      process.stderr.write(`Error: failed to read stdin: ${err.message}
-`);
-      process.exit(1);
+      die4(`Error: failed to read stdin: ${err.message}`);
     }
   }
-  if (!jsonStr) {
-    process.stderr.write("Error: --json or --stdin is required\n");
-    process.exit(1);
-  }
-  let issueData;
+  if (!jsonStr) die4("Error: --json or --stdin is required");
   try {
-    issueData = JSON.parse(jsonStr);
+    return JSON.parse(jsonStr);
   } catch (err) {
-    process.stderr.write(`Error: invalid JSON: ${err.message}
-`);
-    process.exit(1);
+    die4(`Error: invalid JSON: ${err.message}`);
   }
-  const filePath = parsed._[0];
-  if (!filePath) {
-    process.stderr.write("Error: <path> to spec.json is required\n");
-    process.exit(1);
+}
+async function cmdAdd2(args) {
+  const parsed = parseArgs(args);
+  const taskId = parsed.task;
+  if (!taskId) die4("Error: --task <task-id> is required");
+  const data = readJsonInput2(parsed);
+  const specDir = parsed._[0];
+  if (!specDir) die4("Error: <spec_dir> is required");
+  const dir = resolve4(specDir);
+  if (data.type && !VALID_TYPES.includes(data.type)) {
+    die4(`Error: type must be one of: ${VALID_TYPES.join(", ")}`);
   }
-  const specPath = resolve(filePath);
-  const specData = loadSpec(specPath);
-  const task = specData.tasks.find((t) => t.id === taskId);
-  if (!task) {
-    process.stderr.write(`Error: task '${taskId}' not found in spec
-`);
-    process.exit(1);
+  let taskIdValidated = false;
+  const plan2 = readPlanIfExists(dir);
+  if (plan2) {
+    const tasks = Array.isArray(plan2.tasks) ? plan2.tasks : [];
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) {
+      const available = tasks.map((t) => t.id).join(", ") || "(none)";
+      die4(`Error: task not found: ${taskId} (available: ${available})`);
+    }
+    taskIdValidated = true;
   }
-  const validTypes = ["failed_approach", "out_of_scope", "blocker"];
-  const issueType = issueData.type;
-  if (issueType && !validTypes.includes(issueType)) {
-    process.stderr.write(`Error: type must be one of: ${validTypes.join(", ")}
-`);
-    process.exit(1);
-  }
-  const contextDir = resolve(dirname(specPath), "context");
-  const issuesPath = resolve(contextDir, "issues.json");
+  const ctxDir = join3(dir, "context");
+  if (!existsSync5(ctxDir)) mkdirSync3(ctxDir, { recursive: true });
+  const filePath = join3(ctxDir, "issues.json");
   let issues = [];
-  if (existsSync(issuesPath)) {
+  if (existsSync5(filePath)) {
     try {
-      issues = JSON.parse(readFileSync(issuesPath, "utf8"));
+      issues = JSON.parse(readFileSync3(filePath, "utf8"));
     } catch {
       issues = [];
     }
-  } else if (!existsSync(contextDir)) {
-    mkdirSync(contextDir, { recursive: true });
   }
   const maxNum = issues.reduce((max, i) => {
     const m = i.id?.match(/^I(\d+)$/);
@@ -9475,1233 +7545,153 @@ async function handleIssue(args) {
   const entry = {
     id: newId,
     task: taskId,
-    type: issueData.type || "",
-    description: issueData.description || "",
+    task_id_validated: taskIdValidated,
+    type: data.type || "",
+    description: data.description || "",
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
   issues.push(entry);
-  writeFileSync(issuesPath, JSON.stringify(issues, null, 2) + "\n");
+  writeFileSync4(filePath, JSON.stringify(issues, null, 2) + "\n");
   process.stdout.write(`Added issue '${newId}' for task '${taskId}'
 `);
   process.stdout.write(JSON.stringify(entry, null, 2) + "\n");
-  process.exit(0);
 }
-async function handleSearch(args) {
-  const parsed = parseArgs(args);
-  const query = parsed._[0];
-  if (!query) {
-    process.stderr.write("Error: search query is required\n");
-    process.stderr.write('Usage: hoyeon-cli spec search "query" [--specs-dir .hoyeon/specs] [--limit 10] [--json]\n');
-    process.exit(1);
+async function issue(args) {
+  if (!args.length || args[0] === "--help" || args[0] === "-h") {
+    process.stdout.write(HELP4);
+    return;
   }
-  const specsDir = resolve(parsed["specs-dir"] || ".hoyeon/specs");
-  const limit = parseInt(parsed.limit || "10", 10);
-  if (!existsSync(specsDir)) {
-    process.stderr.write(`Error: specs directory not found: ${specsDir}
-`);
-    process.exit(1);
-  }
-  const docs = [];
-  const specDirs = readdirSync(specsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
-  for (const specName of specDirs) {
-    const specPath = resolve(specsDir, specName, "spec.json");
-    if (!existsSync(specPath)) continue;
-    let specData;
-    try {
-      specData = JSON.parse(readFileSync(specPath, "utf8"));
-    } catch {
-      continue;
-    }
-    const reqsByTask = {};
-    for (const task of specData.tasks || []) {
-      const fulfills = task.fulfills || [];
-      if (fulfills.length > 0) {
-        reqsByTask[task.id] = [...fulfills];
-      }
-    }
-    for (const req of specData.requirements || []) {
-      let text = req.behavior || "";
-      for (const sr of req.sub || []) {
-        text += " " + (sr.behavior || "");
-        if (sr.given) text += " " + sr.given;
-        if (sr.when) text += " " + sr.when;
-        if (sr.then) text += " " + sr.then;
-      }
-      docs.push({
-        type: "requirement",
-        spec: specName,
-        id: req.id,
-        behavior: req.behavior,
-        subs: (req.sub || []).map((sr) => {
-          const entry = { id: sr.id, behavior: sr.behavior };
-          if (sr.given) entry.given = sr.given;
-          if (sr.when) entry.when = sr.when;
-          if (sr.then) entry.then = sr.then;
-          return entry;
-        }),
-        text,
-        tasks: Object.entries(reqsByTask).filter(([, reqs]) => reqs.includes(req.id)).map(([tid]) => tid)
-      });
-    }
-    for (const c of specData.constraints || []) {
-      docs.push({
-        type: "constraint",
-        spec: specName,
-        id: c.id,
-        text: c.rule || "",
-        rule: c.rule
-      });
-    }
-    const learningsJsonPath = resolve(specsDir, specName, "context", "learnings.json");
-    if (existsSync(learningsJsonPath)) {
-      try {
-        const learnings = JSON.parse(readFileSync(learningsJsonPath, "utf8"));
-        for (const l of learnings) {
-          docs.push({
-            type: "learning",
-            spec: specName,
-            id: l.id,
-            task: l.task,
-            requirements: l.requirements,
-            problem: l.problem,
-            cause: l.cause,
-            rule: l.rule,
-            tags: l.tags,
-            text: [l.problem, l.cause, l.rule, ...l.tags || []].filter(Boolean).join(" ")
-          });
-        }
-      } catch {
-      }
-    }
-  }
-  if (docs.length === 0) {
-    process.stdout.write("No specs found to search.\n");
-    process.exit(0);
-  }
-  const queryTokens = tokenize(query);
-  if (queryTokens.length === 0) {
-    process.stderr.write("Error: query has no searchable terms\n");
-    process.exit(1);
-  }
-  const N = docs.length;
-  const df = {};
-  for (const doc of docs) {
-    const docTokens = new Set(tokenize(doc.text));
-    for (const token of queryTokens) {
-      if (docTokens.has(token)) {
-        df[token] = (df[token] || 0) + 1;
-      }
-    }
-  }
-  const k1 = 1.2;
-  const b = 0.75;
-  const avgDl = docs.reduce((sum, d) => sum + tokenize(d.text).length, 0) / N;
-  const results = [];
-  for (const doc of docs) {
-    const docTokens = tokenize(doc.text);
-    const dl = docTokens.length;
-    let score = 0;
-    for (const term of queryTokens) {
-      const termDf = df[term] || 0;
-      if (termDf === 0) continue;
-      const idf = Math.log((N - termDf + 0.5) / (termDf + 0.5) + 1);
-      const tf = docTokens.filter((t) => t === term).length;
-      const tfNorm = tf * (k1 + 1) / (tf + k1 * (1 - b + b * dl / avgDl));
-      score += idf * tfNorm;
-    }
-    if (score > 0) {
-      results.push({ ...doc, score });
-    }
-  }
-  results.sort((a, b2) => b2.score - a.score);
-  const topResults = results.slice(0, limit);
-  if (topResults.length === 0) {
-    process.stdout.write("No matches found.\n");
-    process.exit(0);
-  }
-  if (parsed.json !== void 0 && parsed.json !== false) {
-    const cleaned = topResults.map(({ text, ...rest }) => rest);
-    process.stdout.write(JSON.stringify(cleaned, null, 2) + "\n");
-  } else {
-    process.stdout.write(`Found ${results.length} matches (showing top ${topResults.length}):
-
-`);
-    for (const r of topResults) {
-      process.stdout.write(`[${r.spec}] ${r.type} ${r.id} (score: ${r.score.toFixed(1)})
-`);
-      if (r.type === "requirement") {
-        process.stdout.write(`  behavior: ${r.behavior}
-`);
-        for (const s of (r.subs || []).slice(0, 3)) {
-          process.stdout.write(`  ${s.id}: ${s.behavior}
-`);
-          if (s.given || s.when || s.then) {
-            if (s.given) process.stdout.write(`    Given: ${s.given}
-`);
-            if (s.when) process.stdout.write(`    When: ${s.when}
-`);
-            if (s.then) process.stdout.write(`    Then: ${s.then}
-`);
-          }
-        }
-        if (r.subs?.length > 3) {
-          process.stdout.write(`  ... and ${r.subs.length - 3} more sub-requirements
-`);
-        }
-      } else if (r.type === "learning") {
-        process.stdout.write(`  problem: ${r.problem}
-`);
-        process.stdout.write(`  rule: ${r.rule}
-`);
-        if (r.tags?.length) process.stdout.write(`  tags: ${r.tags.join(", ")}
-`);
-      } else if (r.type === "constraint") {
-        process.stdout.write(`  rule: ${r.rule}
-`);
-      }
-      process.stdout.write("\n");
-    }
-  }
-  process.exit(0);
-}
-async function spec(args) {
-  const subcommand = args[0];
-  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
-    process.stdout.write(SPEC_HELP);
-    process.exit(0);
-  }
-  if (subcommand === "init") {
-    await handleInit(args.slice(1));
-  } else if (subcommand === "merge") {
-    await handleMerge(args.slice(1));
-  } else if (subcommand === "validate") {
-    await handleValidate(args.slice(1));
-  } else if (subcommand === "plan") {
-    await handlePlan(args.slice(1));
-  } else if (subcommand === "task") {
-    await handleTask(args.slice(1));
-  } else if (subcommand === "status") {
-    await handleStatus(args.slice(1));
-  } else if (subcommand === "meta") {
-    await handleMeta(args.slice(1));
-  } else if (subcommand === "coverage") {
-    await handleCoverage(args.slice(1));
-  } else if (subcommand === "check") {
-    await handleCheck(args.slice(1));
-  } else if (subcommand === "amend") {
-    await handleAmend(args.slice(1));
-  } else if (subcommand === "guide") {
-    await handleGuide(args.slice(1));
-  } else if (subcommand === "sub") {
-    await handleSub(args.slice(1));
-  } else if (subcommand === "requirement") {
-    await handleRequirement(args.slice(1));
-  } else if (subcommand === "learning") {
-    await handleLearning(args.slice(1));
-  } else if (subcommand === "issue") {
-    await handleIssue(args.slice(1));
-  } else if (subcommand === "search") {
-    await handleSearch(args.slice(1));
-  } else if (subcommand === "derive-tasks") {
-    await handleDeriveTasks(args.slice(1));
-  } else {
-    process.stderr.write(`Error: unknown spec subcommand '${subcommand}'
-`);
-    process.stderr.write(`Run 'hoyeon-cli spec --help' for usage.
-`);
-    process.exit(1);
-  }
+  await cmdAdd2(args);
 }
 
-// src/handlers/state.js
-var import__2 = __toESM(require__(), 1);
-var import_ajv_formats2 = __toESM(require_dist(), 1);
-import { readFileSync as readFileSync2 } from "fs";
-import { createHash } from "crypto";
-import { resolve as resolve2, dirname as dirname2, relative } from "path";
-
-// schemas/dev-state-v1.schema.json
-var dev_state_v1_schema_default = {
-  $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "dev-state/v1",
-  title: "dev-state v1",
-  description: "JSON Schema for dev state v1 \u2014 mutable runtime state (spec/state separated)",
-  type: "object",
-  required: ["spec_ref", "spec_hash", "tasks"],
-  additionalProperties: false,
-  properties: {
-    $schema: { type: "string" },
-    spec_ref: {
-      type: "string",
-      description: "Relative path to the associated spec.json file"
-    },
-    spec_hash: {
-      type: "string",
-      pattern: "^[a-f0-9]{64}$",
-      description: "SHA-256 hex digest of spec.json contents for drift detection (raw hex, no prefix)"
-    },
-    tasks: {
-      type: "object",
-      description: "Task status map keyed by task ID (e.g. T1, T2)",
-      additionalProperties: {
-        $ref: "#/$defs/taskState"
-      }
-    },
-    verifications: {
-      type: "object",
-      description: "Verification result map keyed by scenario ID (e.g. R1.S1)",
-      additionalProperties: {
-        $ref: "#/$defs/verificationState"
-      }
-    },
-    assumptions: {
-      type: "object",
-      description: "Assumption status map keyed by assumption ID (e.g. A1)",
-      additionalProperties: {
-        $ref: "#/$defs/assumptionState"
-      }
-    },
-    history: {
-      type: "array",
-      description: "Chronological log of state transitions",
-      items: { $ref: "#/$defs/historyEntry" }
-    }
-  },
-  $defs: {
-    taskStatus: {
-      type: "string",
-      enum: ["pending", "in_progress", "done", "blocked_by"]
-    },
-    taskState: {
-      type: "object",
-      required: ["status"],
-      additionalProperties: false,
-      properties: {
-        status: { $ref: "#/$defs/taskStatus" },
-        owner: { type: "string" },
-        started_at: { type: "string" },
-        completed_at: { type: "string" },
-        blocked_by: {
-          type: "array",
-          minItems: 1,
-          items: { type: "string" },
-          description: "List of task IDs that must complete before this task can proceed"
-        }
-      },
-      if: {
-        properties: { status: { const: "blocked_by" } },
-        required: ["status"]
-      },
-      then: {
-        required: ["blocked_by"]
-      }
-    },
-    verificationState: {
-      type: "object",
-      required: ["passed"],
-      additionalProperties: false,
-      properties: {
-        passed: {
-          type: ["boolean", "null"],
-          description: "null = not yet verified, true = passed, false = failed"
-        },
-        evidence: { type: "string" },
-        at: { type: "string" }
-      }
-    },
-    assumptionState: {
-      type: "object",
-      required: ["verified"],
-      additionalProperties: false,
-      properties: {
-        verified: { type: "boolean" },
-        verified_at: { type: "string" }
-      }
-    },
-    historyEntry: {
-      type: "object",
-      required: ["action", "by", "at"],
-      additionalProperties: false,
-      properties: {
-        action: { type: "string" },
-        by: { type: "string" },
-        at: { type: "string" },
-        detail: { type: "string" },
-        task: { type: "string" }
-      }
-    }
-  }
-};
-
-// src/handlers/state.js
-var STATE_HELP = `
-Usage:
-  hoyeon-cli state init --spec <path> [--output <path>]
-  hoyeon-cli state update <task-id> --status <status> [--state <path>]
-  hoyeon-cli state check --spec <path> --state <path>
-  hoyeon-cli state sync --spec <path> --state <path>
-
-Subcommands:
-  init    Initialize state.json from a spec.json file
-  update  Update a task's status in state.json
-  check   Check consistency between spec.json and state.json
-  sync    Sync state.json after spec.json changes
-
-Options:
-  --help, -h    Show this help message
-
-Examples:
-  hoyeon-cli state init --spec ./spec.json
-  hoyeon-cli state init --spec ./spec.json --output ./state.json
-  hoyeon-cli state update T1 --done --state ./state.json
-  hoyeon-cli state update T1 --status in_progress --state ./state.json
-  hoyeon-cli state update T1 --status blocked_by --blocked-by T2 --state ./state.json
-  hoyeon-cli state check --spec ./spec.json --state ./state.json
-  hoyeon-cli state sync --spec ./spec.json --state ./state.json
-`;
-function getStateValidator() {
-  const schema = dev_state_v1_schema_default;
-  const ajv = new import__2.default({ allErrors: true });
-  (0, import_ajv_formats2.default)(ajv);
-  return ajv.compile(schema);
-}
-function validateState(data) {
-  const validate = getStateValidator();
-  const valid = validate(data);
-  if (!valid) {
-    const errors = validate.errors.map((e) => {
-      const path2 = e.instancePath || "(root)";
-      return `  ${path2}: ${e.message}`;
-    });
-    throw new Error(`State validation failed:
-${errors.join("\n")}`);
-  }
-}
-function computeSpecHash(specPath) {
-  const raw = readFileSync2(specPath);
-  return createHash("sha256").update(raw).digest("hex");
-}
-function parseArgs2(args) {
-  const result = { _: [] };
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
-    if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      const next = args[i + 1];
-      if (next !== void 0 && !next.startsWith("--")) {
-        result[key] = next;
-        i += 2;
-      } else {
-        result[key] = true;
-        i += 1;
-      }
-    } else {
-      result._.push(arg);
-      i += 1;
-    }
-  }
-  return result;
-}
-async function handleInit2(args) {
-  const parsed = parseArgs2(args);
-  if (!parsed.spec) {
-    process.stderr.write("Error: --spec <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli state init --spec <path> [--output <path>]\n");
-    process.exit(1);
-  }
-  const specPath = resolve2(parsed.spec);
-  let specRaw;
-  let specData;
-  try {
-    specRaw = readFileSync2(specPath, "utf8");
-    specData = JSON.parse(specRaw);
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      process.stderr.write(`Error: spec file not found: ${specPath}
-`);
-    } else if (err instanceof SyntaxError) {
-      process.stderr.write(`Error: invalid JSON in spec file: ${err.message}
-`);
-    } else {
-      process.stderr.write(`Error: could not read spec file: ${err.message}
-`);
-    }
-    process.exit(1);
-  }
-  if (!specData.tasks || !Array.isArray(specData.tasks)) {
-    process.stderr.write('Error: spec.json must have a "tasks" array\n');
-    process.exit(1);
-  }
-  const specHash = computeSpecHash(specPath);
-  const outputPath = parsed.output ? resolve2(parsed.output) : resolve2(dirname2(specPath), "state.json");
-  const specRefRelative = relative(dirname2(outputPath), specPath);
-  const tasks = {};
-  const seenIds = /* @__PURE__ */ new Set();
-  for (const task of specData.tasks) {
-    if (!task.id) {
-      process.stderr.write('Error: all tasks must have an "id" field\n');
-      process.exit(1);
-    }
-    if (seenIds.has(task.id)) {
-      process.stderr.write(`Error: duplicate task id '${task.id}' in spec
-`);
-      process.exit(1);
-    }
-    seenIds.add(task.id);
-    tasks[task.id] = { status: "pending" };
-  }
-  const stateData = {
-    spec_ref: specRefRelative,
-    spec_hash: specHash,
-    tasks,
-    verifications: {},
-    assumptions: {},
-    history: []
-  };
-  try {
-    validateState(stateData);
-  } catch (err) {
-    process.stderr.write(`Error: ${err.message}
-`);
-    process.exit(1);
-  }
-  try {
-    writeState(outputPath, stateData);
-  } catch (err) {
-    process.stderr.write(`Error: could not write state file: ${err.message}
-`);
-    process.exit(1);
-  }
-  process.stdout.write(`State initialized: ${outputPath}
-`);
-  process.stdout.write(`Tasks: ${Object.keys(tasks).join(", ")}
-`);
-  process.exit(0);
-}
-async function handleUpdate(args) {
-  const taskId = args[0];
-  if (!taskId || taskId.startsWith("--")) {
-    process.stderr.write("Error: <task-id> is required\n");
-    process.stderr.write("Usage: hoyeon-cli state update <task-id> --status <status> [--state <path>]\n");
-    process.exit(1);
-  }
-  const parsed = parseArgs2(args.slice(1));
-  let status = parsed.status;
-  if (parsed.done === true) status = "done";
-  if (parsed["in-progress"] === true) status = "in_progress";
-  if (!status) {
-    process.stderr.write("Error: --status <status> is required (or use --done / --in-progress)\n");
-    process.stderr.write("Usage: hoyeon-cli state update <task-id> --status <status> [--state <path>]\n");
-    process.exit(1);
-  }
-  const validStatuses = ["pending", "in_progress", "done", "blocked_by"];
-  if (!validStatuses.includes(status)) {
-    process.stderr.write(`Error: invalid status '${status}'. Valid values: ${validStatuses.join(", ")}
-`);
-    process.exit(1);
-  }
-  if (status === "blocked_by" && !parsed["blocked-by"]) {
-    process.stderr.write("Error: --blocked-by <task-id> is required when status is blocked_by\n");
-    process.exit(1);
-  }
-  const statePath = parsed.state ? resolve2(parsed.state) : resolve2("state.json");
-  const stateData = readState(statePath);
-  if (!stateData) {
-    process.stderr.write(`Error: state file not found: ${statePath}
-`);
-    process.exit(1);
-  }
-  if (!stateData.tasks || !Object.prototype.hasOwnProperty.call(stateData.tasks, taskId)) {
-    process.stderr.write(`Error: task '${taskId}' not found in state
-`);
-    process.exit(1);
-  }
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  stateData.tasks[taskId].status = status;
-  if (status === "blocked_by") {
-    const blockedBy = parsed["blocked-by"];
-    stateData.tasks[taskId].blocked_by = [blockedBy];
-  } else {
-    delete stateData.tasks[taskId].blocked_by;
-  }
-  if (status === "in_progress" && !stateData.tasks[taskId].started_at) {
-    stateData.tasks[taskId].started_at = now;
-  }
-  if (status === "done") {
-    stateData.tasks[taskId].completed_at = now;
-  }
-  if (!stateData.history) {
-    stateData.history = [];
-  }
-  const historyEntry = {
-    action: `status:${status}`,
-    task: taskId,
-    by: "hoyeon-cli",
-    at: now
-  };
-  if (status === "blocked_by" && parsed["blocked-by"]) {
-    historyEntry.detail = `blocked by ${parsed["blocked-by"]}`;
-  }
-  stateData.history.push(historyEntry);
-  try {
-    validateState(stateData);
-  } catch (err) {
-    process.stderr.write(`Error: ${err.message}
-`);
-    process.exit(1);
-  }
-  try {
-    writeState(statePath, stateData);
-  } catch (err) {
-    process.stderr.write(`Error: could not write state file: ${err.message}
-`);
-    process.exit(1);
-  }
-  process.stdout.write(`Updated task '${taskId}' status to '${status}'
-`);
-  process.exit(0);
-}
-async function handleCheck2(args) {
-  const parsed = parseArgs2(args);
-  if (!parsed.spec) {
-    process.stderr.write("Error: --spec <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli state check --spec <path> --state <path>\n");
-    process.exit(1);
-  }
-  if (!parsed.state) {
-    process.stderr.write("Error: --state <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli state check --spec <path> --state <path>\n");
-    process.exit(1);
-  }
-  const specPath = resolve2(parsed.spec);
-  const statePath = resolve2(parsed.state);
-  let specData;
-  try {
-    const raw = readFileSync2(specPath, "utf8");
-    specData = JSON.parse(raw);
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      process.stderr.write(`Error: spec file not found: ${specPath}
-`);
-    } else if (err instanceof SyntaxError) {
-      process.stderr.write(`Error: invalid JSON in spec file: ${err.message}
-`);
-    } else {
-      process.stderr.write(`Error: could not read spec file: ${err.message}
-`);
-    }
-    process.exit(1);
-  }
-  const stateData = readState(statePath);
-  if (!stateData) {
-    process.stderr.write(`Error: state file not found: ${statePath}
-`);
-    process.exit(1);
-  }
-  const issues = [];
-  const currentHash = computeSpecHash(specPath);
-  if (currentHash !== stateData.spec_hash) {
-    issues.push(`spec_hash mismatch: state has ${stateData.spec_hash}, current spec hash is ${currentHash}`);
-  }
-  const specTaskIds = new Set((specData.tasks || []).map((t) => t.id));
-  const stateTaskIds = Object.keys(stateData.tasks || {});
-  for (const taskId of stateTaskIds) {
-    if (!specTaskIds.has(taskId)) {
-      issues.push(`orphan task in state: '${taskId}' does not exist in spec`);
-    }
-  }
-  if (issues.length > 0) {
-    process.stderr.write("State check failed:\n");
-    for (const issue of issues) {
-      process.stderr.write(`  - ${issue}
-`);
-    }
-    process.exit(1);
-  }
-  process.stdout.write("State check passed: spec and state are consistent\n");
-  process.exit(0);
-}
-async function handleSync(args) {
-  const parsed = parseArgs2(args);
-  if (!parsed.spec) {
-    process.stderr.write("Error: --spec <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli state sync --spec <path> --state <path>\n");
-    process.exit(1);
-  }
-  if (!parsed.state) {
-    process.stderr.write("Error: --state <path> is required\n");
-    process.stderr.write("Usage: hoyeon-cli state sync --spec <path> --state <path>\n");
-    process.exit(1);
-  }
-  const specPath = resolve2(parsed.spec);
-  const statePath = resolve2(parsed.state);
-  let specData;
-  try {
-    const raw = readFileSync2(specPath, "utf8");
-    specData = JSON.parse(raw);
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      process.stderr.write(`Error: spec file not found: ${specPath}
-`);
-    } else if (err instanceof SyntaxError) {
-      process.stderr.write(`Error: invalid JSON in spec file: ${err.message}
-`);
-    } else {
-      process.stderr.write(`Error: could not read spec file: ${err.message}
-`);
-    }
-    process.exit(1);
-  }
-  if (!specData.tasks || !Array.isArray(specData.tasks)) {
-    process.stderr.write('Error: spec.json must have a "tasks" array\n');
-    process.exit(1);
-  }
-  const stateData = readState(statePath);
-  if (!stateData) {
-    process.stderr.write(`Error: state file not found: ${statePath}
-`);
-    process.exit(1);
-  }
-  const specTaskIds = new Set(specData.tasks.map((t) => t.id));
-  const stateTaskIds = Object.keys(stateData.tasks || {});
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const added = [];
-  const archived = [];
-  for (const task of specData.tasks) {
-    if (!task.id) {
-      process.stderr.write('Error: all tasks must have an "id" field\n');
-      process.exit(1);
-    }
-    if (!Object.prototype.hasOwnProperty.call(stateData.tasks, task.id)) {
-      stateData.tasks[task.id] = { status: "pending" };
-      added.push(task.id);
-    }
-  }
-  for (const taskId of stateTaskIds) {
-    if (!specTaskIds.has(taskId)) {
-      delete stateData.tasks[taskId];
-      archived.push(taskId);
-    }
-  }
-  stateData.spec_hash = computeSpecHash(specPath);
-  if (!stateData.history) {
-    stateData.history = [];
-  }
-  stateData.history.push({
-    action: "sync",
-    by: "hoyeon-cli",
-    at: now,
-    detail: `added: [${added.join(", ")}], removed: [${archived.join(", ")}]`
-  });
-  try {
-    validateState(stateData);
-  } catch (err) {
-    process.stderr.write(`Error: ${err.message}
-`);
-    process.exit(1);
-  }
-  try {
-    writeState(statePath, stateData);
-  } catch (err) {
-    process.stderr.write(`Error: could not write state file: ${err.message}
-`);
-    process.exit(1);
-  }
-  process.stdout.write(`State synced: ${statePath}
-`);
-  if (added.length > 0) {
-    process.stdout.write(`Added tasks: ${added.join(", ")}
-`);
-  }
-  if (archived.length > 0) {
-    process.stdout.write(`Removed tasks: ${archived.join(", ")}
-`);
-  }
-  if (added.length === 0 && archived.length === 0) {
-    process.stdout.write("No changes: spec and state tasks are already in sync\n");
-  }
-  process.exit(0);
-}
-async function state(args) {
-  const subcommand = args[0];
-  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
-    process.stdout.write(STATE_HELP);
-    process.exit(0);
-  }
-  if (subcommand === "init") {
-    await handleInit2(args.slice(1));
-  } else if (subcommand === "update") {
-    await handleUpdate(args.slice(1));
-  } else if (subcommand === "check") {
-    await handleCheck2(args.slice(1));
-  } else if (subcommand === "sync") {
-    await handleSync(args.slice(1));
-  } else {
-    process.stderr.write(`Error: unknown state subcommand '${subcommand}'
-`);
-    process.stderr.write(`Run 'hoyeon-cli state --help' for usage.
-`);
-    process.exit(1);
-  }
-}
-
-// src/handlers/session.js
+// src/commands/session.js
+import { existsSync as existsSync6, readFileSync as readFileSync4, writeFileSync as writeFileSync5, mkdirSync as mkdirSync4, renameSync as renameSync2 } from "fs";
 import { homedir } from "os";
-import { join } from "path";
-function deepMerge2(target, source) {
-  for (const key of Object.keys(source)) {
-    if (source[key] !== null && typeof source[key] === "object" && !Array.isArray(source[key]) && target[key] !== null && typeof target[key] === "object" && !Array.isArray(target[key])) {
-      deepMerge2(target[key], source[key]);
-    } else {
-      target[key] = source[key];
-    }
-  }
-  return target;
-}
-var SESSION_HELP = `
+import { join as join4, dirname } from "path";
+var HELP5 = `
 Usage:
   hoyeon-cli session set --sid <session-id> [options]    Update session state
   hoyeon-cli session get --sid <session-id>              Read session state
 
 Options for 'set':
   --sid <id>          Session ID (required)
-  --spec <path>       Set spec.json path
   --key <k>           Set arbitrary key (requires --value)
   --value <v>         Value for --key
   --json '{...}'      Deep-merge JSON fragment into state
 
 Examples:
-  hoyeon-cli session set --sid abc123 --spec .hoyeon/specs/foo/spec.json
-  hoyeon-cli session set --sid abc123 --key tmp_dir --value /tmp/run-1
-  hoyeon-cli session set --sid abc123 --json '{"rulph": {"round": 0}}'
+  hoyeon-cli session set --sid abc123 --key spec_dir --value .hoyeon/specs/foo
+  hoyeon-cli session set --sid abc123 --json '{"ralph": {"round": 0}}'
   hoyeon-cli session get --sid abc123
 `;
-function parseArgs3(args) {
-  const result = { _: [] };
-  let i = 0;
-  while (i < args.length) {
-    if (args[i] === "--sid" && i + 1 < args.length) {
-      result.sid = args[++i];
-    } else if (args[i] === "--spec" && i + 1 < args.length) {
-      result.spec = args[++i];
-    } else if (args[i] === "--key" && i + 1 < args.length) {
-      result.key = args[++i];
-    } else if (args[i] === "--value" && i + 1 < args.length) {
-      result.value = args[++i];
-    } else if (args[i] === "--json" && i + 1 < args.length) {
-      result.json = args[++i];
-    } else {
-      result._.push(args[i]);
-    }
-    i++;
-  }
-  return result;
+function die5(msg) {
+  process.stderr.write(msg + "\n");
+  process.exit(1);
 }
-function getStatePath(sid) {
-  return join(homedir(), ".hoyeon", sid, "state.json");
+function statePath(sid) {
+  return join4(homedir(), ".hoyeon", sid, "state.json");
+}
+function readState(path) {
+  if (!existsSync6(path)) return null;
+  try {
+    return JSON.parse(readFileSync4(path, "utf8"));
+  } catch (err) {
+    throw new Error(`Invalid JSON in ${path}: ${err.message}`);
+  }
+}
+function writeState(path, data) {
+  const dir = dirname(path);
+  if (!existsSync6(dir)) mkdirSync4(dir, { recursive: true });
+  const tmp = path + ".tmp";
+  writeFileSync5(tmp, JSON.stringify(data, null, 2) + "\n", "utf8");
+  renameSync2(tmp, path);
+}
+function deepMerge(target, source) {
+  for (const key of Object.keys(source)) {
+    if (source[key] !== null && typeof source[key] === "object" && !Array.isArray(source[key]) && target[key] !== null && typeof target[key] === "object" && !Array.isArray(target[key])) {
+      deepMerge(target[key], source[key]);
+    } else {
+      target[key] = source[key];
+    }
+  }
+  return target;
 }
 async function handleSet(args) {
-  const parsed = parseArgs3(args);
-  if (!parsed.sid) {
-    process.stderr.write("Error: --sid is required\n");
-    process.exit(1);
-  }
-  const statePath = getStatePath(parsed.sid);
-  const state2 = readState(statePath) || {};
-  if (parsed.spec !== void 0) {
-    state2.spec = parsed.spec;
-  }
+  const parsed = parseArgs(args);
+  if (!parsed.sid) die5("Error: --sid is required");
+  const path = statePath(parsed.sid);
+  const state = readState(path) || {};
   if (parsed.key !== void 0) {
-    if (parsed.value === void 0) {
-      process.stderr.write("Error: --value is required when using --key\n");
-      process.exit(1);
-    }
-    state2[parsed.key] = parsed.value;
+    if (parsed.value === void 0) die5("Error: --value is required when using --key");
+    state[parsed.key] = parsed.value;
   }
   if (parsed.json !== void 0) {
     let fragment;
     try {
       fragment = JSON.parse(parsed.json);
     } catch (err) {
-      process.stderr.write(`Error: invalid JSON: ${err.message}
-`);
-      process.exit(1);
+      die5(`Error: invalid JSON: ${err.message}`);
     }
-    deepMerge2(state2, fragment);
+    deepMerge(state, fragment);
   }
-  writeState(statePath, state2);
+  writeState(path, state);
   const updates = [];
-  if (parsed.spec !== void 0) updates.push(`spec=${parsed.spec}`);
   if (parsed.key !== void 0) updates.push(`${parsed.key}=${parsed.value}`);
-  if (parsed.json !== void 0) updates.push(`json merged`);
+  if (parsed.json !== void 0) updates.push("json merged");
   process.stdout.write(`Session updated: ${updates.join(", ")}
 `);
-  process.exit(0);
 }
 async function handleGet(args) {
-  const parsed = parseArgs3(args);
-  if (!parsed.sid) {
-    process.stderr.write("Error: --sid is required\n");
-    process.exit(1);
-  }
-  const statePath = getStatePath(parsed.sid);
-  const state2 = readState(statePath);
-  if (!state2) {
-    process.stderr.write(`Error: no session state found for ${parsed.sid}
-`);
-    process.exit(1);
-  }
-  process.stdout.write(JSON.stringify(state2, null, 2) + "\n");
-  process.exit(0);
+  const parsed = parseArgs(args);
+  if (!parsed.sid) die5("Error: --sid is required");
+  const state = readState(statePath(parsed.sid));
+  if (!state) die5(`Error: no session state found for ${parsed.sid}`);
+  process.stdout.write(JSON.stringify(state, null, 2) + "\n");
 }
 async function session(args) {
-  const subcommand = args[0];
-  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
-    process.stdout.write(SESSION_HELP);
-    process.exit(0);
+  const sub = args[0];
+  if (!sub || sub === "--help" || sub === "-h") {
+    process.stdout.write(HELP5);
+    return;
   }
-  if (subcommand === "set") {
-    await handleSet(args.slice(1));
-  } else if (subcommand === "get") {
-    await handleGet(args.slice(1));
-  } else {
-    process.stderr.write(`Error: unknown session subcommand '${subcommand}'
-`);
-    process.stderr.write('Run "hoyeon-cli session --help" for usage.\n');
-    process.exit(1);
-  }
+  if (sub === "set") return handleSet(args.slice(1));
+  if (sub === "get") return handleGet(args.slice(1));
+  die5(`Error: unknown session command '${sub}'. Run 'hoyeon-cli session --help'.`);
 }
 
-// src/handlers/feedback.js
-import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, existsSync as existsSync2 } from "fs";
-import { resolve as resolve3, dirname as dirname3 } from "path";
-var FEEDBACK_HELP = `
-Usage:
-  hoyeon-cli feedback create "<message>" [--dir <path>]
-
-Subcommands:
-  create  Create a new feedback file
-
-Options:
-  --help, -h    Show this help message
-  --dir         Directory to write feedback files (default: ./feedback)
-
-Examples:
-  hoyeon-cli feedback create "Missing acceptance criteria for T3"
-  hoyeon-cli feedback create "Scope is too broad" --dir ./project/feedback
-`;
-function parseArgs4(args) {
-  const result = { _: [] };
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
-    if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      const next = args[i + 1];
-      if (next !== void 0 && !next.startsWith("--")) {
-        result[key] = next;
-        i += 2;
-      } else {
-        result[key] = true;
-        i += 1;
-      }
-    } else {
-      result._.push(arg);
-      i += 1;
-    }
-  }
-  return result;
-}
-function nextFeedbackId(feedbackDir) {
-  if (!existsSync2(feedbackDir)) {
-    return "fb-001";
-  }
-  const files = readdirSync2(feedbackDir).filter((f) => /^fb-\d{3}\.json$/.test(f)).sort();
-  if (files.length === 0) {
-    return "fb-001";
-  }
-  const last = files[files.length - 1];
-  const match = last.match(/^fb-(\d{3})\.json$/);
-  if (!match) {
-    return "fb-001";
-  }
-  const nextNum = parseInt(match[1], 10) + 1;
-  return `fb-${String(nextNum).padStart(3, "0")}`;
-}
-async function handleCreate(args) {
-  const parsed = parseArgs4(args);
-  const message = parsed._[0];
-  if (!message) {
-    process.stderr.write("Error: <message> is required\n");
-    process.stderr.write('Usage: hoyeon-cli feedback create "<message>" [--dir <path>]\n');
-    process.exit(1);
-  }
-  const feedbackDir = parsed.dir ? resolve3(parsed.dir) : resolve3("feedback");
-  try {
-    mkdirSync2(feedbackDir, { recursive: true });
-  } catch (err) {
-    process.stderr.write(`Error: could not create feedback directory: ${err.message}
-`);
-    process.exit(1);
-  }
-  const id = nextFeedbackId(feedbackDir);
-  const feedbackPath = resolve3(feedbackDir, `${id}.json`);
-  const feedbackData = {
-    id,
-    message,
-    created_at: (/* @__PURE__ */ new Date()).toISOString(),
-    status: "open"
-  };
-  try {
-    writeFileSync2(feedbackPath, JSON.stringify(feedbackData, null, 2), "utf8");
-  } catch (err) {
-    process.stderr.write(`Error: could not write feedback file: ${err.message}
-`);
-    process.exit(1);
-  }
-  process.stdout.write(`Feedback created: ${feedbackPath}
-`);
-  process.stdout.write(`ID: ${id}
-`);
-  process.exit(0);
-}
-async function feedback(args) {
-  const subcommand = args[0];
-  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
-    process.stdout.write(FEEDBACK_HELP);
-    process.exit(0);
-  }
-  if (subcommand === "create") {
-    await handleCreate(args.slice(1));
-  } else {
-    process.stderr.write(`Error: unknown feedback subcommand '${subcommand}'
-`);
-    process.stderr.write(`Run 'hoyeon-cli feedback --help' for usage.
-`);
-    process.exit(1);
-  }
-}
-
-// src/handlers/settings-validate.js
-import { readFileSync as readFileSync4, existsSync as existsSync3, accessSync, constants } from "fs";
-import { resolve as resolve4, dirname as dirname4, join as join2 } from "path";
-var SETTINGS_HELP = `
-Usage:
-  hoyeon-cli settings validate   Validate .claude/settings.json hook configuration
-
-Options:
-  --help, -h    Show this help message
-
-Examples:
-  hoyeon-cli settings validate
-`;
-var VALID_EVENT_TYPES = /* @__PURE__ */ new Set([
-  "SessionStart",
-  "SessionEnd",
-  "UserPromptSubmit",
-  "PreToolUse",
-  "PostToolUse",
-  "PostToolUseFailure",
-  "Stop"
-]);
-function findSettingsJson(startDir) {
-  let dir = startDir;
-  while (true) {
-    const candidate = join2(dir, ".claude", "settings.json");
-    if (existsSync3(candidate)) {
-      return candidate;
-    }
-    const parent = dirname4(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-function collectHookCommands(hooks) {
-  const entries = [];
-  for (const [eventType, matchers] of Object.entries(hooks)) {
-    if (!Array.isArray(matchers)) continue;
-    for (const matcherObj of matchers) {
-      const matcher = matcherObj.matcher ?? "";
-      const hookList = matcherObj.hooks ?? [];
-      for (const hook of hookList) {
-        if (hook.type === "command" && typeof hook.command === "string") {
-          entries.push({ eventType, matcher, command: hook.command });
-        }
-      }
-    }
-  }
-  return entries;
-}
-async function handleValidate2() {
-  const startDir = process.cwd();
-  const settingsPath = findSettingsJson(startDir);
-  if (!settingsPath) {
-    process.stderr.write("Error: .claude/settings.json not found (searched from cwd upward)\n");
-    process.exit(1);
-  }
-  const projectRoot = dirname4(dirname4(settingsPath));
-  let settings2;
-  try {
-    settings2 = JSON.parse(readFileSync4(settingsPath, "utf8"));
-  } catch (err) {
-    process.stderr.write(`Error: failed to parse settings.json: ${err.message}
-`);
-    process.exit(1);
-  }
-  const hooks = settings2.hooks ?? {};
-  const hookEntries = collectHookCommands(hooks);
-  process.stdout.write(`Settings: ${settingsPath}
-`);
-  process.stdout.write(`Project root: ${projectRoot}
-
-`);
-  let hasFailure = false;
-  process.stdout.write("Check 1: Hook script path existence\n");
-  const missingPaths = [];
-  for (const { eventType, matcher, command } of hookEntries) {
-    const absPath = resolve4(projectRoot, command);
-    if (!existsSync3(absPath)) {
-      missingPaths.push({ eventType, matcher, command, absPath });
-    }
-  }
-  if (missingPaths.length === 0) {
-    process.stdout.write("  PASS: All hook script paths exist\n");
-  } else {
-    hasFailure = true;
-    process.stdout.write(`  FAIL: ${missingPaths.length} missing path(s)
-`);
-    for (const { eventType, command, absPath } of missingPaths) {
-      process.stdout.write(`    [${eventType}] ${command}
-`);
-      process.stdout.write(`      -> ${absPath} (not found)
-`);
-    }
-  }
-  process.stdout.write("\nCheck 2: Hook script executable bit\n");
-  const nonExecutable = [];
-  for (const { eventType, matcher, command } of hookEntries) {
-    const absPath = resolve4(projectRoot, command);
-    if (!existsSync3(absPath)) continue;
-    try {
-      accessSync(absPath, constants.X_OK);
-    } catch {
-      nonExecutable.push({ eventType, command, absPath });
-    }
-  }
-  if (nonExecutable.length === 0) {
-    process.stdout.write("  PASS: All hook scripts are executable\n");
-  } else {
-    hasFailure = true;
-    process.stdout.write(`  FAIL: ${nonExecutable.length} non-executable script(s)
-`);
-    for (const { eventType, command } of nonExecutable) {
-      process.stdout.write(`    [${eventType}] ${command} (not executable)
-`);
-    }
-  }
-  process.stdout.write("\nCheck 3: Valid event types\n");
-  const invalidEventTypes = [];
-  for (const eventType of Object.keys(hooks)) {
-    if (!VALID_EVENT_TYPES.has(eventType)) {
-      invalidEventTypes.push(eventType);
-    }
-  }
-  if (invalidEventTypes.length === 0) {
-    process.stdout.write("  PASS: All event types are valid\n");
-  } else {
-    hasFailure = true;
-    process.stdout.write(`  FAIL: ${invalidEventTypes.length} invalid event type(s)
-`);
-    for (const et of invalidEventTypes) {
-      process.stdout.write(`    '${et}' is not a valid event type
-`);
-    }
-    process.stdout.write(`  Valid event types: ${[...VALID_EVENT_TYPES].join(", ")}
-`);
-  }
-  process.stdout.write("\nCheck 4: Duplicate scripts in same event+matcher\n");
-  const seen = /* @__PURE__ */ new Map();
-  const duplicates = [];
-  for (const { eventType, matcher, command } of hookEntries) {
-    const key = `${eventType}::${matcher}`;
-    if (!seen.has(key)) {
-      seen.set(key, /* @__PURE__ */ new Set());
-    }
-    const commandSet = seen.get(key);
-    if (commandSet.has(command)) {
-      duplicates.push({ eventType, matcher, command });
-    } else {
-      commandSet.add(command);
-    }
-  }
-  if (duplicates.length === 0) {
-    process.stdout.write("  PASS: No duplicate scripts in same event+matcher\n");
-  } else {
-    hasFailure = true;
-    process.stdout.write(`  FAIL: ${duplicates.length} duplicate(s) found
-`);
-    for (const { eventType, matcher, command } of duplicates) {
-      const matcherLabel = matcher ? `matcher="${matcher}"` : 'matcher=""';
-      process.stdout.write(`    [${eventType}][${matcherLabel}] ${command}
-`);
-    }
-  }
-  process.stdout.write("\n");
-  if (hasFailure) {
-    process.stdout.write("Result: FAIL\n");
-    process.exit(1);
-  } else {
-    process.stdout.write("Result: PASS\n");
-    process.exit(0);
-  }
-}
-async function settings(args) {
-  const subcommand = args[0];
-  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
-    process.stdout.write(SETTINGS_HELP);
-    process.exit(0);
-  }
-  if (subcommand === "validate") {
-    await handleValidate2();
-  } else {
-    process.stderr.write(`Error: unknown settings subcommand '${subcommand}'
-`);
-    process.stderr.write(`Run 'hoyeon-cli settings --help' for usage.
-`);
-    process.exit(1);
-  }
-}
-
-// bin/dev-cli.js
+// bin/cli.js
 var USAGE = `
-hoyeon-cli \u2014 Developer workflow CLI
+hoyeon-cli \u2014 CLI for specify + blueprint + execute workflow
 
 Usage:
-  hoyeon-cli <subcommand> [options]
+  hoyeon-cli <group> <command> [options]
 
-Subcommands:
-  spec      Manage spec/plan state
-  state     Read or update workflow state
-  session   Manage session state (~/.hoyeon/{sid}/)
-  feedback  Manage feedback files
+Groups:
+  req       requirements.md scaffolding (init only \u2014 cli does not parse .md)
+  plan      plan.json operations (init, merge, get, list, task, validate)
+  learning  Add structured learning entries to context/learnings.json
+  issue     Add structured issue entries to context/issues.json
+  session   Session state management (set/get key-value in ~/.hoyeon/<sid>/state.json)
 
 Options:
   --help, -h    Show this help message
   --version     Show version
 
 Examples:
-  hoyeon-cli spec --help
-  hoyeon-cli state --help
-  hoyeon-cli feedback --help
+  hoyeon-cli req init .hoyeon/specs/my-spec --type greenfield
+  hoyeon-cli plan init .hoyeon/specs/my-spec --type greenfield
+  hoyeon-cli plan merge .hoyeon/specs/my-spec --json '{"tasks":[...]}'
+  hoyeon-cli plan task .hoyeon/specs/my-spec --status T1=running
+  hoyeon-cli learning --task T1 --json '{"problem":"..."}' .hoyeon/specs/my-spec
+  hoyeon-cli issue --task T1 --json '{"type":"blocker","description":"..."}' .hoyeon/specs/my-spec
+  hoyeon-cli session set --sid abc123 --key spec_dir --value .hoyeon/specs/foo
 `;
-var SUBCOMMANDS = {
-  spec,
-  state,
-  session,
-  feedback,
-  settings
+var GROUPS = {
+  req,
+  plan,
+  learning,
+  issue,
+  session
 };
 async function main() {
   const args = process.argv.slice(2);
@@ -10710,21 +7700,20 @@ async function main() {
     process.exit(0);
   }
   if (args[0] === "--version") {
-    const version = true ? "1.5.4" : "dev";
+    const version = true ? "1.6.0" : "dev";
     process.stdout.write(`hoyeon-cli v${version}
 `);
     process.exit(0);
   }
-  const subcommand = args[0];
-  if (!Object.prototype.hasOwnProperty.call(SUBCOMMANDS, subcommand)) {
-    process.stderr.write(`Error: unknown subcommand '${subcommand}'
+  const group = args[0];
+  if (!Object.prototype.hasOwnProperty.call(GROUPS, group)) {
+    process.stderr.write(`Error: unknown group '${group}'
 `);
     process.stderr.write(`Run 'hoyeon-cli --help' for usage.
 `);
     process.exit(1);
   }
-  const handler = SUBCOMMANDS[subcommand];
-  await handler(args.slice(1));
+  await GROUPS[group](args.slice(1));
 }
 main().catch((err) => {
   process.stderr.write(`Unexpected error: ${err.message}

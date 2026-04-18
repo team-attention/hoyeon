@@ -1,11 +1,11 @@
 ---
 name: scaffold
 description: |
-  Greenfield project architecture scaffolding for AI Agent productivity.
-  Interview-driven architecture decisions → spec.json → execute.
-  Produces: Code Structure (with vertical slice exemplar), Test Infrastructure, Guard Rails,
-  conditional extensions, AND Harness Infrastructure (Project Memory, Domain Skills, Hooks).
-  L2-heavy pipeline (architecture + harness decisions), L3 minimal (no behavioral requirements).
+  Greenfield project architecture + harness scaffolding for AI Agent productivity.
+  Interview-driven decisions → requirements.md → execute.
+  Produces: Code Structure (vertical slice exemplar), Test Infrastructure, Guard Rails,
+  conditional extensions, AND Harness (CLAUDE.md with domain/team context, rules, skills, hooks).
+  L2: architecture decisions, L3: harness setup, L4: requirements + harness decisions (tasks generated later by /execute into plan.json).
   Use when: "/scaffold", "scaffold", "new project", "set up project", "프로젝트 세팅", "초기 구조"
 allowed-tools:
   - Read
@@ -19,46 +19,35 @@ allowed-tools:
 
 # /scaffold — Greenfield Architecture Scaffolding
 
-Generate a scaffold spec.json through an architecture-focused derivation chain.
+Generate a scaffold requirements.md through an architecture-focused derivation chain.
 Produces a complete development foundation that AI agents can extend consistently.
-
-Before starting, run `hoyeon-cli spec guide full --schema v1` to see the complete schema.
 
 ---
 
 ## Core Identity
 
-scaffold is specify's **architecture variant**. Same spec.json format, different weight center.
+scaffold is specify's **architecture variant**. Same requirements.md format, different weight center.
 
 | | specify | scaffold |
 |---|---------|----------|
-| Focus | What to build (features) | How to structure (architecture) |
+| Focus | What to build (features) | How to structure (architecture + harness) |
 | L2 weight | Moderate (feature decisions) | **Heavy** (tech stack, patterns, infra) |
-| L3 weight | Heavy (behavioral requirements) | **Minimal** (structural requirements only) |
-| Tasks | Feature implementation | Project initialization + exemplar |
-| Output | Code changes | Complete development environment |
+| L3 | Requirements (behavioral) | **Harness** (domain, team, skills, hooks, rules) |
+| L4 | Verification journeys | **Requirements + Harness Decisions** (no tasks — /execute writes plan.json) |
+| Tasks | Feature implementation | Project initialization + exemplar + harness |
+| Output | Code changes | Complete development environment + AI harness |
 | When | Feature on existing codebase | Greenfield or major restructure |
 
 ---
 
 ## Core Rules
 
-1. **CLI is the writer** — `spec init`, `spec merge`, `spec validate`. Never hand-write spec.json.
-2. **Stdin merge** — Pass JSON via heredoc stdin. No temp files.
-   ```bash
-   hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
-   {"context": {"decisions": [...]}}
-   EOF
-   ```
-3. **Guide before merge** — Run `hoyeon-cli spec guide <section> --schema v1` before constructing JSON.
-4. **Validate at layer transitions** — `hoyeon-cli spec validate` once per layer.
-5. **One merge per section** — Never merge multiple sections in parallel.
-6. **--append for arrays** — When adding to existing arrays.
-7. **Revision Merge Protocol** — When user selects "Revise" at an approval gate:
-   - **Modify existing item** (e.g. update D3's rationale) → `--patch`
-   - **Add new item** (e.g. add D12) → `--append`
-   - **Remove + rewrite entire section** → no flag (intentional full replace)
-   - **NEVER** use no-flag merge with a subset of items — this silently replaces the entire array.
+1. **CLI creates the spec dir** — `hoyeon-cli req init` to create the spec directory and stub requirements.md. Then Write/Edit requirements.md directly.
+2. **Direct markdown editing** — Write requirements.md content using Write or Edit tools. No JSON merge protocol needed.
+3. **No schema validation** — requirements.md is freeform markdown. No `spec validate` or `spec guide` commands.
+4. **Revision Protocol** — When user selects "Revise" at an approval gate:
+   - Use Edit tool to modify, add, or remove sections in requirements.md directly.
+   - No merge flags needed — just edit the markdown.
 
 ---
 
@@ -68,27 +57,31 @@ scaffold is specify's **architecture variant**. Same spec.json format, different
 |-------|------|------|
 | L0 | Mirror → confirmed_goal, non_goals | User confirms mirror |
 | L1 | Environment scan (greenfield detection) | Auto-advance |
-| L2 | **Architecture interview** → decisions + constraints (HEAVY) | CLI validate + User approval |
-| L3 | Structural requirements (minimal — from decisions) | CLI validate + User approval |
-| L4 | Scaffold tasks + category mapping | CLI validate + User approval |
+| L2 | **Architecture interview** → decisions + constraints (HEAVY) | User approval |
+| L3 | **Harness setup** → domain, team, rules, skills, hooks | User approval |
+| L4 | **Requirements + Harness Decisions** → requirements (with GWT sub-reqs) + harness decisions | User approval |
+
+scaffold produces requirements.md only (no tasks). Task breakdown is handled later by `/execute` (via `/blueprint` or inline planning), which writes a sibling `plan.json` next to requirements.md.
 
 ### Session Init (before L0)
 
 ```bash
-hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v1 --interaction {interaction} \
-  .hoyeon/specs/{name}/spec.json
+SPEC_DIR=".hoyeon/specs/{name}"
+hoyeon-cli req init $SPEC_DIR --type greenfield --goal "{goal}"
 ```
+
+This creates `${SPEC_DIR}/requirements.md` with a stub template.
 
 ```bash
 SESSION_ID="[from UserPromptSubmit hook]"
-hoyeon-cli session set --sid $SESSION_ID --spec ".hoyeon/specs/{name}/spec.json"
+hoyeon-cli session set --sid $SESSION_ID --key spec_dir --value "$SPEC_DIR"
 ```
 
 ---
 
 ## L0: Goal
 
-**Output**: `meta.goal`, `meta.non_goals`, `context.confirmed_goal`
+**Output**: Goal, Non-Goals, Confirmed Goal sections in requirements.md
 
 ### Mirror Protocol
 
@@ -104,13 +97,9 @@ Mirror the user's goal with scaffold-specific framing:
 
 **Key distinction**: scaffold's goal is the **foundation**, not the product. If user says "I want to build a todo app", the scaffold goal is "Set up a web application foundation (server + client + DB) that an agent can extend to build features like a todo app."
 
-### Merge
+### Write to requirements.md
 
-```bash
-hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
-{confirmed_goal, non_goals matching guide output}
-EOF
-```
+Use the Edit tool to write the Goal, Non-Goals, and Confirmed Goal sections into `${SPEC_DIR}/requirements.md`.
 
 ### Gate
 
@@ -120,7 +109,7 @@ User confirms mirror → advance to L1.
 
 ## L1: Environment Scan
 
-**Output**: `context.research`
+**Output**: Research section in requirements.md
 
 Unlike specify's L1 (which scans existing code), scaffold's L1 scans the **environment**:
 
@@ -135,33 +124,19 @@ Unlike specify's L1 (which scans existing code), scaffold's L1 scans the **envir
 | Git | `git status` | Repo state |
 | OS/platform | `uname -a` | Platform constraints |
 
-### Past Scaffold Search
+### Write to requirements.md
 
-```bash
-hoyeon-cli spec search "[goal keywords]" --json --limit 5
-```
-
-Find previous scaffold decisions to compound on.
-
-### Merge
-
-Merge findings as `context.research`:
-
-```bash
-hoyeon-cli spec merge .hoyeon/specs/{name}/spec.json --stdin << 'EOF'
-{"context": {"research": "Environment: node v22, pnpm available, Docker installed, empty directory (greenfield confirmed). No past scaffold specs found."}}
-EOF
-```
+Use the Edit tool to add a Research/Context section to `${SPEC_DIR}/requirements.md` with the environment scan findings.
 
 ### Gate
 
-Auto-advance to L2.
+Auto-advance to L2 (no user approval needed).
 
 ---
 
 ## L2: Architecture Decisions (HEAVY)
 
-**Output**: `context.decisions[]`, `constraints[]`, `context.known_gaps[]`
+**Output**: Decisions, Constraints, Known Gaps sections in requirements.md
 
 This is scaffold's core. The interview determines the entire project architecture.
 
@@ -188,82 +163,13 @@ Read L1 environment scan + confirmed_goal, then generate checkpoints per **archi
 
 | # | Dimension | Weight | Example Checkpoints |
 |---|-----------|--------|-------------------|
-| 1 | **Tech Stack** | 20% | Language/runtime, framework, package manager |
-| 2 | **Communication** | 15% | Client-server protocol, API style, type safety strategy |
+| 1 | **Tech Stack** | 25% | Language/runtime, framework, package manager |
+| 2 | **Communication** | 20% | Client-server protocol, API style, type safety strategy |
 | 3 | **Data & State** | 20% | Database choice, ORM/query builder, migration strategy, caching |
 | 4 | **Testing** | 15% | Test framework, test patterns, coverage strategy |
-| 5 | **DevOps & Environment** | 15% | Containerization, CI/CD, env config, deployment target |
-| 6 | **Harness & Context** | 15% | Domain knowledge, team conventions, recurring tasks, hooks |
+| 5 | **DevOps & Environment** | 20% | Containerization, CI/CD, env config, deployment target |
 
 **L1 Auto-Resolve**: Check each checkpoint against environment scan. Node installed → resolve "runtime" checkpoint. Docker available → partially resolve containerization.
-
-### Dimension 6: Harness & Context Checkpoints
-
-Dimension 6 captures project context that code structure alone cannot express. These checkpoints drive the Harness Extensions (R8, R9, R10).
-
-| # | Checkpoint | Question Style | Drives |
-|---|-----------|----------------|--------|
-| 6-1 | **Domain Terms & Business Rules** | "Does this project have domain-specific terminology or business rules the agent should always know?" | R8 (Memory) |
-| 6-2 | **Team Conventions** | "Are there team rules for commits, PRs, branching, code review, or deployment?" | R8 (Memory) |
-| 6-3 | **Recurring Tasks** | Stack-based auto-suggest + "What tasks will you repeat frequently beyond these?" | R9 (Skills) |
-| 6-4 | **Code Quality Automation** | Auto-resolved from Dim 1 (formatter, linter, type checker detected) | R10 (Hooks) |
-
-**6-1 Example:**
-```
-AskUserQuestion(
-  question: "Does this project have domain-specific terms or business rules? For example, 'tenant = company-level customer' or 'credit balance must never go negative'.",
-  options: [
-    { label: "Yes, I'll describe them", description: "You'll provide domain terms and key rules" },
-    { label: "None yet", description: "Skip — can add later via memory" },
-    { label: "Agent decides", description: "Infer from project goal if possible" }
-  ]
-)
-```
-
-**6-2 Example:**
-```
-AskUserQuestion(
-  question: "Does your team have conventions for commits, PRs, or branching?",
-  options: [
-    { label: "Conventional Commits + GitHub Flow", description: "feat/fix/chore prefixes, feature branches, squash merge" },
-    { label: "Trunk-based development", description: "Short-lived branches, no long-running feature branches" },
-    { label: "Custom — I'll describe", description: "You'll specify your team's rules" },
-    { label: "Solo project, no conventions", description: "Skip team context" }
-  ]
-)
-```
-
-**6-3 Stack-Based Auto-Suggestion:**
-
-After Dimensions 1-5 are resolved, scan decisions to auto-suggest skills:
-
-| Decision Signal | Auto-Suggested Skill | Description |
-|----------------|---------------------|-------------|
-| DB + ORM (Prisma, Drizzle, SQLAlchemy) | `/migrate` | Run migration + regenerate types |
-| DB detected | `/seed-data` | Generate development seed data |
-| Docker / docker-compose | `/deploy` | Build, push, run with health check |
-| API server (REST, GraphQL, tRPC) | `/api-test` | Test endpoint with curl/httpie |
-| Async workers (Celery, BullMQ) | `/worker-test` | Dispatch test task + verify result |
-| CLI binary (Rust, Go) | `/release` | Version bump + build + tag + publish |
-| Frontend framework | `/new-component` | Scaffold component + test + story |
-| Payment integration (Stripe, etc.) | `/test-webhook` | Forward + trigger webhook locally |
-
-Present auto-suggestions, then ask: "Any other tasks you'll repeat frequently?"
-
-**6-4 Auto-Resolution from Dimension 1:**
-
-| Tech Stack Decision | Auto-Resolved Hook |
-|--------------------|-------------------|
-| TypeScript (tsconfig.json) | PostToolUse: `tsc --noEmit` on Edit/Write to .ts files |
-| Prettier configured | PostToolUse: `prettier --write` on Edit/Write |
-| ESLint configured | PostToolUse: `eslint --fix` on Edit/Write |
-| Ruff / Black (Python) | PostToolUse: `ruff format` on Edit/Write |
-| rustfmt (Rust) | PostToolUse: `rustfmt` on Edit/Write |
-| gofmt (Go) | PostToolUse: `gofmt -w` on Edit/Write |
-| .env files present | PreToolUse: block Edit/Write to `.env*` |
-| Lock files present | PreToolUse: block Edit/Write to lock files |
-
-These hooks are auto-resolved (no interview question needed). Present the list for user confirmation during L2 approval.
 
 ### Interview Loop (score-driven)
 
@@ -333,7 +239,8 @@ D_EXT2: "Data Layer extension activated — PostgreSQL + Prisma migrations"
 
 ### Termination
 
-Same as specify: composite >= 0.80, every dimension >= 0.60, unknowns == 0.
+Composite score uses **weighted average** across dimensions (weights from the table above).
+Terminate when: composite >= 0.80, every dimension >= 0.60, unknowns == 0.
 
 ### Inversion Probe
 
@@ -342,6 +249,11 @@ Two architecture-specific questions:
 1. **Inversion**: "Given these architecture decisions, what scenario would cause a complete restructure even if every component works individually?"
 2. **Implication**: "You chose [most impactful decision]. Does that also mean [architectural consequence]?"
 
+If the probe reveals a critical issue (e.g., contradictory decisions, missing dimension coverage):
+- Merge the issue as a `known_gap` via `--append`
+- Re-enter the interview loop targeting the affected dimension(s)
+- Continue until termination criteria are met again
+
 ### L2 Approval
 
 Present all decisions + constraints + activated extensions. Spawn L2-reviewer:
@@ -349,19 +261,15 @@ Present all decisions + constraints + activated extensions. Spawn L2-reviewer:
 ```
 Task(subagent_type="general-purpose", prompt="""
 You are an L2 architecture reviewer for a scaffold spec. Given:
-- All architecture decisions (Dimensions 1-6)
-- Activated conditional extensions AND harness extensions
-- The 7 quality criteria (agent extensibility, testability, drift resistance, type safety, cross-session continuity, task automation, code quality enforcement)
+- All architecture decisions
+- Activated conditional extensions
+- The 4 quality criteria (agent extensibility, testability, drift resistance, type safety)
 
 Check:
 1. Do decisions form a coherent stack? (no contradictions)
-2. Are the 7 quality criteria addressed?
+2. Are the 4 quality criteria addressed?
 3. Any activated extension missing its supporting decisions?
 4. Any decision that agents will struggle to follow consistently?
-5. Are harness extensions (R8/R9/R10) appropriately activated given the project type?
-   - Solo/simple project with no domain terms → R8.3/R8.4 correctly skipped?
-   - Recurring tasks detected → R9 activated?
-   - Formatter/linter chosen → R10 activated with matching tool?
 
 Return: PASS or NEEDS_FIX with specific issues.
 """)
@@ -369,29 +277,171 @@ Return: PASS or NEEDS_FIX with specific issues.
 
 ### L2 Gate
 
-```bash
-hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer decisions
-```
+Use Edit tool to write all decisions, constraints, and known gaps into the Decisions section of `${SPEC_DIR}/requirements.md`.
 
 ---
 
-## L3: Structural Requirements (MINIMAL)
+## L3: Harness Setup
 
-**Output**: `requirements[]` with `sub[]`
+**Output**: Harness decisions added to Decisions section in requirements.md
 
-scaffold's L3 is deliberately thin. Requirements describe **what the scaffold must produce**, not feature behaviors.
+L3 determines the AI work environment for this project. While L2 decides how the code is structured, L3 decides how Claude will work with that code across sessions.
 
-### Derive from Decisions
+### 3-1. Domain Context (interactive)
 
-```bash
-hoyeon-cli spec derive-requirements .hoyeon/specs/{name}/spec.json
+```
+AskUserQuestion(
+  question: "Does this project have domain-specific terms or business rules? For example, 'tenant = company-level customer' or 'credit balance must never go negative'.",
+  options: [
+    { label: "Yes, I'll describe them", description: "You'll provide domain terms and key business rules" },
+    { label: "None yet", description: "Skip — can add later to CLAUDE.md" },
+    { label: "Agent decides", description: "Infer from project goal if possible" }
+  ]
+)
 ```
 
-### Reshape into Output Categories
+If user provides domain terms → record as decision: `D_H1: "Domain context: [terms and rules]"`
+These will be written into CLAUDE.md by the Guard Rails task (derived by `/execute`).
 
-Map requirements to the **3 Core + Conditional Extensions** model:
+### 3-2. Team Context (interactive)
 
-**Core (always present):**
+```
+AskUserQuestion(
+  question: "Are there team conventions for commits, PRs, branching, or code review?",
+  options: [
+    { label: "Conventional Commits + GitHub Flow", description: "feat/fix/chore prefixes, feature branches, squash merge" },
+    { label: "Trunk-based development", description: "Short-lived branches, no long-running feature branches" },
+    { label: "Custom — I'll describe", description: "You'll specify your team's rules" },
+    { label: "Solo project, no conventions", description: "Skip team context" }
+  ]
+)
+```
+
+If user provides team conventions → record as decision: `D_H2: "Team conventions: [rules]"`
+These will be written into CLAUDE.md by the Guard Rails task (derived by `/execute`).
+
+### 3-3. Constraints → Rules (auto + confirm)
+
+Scan L2 constraints[] and propose converting them to `.claude/rules/` files:
+
+```
+L2 produced these constraints:
+  C1: "pnpm workspace — always use pnpm, never npm/yarn"
+  C3: "Dependency direction: shared → client/server only"
+
+These can become auto-enforced rules in .claude/rules/.
+```
+
+```
+AskUserQuestion(
+  question: "Convert these constraints to .claude/rules/ for automatic enforcement?",
+  options: [
+    { label: "Yes, all of them", description: "All constraints become rules files" },
+    { label: "Let me pick", description: "Choose which constraints to enforce" },
+    { label: "Skip", description: "Keep constraints in requirements.md only" }
+  ]
+)
+```
+
+Record as decision: `D_H3: "Rules: [list of constraints to convert]"`
+
+### 3-4. Skills Detection (auto-suggest + ask)
+
+Scan L2 decisions for recurring task patterns and suggest project-specific skills:
+
+| L2 Decision Signal | Auto-Suggested Skill | Description |
+|-------------------|---------------------|-------------|
+| DB + ORM (Prisma, Drizzle, SQLAlchemy) | `/migrate` | Run migration + regenerate types |
+| DB detected | `/seed-data` | Generate development seed data |
+| Docker / docker-compose | `/deploy` | Build, push, run with health check |
+| API server (REST, GraphQL, tRPC) | `/api-test` | Test endpoint with curl/httpie |
+| Async workers (Celery, BullMQ) | `/worker-test` | Dispatch test task + verify result |
+| CLI binary (Rust, Go) | `/release` | Version bump + build + tag + publish |
+| Frontend framework | `/new-component` | Scaffold component + test + story |
+| Payment integration (Stripe, etc.) | `/test-webhook` | Forward + trigger webhook locally |
+
+Present auto-suggestions, then ask:
+
+```
+AskUserQuestion(
+  question: "These skills will be scaffolded based on your tech stack. Any other tasks you'll repeat frequently?",
+  options: [
+    { label: "These are enough", description: "Proceed with auto-suggested skills only" },
+    { label: "Add more", description: "I'll describe additional recurring tasks" },
+    { label: "Skip all skills", description: "Don't generate any project skills" }
+  ]
+)
+```
+
+Record as decision: `D_H4: "Skills: [list of skills to generate]"`
+
+Each generated skill will have:
+- `SKILL.md` with project-specific steps (using actual commands from L2 decisions)
+- `scripts/validate.sh` when the task has a checkable outcome
+- `disable-model-invocation: true` (all domain skills have side effects)
+
+### 3-5. Hooks Detection (auto + confirm)
+
+Auto-detect hooks from L2 tech stack decisions:
+
+| L2 Decision | Auto-Detected Hook | Type |
+|------------|-------------------|------|
+| TypeScript (tsconfig.json) | `tsc --noEmit` on Edit/Write to .ts | PostToolUse |
+| Prettier configured | `prettier --write` on Edit/Write | PostToolUse |
+| ESLint configured | `eslint --fix` on Edit/Write | PostToolUse |
+| Ruff / Black (Python) | `ruff format` on Edit/Write | PostToolUse |
+| rustfmt (Rust) | `rustfmt` on Edit/Write | PostToolUse |
+| gofmt (Go) | `gofmt -w` on Edit/Write | PostToolUse |
+| .env files will exist | Block Edit/Write to `.env*` | PreToolUse |
+| Lock files will exist | Block Edit/Write to lock files | PreToolUse |
+
+Present the hook list:
+
+```
+AskUserQuestion(
+  question: "These hooks will be added to .claude/settings.json for automatic enforcement. Approve?",
+  options: [
+    { label: "Approve all", description: "Add all detected hooks" },
+    { label: "Let me pick", description: "Choose which hooks to enable" },
+    { label: "Skip hooks", description: "Don't set up any hooks" }
+  ]
+)
+```
+
+Record as decision: `D_H5: "Hooks: [list of hooks to configure]"`
+
+### L3 Write to requirements.md
+
+Use Edit tool to append all harness decisions to the Decisions section in `${SPEC_DIR}/requirements.md`:
+
+- D_H1: Domain context (if user provided)
+- D_H2: Team conventions (if user provided)
+- D_H3: Rules to convert from constraints
+- D_H4: Skills to generate
+- D_H5: Hooks to configure
+
+Only include D_H1/D_H2 if user provided content. Omit if "None yet" or "Solo project".
+
+### L3 Gate
+
+Present harness summary → AskUserQuestion (Approve/Revise/Abort).
+
+---
+
+## L4: Requirements + Harness Decisions
+
+**Output**: Requirements section (with GWT sub-requirements) written to requirements.md
+
+L4 does NOT produce tasks. Task breakdown is the job of `/execute` (via `/blueprint` or inline planning), which writes a sibling `plan.json`. L4's job is to finalize the *what* (requirements + harness intent) so `/execute` has a complete requirements.md to derive tasks from.
+
+Requirements come from both L2 (architecture) and L3 (harness). Every sub-requirement MUST have `given` / `when` / `then` (GWT is mandatory).
+
+### Step 1: Derive Requirements
+
+Construct requirements from L2 decisions + L3 harness decisions, then write them into the Requirements section of `${SPEC_DIR}/requirements.md` using the Edit tool.
+Every sub-requirement must include `given`, `when`, `then` — behavior alone is not enough.
+
+**Code Requirements (from L2):**
 
 ```
 R1: "Code Structure — Project directories, base configs, and a complete vertical slice exemplar"
@@ -403,311 +453,107 @@ R2: "Test Infrastructure — Framework setup with patterns matching the exemplar
   R2.1: "[Test framework] configured with [runner] and example test matching exemplar flow"
   R2.2: "Test directory structure mirrors source structure"
 
-R3: "Guard Rails — Enforcement mechanisms for drift resistance"
-  R3.1: "CLAUDE.md with architectural rules, dependency direction, and file placement conventions"
+R3: "Guard Rails — CLAUDE.md + enforcement mechanisms for drift resistance"
+  R3.1: "CLAUDE.md with architectural rules, domain context, team conventions, dependency direction, file placement conventions, available project skills summary, and active hooks summary"
   R3.2: "Linter + formatter configured with project-specific rules"
   R3.3: "CI pipeline running lint + typecheck + test"
   R3.4: ".env.example with all required environment variables documented"
 ```
 
-**Conditional (only if activated in L2):**
+**Conditional Code Extensions (from L2):**
 
 ```
-R4: "Type Contracts — [OpenAPI/tRPC/GraphQL] schema with code generation" (if activated)
-  R4.1: "Schema definition file as single source of truth"
-  R4.2: "Code-gen configured to produce typed client/server stubs"
+R4: "Type Contracts — Schema-driven type safety across client-server boundary" (if D_EXT1)
+  R4.1: "API schema or router defines all endpoints with typed request/response"
+  R4.2: "Client-side type bindings generated or inferred from the schema (no manual type duplication)"
 
-R5: "Data Layer — Database with migration infrastructure" (if activated)
-  R5.1: "[ORM] configured with connection pooling"
-  R5.2: "Initial migration with exemplar model"
-  R5.3: "Seed data script for development"
+R5: "Data Layer — Database connection, schema management, and seed data" (if D_EXT2)
+  R5.1: "ORM/query builder configured with typed models matching the domain"
+  R5.2: "Initial migration generated and seed script produces development data"
+  R5.3: "Database connection uses environment variable (DATABASE_URL or equivalent)"
 
-R6: "Docker/Infra — Containerized development environment" (if activated)
-  R6.1: "Dockerfile for [service]"
-  R6.2: "docker-compose.yml for local development (app + dependencies)"
+R6: "Docker/Infra — Containerized local development environment" (if D_EXT3)
+  R6.1: "docker-compose.yml with required services (DB, cache, etc.) and persistent volumes"
+  R6.2: "README or CLAUDE.md documents how to start/stop the local environment"
 
-R7: "Runtime Patterns — Production readiness foundations" (if activated)
-  R7.1: "Health check endpoint"
-  R7.2: "Graceful shutdown handler (SIGTERM)"
+R7: "Runtime Patterns — Production-readiness baseline for long-running server" (if D_EXT4)
+  R7.1: "Health check endpoint returns server status and dependency connectivity"
+  R7.2: "Graceful shutdown handler closes DB connections and in-flight requests"
 ```
 
-**Harness Extensions (from Dimension 6):**
+**Harness Requirements (from L3):**
 
 ```
-R8: "Project Memory — Architecture decisions, domain knowledge, and team context persisted for cross-session continuity" (always active — R8.2 minimum, R8.3 if 6-1 provided, R8.4 if 6-2 provided)
-  R8.1: "MEMORY.md index initialized with pointers to memory files"
-  R8.2: "Architecture memory file recording L2 decisions (tech stack, patterns, conventions)"
-  R8.3: "Domain memory file with project-specific terms and business rules (if provided in 6-1)"
-  R8.4: "Team memory file with conventions, PR rules, branching strategy (if provided in 6-2)"
+R8: "Project Rules — Constraints converted to .claude/rules/ for automatic enforcement" (if D_H3)
+  R8.1: "Each selected constraint has a corresponding .claude/rules/{name}.md file"
+  R8.2: "Rule files contain clear, actionable directives (not vague guidelines)"
 
-R9: "Domain Skills — Project-specific repeatable task recipes" (if recurring tasks detected in 6-3)
-  R9.1: "Each auto-suggested skill has SKILL.md with step-by-step instructions"
-  R9.2: "Each user-specified skill has SKILL.md with project-tailored steps"
-  R9.3: "Skills include scripts/ or templates/ when the task involves validation or boilerplate"
+R9: "Domain Skills — Project-specific repeatable task recipes" (if D_H4)
+  R9.1: "Each skill has SKILL.md with project-specific commands (not generic placeholders)"
+  R9.2: "Skills with checkable outcomes include scripts/validate.sh"
 
-R10: "Project Hooks — Automated code quality enforcement" (if tooling detected in 6-4)
-  R10.1: ".claude/settings.json with PostToolUse hooks for detected formatter/linter/type-checker"
-  R10.2: "PreToolUse protection hooks for .env and lock files (if present)"
+R10: "Project Hooks — Automated code quality enforcement" (if D_H5)
+  R10.1: ".claude/settings.json with PostToolUse hooks for detected formatter/linter"
+  R10.2: "PreToolUse protection hooks for .env and lock files (if applicable)"
 ```
 
-### Behavior Quality
+**Behavior Quality**: Same rules as specify — trigger + observable outcome.
 
-Same rules as specify — trigger + observable outcome:
-- BAD: "Project has good structure"
-- GOOD: "Directory structure follows NestJS module conventions with `src/modules/{name}/` containing controller, service, module files"
+**Note on fulfills[]**: Use parent requirement IDs only (R1, R2, R3), NOT sub-requirement IDs (R1.1, R3.4).
 
-### L3 Approval
+### Step 2: Harness Intent (no task generation)
 
-Print all requirements → AskUserQuestion (Approve/Revise/Abort).
+Task derivation is handled by `/execute` (via `/blueprint` or inline planning). `/execute` reads requirements.md and writes `plan.json` next to it.
 
-### L3 Gate
+Ensure the requirements written in Step 1 carry enough harness detail that `/execute` can derive the right tasks:
 
-```bash
-hoyeon-cli spec validate .hoyeon/specs/{name}/spec.json --layer requirements
-```
+- **R1 (Code Structure)** must include the vertical slice exemplar as a sub-requirement with full GWT.
+- **R3 (Guard Rails)** CLAUDE.md sub-req must spell out domain context (D_H1), team conventions (D_H2), available skills (D_H4), and active hooks (D_H5).
+- **R8 / R9 / R10** (harness) must be present whenever D_H3 / D_H4 / D_H5 fired in L3.
+- Conditional extensions R4-R7 must be present whenever the matching D_EXT fired in L2.
 
----
+### Task Shape Guidance for `/execute`
 
-## L4: Scaffold Tasks
+`/execute` will read `requirements.md` and derive `plan.json` tasks. The scaffold-specific shape it is expected to produce (documented here so reviewers know what "good" looks like):
 
-**Output**: `tasks[]`, `external_dependencies`
+- `T1` Project initialization → fulfills R1
+- `T2` Guard Rails + CLAUDE.md + rules → fulfills R3 (+ R8 when present), depends on T1
+- `T4` Test infrastructure → fulfills R2, depends on T1
+- `T3` Vertical slice exemplar (highest-value task) → fulfills R1, depends on T2, T4
+- Conditional extension tasks for any of R4/R5/R6/R7 that exist
+- Harness tasks for R9 (skills) and R10 (hooks) when present
+- A final verification task covering agent-extensibility + harness checks
 
-### Derive from Requirements
+Keep this as guidance; the actual task records are `/execute`'s responsibility.
 
-```bash
-hoyeon-cli spec derive-tasks .hoyeon/specs/{name}/spec.json
-```
+### Vertical Slice Exemplar (R1 sub-requirement)
 
-### Task Structure
-
-Scaffold tasks follow a specific execution order:
-
-```
-T1: Project initialization (package.json, tsconfig, base configs)
-    fulfills: [R1 partial, R3 partial]
-
-T2: Guard Rails setup (CLAUDE.md, lint, format, CI, .env.example)
-    fulfills: [R3]
-    depends_on: [T1]
-
-T3: Vertical slice exemplar (the reference implementation)
-    fulfills: [R1, R2 partial]
-    depends_on: [T2]
-    ← THIS IS THE MOST IMPORTANT TASK
-
-T4: Test infrastructure (framework + exemplar-matching tests)
-    fulfills: [R2]
-    depends_on: [T3]
-
---- Conditional tasks (parallel where possible) ---
-
-T5: Type Contracts setup (if R4 exists)
-    fulfills: [R4]
-    depends_on: [T3]
-
-T6: Data Layer setup (if R5 exists)
-    fulfills: [R5]
-    depends_on: [T1]
-
-T7: Docker/Infra setup (if R6 exists)
-    fulfills: [R6]
-    depends_on: [T1]
-
-T8: Runtime Patterns (if R7 exists)
-    fulfills: [R7]
-    depends_on: [T3]
-
---- Harness tasks ---
-
-T_MEM: Project Memory initialization
-    fulfills: [R8]
-    depends_on: [T2]
-    ← Converts L2 decisions + Dim 6 interview answers into memory files
-
-T_SKILL: Domain Skills generation (if R9 exists)
-    fulfills: [R9]
-    depends_on: [T3]
-    ← Needs vertical slice context to write project-accurate skill steps
-
-T_HOOK: Project Hooks setup (if R10 exists)
-    fulfills: [R10]
-    depends_on: [T1]
-    ← Only needs base config to know formatter/linter paths
-
-TF: Scaffold verification
-    depends_on: [all]
-```
-
-### T3: Vertical Slice Exemplar (Critical Task)
-
-The exemplar is the scaffold's highest-value output. It must demonstrate:
+The exemplar is the scaffold's highest-value output. Its GWT sub-requirement must demand:
 
 1. **The complete flow** — from entry point to data layer and back
 2. **Importable utilities** — `lib/logger.ts`, `lib/config.ts`, `lib/errors.ts` (not inline)
 3. **The naming convention** — how files, functions, and variables are named
-4. **The test pattern** — how to test this flow (test lives alongside T3)
+4. **The test pattern** — how to test this flow (test lives alongside the exemplar)
 5. **Error handling** — how errors propagate through layers
 6. **Type safety** — how types flow across boundaries
 
-The exemplar answers the question: "If an agent reads only this one feature, can it build the next feature correctly?"
+The exemplar answers: "If an agent reads only this one feature, can it build the next feature correctly?"
 
-### T_MEM: Project Memory Initialization
+### Domain Skills (R9 sub-requirements)
 
-T_MEM converts L2 architecture decisions and Dimension 6 interview answers into persistent memory files.
-
-**Output structure:**
-```
-~/.claude/projects/{project-path}/memory/
-├── MEMORY.md                      # Index file with pointers
-├── project_architecture.md        # L2 decisions as memory (type: project)
-├── project_domain.md              # Domain terms + business rules (type: project, if 6-1 provided)
-└── project_team.md                # Team conventions (type: project, if 6-2 provided)
-```
-
-**Memory file format** (follows auto-memory frontmatter spec):
-```markdown
----
-name: project-architecture
-description: Architecture decisions for {project name} — tech stack, patterns, conventions
-type: project
----
-
-{Content derived from L2 decisions. Each decision becomes a bullet point.}
-```
-
-**Rules:**
-- R8.2 (architecture) is always created — L2 decisions always exist
-- R8.3 (domain) is only created if user provided domain terms in checkpoint 6-1
-- R8.4 (team) is only created if user provided team conventions in checkpoint 6-2
-- If user answered "None yet" or "Solo project" → skip that memory file, don't create empty ones
-- MEMORY.md index entries must be under 150 chars each
-
----
-
-### T_SKILL: Domain Skills Generation
-
-T_SKILL creates project-specific skill files based on Dimension 6-3 results.
-
-**Output structure:**
-```
-.claude/skills/
-├── {skill-name}/
-│   ├── SKILL.md                   # Step-by-step instructions
-│   └── scripts/                   # Optional validation scripts
-│       └── validate.sh
-```
-
-**SKILL.md template:**
-```yaml
----
-name: {skill-name}
-description: {what this skill does — specific to this project}
-disable-model-invocation: true
----
-
-# /{skill-name} — {Title}
-
-1. {Step 1 — use project-specific commands/paths from L2 decisions}
-2. {Step 2}
-3. {Step 3}
-4. Verify: {how to check it worked}
-```
-
-**Rules:**
-- Each skill must reference actual tools/commands from L2 decisions (e.g., "npx prisma migrate dev" not "run migration")
+Each generated skill must reference actual tools/commands from L2 decisions:
 - `disable-model-invocation: true` for all domain skills (they have side effects)
-- Include a `scripts/validate.sh` when the task has a checkable outcome (build passes, migration valid, etc.)
-- Auto-suggested skills use the detection table from Dimension 6-3
-- User-specified skills are written based on their description + project context
-
----
-
-### T_HOOK: Project Hooks Setup
-
-T_HOOK generates `.claude/settings.json` with hooks derived from Dimension 6-4 auto-resolution.
-
-**Output:** `.claude/settings.json` (or merge into existing)
-
-**Hook generation rules:**
-
-1. **PostToolUse formatter** (if formatter detected):
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{formatter_command} $CLAUDE_FILE_PATH"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-2. **PreToolUse protection** (if .env or lock files will exist):
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo $CLAUDE_FILE_PATH | grep -qE '\\.(env|env\\..*)$' && echo 'BLOCK: .env files should not be edited directly' && exit 1 || exit 0"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**Rules:**
-- Only add hooks for tools actually chosen in L2 (don't add Prettier hook if user chose Biome)
-- If `.claude/settings.json` already exists (unlikely in greenfield), merge rather than overwrite
-- Present the hook list during L2 approval so user can opt out of specific hooks
-- formatter command must match the actual binary (prettier, biome, ruff, gofmt, rustfmt)
-
----
-
-### TF: Scaffold Verification
-
-TF verifies the scaffold is agent-ready:
-
-```json
-{
-  "id": "TF",
-  "action": "Scaffold verification: agent extensibility + harness check",
-  "type": "verification",
-  "depends_on": ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T_MEM", "T_SKILL", "T_HOOK"],
-  "steps": [
-    "Build: all build/lint/typecheck commands pass",
-    "Tests: all exemplar tests pass",
-    "CLAUDE.md: architectural rules are clear and complete",
-    "Exemplar: vertical slice is complete (entry → data → response → test)",
-    "Utilities: logger, config, errors are importable and used in exemplar",
-    "Memory: MEMORY.md exists with valid pointers, memory files have correct frontmatter",
-    "Skills: each generated skill has valid SKILL.md with project-specific commands (not generic placeholders)",
-    "Hooks: .claude/settings.json hooks reference correct tool commands (formatter binary matches L2 decision)",
-    "Agent test: could an agent read this codebase AND its harness and build a new feature consistently?"
-  ]
-}
-```
+- Include `scripts/validate.sh` when the task has a checkable outcome
+- Use project-specific commands (e.g., "npx prisma migrate dev" not "run migration")
 
 ### L4 Approval — Plan Summary
 
 ```
-spec.json ready! .hoyeon/specs/{name}/spec.json
+requirements.md ready! .hoyeon/specs/{name}/requirements.md
 
 Goal
 ----------------------------------------
-{context.confirmed_goal}
+{confirmed_goal}
 
 Architecture Decisions ({n} total)
 ----------------------------------------
@@ -722,32 +568,26 @@ Activated Extensions
 [ ] Docker/Infra (not needed)
 [ ] Runtime Patterns (not needed)
 
-Harness Extensions
+Harness
 ----------------------------------------
-[x] Project Memory (architecture + domain + team)
-[x] Domain Skills (/migrate, /seed-data, /deploy + user: /create-tenant)
-[x] Project Hooks (prettier, tsc, .env protection)
+CLAUDE.md: architecture + domain context + team conventions
+Rules: {n} constraints → .claude/rules/
+Skills: {list of skills}
+Hooks: {list of hooks}
 
-Scaffold Tasks (DAG)
+Task Derivation
 ----------------------------------------
-T1: Project init [core] — pending
-T2: Guard Rails [core] — pending (depends: T1)
-T3: Vertical slice exemplar [core] — pending (depends: T2)
-T4: Test infrastructure [core] — pending (depends: T3)
-T5: Type Contracts [extension] — pending (depends: T3)
-T6: Data Layer [extension] — pending (depends: T1)
-T_MEM: Project Memory [harness] — pending (depends: T2)
-T_SKILL: Domain Skills [harness] — pending (depends: T3)
-T_HOOK: Project Hooks [harness] — pending (depends: T1)
-TF: Scaffold verification — pending (depends: all)
+(none in requirements.md — /execute will derive tasks into plan.json
+ next to requirements.md: project init, guard rails + rules, test infra, vertical slice exemplar,
+ conditional extensions, domain skills, project hooks, and a final scaffold verification.)
 
 Quality Criteria
 ----------------------------------------
 - Agent extensibility: vertical slice exemplar (T3)
 - Testability: test infrastructure + exemplar tests (T4)
-- Drift resistance: CLAUDE.md + lint + CI (T2)
-- Type safety: [type contract strategy from D_] (T5)
-- Cross-session continuity: project memory (T_MEM)
+- Drift resistance: CLAUDE.md + rules + lint + CI (T2)
+- Type safety: [type contract strategy from D_]
+- Cross-session continuity: CLAUDE.md with domain/team context (T2)
 - Task automation: domain skills (T_SKILL)
 - Code quality enforcement: project hooks (T_HOOK)
 ```
@@ -757,8 +597,9 @@ AskUserQuestion(
   question: "Review the scaffold plan above.",
   options: [
     { label: "/execute", description: "Start scaffolding" },
-    { label: "Revise decisions (L2)", description: "Change architecture decisions" },
-    { label: "Revise tasks (L4)", description: "Adjust task breakdown" },
+    { label: "Revise architecture (L2)", description: "Change architecture decisions" },
+    { label: "Revise harness (L3)", description: "Change harness setup" },
+    { label: "Revise plan (L4)", description: "Adjust requirements or harness decisions" },
     { label: "Abort", description: "Stop" }
   ]
 )
@@ -770,7 +611,7 @@ On approval, run `/execute`.
 
 ## User Approval Protocol
 
-Three approval gates (L2, L3, L4). Same pattern as specify:
+Three approval gates (L2, L3, L4). L2: architecture, L3: harness, L4: unified plan. Same pattern as specify:
 
 ```
 AskUserQuestion(
@@ -787,20 +628,22 @@ AskUserQuestion(
 
 ## Checklist Before Stopping
 
-- [ ] spec.json at `.hoyeon/specs/{name}/spec.json`
-- [ ] `hoyeon-cli spec validate` passes
-- [ ] `context.confirmed_goal` is architecture-framed (not feature-framed)
-- [ ] `meta.non_goals` includes "feature implementation" or similar
-- [ ] `context.decisions[]` cover all 6 architecture dimensions (including Harness & Context)
-- [ ] Conditional extensions detected and recorded as decisions
-- [ ] Harness extensions detected from Dimension 6 interview
-- [ ] Requirements map to 3 Core + activated extensions + harness extensions
-- [ ] R1 includes mandatory vertical slice exemplar requirement
-- [ ] T3 (exemplar) includes importable utilities (logger, config, errors)
-- [ ] T_MEM produces memory files with correct frontmatter (name, description, type)
-- [ ] T_SKILL produces skills with project-specific commands (not generic placeholders)
-- [ ] T_HOOK produces hooks matching actual L2 tooling decisions
-- [ ] TF includes agent extensibility + harness check
-- [ ] CLAUDE.md generation is in Guard Rails task (T2)
-- [ ] Plan Summary includes Harness Extensions section
+- [ ] requirements.md at `.hoyeon/specs/{name}/requirements.md`
+- [ ] Confirmed Goal is architecture-framed (not feature-framed)
+- [ ] Non-Goals includes "feature implementation" or similar
+- [ ] L2: Decisions cover all 5 architecture dimensions
+- [ ] L2: Conditional extensions detected and recorded as decisions
+- [ ] L3: Applicable harness decisions (D_H1-D_H5, skip if user opted out) written to Decisions section
+- [ ] L3: Constraints → rules conversion offered to user
+- [ ] L3: Skills auto-suggested from tech stack + user input
+- [ ] L3: Hooks auto-detected from formatter/linter choices
+- [ ] L4: Requirements include Code (R1-R3) + Conditional (R4-R7) + Harness (R8-R10)
+- [ ] L4: Every sub-requirement has `given`, `when`, `then` (mandatory)
+- [ ] L4: No tasks written to requirements.md (/execute writes plan.json)
+- [ ] R1 includes mandatory vertical slice exemplar sub-requirement with full GWT
+- [ ] Exemplar sub-req requires importable utilities (logger, config, errors)
+- [ ] R3.1 CLAUDE.md includes domain context (D_H1), team conventions (D_H2), available skills (D_H4), and active hooks (D_H5)
+- [ ] R9 sub-reqs require project-specific commands (not generic placeholders)
+- [ ] R10 sub-reqs require hooks matching actual L2 tooling decisions
+- [ ] Plan Summary includes Harness section and states tasks come from /execute
 - [ ] Plan Summary presented to user
