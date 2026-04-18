@@ -43,7 +43,8 @@ Must stop after 3 failed attempts
 
 Phase 1: DIAGNOSE ─────────────────────────────────
   debugger + verification-planner + gap-analyzer (all parallel)
-  → User confirmation
+  → Blast-radius grep scan + Triage recommendation
+  → User confirmation (includes triage hint)
 
 Phase 2: REQUIREMENTS GENERATION ──────────────────
   Diagnosis results → requirements.md (hoyeon-cli req init + Write)
@@ -163,14 +164,72 @@ Task(gap-analyzer):
    - Whether similar bugs exist with the same pattern"
 ```
 
+### Step 1.3b: Blast-radius Quick Scan
+
+After debugger identifies `root_cause.location` (e.g. `src/auth/token.ts:42`), extract the function/module name and run grep-based structural scan. Always use `wc -l` so the LLM compares integers, not raw grep output.
+
+```bash
+# Extract from debugger's Root Cause section:
+#   fn   = function or symbol name at the root cause (e.g. "parseToken")
+#   mod  = module path without extension (e.g. "src/auth/token")
+# If the function name cannot be reliably extracted, set fn="" and skip caller_count.
+
+total_files=$(git ls-files | wc -l | tr -d ' ')
+callers=$(git grep -l -F "$fn" 2>/dev/null | wc -l | tr -d ' ')
+importers=$(git grep -l -F "$mod" 2>/dev/null | wc -l | tr -d ' ')
+test_refs=$(git grep -l -F "$fn" -- '**/*test*' '**/*spec*' 2>/dev/null | wc -l | tr -d ' ')
+hot_path=$(git grep -l -F "$fn" -- 'migrations/**' 'auth/**' 'payment/**' 'billing/**' 'schema/**' 2>/dev/null | wc -l | tr -d ' ')
+```
+
+Use `-F` (fixed string) to avoid regex injection from extracted symbols. Empty or malformed symbols → skip that signal, do NOT fail the phase.
+
+Store the scan in `DEBUG_STATE`:
+
+```
+Update DEBUG_STATE:
+  ## Diagnosis:
+    blast:
+      total_files: {total_files}
+      callers: {callers}
+      importers: {importers}
+      tests: {test_refs}
+      hot_path: {hot_path}
+```
+
+**Blind-spot note**: grep misses dynamic dispatch, reflection, and non-JS/Python import forms. Low counts = **no data**, not safety.
+
+### Step 1.3c: Triage Recommendation
+
+Compute a routing hint from the scan. This is **advisory only** — actual routing decision happens at Step 1.4 with user input.
+
+Rules (first match wins):
+
+| Condition | Hint |
+|-----------|------|
+| `hot_path > 0` | **/specify recommended** — touches critical path (auth/payment/migration/schema) |
+| `debugger.severity == COMPLEX` AND `callers > 10` AND `callers > total_files × 0.05` | **/specify recommended** — wide blast radius ({callers} callers, >5% of repo) |
+| `debugger.assumptions` section non-empty AND root cause text contains uncertainty markers (`?`, `추정`, `possibly`, `may`, `unclear`) | **/discuss recommended** — root cause unclear |
+| none of the above | **bugfix appropriate** |
+
+Store the hint in `DEBUG_STATE`:
+
+```
+Update DEBUG_STATE:
+  triage:
+    hint: {specify|discuss|bugfix}
+    reason: "{1-line reason}"
+```
+
 ### Step 1.4: User Confirmation
 
-Present debugger results summary for user confirmation:
+Present debugger results + blast-radius scan + triage hint for user confirmation.
+
+The triage hint is **advisory** — the user always makes the final routing decision.
 
 ```
 AskUserQuestion:
-  header: "Root Cause"
-  question: "Is the debugger's Root Cause analysis correct?"
+  header: "Root Cause & Triage"
+  question: "Review diagnosis and choose how to proceed."
 
   Display:
   - Bug Type: [classification]
@@ -180,10 +239,33 @@ AskUserQuestion:
   - Assumptions: [debugger's Assumptions section]
   - Key warnings from Gap Analysis
 
+  - Blast Radius: callers={N}, importers={M}, tests={T}, hot_path={H}
+  - Triage: {hint from Step 1.3c} — {reason}
+    (e.g. "/specify recommended — touches auth/ (hot path)")
+
   options:
-  - "Correct, proceed" → Phase 2
+  - "Continue with bugfix" → Phase 2
+      (if triage hint != bugfix, show as "Continue with bugfix (override triage)")
+  - "Switch to /specify" → Hand off requirements.md + debug-state.md to /specify
+  - "Switch to /discuss" → Exit bugfix, suggest running /discuss with the bug context
   - "Root cause is different" → Re-run Step 1.2 with user's additional info
-  - "Not sure" → Suggest "/discuss to explore first", then exit
+  - "Stop" → Exit
+```
+
+**Handoff on /specify selection:**
+
+```
+# requirements.md hasn't been written yet (Phase 2 is skipped on handoff),
+# but debug-state.md contains all Phase 1 findings. Save a skeleton so /specify
+# has a starting point, then exit bugfix.
+
+hoyeon-cli req init ${SPEC_DIR} --type bugfix --goal "Fix: {bug description}"
+# Append debugger report + blast scan to ${SPEC_DIR}/requirements.md as context
+# (sections: ## Debug Context, ## Blast Radius)
+
+Update DEBUG_STATE: status: escalated, reason: "user_triage_specify"
+
+print("Handed off to /specify. Run: /specify {SPEC_DIR}")
 ```
 
 ---
@@ -502,6 +584,7 @@ Since requirements.md is the standard format, `/specify` can read and enrich the
 | 1 | **debugger** | existing | always | Root cause analysis, Bug Type classification |
 | 1 | **verification-planner** | existing | always | Generate Auto items list (verification commands) |
 | 1 | **gap-analyzer** | existing | always | Check for missed factors, risk assessment |
+| 1.5 | **Bash (git grep + wc -l)** | new | always | Blast-radius scan + triage hint (no agent, direct grep) |
 | 3 | **/execute** (Skill) | existing | always | requirements.md-based execution (worker, verify, commit, review) |
 | 5 | **/qa** (Skill) | existing | user opts in | Browser/app QA verification of the fix |
 
@@ -525,3 +608,4 @@ This skill combines core patterns from 3 proven open-source projects:
 | Circuit breaker (3 attempts) | oh-my-claudecode (debugger) + superpowers | Phase 4 |
 | requirements.md as universal format | internal (specify/execute unification) | Phase 2 |
 | Execute reuse | internal (single execution engine) | Phase 3 |
+| Advisory triage (grep blast-radius + user choice) | internal (bugfix lightweight escalation) | Phase 1.5 / Step 1.4 |
