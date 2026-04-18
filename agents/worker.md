@@ -104,9 +104,8 @@ If ANY sub-req fails this check:
 
 If your task description contains `TDD Mode: ON`:
 
-1. Read the full TDD guide: `skills/execute/references/tdd-guide.md`
-2. Follow **RED → GREEN → REFACTOR** as described in the guide
-3. Each sub-req in `fulfills[]` must have at least one test case structured directly from the GWT fields (`given`/`when`/`then`). GWT is mandatory — never derive tests from `behavior` alone.
+1. Follow **RED → GREEN → REFACTOR** cycle
+2. Each sub-req in `fulfills[]` must have at least one test case structured directly from the GWT fields (`given`/`when`/`then`). GWT is mandatory — never derive tests from `behavior` alone.
 
 **If TDD Mode is OFF or absent**, skip this section and implement directly.
 
