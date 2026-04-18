@@ -1,15 +1,13 @@
 ---
 name: execute
 description: |
-  Spec-driven orchestrator that reads spec.json via cli, routes by meta.type,
-  and dispatches agents/skills accordingly.
-  spec.json-native execution (no PLAN.md).
-  Use when: "/execute", "execute", "실행해줘", "스펙 실행"
+  Plan-driven orchestrator. Reads plan.json (from /blueprint) or requirements.md,
+  then dispatches workers to build the system.
+  Use when: "/execute", "execute", "plan 실행", "blueprint 실행"
 allowed-tools:
   - Read
   - Grep
   - Glob
-  - Task
   - Bash
   - Edit
   - Write
@@ -25,344 +23,645 @@ allowed-tools:
   - TeamDelete
   - SendMessage
 validate_prompt: |
-  All tasks in spec.json must have status "done" at completion.
-  hoyeon-cli spec check must pass (internal consistency).
-  Context files (learnings.json, issues.json, audit.md) are created at init for meta.type == "dev".
-  Verify recipe must run (all modes and types).
+  Phase 0 must detect input type (plan.json / requirements.md / markdown) and normalize.
+  Dispatch mode must be asked via AskUserQuestion.
+  Verify depth must be asked via AskUserQuestion.
+  All tasks must reach status "completed" or "done" before stopping.
+  Verify recipe must run.
   Final report must be output.
-  TDD mode is OFF by default (--tdd to enable). tdd flag must be passed to WORKER_DESCRIPTION.
 ---
 
-# /execute — Spec-Driven Orchestrator
+# /execute — Plan-Driven Orchestrator
 
-**You are the conductor. You do not play instruments directly.**
-Delegate to worker agents or skills, manage parallelization.
-All task data comes from spec.json via `hoyeon-cli spec plan`.
+**You are the conductor. You do not play instruments.**
+Delegate to workers, manage parallelization, verify the result.
 
 ## Core Principles
 
-1. **DELEGATE** — In agent/team mode, all work goes to worker agents. In direct mode, the orchestrator executes tasks itself. In plain mode, the orchestrator may handle tasks directly or delegate. You only use Read, Grep, Glob, Bash (for orchestration), and Task tools for coordination.
-2. **PARALLELIZE** — Run all unblocked tasks within a round simultaneously via `run_in_background: true`.
-3. **spec.json is truth** — Task status and progress flow through `hoyeon-cli spec` commands.
-4. **Context flows forward** — Workers write learnings/issues to shared context files. In agent mode, after each round the orchestrator collects DONE summaries into `round-summaries.json`. Next-round workers read all context files including prior round summaries.
+1. **DELEGATE** — Agent/Team: workers do the work. Direct: orchestrator does.
+2. **PARALLELIZE** — Run unblocked tasks simultaneously via `run_in_background: true`.
+3. **plan.json is the ledger** — Task state via `hoyeon-cli plan` commands. Never direct file writes.
+4. **Contracts guide workers** — If `contracts.md` exists, workers reference it for cross-module agreements.
+5. **Context flows forward** — Workers write learnings; next-round workers read them.
 
 ---
 
 ## Phase 0: Initialize
 
-### 0.1 Find Spec
+Phase 0 is **plan-first**. The orchestrator resolves an input to a valid `plan.json`, asks two questions (dispatch + verify depth), and prepares a worker charter template. **Phase 0 never reads `requirements.md` or `contracts.md` body** — only `plan.json` structural fields (INV-3).
 
-Resolve spec path in priority order:
-
-```
-SESSION_ID="[session ID from UserPromptSubmit hook]"
-
-1) IF arg looks like a path (contains "/" or ends with ".json"):
-   spec_path = arg  (use as-is)
-
-2) IF arg is a feature name (e.g. "auth-login"):
-   spec_path = ".hoyeon/specs/{arg}/spec.json"
-
-3) No arg: session state (path registered by quick-plan, specify, etc.)
-   hoyeon-cli session get --sid $SESSION_ID
-   → if state.spec field exists, spec_path = state.spec
-
-If none found → error: "spec.json not found. Please generate one first with /specify or /quick-plan."
-```
-
-Read spec.json and validate:
-
-```bash
-hoyeon-cli spec validate {spec_path}
-hoyeon-cli spec check {spec_path}
-```
-
-**Read `spec.meta.type`** (default `"dev"` if absent):
+### 0.1 Parse Input & Resolve
 
 ```
-meta_type = spec.meta.type ?? "dev"
+/execute [<spec_dir>] [--work worktree|branch|no-commit]
 ```
 
-### 0.2 Get Execution Plan
+```
+raw_path = $1  (may be empty)
 
-```bash
-plan_text = Bash("hoyeon-cli spec plan {spec_path}")
-plan_json = Bash("hoyeon-cli spec plan {spec_path} --format slim")
-plan = JSON.parse(plan_json)
+# (a) No argument → virtual plan path (R-F1.3)
+IF raw_path is empty:
+  input_mode = "virtual"
+  spec_dir   = null   # resolved later in 0.2
+  GOTO 0.2
+
+# (b) Argument provided → must exist (R-F1.4)
+IF NOT exists(raw_path):
+  ERROR: "No such path: {raw_path}"
+  guidance: "Provide a directory containing plan.json or requirements.md,
+             or call /execute with no argument to synthesize a virtual plan."
+  ABORT
+
+spec_dir = raw_path if is_dir(raw_path) else dirname(raw_path)
+
+# (c) Classify what we found
+IF exists(spec_dir/plan.json):
+  input_mode = "plan"          # R-F1.1
+ELIF exists(spec_dir/requirements.md):
+  input_mode = "requirements"  # R-F1.2
+ELSE:
+  ERROR: "{spec_dir} has neither plan.json nor requirements.md"
+  guidance: "Run /blueprint on requirements.md, or call /execute without arguments
+             for a session-synthesized virtual plan."
+  ABORT
 ```
 
-Display plan_text to user. Filter out already-done tasks:
+### 0.2 Resolve to plan.json
+
+Handle each `input_mode` — the goal is to end this sub-phase with a validated `plan.json` on disk and `spec_dir` set.
 
 ```
-FOR EACH round in plan.rounds:
-  round.tasks = round.tasks.filter(t => t.status != "done")
-plan.rounds = plan.rounds.filter(r => r.tasks.length > 0)
-```
+IF input_mode == "plan":                             # R-F1.1
+  # Direct use — NO user confirm.
+  Bash("hoyeon-cli plan validate {spec_dir}")
 
-### 0.3 Plan Analysis
+ELIF input_mode == "requirements":                   # R-F1.2
+  # Try /blueprint first; fall back to inline planning if unavailable.
+  IF Skill(blueprint, args="{spec_dir}") succeeds AND exists(spec_dir/plan.json):
+    Bash("hoyeon-cli plan validate {spec_dir}")
+  ELSE:
+    # Inline planning — lightweight alternative to /blueprint.
+    # Read requirements.md directly (exception to INV-3 — only during init).
+    reqs_content = Read("{spec_dir}/requirements.md")
 
-Analyze the execution plan to generate recommendations for the user.
+    # Extract frontmatter (type, goal, non_goals) + sub-requirements
+    meta_type = parse_frontmatter(reqs_content).type
+    sub_reqs  = parse_sub_reqs(reqs_content)  # [{id, given, when, then}]
 
-```
-parallel_tasks = count tasks in round 1 (or largest round)
-total_tasks = plan.total_tasks
-solo_candidates = tasks where action implies single-file change (config, rename, simple edit)
-groupable = find tasks touching same directory/module (no dependency between them)
+    # Check pre-work section (if present)
+    pre_work = parse_pre_work(reqs_content)   # see "Pre-work Gate" below
 
-Print analysis:
-  ═══ ANALYSIS ═══
-  Tasks: {total_tasks} | Rounds: {plan.total_rounds} | Max parallelism: {parallel_tasks}
-  Solo candidates: {solo_candidates or "none"}
-  Groupable: {groupable or "none"}
-```
+    # Generate task graph inline (no contracts, no journeys)
+    draft_tasks = []
+    FOR EACH logical group of sub_reqs (by parent R-X):
+      draft_tasks.append({
+        id: "T{n}", action: "<what to build>",
+        fulfills: [sub_req.id for sub_req in group],
+        depends_on: [], parallel_safe: true
+      })
 
-### 0.4 Sandbox Detection
+    # Generate basic verify_plan (gate 1+2 for all)
+    draft_verify = []
+    FOR EACH sub_req in sub_reqs:
+      draft_verify.append({ target: sub_req.id, type: "sub_req", gates: [1, 2] })
 
-Auto-detect sandbox capabilities from the project and system via 3-tier detection.
+    # Preview (same pattern as blueprint Step 2.3)
+    print("[execute] Inline Plan (no /blueprint)")
+    print_task_table(draft_tasks)
+    print(f"Verify: {len(draft_verify)} entries (all G1+G2)")
 
-```
-Read: ${baseDir}/references/sandbox-detection.md
-Follow ALL instructions for tiered detection, reporting, and install recommendations.
-```
+    choice = AskUserQuestion(
+      question: "Proceed with this inline plan?",
+      options: [
+        { label: "Proceed", description: "Write plan.json and execute" },
+        { label: "Edit",    description: "Revise tasks before proceeding" },
+        { label: "Abort",   description: "Stop — run /blueprint first for a detailed plan" }
+      ]
+    )
+    IF choice == "Abort": HALT
+    IF choice == "Edit": draft_tasks = interactive_edit(draft_tasks)
 
-Detection tiers: (1) project config files → (2) system CLI tools → (3) MCP tool probing.
-Tier 3 (MCP) is critical — skipping it causes false negatives (e.g., computer-use MCP miss).
+    # Write via cli
+    Bash("hoyeon-cli plan init {spec_dir} --type {meta_type}")
+    write_json_to_tmp({tasks: draft_tasks, verify_plan: draft_verify}) → /tmp/plan-inline.json
+    Bash("hoyeon-cli plan merge {spec_dir} --json \"$(cat /tmp/plan-inline.json)\"")
+    Bash("hoyeon-cli plan validate {spec_dir}")
 
-Install recommendations are shown only when `verify == "thorough"` AND tools are missing.
+ELIF input_mode == "virtual":                        # R-F1.3
+  # Session-context synthesis with user confirm.
+  timestamp = Bash("date +%Y%m%d-%H%M%S").trim()
+  spec_dir  = ".hoyeon/specs/adhoc-{timestamp}"
+  Bash("mkdir -p {spec_dir}")
 
-### 0.5 Configuration
-
-#### Resolve from CLI flags first
-
-```
-dispatch = --dispatch flag ?? null
-work = --work flag ?? null
-verify = --verify flag ?? null
-```
-
-#### Recommendations
-
-```
-recommend_dispatch =
-  IF total_tasks <= 2 AND all solo_candidates: "Direct"
-  ELIF total_tasks >= 3 AND parallel_tasks >= 3: "Team"
-  ELSE: "Agent"
-
-recommend_verify =
-  IF total_tasks <= 2: "Light"
-  ELIF total_tasks >= 5 OR any task touches auth/crypto/security: "Thorough"
-  ELSE: "Standard"
-```
-
-#### AskUserQuestion (skip if CLI flag provided)
-
-```
-IF dispatch is null:
-  dispatch = AskUserQuestion(
-    question: "Dispatch mode?",
-    options: [
-      { label: "Direct", description: "Orchestrator executes directly, no subagents" },
-      { label: "Agent", description: "Worker subagents with task grouping" },
-      { label: "Team", description: "TeamCreate persistent workers, claim-based" }
-    ]
-    # Mark recommended with "(Recommended)" in label
+  # Synthesize a minimal plan from recent user messages + cwd state.
+  # Keep it in memory first; do NOT write until the user confirms.
+  draft_plan = synthesize_virtual_plan(
+    recent_user_messages,
+    cwd_state = Bash("ls -la").trim()
   )
+  # draft_plan shape: { meta, tasks[{id, action, fulfills:[], depends_on:[], parallel_safe}], verify_plan:[] }
 
-IF work is null:
+  # Summary preview (stdout, not a file)
+  print("Virtual plan synthesized ({len(draft_plan.tasks)} tasks):")
+  for t in draft_plan.tasks: print("  {t.id}  {t.action}")
+
+  choice = AskUserQuestion(
+    question: "Proceed with this virtual plan?",
+    options: [
+      { label: "Proceed", description: "Write plan.json to {spec_dir} and execute" },
+      { label: "Edit",    description: "Open an interactive edit loop to revise tasks" },
+      { label: "Abort",   description: "Discard and exit" }
+    ]
+  )
+  IF choice == "Abort": HALT
+  IF choice == "Edit":
+    draft_plan = interactive_edit(draft_plan)  # loop until user says proceed
+
+  # Persist via cli (INV-5). Write, then validate.
+  write_json_to_tmp(draft_plan) → /tmp/plan-virtual.json
+  Bash("hoyeon-cli plan init {spec_dir} --type {draft_plan.meta.type}")
+  Bash("hoyeon-cli plan merge {spec_dir} --json \"$(cat /tmp/plan-virtual.json)\"")
+  Bash("hoyeon-cli plan validate {spec_dir}")
+```
+
+At the end of 0.2 we have: `spec_dir/plan.json` (valid) + `input_mode` + (optionally) `spec_dir/contracts.md`.
+
+### 0.2b Pre-work Gate (optional)
+
+If `requirements.md` exists and contains a `## Pre-work` section, parse it and gate on blocking items before proceeding.
+
+```
+IF exists("{spec_dir}/requirements.md"):
+  pre_work = scan for "## Pre-work" section → parse checkbox items
+  # Expected format: "- [ ] action (blocking)" or "- [ ] action (non-blocking)"
+  blocking = [item for item in pre_work if "blocking" in item]
+
+  IF len(blocking) > 0:
+    print("Pre-work items requiring completion:")
+    FOR EACH item in blocking:
+      print("  - {item.action}")
+
+    AskUserQuestion(
+      question: "Have you completed all blocking pre-work items?",
+      options: [
+        { label: "Yes, all done", description: "Continue to execution" },
+        { label: "Not yet",       description: "Abort — complete pre-work first" }
+      ]
+    )
+    IF answer == "Not yet": HALT
+```
+
+If there is no `## Pre-work` section, skip silently.
+
+### 0.3 Load plan.json (structural fields only)
+
+INV-3: read **only** structural fields from `plan.json`. Do NOT open `requirements.md` or `contracts.md` body here.
+
+```
+plan = Read("{spec_dir}/plan.json") → JSON.parse
+
+# Structural metrics used by 0.4 prompts
+task_count     = len(plan.tasks)
+parallel_count = count(t for t in plan.tasks if t.parallel_safe)
+parallel_ratio = parallel_count / task_count if task_count else 0
+
+# Gate distribution across verify_plan (for the verify-depth hint)
+gate_hist = {1:0, 2:0, 3:0, 4:0}
+FOR vp in plan.verify_plan:
+  FOR g in vp.gates: gate_hist[g] += 1
+max_gate = max(g for g,c in gate_hist.items() if c > 0) if any else 0
+
+# contracts.md path — path only, never the body (INV-2)
+contracts_path = "{spec_dir}/contracts.md" if exists(spec_dir/contracts.md) else null
+```
+
+### 0.4 User Configuration (dispatch + verify depth)
+
+Two `AskUserQuestion` calls in order. Both include a structural hint computed in 0.3.
+
+```
+# --- Dispatch mode (R-F2.1) -----------------------------------------
+# Recommendation from task count + parallel_safe ratio:
+IF task_count <= 3:          recommended = "Direct"
+ELIF parallel_ratio >= 0.6:  recommended = "Team"      # many independent tasks
+ELSE:                        recommended = "Agent"
+
+dispatch = AskUserQuestion(
+  question: "Dispatch mode? ({task_count} tasks, {parallel_count} parallel_safe → recommended: {recommended})",
+  options: [
+    { label: "Direct", description: "Orchestrator executes tasks sequentially in its own context (best for ≤3 tasks)" },
+    { label: "Agent",  description: "Spawn worker subagents per module group, round-level commit" },
+    { label: "Team",   description: "TeamCreate persistent workers claim tasks (best for high parallel_safe ratio)" }
+  ]
+)
+
+# --- Verify depth (R-F2.2) ------------------------------------------
+# Hint shows gate distribution from plan.verify_plan.
+hint = "gates present: " + join([f"{g}={gate_hist[g]}" for g in [1,2,3,4] if gate_hist[g] > 0], ", ")
+IF max_gate == 0: hint = "no verify_plan entries"
+
+verify = AskUserQuestion(
+  question: "Verify depth? ({hint})",
+  options: [
+    { label: "Light",    description: "Gate 1 only — build/lint/typecheck (caps all sub_reqs at gate ≤ 1)" },
+    { label: "Standard", description: "Gates 1-2 — build + sub_req double-review (caps all sub_reqs at gate ≤ 2)" },
+    { label: "Thorough", description: "All gates — no cap; runs gate 3 (qa-verifier) where planned" }
+  ]
+)
+
+# --- Work mode (flag or prompt) -------------------------------------
+IF --work flag provided:
+  work = flag_value
+ELSE:
   work = AskUserQuestion(
     question: "Work mode?",
     options: [
-      { label: "Worktree", description: ".worktrees/{name} branch, commit per round" },
-      { label: "Branch + Commit", description: "Current branch, commit per round" },
-      { label: "No Commit", description: "Current branch, no commits" }
+      { label: "Worktree",           description: "Isolated worktree, commit per round" },
+      { label: "New Branch + Commit", description: "Create feat/ branch from current, commit per round" },
+      { label: "Branch + Commit",     description: "Current branch as-is, commit per round" },
+      { label: "No Commit",           description: "No git commits" }
     ]
-  )
-
-IF verify is null:
-  verify = AskUserQuestion(
-    question: "Verify depth?",
-    options: [
-      { label: "Light", description: "Build/lint + spec check only" },
-      { label: "Standard", description: "Full spec verification (goal, constraints, sub-reqs)" },
-      { label: "Thorough", description: "Standard + Code Review + cross-task + sandbox" },
-      { label: "Ralph", description: "Standard verify + persistent DoD loop until all sub-reqs pass" }
-    ]
-    # If no sandbox detected: add "(no sandbox)" to Thorough description
   )
 ```
 
-#### Save to spec.json
+### 0.5 Setup — session state + charter template
 
-```bash
-Bash("hoyeon-cli spec merge {spec_path} --json '{\"meta\": {\"mode\": {\"dispatch\": \"{dispatch}\", \"work\": \"{work}\", \"verify\": \"{verify}\"}}}'")
 ```
-
-#### Save dispatch to session state
-
-```bash
-# Stop hook uses this to skip blocking when team workers are running
+# (a) Session state
 STATE_FILE="$HOME/.hoyeon/$CLAUDE_SESSION_ID/state.json"
-IF file_exists(STATE_FILE):
-  Bash("jq --arg d '{dispatch}' '.dispatch = $d' $STATE_FILE > $STATE_FILE.tmp && mv $STATE_FILE.tmp $STATE_FILE")
-```
+Bash: jq -n \
+  --arg dispatch "{dispatch}" \
+  --arg verify   "{verify}" \
+  --arg work     "{work}" \
+  --arg spec_dir "{spec_dir}" \
+  --arg input    "{input_mode}" \
+  --arg contracts "{contracts_path or ""}" \
+  '{dispatch:$dispatch, verify:$verify, work:$work, spec_dir:$spec_dir,
+    input_mode:$input, contracts_path: ($contracts|select(length>0))}' \
+  > $STATE_FILE
 
-#### Worktree setup (only if work == "worktree")
-
-```
+# (b) Branch/Worktree setup
 IF work == "Worktree":
-  spec_name = basename(dirname(spec_path))  # e.g. "auth-login"
+  spec_dir       = Bash("realpath {spec_dir}").trim()
+  contracts_path = Bash("realpath {contracts_path}").trim() if contracts_path
+  EnterWorktree(name=basename(spec_dir))
 
-  # Convert paths to absolute BEFORE entering worktree (CWD will change)
-  spec_path = Bash("realpath {spec_path}").trim()
-  CONTEXT_DIR = Bash("realpath {CONTEXT_DIR}").trim()
+IF work == "New Branch + Commit":
+  branch_name = "feat/{spec_name}"   # derived from spec_dir basename
+  Bash: git checkout -b {branch_name}
+  audit_append("BRANCH_CREATE {branch_name} from {current_branch}")
 
-  # Use EnterWorktree to switch session CWD into the worktree
-  EnterWorktree(name=spec_name)
-  # Session CWD is now inside the worktree — all tools (Read, Edit, Write, Bash, Glob, Grep)
-  # automatically operate in the worktree. No per-worker "cd" needed.
+# (c) Context files (next to plan.json)
+CONTEXT_DIR = spec_dir
+Bash: [ -s {CONTEXT_DIR}/learnings.json ] || echo '[]' > {CONTEXT_DIR}/learnings.json   # initialize to [] if new
+Bash: [ -s {CONTEXT_DIR}/issues.json ]    || echo '[]' > {CONTEXT_DIR}/issues.json      # initialize to [] if new
+Bash: touch {CONTEXT_DIR}/audit.md
 
-  print("Entered worktree: {spec_name}")
-  print("spec_path (absolute): {spec_path}")
-  print("CONTEXT_DIR (absolute): {CONTEXT_DIR}")
-ELSE:
-  # No worktree — work in current directory
+# (d) Worker charter template — paths and IDs only (INV-2, R-N15.1)
+# NEVER inline GWT, requirements prose, or contracts body into this template.
+CHARTER_TEMPLATE = {
+  task_id:              "<injected per task>",
+  plan_path:            "{spec_dir}/plan.json",
+  contracts_path:       contracts_path,          # path only — see R-F2.3
+  contracts_directive:  (contracts_path != null)
+                          ? "Read contracts.md before coding — it defines the
+                             cross-module surface you must respect."
+                          : null,
+  sub_req_ids:          "<injected per task from plan.tasks[].fulfills>",
+  round:                1,
+  prior_failure_context: null
+}
 ```
 
-**Variables forwarded to reference files:**
-- `dispatch`: `"direct"` | `"agent"` | `"team"`
-- `work`: `"worktree"` | `"branch-commit"` | `"no-commit"`
-- `verify`: `"light"` | `"standard"` | `"thorough"` | `"ralph"`
-- `spec_path`: absolute path (always — worktree mode converts it)
-- `CONTEXT_DIR`: absolute path (always — worktree mode converts it)
+`CHARTER_TEMPLATE` is consumed by dispatch references (direct/agent/team) and by
+the worker charter recipe (T7). The `contracts_directive` field fulfills R-F2.3:
+if `contracts.md` exists, its **path** is embedded in every charter together
+with a "read before coding" instruction; its body is **never** inlined (INV-2).
 
-### 0.6 Confirm Pre-work (Human Actions)
+---
 
-Pre-work items are **human tasks** that must be completed before execution begins.
+## Orchestrator Boundaries (INV-3, R-N15.2)
+
+The orchestrator is a **router over structure**. It must NOT read the body of any
+spec prose. Enforced everywhere in this skill and all dispatch/verify references.
+
+**MAY read** (structural, via `hoyeon-cli plan get` or `Read` on plan.json only):
+- `plan.json` fields: `tasks`, `journeys`, `verify_plan`, `meta`, `contracts.artifact`, `context`
+- Session state in `$HOME/.hoyeon/$CLAUDE_SESSION_ID/state.json`
+- Worker output JSON returned by dispatch (WorkerOutput payload)
+- `audit.md`, `learnings.json`, `issues.json` for round-to-round context
+
+**MUST NOT read**:
+- `requirements.md` body (GWT, behavior prose, decisions, context text)
+- `contracts.md` body (invariants, interfaces, data shapes — only the **path** flows through charters)
+
+That body-read responsibility belongs to workers via the self-read pattern in
+`references/worker-charter.md` (§1.3, §2 Self-Read). If the orchestrator ever needs
+to influence behavior based on a requirement's body, route through a worker or
+through the contracts-patch recipe — never inline-read.
+
+---
+
+## Resume Behavior (R-F8.2 idempotent restart)
+
+On any re-entry (compaction recovery, session restart, `/execute` re-invocation on
+an existing `spec_dir`), the orchestrator MUST treat `plan.json` as the source of
+truth and skip any task whose `status == "done"`. This rule applies uniformly
+across all three dispatch modes.
 
 ```
-pre_work = spec.external_dependencies.pre_work ?? []
-IF len(pre_work) == 0:
-  print("Pre-work: none found, skipping")
-ELSE:
-  print("Pre-work items (human actions required before execution):")
-  FOR EACH item in pre_work:
-    print("  - [{item.id ?? ''}] {item.dependency}: {item.action} (blocking={item.blocking})")
+# Runs at the top of every dispatch recipe, before any worker is spawned.
+plan       = Read("{plan_path}") → JSON.parse
+done_ids   = { t.id for t in plan.tasks if t.status == "done" }   # INV-9: monotonic
+pending    = [ t for t in plan.tasks if t.status != "done" ]
 
-  FOR EACH item in pre_work WHERE item.blocking == true:
-    AskUserQuestion(
-      question: "Have you completed this pre-work? → {item.action}",
-      options: [
-        { label: "Done", description: "I've completed this" },
-        { label: "Skip", description: "Proceed without this (may cause failures)" },
-        { label: "Abort", description: "Stop execution — I need to do this first" }
-      ]
-    )
-    IF answer == "Abort": HALT
+# Downstream readiness uses done_ids to satisfy depends_on.
+ready = [ t for t in pending if all(d in done_ids for d in t.depends_on) ]
 ```
 
-### 0.7 Init Context
+| Mode          | Where the skip happens                                                 |
+|---------------|------------------------------------------------------------------------|
+| `direct.md`   | Phase 1.2 (A) — `current.status == "done" → CONTINUE` (per-task loop)  |
+| `agent.md`    | Phase A `compute_ready_set()` — `t.status == "done" → continue` (INV-9)|
+| `team.md`     | Phase 1 ready-set filter + Phase 2 claim loop skip already-done        |
 
-```bash
-CONTEXT_DIR=".hoyeon/specs/{name}/context"
-mkdir -p "$CONTEXT_DIR"
-```
+Additional guarantees:
 
-**First run** (no context files):
-- Create `audit.md` (empty — orchestrator will append)
-- Create `learnings.json` with `[]` (empty array — workers append via CLI)
-- Create `issues.json` with `[]` (empty array — workers append via CLI)
+- Verify (`references/verify.md`) builds its coverage matrix from `done_tasks` only, so a
+  partial run resumes verification on exactly the tasks that completed.
+- `hoyeon-cli plan task --status X=done` is idempotent (INV-5, INV-9); re-issuing
+  it on a task that is already `done` is a no-op, never a re-transition.
+- The orchestrator NEVER rewrites plan.json directly — resume reads are through
+  `hoyeon-cli plan get` (INV-5).
 
-**Resume** (context files exist):
-- Read all three files into memory
-- Determine progress from spec.json task statuses (not files)
+---
+
+## Concurrency Rules (INV-4 — no sleep, no polling)
+
+Every parallel burst MUST be emitted as a **single message** with all background
+dispatches at once. Results arrive via notifications (TaskOutput, SendMessage,
+`run_in_background:true` completion events), never via a `sleep` / re-read poll
+loop.
+
+Hard bans — enforced across SKILL.md and every dispatch / verify reference:
+
+- No `sleep <n>` between dispatches.
+- No `while not done: ... sleep` over plan.json or worker state.
+- No `hoyeon-cli plan get` called in a loop to poll for `status == "done"`.
+- No serial `Bash` calls in separate messages where a single-message parallel
+  burst would work (e.g. per-round worker fan-out, gate-1 toolchain fan-out).
+
+Already-enforced sites (for reference):
+- `direct.md` — sequential by design, no polling (one task per loop iteration).
+- `agent.md` — Phase C notification handler, explicitly `await_round_notifications(round_id)`
+  with the comment "NO SLEEP" (R-N16.1 fulfilled).
+- `team.md` — Phase 2 lead loop uses `wait_for_SendMessage()` events; standing-by
+  workers wait on inbound SendMessage rather than polling plan.json (INV-4).
+- `verify.md` — INV-4 listed in invariants block; gate-1/gate-2 fan-out runs as a
+  single-message burst.
+
+If you feel tempted to add `sleep`, you are wrong. Use background dispatch +
+notification handler instead.
 
 ---
 
 ## Dispatch Routing
 
-After Phase 0, route based on `dispatch` mode:
-
-### dispatch == "direct"
-
-```
-Read: ${baseDir}/references/direct.md
-Follow ALL instructions for direct execution.
-```
-
-### dispatch == "agent"
+The orchestrator picks one of three recipes based on `dispatch` from Phase 0.4.
+All three consume the same Phase 0 state and delegate worker construction to the
+canonical charter in `references/worker-charter.md` — **no recipe inlines its own
+charter format**.
 
 ```
-Read: ${baseDir}/references/dev.md
-Follow ALL instructions in dev.md for agent-based execution with grouping.
+IF dispatch == "direct":
+  Read: ${baseDir}/references/direct.md
+  Follow ALL instructions. (sequential — one task at a time in orchestrator context)
+
+ELIF dispatch == "agent":
+  Read: ${baseDir}/references/agent.md
+  Follow ALL instructions. (round-based parallel — TaskCreate per ready-set group)
+
+ELIF dispatch == "team":
+  Read: ${baseDir}/references/team.md
+  Follow ALL instructions. (persistent TeamCreate workers claim tasks)
 ```
 
-dev.md owns: Worker/Commit chain, adaptation, code-review,
-verify recipe, WORKER_DESCRIPTION, TDD mode, and mode selection (quick/standard).
+**Canonical charter** — every dispatch recipe builds worker charters by importing
+`references/worker-charter.md`. The charter carries **paths and IDs only** (INV-2,
+R-N15.1): `task_id`, `plan_path`, `contracts_path`, `sub_req_ids`, `round`,
+`prior_failure_context`. No GWT, no requirements prose, no contracts body.
 
-### dispatch == "team"
+All dispatch references receive these variables from Phase 0:
+- `plan_path` — `{spec_dir}/plan.json` (workers self-read it, orchestrator structural-reads it)
+- `spec_dir`, `CONTEXT_DIR` — directory paths
+- `contracts_path` — path to contracts.md, or null
+- `work` — `"Worktree" | "Branch + Commit" | "No Commit"`
+- `verify` — `"Light" | "Standard" | "Thorough"` (depth cap for verify.md)
+- `CHARTER_TEMPLATE` — from Phase 0.5, passed through to worker-charter.md
+
+Resume behavior (R-F8.2) is mandatory across all three — see "Resume Behavior"
+above for the uniform done-skip contract.
+
+---
+
+## Verify Routing
+
+After all plan tasks reach `done` / `failed` / `blocked`, run verification. There
+is a **single** verify recipe; `verify` depth is a parameter that caps gates per
+sub_req, not a selector between different recipes (T8 design).
 
 ```
-Read: ${baseDir}/references/team.md
-Follow ALL instructions for team-based execution.
+Read: ${baseDir}/references/verify.md
+Follow ALL instructions; pass `verify` ∈ {"light","standard","thorough"} as the
+depth parameter. verify.md reads done tasks from plan.json (structural only) and
+evaluates each sub_req / journey against its capped gate set.
 ```
 
-### meta.type == "plain" (override)
+### Contracts mismatch hook (C4, R-F9.1)
+
+On any worker output that signals a cross-module contract mismatch — during
+dispatch OR during verify fix loops — the orchestrator invokes the auto-patch
+recipe **before** marking the task `done` or enqueueing a retry:
 
 ```
-IF meta.type == "plain":
-  Read: ${baseDir}/references/plain.md
-  (plain mode ignores dispatch selection — has its own flexible dispatch)
+Read: ${baseDir}/references/contracts-patch.md
+Follow ALL instructions. (detect → patch → audit-log → return control)
 ```
 
-plain.md owns: flexible dispatch (direct/Skill/Agent), verify recipe, and report.
+This hook runs without user confirmation (INV-7), is idempotent per worker output,
+and routes only through `Read` / `Edit` / `Write` on `contracts.md` and `audit.md`
+— never through `hoyeon-cli` (INV-5). See `references/contracts-patch.md` for
+detection signals (explicit `contract_mismatch`, `contract_issues[]`, or
+`BLOCKED`-with-contract-reason).
+
+---
+
+## Output Artifacts (R-F13.2, R-F13.3, R-F13.4)
+
+execute produces exactly **5 file artifacts** during a run, all inside `<spec_dir>/`.
+There is **no `report.md`** — the final report is stdout-only (INV-8 / R-F13.4 / C5).
+
+| Artifact          | Owner             | Tool             | Lifecycle                                                                |
+|-------------------|-------------------|------------------|--------------------------------------------------------------------------|
+| `plan.json`       | orchestrator      | `hoyeon-cli`    | Status mutated via `plan task --status` (INV-5, INV-9; never direct edit) |
+| `contracts.md`    | orchestrator      | `Edit` / `Write` | Inline patched by contracts-patch recipe (no user confirm; INV-7)         |
+| `audit.md`        | orchestrator      | `Read` + `Edit`  | Append-only timestamped event log (R-F13.2)                              |
+| `learnings.json`  | workers           | `Read` + `Write` | Workers append on success per `worker-charter.md` §3.5 (R-F6.4, R-F13.3) |
+| `issues.json`     | workers           | `Read` + `Write` | Workers append on BLOCKED / FAILED per `worker-charter.md` §3.5 (R-F6.4, R-F13.3) |
+
+### audit.md (R-F13.2) — append-only timestamped event log
+
+The orchestrator appends one entry per orchestrator-level event. Format: a markdown
+list item starting with an ISO-8601 timestamp. Entries are **append-only** — never
+edit or delete prior entries. `audit.md` is initialized as an empty file by Phase 0.5.
+
+| Event class         | Trigger site                                          | Entry shape (markdown)                                                  |
+|---------------------|-------------------------------------------------------|--------------------------------------------------------------------------|
+| `WORKER_SPAWN`      | direct/agent/team dispatch issues a worker            | `- {ts} WORKER_SPAWN T<id> mode={direct\|agent\|team} round=<n>`         |
+| `WORKER_RESULT`     | worker returns done / failed / blocked                | `- {ts} WORKER_RESULT T<id> status=<done\|failed\|blocked>`              |
+| `RETRY`             | per-task retry (R-F7.1)                               | `- {ts} RETRY T<id> round=<n> reason="<short>"`                          |
+| `BLOCKED`           | worker returned blocked (R-F7.3)                      | `- {ts} BLOCKED T<id> reason="<reason>" propagates_to=[T<id>...]`        |
+| `VERIFY_DISPATCH`   | gate-1/2/3 dispatch (verify.md)                       | `- {ts} VERIFY_DISPATCH gate=<n> targets=[<sub_req>...]`                 |
+| `VERIFY_RESULT`     | sub_req gate verdict recorded                          | `- {ts} VERIFY_RESULT sub_req=<id> gate=<n> verdict=<PASS\|FAIL\|MANUAL>` |
+| `GAP`               | coverage pre-check found uncovered sub_req            | `- {ts} GAP sub_req=<id>`                                                |
+| `PERSISTENT_GAP`    | gap survived re-dispatch (R-F10.4)                    | `- {ts} PERSISTENT_GAP sub_req=<id>`                                     |
+| `CONTRACTS_PATCH`   | contracts auto-patch applied (R-F9.2)                 | `- {ts} CONTRACTS_PATCH path=<file:line> rationale="<why>" diff="<summary>"` |
+| `DISPATCH_CEILING`  | task hit 5-dispatch ceiling (R-F7.4 / INV-6)          | `- {ts} DISPATCH_CEILING_EXCEEDED T<id>`                                 |
+| `ABORT`             | run aborted (persistent fail / dispatch ceiling)      | `- {ts} ABORT reason="<reason>"`                                         |
+
+The orchestrator writes audit entries via `Read` + `Edit` (append) — **never** via
+`hoyeon-cli` (INV-5 / R-N17.1). The contracts-patch recipe writes its own
+`CONTRACTS_PATCH` line directly (see `references/contracts-patch.md` §"audit.md append").
+
+### learnings.json + issues.json (R-F13.3) — worker-managed JSON arrays
+
+Both files are flat JSON arrays initialized to `[]` in Phase 0.5. Workers append
+entries per `references/worker-charter.md` §3.5 using `Read` + `Write`. The
+orchestrator only **reads** these files (round-to-round context, final report).
+
+- `learnings.json` — appended on worker success. Schema is owned by worker-charter.md.
+- `issues.json` — appended when worker returns `BLOCKED` or `FAILED`. Same constraint.
+
+Workers MUST NOT use `hoyeon-cli` to mutate either file (INV-5).
+
+### NO report.md (R-F13.4 / INV-8 / C5)
+
+The orchestrator MUST NOT create a `report.md`, `summary.md`, or any other report
+file. The final report is emitted to stdout only (see "Stdout Report Format" below).
+This rule applies even if the user asks for a file — surface it via stdout and let
+the user redirect if they want to capture it.
+
+---
+
+## Stdout Report Format (R-F14.1, R-F14.2, R-F14.3)
+
+After verify completes, the orchestrator prints **one final report to stdout** —
+no file is written (INV-8 / R-F13.4). The report has **8 fixed sections** in this
+exact order (R-F14.1):
+
+1. **Status** — `✅ COMPLETE` | `⚠️ PARTIAL` | `❌ FAILED`
+2. **Summary** — task counts, sub_req coverage counts, contracts patch count
+3. **Post-Work** — action items for the user (directly under Summary, action-first; R-F14.2)
+4. **Tasks** — table: T# / status / commits / round
+5. **Verify Coverage Matrix** — sub_req × gate table with `PASS` / `FAIL` / `—` / `MANUAL` / `GAP` cells (R-F14.3)
+6. **Contracts Auto-Patches** — list extracted from `audit.md` `CONTRACTS_PATCH` entries
+7. **Issues Encountered** — extracted from `issues.json` (and `audit.md` `BLOCKED` / `ABORT` entries)
+8. **Learnings** — extracted from `learnings.json`
+
+### Status determination
+
+| Status        | Condition                                                                                          |
+|---------------|----------------------------------------------------------------------------------------------------|
+| `✅ COMPLETE` | All tasks `done`, all sub_reqs `PASS` / `MANUAL` (no GAP, no FAIL, no BLOCKED, no ABORT)            |
+| `⚠️ PARTIAL`  | Any `PERSISTENT_GAP`, `BLOCKED` task, gate=4 escalation, or verify result `MANUAL` without failures |
+| `❌ FAILED`   | Any `ABORT`, `DISPATCH_CEILING_EXCEEDED`, persistent verify FAIL after fix loop, or failed task     |
+
+### Section sources
+
+| Section             | Source                                                                |
+|---------------------|-----------------------------------------------------------------------|
+| Status              | Computed from plan.json task statuses + verify results + audit events |
+| Summary             | `hoyeon-cli plan list` counts + verify result tallies                 |
+| Post-Work           | Computed from MANUAL gate=4 entries, PERSISTENT_GAP entries, BLOCKED tasks |
+| Tasks               | `hoyeon-cli plan get <plan> --path tasks` + git log per round         |
+| Verify Coverage Matrix | Coverage matrix data from `verify.md` (see `references/verify.md` §"Coverage Matrix Render") |
+| Contracts Auto-Patches | `audit.md` lines matching `CONTRACTS_PATCH`                          |
+| Issues Encountered  | `issues.json` + `audit.md` `BLOCKED` / `ABORT` lines                  |
+| Learnings           | `learnings.json`                                                      |
+
+### Verify Coverage Matrix (R-F14.3)
+
+Rendered as a markdown table — **rows = sub_req**, **columns = gate**, last column =
+overall result. Cell values: `PASS`, `FAIL`, `—` (gate not applicable at depth),
+`MANUAL` (gate=4), `GAP` (no fulfilling citation).
+
+### Concrete example
+
+```markdown
+## ✅ COMPLETE — execute run 2026-04-17T14:32:11Z
+
+### Summary
+- Tasks: 13 done / 0 failed / 0 blocked
+- Sub-requirements: 50 PASS / 2 MANUAL / 0 FAIL / 0 GAP (52 total)
+- Contracts auto-patches: 1
+- Dispatch mode: agent · Verify depth: standard · Work mode: branch
+
+### Post-Work
+- [ ] MANUAL REVIEW: R-F11.4 (gate=4) — confirm GWT citations match human intent
+- [ ] MANUAL REVIEW: R-F12.4 (gate=4) — confirm escalation policy is acceptable
+
+### Tasks
+| Task | Status | Commits          | Round |
+|------|--------|------------------|-------|
+| T1   | done   | a1b2c3d          | 1     |
+| T2   | done   | a1b2c3d          | 1     |
+| T3   | done   | e4f5g6h          | 2     |
+| ...  | ...    | ...              | ...   |
+
+### Verify Coverage Matrix
+| sub_req   | Gate 1 | Gate 2 | Gate 3 | Gate 4   | Overall |
+|-----------|--------|--------|--------|----------|---------|
+| R-F1.1    | PASS   | PASS   | —      | —        | PASS    |
+| R-F1.2    | PASS   | PASS   | —      | —        | PASS    |
+| R-F11.4   | PASS   | PASS   | —      | MANUAL   | MANUAL  |
+| R-F12.4   | PASS   | PASS   | —      | MANUAL   | MANUAL  |
+| ...       | ...    | ...    | ...    | ...      | ...     |
+
+### Contracts Auto-Patches
+- 2026-04-17T14:18:02Z — `contracts.md:88` — interface `FooAPI.call` signature aligned with worker T7 output (`+ retries: number`)
+
+### Issues Encountered
+- (none)
+
+### Learnings
+- T7: worker self-read pattern — pulling sub_req IDs from plan.json before reading body avoids re-parsing on round 2
+- T8: gate=1 toolchain fan-out via single-message `run_in_background:true` cut wall time ~40% vs serial
+```
+
+The example is illustrative; counts, hashes, and timestamps come from live data.
+The section order, headings, and matrix shape are **normative** (R-F14.1, R-F14.2,
+R-F14.3).
 
 ---
 
 ## Generic Rules
 
-1. **spec.json is the ONLY source** — no PLAN.md, no state.json
-2. **Always use cli** — `spec plan`, `spec task`, `spec merge`, `spec check`
-3. **TaskCreate for all modes** — create Claude Code tracking tasks before execution begins. Structure differs per mode (see each reference md).
-4. **Background for parallel** — use `run_in_background: true` for round-parallel workers
-5. **Context files (dev only)** — in dev mode, workers write to learnings.json / issues.json via CLI; orchestrator appends to audit.md. Plain mode does not use context files.
-6. **Compaction recovery** — `session-compact-hook.sh` re-injects skill name + state.json path; use `hoyeon-cli spec plan` to rebuild task state
-7. **Dispatch mode, work mode, and verify depth saved to spec.json meta.mode**
-8. **Verify depth routes to verify-light.md, verify-standard.md, verify-thorough.md, or verify-ralph.md**
+1. **plan.json is the ledger** — all task CRUD via `hoyeon-cli plan` (status/list/get/merge). Never direct file writes (INV-5).
+2. **Structural reads only** — orchestrator reads plan.json fields, never requirements.md / contracts.md body (see Orchestrator Boundaries above; INV-3, R-N15.2).
+3. **Two-turn task setup** — Turn 1: all TaskCreate. Turn 2: all TaskUpdate dependencies.
+4. **Background for parallel** — `run_in_background: true` for concurrent workers, single-message burst (INV-4; see Concurrency Rules).
+5. **Contracts are reference** — workers receive `contracts_path` to Read, not inlined content (INV-2).
+6. **Workers self-read** — workers fetch their own task state + context files per `references/worker-charter.md` §2.
+7. **Context files** — `learnings.json`, `audit.md`, `issues.json` in CONTEXT_DIR. Workers append learnings; orchestrator reads them round-to-round.
+8. **Compaction recovery** — `session-compact-hook.sh` re-injects state. Use `hoyeon-cli plan list` to rebuild; done tasks skip on re-entry (R-F8.2; see Resume Behavior above).
 
 ## Checklist Before Stopping
 
-### Common (all modes and types)
-- [ ] spec.json found and validated
-- [ ] `hoyeon-cli spec plan` executed and shown to user
-- [ ] `meta.type` read (defaulted to "dev" if absent)
-- [ ] Plan analysis ran (parallelism, solo candidates, groupable)
-- [ ] Sandbox detection ran (Phase 0.4)
-- [ ] Dispatch mode selected and routed correctly
-- [ ] Verify depth selected and routed correctly
-- [ ] `meta.mode` saved to spec.json (dispatch, work, verify)
-- [ ] Context directory initialized (audit.md, learnings.json, issues.json, round-summaries.json)
-- [ ] Pre-work status logged explicitly (none/pass/fail)
-- [ ] TaskCreate entries created for all tasks + finalize steps (structure per mode reference)
-- [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
-- [ ] `hoyeon-cli spec check` passes at end
+- [ ] Input detected and normalized (plan.json / requirements.md / virtual)
+- [ ] Plan generated or validated via hoyeon-cli
+- [ ] Dispatch/verify/work modes selected
+- [ ] All tasks dispatched and completed (status "done"/"failed"/"blocked" in plan.json)
+- [ ] Verify recipe ran (single verify.md with selected depth)
+- [ ] Contracts auto-patch hook invoked on any mismatch signals
 - [ ] Final report output
-
-### dispatch == "agent" (additional)
-- [ ] Follow ${baseDir}/references/dev.md completely for all agent-specific steps
-- [ ] Worker descriptions use WORKER_DESCRIPTION template with tdd flag
-- [ ] Worker BLOCKED status handled (scope fix derived task + re-worker)
-- [ ] Verify recipe ran (holistic spec verification)
-
-### dispatch == "team" (additional)
-- [ ] Follow ${baseDir}/references/team.md completely for all team-specific steps
-- [ ] TeamCreate used with persistent workers
-- [ ] Claim-based task assignment verified
-- [ ] Verify recipe ran (holistic spec verification)
-
-### dispatch == "direct" (additional)
-- [ ] Follow ${baseDir}/references/direct.md completely for all direct-specific steps
-- [ ] Orchestrator executed tasks without subagents
-- [ ] Verify recipe ran (holistic spec verification)
-
-### plain mode (additional)
-- [ ] Follow ${baseDir}/references/plain.md completely for all plain-specific steps
+- [ ] Worktree exited (if entered)

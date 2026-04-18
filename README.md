@@ -64,9 +64,9 @@ An LLM given the same prompt twice may produce different code. This is the funda
 
 Three mechanisms enforce this:
 
-- **`spec.json` as single source of truth** — Every agent reads from and writes to the same structured spec. No agent invents its own context. No information lives only in a conversation. The spec is the shared memory that survives context windows, compaction, and agent handoffs.
+- **`requirements.md` + `plan.json` as structured artifacts** — `/specify` produces `requirements.md` (the what). `/blueprint` produces `plan.json` with contracts and task graphs (the how). Every agent reads from these shared artifacts. No agent invents its own context. No information lives only in a conversation. These artifacts are the shared memory that survives context windows, compaction, and agent handoffs.
 
-- **CLI-enforced structure** — `hoyeon-cli` validates every merge to `spec.json`. Field names, types, required relationships — all checked programmatically before the LLM ever sees the data. The CLI doesn't suggest structure; it **rejects** invalid structure.
+- **CLI-enforced structure** — `hoyeon-cli` validates plan structure and task state transitions. Field names, types, required relationships — all checked programmatically before the LLM ever sees the data. The CLI doesn't suggest structure; it **rejects** invalid structure.
 
 - **Derivation chain as contract** — Goal → Decisions → Requirements → Sub-requirements → Tasks are linked. Each layer references the one above it. A sub-requirement traces to a requirement. A task traces to requirements via `fulfills`. If the chain breaks, the gate blocks. This means: **if you have valid requirements, the system will produce a result** — deterministically routed, even if the LLM's individual outputs vary.
 
@@ -76,7 +76,7 @@ The LLM does the creative work. The system ensures it stays on rails.
 
 > *If a human has to check it, the system failed to automate it.*
 
-Every sub-requirement in `spec.json` is a testable behavioral statement:
+Every sub-requirement in `requirements.md` is a testable behavioral statement:
 
 ```json
 {
@@ -113,8 +113,8 @@ This is **cross-spec compounding**. A lesson learned in one project surfaces as 
 
 Three mechanisms make this work:
 
-- **`spec learning`** — Workers record structured learnings during execution, auto-mapped to the requirements and tasks that produced them
-- **`spec search`** — BM25 search across all specs: requirements, sub-requirements, constraints, and learnings. What you learned in project A informs what you ask in project B
+- **Structured learnings** — Workers record structured learnings during execution, saved to `learnings.json` and auto-mapped to the requirements and tasks that produced them
+- **Cross-project search** — BM25 search across all projects: requirements, sub-requirements, constraints, and learnings. What you learned in project A informs what you ask in project B
 - **Compounding loop** — Each /specify session starts by searching past learnings. More projects → richer search results → more complete requirements → fewer surprises during execution → better learnings → the cycle continues
 
 The result: **the tenth project you run through Hoyeon is meaningfully better than the first** — not because the LLM improved, but because the knowledge base did.
@@ -140,8 +140,12 @@ You:  /specify "add dark mode toggle to settings page"
   ├─ docs-researcher checks design system conventions
   └─ ux-reviewer flags potential regression
 
-  → spec.json generated:
-    3 requirements, 8 sub-requirements, 4 tasks — all linked
+  → requirements.md generated:
+    3 requirements, 8 sub-requirements — all linked
+
+You:  /blueprint
+  → plan.json generated:
+    4 tasks with contracts, dependency graph, and fulfills links
 
 You:  /execute
 
@@ -161,8 +165,13 @@ You:  /execute
            → Agents researched codebase in parallel
            → Layer-by-layer derivation: L0→L1→L2→L3→L4
            → Each layer gated by CLI validation + agent review
+           → requirements.md generated
 
-/execute → Orchestrator read spec.json, dispatched parallel workers
+/blueprint → Contract-first task graph planning
+             → Tasks derived from requirements with contracts
+             → plan.json generated
+
+/execute → Orchestrator read plan.json, dispatched parallel workers
            → Workers self-verify against sub-requirement behaviors (--tdd: test-first)
            → Code review caught cross-cutting issues
            → Final Verify checked goal, constraints, sub-requirements holistically
@@ -199,25 +208,9 @@ Each gate has two checks:
 
 Nothing advances without passing both. The chain is only as strong as its weakest link — so every link is verified.
 
-### The Spec Contract
+### The Pipeline Contract
 
-`spec.json` is the single source of truth. Everything reads from it, everything writes to it.
-
-```json
-{
-  "meta": { "goal": "...", "mode": { "depth": "standard" } },
-  "context": { "research": {}, "decisions": [{ "implications": [] }], "assumptions": [] },
-  "requirements": [{
-    "id": "R1",
-    "behavior": "Toggle switches between light and dark theme",
-    "sub": [{
-      "id": "R1.1",
-      "behavior": "Clicking toggle in settings page switches to dark mode"
-    }]
-  }],
-  "tasks": [{ "id": "T1", "action": "...", "fulfills": ["R1"] }]
-}
-```
+`/specify` produces `requirements.md` — the structured requirements. `/blueprint` produces `plan.json` — the task graph with contracts. `/execute` reads `plan.json` and dispatches workers.
 
 The chain of evidence: **requirement → sub-requirement → task (fulfills) → done**. From intent to proof.
 
@@ -225,7 +218,7 @@ The chain of evidence: **requirement → sub-requirement → task (fulfills) →
 
 ## The Execution Engine
 
-The orchestrator reads `spec.json` and dispatches parallel worker agents:
+The orchestrator reads `plan.json` and dispatches parallel worker agents:
 
 ```
   ┌─────────────────────────────────────────────────────┐
@@ -252,16 +245,16 @@ The orchestrator reads `spec.json` and dispatches parallel worker agents:
 
 Workers implement, then independent Verifier agents check each task's sub-requirements — no judgment, no bypass.
 
-### The Spec Is Alive
+### The Plan Is Alive
 
-> *A spec that can't adapt is a spec that will be abandoned.*
+> *A plan that can't adapt is a plan that will be abandoned.*
 
-`spec.json` is not a static document frozen at planning time. It's a **living contract** that evolves during execution — within strict, deterministic bounds.
+`plan.json` is not a static document frozen at planning time. It's a **living contract** that evolves during execution — within strict, deterministic bounds.
 
-When a worker discovers that the real codebase doesn't match the plan's assumptions, the spec adapts:
+When a worker discovers that the real codebase doesn't match the plan's assumptions, the plan adapts:
 
 ```
-  spec.json at plan time:
+  plan.json at plan time:
     tasks: [T1, T2, T3]           ← 3 planned tasks
 
   Worker T2 hits a blocker:
@@ -269,17 +262,17 @@ When a worker discovers that the real codebase doesn't match the plan's assumpti
        │
        ▼
   System derives T2-fix:
-    tasks: [T1, T2, T3, T2-fix]   ← spec grows, append-only
+    tasks: [T1, T2, T3, T2-fix]   ← plan grows, append-only
        │
        ▼
   T2-fix executes → T2 retries → passes
     tasks: [T1 ✓, T2 ✓, T3 ✓, T2-fix ✓]
 ```
 
-This is **bounded adaptation** — the spec grows but never mutates. Three rules keep it deterministic:
+This is **bounded adaptation** — the plan grows but never mutates. Three rules keep it deterministic:
 
 - **Append-only** — existing tasks are never modified, only new ones are added. The original plan stays intact as an audit trail.
-- **Depth-1** — a derived task cannot derive further tasks. One level of adaptation, no cascading chains. This prevents the spec from spiraling into unbounded complexity.
+- **Depth-1** — a derived task cannot derive further tasks. One level of adaptation, no cascading chains. This prevents the plan from spiraling into unbounded complexity.
 - **Circuit breaker** — max retries per path before escalating to the user. The system knows when to stop trying and ask for help.
 
 The key insight: **requirements don't change during execution — only tasks do.** The goals, decisions, and requirements that were validated through the derivation chain remain stable. Tasks are just the lowest layer, and they're the cheapest to re-derive. This is why the layer hierarchy matters: the higher the layer, the more stable it is.
@@ -296,7 +289,7 @@ The key insight: **requirements don't change during execution — only tasks do.
     L4: Tasks          ← can grow (append-only, depth-1)
 ```
 
-The spec doesn't predict the future. It survives it — by knowing which parts to hold firm and which parts to flex.
+The plan doesn't predict the future. It survives it — by knowing which parts to hold firm and which parts to flex.
 
 ---
 
@@ -353,10 +346,10 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 
 | Category | What you're doing | Skills |
 |----------|------------------|--------|
-| **Understand** | Derive requirements, generate specs | `/specify` `/quick-plan` `/discuss` `/deep-interview` `/mirror` |
+| **Understand** | Derive requirements, plan tasks | `/specify` `/blueprint` `/discuss` `/deep-interview` `/mirror` |
 | **Research** | Analyze codebase, find references, scan communities | `/deep-research` `/dev-scan` `/reference-seek` `/google-search` `/browser-work` |
 | **Decide** | Evaluate tradeoffs, multi-perspective review | `/council` `/tribunal` `/tech-decision` `/stepback` |
-| **Build** | Execute specs, fix bugs, iterate | `/execute` `/ralph` `/rulph` `/bugfix` `/ultrawork` `/scaffold` |
+| **Build** | Execute plans, fix bugs, iterate | `/execute` `/ralph` `/rulph` `/bugfix` `/ultrawork` `/scaffold` |
 | **Test** | QA test applications, verify changes | `/qa` `/check` `/scope` |
 | **Reflect** | Extract learnings, analyze sessions | `/compound` `/issue` `/skill-session-analyzer` |
 
@@ -365,11 +358,12 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 
 | Command | What It Does |
 |---------|--------------|
-| `/specify` | Layer-based interview → spec.json derivation (L0→L4) with gate-keepers |
-| `/execute` | Spec-driven orchestration with 3-axis config (dispatch: direct/agent/team, verify: light/standard/thorough) |
+| `/specify` | Interview-driven requirements.md derivation (L0→L4) with gate-keepers |
+| `/blueprint` | Contract-first task graph planning from requirements.md → plan.json |
+| `/execute` | Plan-driven orchestrator with 3-axis config (dispatch: direct/agent/team, verify: light/standard/thorough) |
 | `/qa` | Systematic QA testing — browser (chromux/CDP) or computer (MCP computer-use) mode |
-| `/ultrawork` | Full pipeline: specify → execute in one command |
-| `/bugfix` | Root cause diagnosis → auto-generated spec → execute (adaptive routing) |
+| `/ultrawork` | Full pipeline: specify → blueprint → execute in one command |
+| `/bugfix` | Root cause diagnosis → requirements.md → execute (adaptive routing) |
 | `/ralph` | Iterative loop with DoD — keeps going until independently verified |
 | `/council` | Multi-perspective deliberation: tribunal + external LLMs + community scan |
 | `/tribunal` | 3-agent adversarial review: Risk + Value + Feasibility → synthesized verdict |
@@ -388,9 +382,10 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 ```
 .claude/
 ├── skills/
-│   ├── specify/       Layer-based spec derivation (L0→L4)
-│   ├── execute/       Spec-driven parallel orchestration
-│   ├── bugfix/        Root cause → spec → execute pipeline
+│   ├── specify/       Interview-driven requirements.md derivation (L0→L4)
+│   ├── blueprint/     Contract-first task graph planning → plan.json
+│   ├── execute/       Plan-driven parallel orchestration
+│   ├── bugfix/        Root cause → requirements.md → execute pipeline
 │   ├── council/       Multi-perspective deliberation
 │   ├── tribunal/      3-agent adversarial review
 │   ├── qa/            Systematic QA testing (browser + computer)
@@ -406,13 +401,13 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 │   ├── guards         Write protection, plan enforcement
 │   ├── validation     Output quality, failure recovery
 │   └── pipeline       Ultrawork transitions, DoD loops
-└── cli/               spec.json validation & state management
+└── cli/              plan.json validation & state management
 ```
 
 **Key internals:**
 
-- **Derivation Chain** — L0→L4 with merge checkpoints + gate-keeper teams at each transition
-- **Multi-Model Review** — Codex + Gemini + Claude run independent reviews, synthesize SHIP/NEEDS_FIXES verdict
+- **Derivation Chain** — L0→L4 with merge checkpoints + gate-keeper teams at each transition (requirements.md)
+- **Blueprint** — Contract-first task graph planning from requirements.md to plan.json
 - **Hook System** — 18 hooks automate pipeline transitions, guard writes, enforce gates, recover from failures
 - **Verify Pipeline** — Dedicated Verifier agents check sub-requirements per task independently
 - **Self-Improvement** — Scope blockers → derived fix tasks at runtime (append-only, depth-1, circuit breaker)
@@ -429,8 +424,9 @@ See [docs/architecture.md](docs/architecture.md) for the full pipeline diagram.
 claude plugin add team-attention/hoyeon
 npm install -g @team-attention/hoyeon-cli
 
-# Start — derive requirements and execute
+# Start — derive requirements, plan, and execute
 /specify "add dark mode toggle to settings page"
+/blueprint
 /execute
 
 # Or run the full pipeline in one command
@@ -444,13 +440,11 @@ Type `/` in Claude Code to see all available skills.
 
 ## CLI
 
-`hoyeon-cli` manages spec.json validation and session state:
+`hoyeon-cli` manages plan.json validation and task state:
 
 ```bash
-hoyeon-cli spec init "project-name"        # Create new spec
-hoyeon-cli spec merge spec.json --json ...  # Validated merge
-hoyeon-cli spec check spec.json             # Verify completeness
-hoyeon-cli spec guide <section>             # Show field structure
+hoyeon-cli plan get <task-id> <plan-path>                    # Get task details
+hoyeon-cli plan task <plan-path> --status <task-id>=done   # Update task state
 ```
 
 See [docs/cli.md](docs/cli.md) for the full command reference.
@@ -463,7 +457,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-*"The spec doesn't predict the future. It survives it."*
+*"The plan doesn't predict the future. It survives it."*
 
 **Requirements are not written — they are derived.**
 

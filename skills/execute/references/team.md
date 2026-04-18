@@ -1,602 +1,474 @@
-# TEAM Dispatch Mode Reference
+# Team Dispatch Mode
 
-This file contains TEAM-specific execution logic for the `/execute` skill.
-It is loaded when the user selects `dispatch=team` in Phase 0.5.
-Uses Claude Code's native TeamCreate API for persistent workers with claim-based task distribution.
-Optimized for specs with 3+ parallel tasks.
+Persistent workers via `TeamCreate` with claim-based task distribution.
+Each worker is a long-lived session that claims multiple tasks in sequence, reusing in-session
+context (prior reads of contracts, sibling module code, learnings) across consecutive claims.
 
-**Prerequisite**: Phase 0 (Find Spec, Get Plan, Init Context, Confirm Pre-work, Work Mode Selection) and
-Phase 0.5 (Plan Analysis, Mode Selection) are already done.
-`spec_path`, `plan`, `CONTEXT_DIR`, `work_mode`, `verify_depth`, and `WORK_DIR` are all established.
+Best for plans with layer-sequential work, multi-task modules, or tasks that share upstream
+contracts that a worker benefits from remembering across claims.
+
+**Prerequisites from Phase 0**: `plan`, `plan_path`, `contracts_path`, `spec_dir`, `CONTEXT_DIR`,
+`work`, `verify` are established. `plan.json` MUST exist on disk (team mode = shared claim-board).
+
+**Invariants honored by this mode**:
+- **INV-2**: charter contains only paths + IDs (no inlined GWT / requirements / contracts prose).
+  Workers self-read GWT via `hoyeon-cli plan get` + self-Read of `contracts_path`.
+- **INV-3**: orchestrator (lead) reads only `plan.json` structural fields via cli.
+  Lead never Reads `requirements.md` or `contracts.md` body.
+- **INV-5**: `plan.json` mutations go through `hoyeon-cli plan` only.
+  `audit.md`, `learnings.json`, `issues.json`, `contracts.md` → direct Read/Write/Edit.
+- **C2**: round-level commit only. Workers never run `git`. The lead batches one commit per
+  worker-pool round (all workers idle + no pending unblocked tasks = round boundary).
 
 ---
 
-## Phase 0.5: Team Setup
+## Phase 1: Team Setup
 
-### Worker Count
+### Pool Sizing — layer/module distribution (R-F5.1)
 
-```
-parallel_tasks = count of tasks with no unresolved dependencies
-N = min(ceil(parallel_tasks / 2), 5)  # max 5 workers
-```
-
-### Team Creation
+Workers are allocated by how many independent *module buckets* the plan exposes in its ready
+frontier. A bucket = set of tasks that share a primary module/file-scope **and** don't cross
+a `depends_on` edge with each other.
 
 ```
-team_name = "exec-{spec.meta.name}"  # slug from spec name
+pending = Bash("hoyeon-cli plan list {spec_dir} --status pending --json").tasks
+ready   = pending.filter(t => all(d.status == "done" for d in t.depends_on))
 
+buckets = group_by_module(ready)
+  # module = primary directory/file prefix inferred from task.action
+  # two tasks share a bucket iff same module AND no depends_on between them
+
+parallel_count = len(buckets)
+N = min(max(parallel_count, 1), 5)    # 1..5 workers
+```
+
+Why buckets, not raw task count: R-F5.2 wants **one worker per module** so the worker's
+in-session memory of that module compounds across consecutive claims.
+
+### Create Team
+
+```
+team_name = "exec2-{basename(spec_dir)}"
 TeamCreate(team_name=team_name)
-# Current session becomes team lead ("team-lead")
+# Current session becomes team lead ("team-lead").
 ```
 
-### Task Creation (Single Turn)
+### Create Tracking Tasks (TURN 1 — single message)
+
+All `TaskCreate` calls go in ONE message. Charter description carries **paths + IDs only**
+(INV-2). Workers will fetch GWT themselves via cli.
 
 ```
-# ===============================================
-# TURN 1: Create ALL tasks in PARALLEL (single message)
-# ===============================================
-
-FOR EACH task in plan (excluding done):
+FOR EACH task in pending:
   TaskCreate(
-    subject="{task.id}:Work -- {task.action}",
-    description=WORKER_DESCRIPTION(task.id),
-    owner=null  # unassigned -- workers claim from TaskList
+    subject="{task.id}:Work — {task.action}",
+    description=WORKER_DESCRIPTION(
+      task_id=task.id,
+      plan_path=plan_path,
+      contracts_path=contracts_path,   # may be null
+      sub_req_ids=task.fulfills,       # e.g. ["R-F5.1","R-F5.2"]
+      spec_dir=spec_dir,
+      round=1,
+      prior_failure_context=null,      # populated on round > 1 re-dispatch
+      CONTEXT_DIR=CONTEXT_DIR
+    ),
+    owner=null                         # unassigned — workers claim
   )
 
-# Finalize tasks
-TaskCreate(subject="Finalize:Verify",
-           description="Run verification recipe based on verify tier.",
-           owner=null)
-
-TaskCreate(subject="Finalize:Report",
-           description="Generate execution report.",
-           owner=null)
+TaskCreate(subject="Finalize:Verify", owner=null)
+TaskCreate(subject="Finalize:Report", owner=null)
 ```
 
-### Set Dependencies (Turn 2)
+### Set Dependencies (TURN 2 — single message)
 
 ```
-# ===============================================
-# TURN 2: Set ALL dependencies in PARALLEL (single message)
-# ===============================================
-
-# Cross-task dependencies (from spec.json depends_on)
 FOR EACH task WHERE task.depends_on is not empty:
   FOR EACH dep_id in task.depends_on:
-    producer = task_ids[dep_id]
-    consumer = task_ids[task.id]
-    TaskUpdate(taskId=producer, addBlocks=[consumer])
+    TaskUpdate(taskId=tracking[dep_id], addBlocks=[tracking[task.id]])
 
-# All work tasks -> Finalize:Verify
-FOR EACH task in plan:
-  TaskUpdate(taskId=task_ids[task.id], addBlocks=[verify_task])
-
-# Finalize chain: Verify -> Report
+FOR EACH task in pending:
+  TaskUpdate(taskId=tracking[task.id], addBlocks=[verify_task])
 TaskUpdate(taskId=verify_task, addBlocks=[report_task])
 ```
 
-**Key rule**: Two turns only. All TaskCreate in Turn 1, all TaskUpdate in Turn 2.
+---
+
+## Charter Shape (no-inline — INV-2)
+
+`WORKER_DESCRIPTION` is a recipe, not a payload. It tells the worker **where** to read, not
+**what** the requirement says.
+
+```
+WORKER_DESCRIPTION(task_id, plan_path, contracts_path, sub_req_ids, spec_dir, round,
+                   prior_failure_context, CONTEXT_DIR) = """
+You are a TEAM WORKER claiming task {task_id} in spec {spec_dir}.
+
+## Inputs (paths + IDs only — self-read below)
+- plan_path:       {plan_path}
+- contracts_path:  {contracts_path ?? "(none)"}
+- sub_req_ids:     {sub_req_ids}
+- CONTEXT_DIR:     {CONTEXT_DIR}
+- round:           {round}
+- prior_failure:   {prior_failure_context ?? "(none)"}
+
+## Step 1 — Prereq
+Claim was already performed by WORKER_PREAMBLE LOOP Step 3 (single owner = cli flock).
+Do NOT re-claim here. If your session somehow reached this step without holding the
+claim, abort and let the LOOP re-run step 3.
+
+## Step 2 — Self-read GWT
+  Read("{plan_path}") → JSON.parse → find task by {task_id}
+  → yields action, depends_on, fulfills[], and sub-requirement IDs
+
+Do NOT Read requirements.md or spec.json.
+
+## Step 3 — Self-read contracts (if present)
+  IF {contracts_path} != null AND this is your FIRST claim in this session:
+    Read({contracts_path})
+  ELSE IF you have already Read {contracts_path} earlier in this session:
+    Skip — rely on your in-session memory (R-F5.2).
+
+## Step 4 — Self-read context
+  Read {CONTEXT_DIR}/learnings.json  (if exists)
+  Read {CONTEXT_DIR}/issues.json     (if exists)
+
+## Step 5 — Implement
+Satisfy every sub_req in fulfills[]. Respect contracts invariants.
+Do NOT run git — lead commits per round (C2).
+
+## Step 6 — Self-verify + fix loop (R-F5.3, max 2 rounds inside this claim)
+  self_verify_round = 0
+  WHILE self_verify_round < 2:
+    run typecheck / lint / unit-test commands from the project
+    IF all PASS AND every sub_req has at least one line-citation: BREAK
+    self_verify_round += 1
+    fix the failures in place (same session — keep your context)
+  IF still failing after 2 rounds: mark status=FAILED with detail.
+
+## Step 7 — Record learnings / issues
+  Edit {CONTEXT_DIR}/learnings.json  (append JSON)
+  Edit {CONTEXT_DIR}/issues.json     (append JSON if blockers)
+
+## Step 8 — Mark done
+  hoyeon-cli plan task {spec_dir} --status {task_id}=done \
+    --summary '{one-line summary}'
+  TaskUpdate(taskId=tracking, status="completed")
+
+## Step 9 — Report to lead
+  # If the orchestrator needs to auto-patch contracts.md (C4), the lead must see
+  # the mismatch text. Append a trailing "CONTRACT_MISMATCH: ..." token to the
+  # content so the lead's message handler can pick it up without re-parsing the
+  # whole WorkerOutput.
+  contract_tail = (contract_mismatch ? " | CONTRACT_MISMATCH: " + contract_mismatch : "")
+  SendMessage(recipient="team-lead", type="message",
+    content="DONE {task_id}: {summary}. Files: {files_modified}. Fulfills: {citations}." + contract_tail,
+    summary="{task_id} done")
+
+## Output (last message, JSON)
+{
+  "status": "DONE|FAILED|BLOCKED",
+  "summary": "...",
+  "files_modified": [...],
+  "fulfills": [{"sub_req_id": "R-Fx.y", "file_path": "...", "line": "..."}],
+  "self_verify_rounds": 0|1|2,
+  "contract_mismatch": null | "..."
+}
+"""
+```
+
+Note: the description above is **paths, IDs, and procedure** — it does NOT inline any GWT
+text, requirement prose, or contracts snippets (INV-2).
 
 ---
 
-## Worker Preamble
+## Worker Preamble (persistence layer — R-F5.2)
 
-Template injected into each worker's spawn prompt. Workers are persistent --
-they claim multiple tasks from TaskList, not just one.
+Injected into each worker session at spawn. Separate from `WORKER_DESCRIPTION` — this is the
+loop that lets a single worker claim many tasks while keeping its in-session memory.
 
 ```
-WORKER_PREAMBLE(team_name, worker_name, spec_path, CONTEXT_DIR) = """
-You are a TEAM WORKER in team "{team_name}". Your name is "{worker_name}".
-You report to the team lead ("team-lead").
-You are not the leader and must not perform leader orchestration actions.
+WORKER_PREAMBLE(team_name, worker_name, plan_path, contracts_path, spec_dir, CONTEXT_DIR) = """
+You are TEAM WORKER "{worker_name}" in team "{team_name}".
+Report to "team-lead" via SendMessage. Never Read/Write plan.json directly — cli only.
 
-== WORK PROTOCOL ==
+Session constants (already resolved by lead):
+  - contracts_path: {contracts_path ?? "(none)"}
 
-1. CLAIM: Call TaskList to see available tasks.
-   Pick the first task with status "pending", owner null, and no unresolved blockedBy.
-   NEVER claim a task that is already "in_progress" or has an owner set.
-   Call TaskUpdate to set status "in_progress" and owner "{worker_name}":
-   {"taskId": "ID", "status": "in_progress", "owner": "{worker_name}"}
+== PERSISTENT CLAIM LOOP ==
 
-2. WORK: Execute the task.
-   - Read task spec: hoyeon-cli spec task {task_id} --get {spec_path}
-   - Read context: {CONTEXT_DIR}/learnings.json, {CONTEXT_DIR}/issues.json (if exist)
-   - Implement using Read, Write, Edit, Bash, Grep, Glob
-   - Respect constraints from spec
-   - Verify: check fulfills[] -> requirements -> sub-requirements (GWT when available)
-   - Run build/lint/typecheck to ensure nothing is broken
+State you keep across claims (in-session memory, DO NOT re-read unless invalidated):
+  - CONTRACTS_SEEN: set of contracts_path values you've already Read
+    (seeded empty; add {contracts_path} after your first Read of it)
+  - MODULE_CACHE:   map of module → files you've already Read from that module
+  - LEARNINGS_SEEN: last snapshot hash of learnings.json
 
-3. COMPLETE: When done, mark the task completed:
-   {"taskId": "ID", "status": "completed"}
-   Update spec: hoyeon-cli spec task {task_id} --status done --summary '...' {spec_path}
+LOOP:
+  1. LIST ready tasks:
+       hoyeon-cli plan list {spec_dir} --status pending --json
+     Filter to tasks whose depends_on are all `done`.
+     IF empty → emit "standing by" → WAIT for SendMessage wake-up, then restart LOOP.
 
-4. CONTEXT: Write learnings/issues via CLI:
-   hoyeon-cli spec learning --task {task_id} --stdin {spec_path} << 'EOF'
-   {"problem": "...", "cause": "...", "rule": "...", "tags": [...]}
-   EOF
+  2. PICK (longest-deps-first — R-F5.1):
+       Order the ready set by:
+         (a) DESC  longest dependency chain length to this task
+             (i.e. max depth in the depends_on DAG ending at this task).
+             Algorithm: chain_length(t) = 1 + max(chain_length(d) for d in t.depends_on)
+             with chain_length(t) = 1 for tasks with no deps. Lead pre-computes this
+             via DFS+memo over `depends_on` once per round and embeds the value in
+             each TaskCreate description so workers don't re-traverse the DAG.
+         (b) DESC  count of other pending tasks blocked on this task
+         (c) ASC   task.id (stable tiebreaker)
+       Longest-chain-first drains critical-path work before branches.
 
-   hoyeon-cli spec issue --task {task_id} --stdin {spec_path} << 'EOF'
-   {"type": "failed_approach|out_of_scope|blocker", "description": "..."}
-   EOF
+       Prefer a task whose module is ALREADY in your MODULE_CACHE — this is the R-F5.2
+       persistence bonus: stay in the same module across consecutive claims so your
+       prior reads (code + contracts) stay valid. If no such task exists, pick the
+       highest-priority task from a new module.
 
-5. REPORT: Notify the lead via SendMessage:
-   {"type": "message", "recipient": "team-lead",
-    "content": "Completed {task_id}: {summary}. Files: {files_modified}",
-    "summary": "Task {task_id} complete"}
+  3. CLAIM (atomic via cli flock):
+       hoyeon-cli plan task {spec_dir} --status {picked_id}=running
+     IF cli reports "already claimed" → loop back to step 1.
 
-6. NEXT: Call TaskList -> claim next unblocked pending task (go to step 1).
-   If no tasks available, notify lead:
-   {"type": "message", "recipient": "team-lead",
-    "content": "All available tasks complete. Standing by.",
-    "summary": "Standing by"}
+  4. EXECUTE the task by following its TaskCreate description (WORKER_DESCRIPTION
+     above): self-read GWT via `plan get`, self-read contracts (only if not in
+     CONTRACTS_SEEN), implement, self-verify, mark done.
 
-7. SHUTDOWN: On shutdown_request -> respond with:
-   {"type": "shutdown_response", "request_id": "<from the request>", "approve": true}
+     While executing: when you Read a new file under a module, add it to
+     MODULE_CACHE[module]. When you Read contracts_path, add to CONTRACTS_SEEN.
+
+  5. REPORT to lead via SendMessage. Go back to step 1.
+
+== STANDING BY ==
+When step 1 returns empty, emit:
+  SendMessage(recipient="team-lead", type="message",
+    content="standing by", summary="idle")
+then WAIT. Lead will SendMessage when new tasks unblock (deps completed, fix tasks
+appended, or round boundary crossed).
+
+== SHUTDOWN ==
+On shutdown_request:
+  SendMessage(recipient="team-lead", type="shutdown_response",
+    request_id=<from request>, approve=true)
 
 == RULES ==
-- NEVER spawn sub-agents or use the Task tool
-- NEVER run git commands -- lead handles commits
-- NEVER run team spawning/orchestration commands
-- ALWAYS use absolute file paths
-- ALWAYS report progress via SendMessage to "team-lead"
-- Use SendMessage with type "message" only -- never "broadcast"
+- Never Read/Write plan.json directly (INV-5 — cli only).
+- Never Read requirements.md or spec.json (INV-2 — your TaskCreate + `plan get`
+  expose the GWT you need).
+- Never run git — lead commits per round (C2).
+- Never spawn sub-agents.
+- Self-verify/fix loop stays inside your claim (max 2 internal rounds — R-F5.3).
+  Only if both internal rounds fail → report FAILED to lead.
 """
 ```
 
----
+### Why the loop preserves context (R-F5.2)
 
-## WORKER_DESCRIPTION Template
+- A worker session is **one** Claude session; the `LOOP` above runs inside that one session.
+- `MODULE_CACHE` and `CONTRACTS_SEEN` are natural consequences of the session transcript —
+  content already Read is still in the worker's context window. We just tell the worker
+  not to Read again when it can reuse.
+- The PICK step biases toward same-module tasks, so the worker's next claim usually
+  benefits from files it already holds in memory from the previous claim.
 
-Task-level description stored in TaskCreate. Workers self-read details via CLI.
+### Why longest-deps-first (R-F5.1)
 
-```
-WORKER_DESCRIPTION(task_id) = """
-You are a Worker in TEAM mode. Implement task {task_id}.
-Work in the current directory (session CWD).
-
-## Step 1: Read your task spec
-Run: `hoyeon-cli spec task {task_id} --get {spec_path}`
-This returns JSON with: action, fulfills, depends_on.
-
-## Step 2: Resolve dependency inputs (if any)
-If your task has depends_on, fetch each dependency:
-Run: `hoyeon-cli spec task {dep_id} --get {spec_path}`
-Use its outputs to understand what was produced.
-
-## Step 3: Read context files
-Read: {CONTEXT_DIR}/learnings.json -- structured learnings from previous workers (if exists)
-Read: {CONTEXT_DIR}/issues.json -- failed approaches to avoid (if exists)
-
-## Step 4: Implement
-Follow the task action from your task spec.
-Respect constraints.
-Do NOT run git commands -- lead handles commits.
-
-### Code quality: avoid AI expression patterns
-Do NOT produce these patterns in your implementation:
-- Comments that restate what the code already says (e.g., `// increment counter` above `counter++`)
-- Catch-rethrow blocks that add no context (`catch(e) { throw e }`)
-- Assign to variable only to immediately return (`const result = foo(); return result;`)
-- Null checks for values already guaranteed by types or framework validation
-- Helper functions called exactly once — inline them
-- JSDoc/docstrings that add no information beyond the function signature
-- Leftover console.log, debugger statements, or TODO comments
-
-### Verification before reporting DONE
-1. **Behavioral check**: Look up fulfills[] -> requirements -> sub-requirements.
-   Each sub-req's GWT fields (given/when/then) define structured acceptance criteria
-   when available; behavior serves as summary. Verify your implementation satisfies all.
-2. **Build/lint/typecheck**: Run the project's build, lint, and type-check commands.
-
-## Step 5: Update context files
-
-For each learning discovered during implementation, save via CLI:
-
-```bash
-hoyeon-cli spec learning --task {task_id} --stdin {spec_path} << 'EOF'
-{
-  "problem": "what went wrong or was unexpected",
-  "cause": "why it happened",
-  "rule": "what to do instead (actionable rule)",
-  "tags": ["relevant", "tech", "keywords"]
-}
-EOF
-```
-
-**What to record**: surprising behavior, version-specific gotchas, workarounds, breaking changes, performance pitfalls.
-**What NOT to record**: obvious steps that worked as expected, framework basics.
-
-For each issue discovered during implementation, save via CLI:
-
-```bash
-hoyeon-cli spec issue --task {task_id} --stdin {spec_path} << 'EOF'
-{
-  "type": "failed_approach|out_of_scope|blocker",
-  "description": "what went wrong or what is out of scope"
-}
-EOF
-```
-
-## Output (print as last message)
-```json
-{"status": "DONE"|"FAILED"|"BLOCKED",
- "summary": "...",
- "files_modified": [...],
- "tier1_checks": [{"type":"build|lint|static|format", "run":"...", "status":"PASS|FAIL"}]}
-```
-
-### Status meanings:
-- **DONE**: All checks passed, implementation complete.
-- **FAILED**: Implementation attempted but checks failed (code error).
-- **BLOCKED**: Implementation blocked by scope limitation (not a code error).
-"""
-```
+Ordering by longest dependency chain minimizes *tail latency*: the critical path drains
+first, and shorter/independent branches fill idle workers later. Combined with the
+same-module bias in (b)/(c), we get high-cache-hit sequences per worker.
 
 ---
 
-## Phase 1: Exec Stage
-
-### Spawn Workers
+## Phase 2: Lead Execute Loop (claim-driven, no polling — INV-4)
 
 ```
-# Spawn N workers with preamble -- ALL in parallel
+# Spawn N persistent workers (single message)
 FOR i in 1..N:
   Agent(
     subagent_type="worker",
-    team_name=team_name,
     name="worker-{i}",
     description="Team worker {i}",
-    prompt=WORKER_PREAMBLE(team_name, "worker-{i}", spec_path, CONTEXT_DIR),
+    prompt=WORKER_PREAMBLE(team_name, "worker-{i}", plan_path, contracts_path, spec_dir, CONTEXT_DIR),
     run_in_background=true
   )
+
+# Lead monitors via SendMessage notifications (no sleep/poll — R-F16, INV-4)
+round_idx = 1
+round_completed_tasks = []
+standing_by = set()
+
+WHILE has_pending_tasks_in_plan():
+  msg = wait_for_SendMessage()
+
+  IF msg.content starts with "DONE":
+    # Contracts auto-patch hook (C4 / R-F9.1 / R-F9.2) — run BEFORE the task is
+    # rolled into the round commit tally. Worker Step 9 appends a
+    # "CONTRACT_MISMATCH: ..." tail when applicable; pull the text out here.
+    cm = regex_find(msg.content, /CONTRACT_MISMATCH:\s*(.+)$/)
+    IF contracts_path AND cm:
+      synthesized_output = {
+        status: "done",
+        contract_mismatch: cm.group(1).trim(),
+        blocked_reason: null
+      }
+      run_recipe("contracts-patch",
+        worker_output  = synthesized_output,
+        task_id        = msg.task_id,
+        round          = round_idx,
+        contracts_path = contracts_path,
+        audit_path     = CONTEXT_DIR + "/audit.md")
+
+    round_completed_tasks.append(msg.task_id)
+    standing_by.discard(msg.worker)
+
+    # Detect round boundary:
+    # A round is complete when (a) all currently-running workers have reported DONE
+    # or are standing by, AND (b) no newly-unblocked task has been picked up yet.
+    newly_unblocked = scan_for_unblocked_tasks()
+    IF all_workers_idle_or_standing_by() AND len(newly_unblocked) == 0:
+      # Nothing more to do this round → commit + next round
+      commit_round(round_idx, round_completed_tasks)
+      round_idx += 1
+      round_completed_tasks = []
+      # If plan still has pending tasks, next iteration will unblock them
+    ELIF newly_unblocked:
+      # Wake idle workers so they can claim
+      FOR EACH idle in standing_by:
+        SendMessage(recipient=idle, type="message",
+          content="wake — {len(newly_unblocked)} tasks unblocked",
+          summary="wake")
+      standing_by.clear()
+
+  ELIF msg.content starts with "standing by":
+    standing_by.add(msg.worker)
+
+  ELIF msg.content starts with "FAILED":
+    handle_failed(msg)    # bounded retry via round 2 re-dispatch w/ prior_failure_context
+
+  ELIF msg.content starts with "BLOCKED":
+    handle_blocked(msg)   # append fix task via cli plan merge, wake workers
+
+# End of loop: all plan tasks are done
+final_commit_if_dirty()
 ```
 
-### Lead Monitoring
+### Round-level commit (C2)
 
 ```
-# Lead monitors via SendMessage notifications from workers
-# DO NOT poll -- wait for worker messages
-
-# Workers send messages on:
-#   - Task completion ("Completed T1: ...")
-#   - Task failure ("FAILED T1: ...")
-#   - Standing by (no more tasks)
-#   - Blocked (dependency or scope issue)
-
-# Lead actions on message receipt:
-#   - On completion: log progress, check if all tasks done,
-#     AND notify standing-by workers that new tasks may be unblocked:
-IF any_workers_standing_by AND TaskList has pending+unblocked tasks:
-  FOR EACH idle_worker in standing_by_workers:
-    SendMessage(type="message", recipient=idle_worker,
-      content="New tasks unblocked. Check TaskList and claim.",
-      summary="Wake up — new tasks available")
-#   - On failure: log_to_audit + reassign or halt (see Watchdog)
-#   - On standing by: track worker as idle. If all workers standing by
-#     AND no pending tasks remain → proceed to verify phase
-#   - On blocked: log_to_audit + unblock or reassign
-
-# IMPORTANT: On FAILED or BLOCKED messages, lead MUST append to audit.md:
-IF worker reports BLOCKED for task:
-  log_to_audit("BLOCKED: {task_id} from {worker} — {reason}")
-  # Then proceed to scope fix (derive + reassign)
-
-IF worker reports FAILED for task:
-  log_to_audit("FAILED: {task_id} from {worker} — {reason}")
-  # Then proceed to reassign (see Watchdog)
+function commit_round(round_idx, completed_task_ids):
+  IF work == "no-commit": return
+  IF `git status --porcelain` is empty: return
+  Agent(subagent_type="git-master",
+        description="Commit round {round_idx}",
+        prompt="Commit all changes from team-mode round {round_idx}. "
+               "Tasks included: {completed_task_ids}. Spec: {spec_dir}.")
+  # Lead logs the commit to audit.md (direct Edit — INV-5, not cli)
+  Edit(CONTEXT_DIR + "/audit.md", append=
+    "ROUND {round_idx} committed: {completed_task_ids} @ {timestamp}")
 ```
 
-### Watchdog Policy
+### FAILED handling — bounded re-dispatch (R-F7.1)
+
+Recall R-F5.3: a worker already does up to 2 *internal* self-verify/fix rounds before
+reporting FAILED. So by the time the lead sees FAILED, the worker already tried twice
+inside its claim. Per R-F7.1, the lead may re-dispatch the task up to **2** more
+times before halting. This maps to INV-6 budget: 1 initial + 2 R-F7.1 retry (+ 1
+gap + 1 verify-fix at higher layers) = 5 attempts.
 
 ```
-# 5min no message from worker -> SendMessage status check
-IF time_since_last_message(worker) > 5min:
-  SendMessage(type="message", recipient="worker-{i}",
-    content="Status check: what is your current task and progress?",
-    summary="Status check")
-
-# 10min stuck -> reassign task to another worker
-IF time_since_last_message(worker) > 10min:
-  stuck_task = find_in_progress_task(worker)
-  TaskUpdate(taskId=stuck_task, owner=null, status="pending")
-  SendMessage(type="message", recipient="team-lead",
-    content="Reassigned {stuck_task} from {worker} -- unresponsive",
-    summary="Task reassigned")
-
-# Worker FAILED -> reassign to different worker (NOT halt)
-IF worker reports FAILED for task:
-  TaskUpdate(taskId=failed_task, owner=null, status="pending")
-  log_to_audit("REASSIGN: {task_id} from {worker} -- worker reported FAILED")
-  # Another worker will claim it from TaskList
-  # If task fails 2+ times across different workers -> HALT
-  IF failure_count(task_id) >= 2:
-    log_to_audit("HALT: {task_id} failed {failure_count} times across workers")
+function handle_failed(msg):
+  retry = retry_count[msg.task_id]    # 0 on first FAILED, increments per re-dispatch
+  IF retry < 2:
+    retry_count[msg.task_id] = retry + 1
+    # Return to pending so any worker can re-claim
+    Bash("hoyeon-cli plan task {spec_dir} --status {msg.task_id}=pending")
+    # Re-issue TaskCreate with prior_failure_context populated
+    TaskCreate(
+      subject="{msg.task_id}:Work (retry {retry_count[msg.task_id]})",
+      description=WORKER_DESCRIPTION(
+        task_id=msg.task_id, plan_path=plan_path, contracts_path=contracts_path,
+        sub_req_ids=msg.sub_req_ids, spec_dir=spec_dir,
+        round=retry_count[msg.task_id] + 1,
+        prior_failure_context=msg.summary,
+        CONTEXT_DIR=CONTEXT_DIR
+      ),
+      owner=null
+    )
+    Edit(CONTEXT_DIR + "/audit.md", append="RETRY {msg.task_id} round={retry_count[msg.task_id] + 1}: {msg.summary}")
+    wake_standing_by_workers()
+  ELSE:
+    Edit(CONTEXT_DIR + "/audit.md", append="HALT {msg.task_id}: failed after R-F7.1 retries. Worker internal 2 + lead 2 = R-F7.1 budget exhausted (INV-6 floor).")
     HALT
 ```
 
-### All Tasks Done
+### BLOCKED handling
 
 ```
-# When all work tasks are completed (Finalize tasks still pending):
-# -> Proceed to Phase 1.5: Verify Stage
-```
-
----
-
-## Phase 1.5: Verify Stage
-
-```
-# Verify routing based on user's verify depth selection from Phase 0.5:
-Read the verify recipe:
-  light    -> ${baseDir}/references/verify-light.md
-  standard -> ${baseDir}/references/verify-standard.md
-  thorough -> ${baseDir}/references/verify-thorough.md
-  ralph    -> ${baseDir}/references/verify-ralph.md
-
-# IMPORTANT: The lead executes the verify recipe DIRECTLY (not via team worker).
-# Verify recipes internally spawn sub-agents (code-reviewer, qa-verifier, etc.)
-# which team workers cannot do (NEVER spawn sub-agents rule).
-# The lead reads the verify recipe and follows its instructions as the orchestrator.
-
-TaskUpdate(taskId=verify_task, status="in_progress")
-# Follow verify recipe instructions directly (same as dev.md Phase 2b)
-```
-
----
-
-## Phase 1.6: Fix Stage (on verify failure)
-
-```
-IF verify result == VERIFIED_WITH_GAPS:
-  log_to_audit("VERIFIED_WITH_GAPS: uncertain sub-reqs detected, proceeding as soft pass")
-  TaskUpdate(taskId=verify_task, status="completed")
-
-ELIF verify result == FAIL:
-  fix_attempt = 0
-  MAX_FIX_LOOPS = 3
-
-  WHILE fix_attempt < MAX_FIX_LOOPS:
-    fix_attempt += 1
-    fix_tasks = []
-
-    FOR EACH failure in verify_result.failures:
-      derive_result = Bash("""hoyeon-cli spec derive \
-        --parent {failure.related_task_id ?? last_task_id} \
-        --source verify \
-        --trigger verify_fix \
-        --action "Fix: {failure.description}" \
-        --reason "Verify failure: {failure.reason}" \
-        {spec_path}""")
-
-      fix_task_id = derive_result.created
-      fix_tasks.append(fix_task_id)
-
-      # Create tracking task in TeamCreate TaskList
-      TaskCreate(
-        subject="{fix_task_id}:Work -- Fix: {failure.description}",
-        description=WORKER_DESCRIPTION(fix_task_id),
-        owner=null
-      )
-
-    log_to_audit("VERIFY_FIX attempt {fix_attempt}: created {len(fix_tasks)} fix tasks")
-
-    # Idle workers claim fix tasks from TaskList automatically
-    # Wait for fix task completions via SendMessage
-
-    # After all fix tasks done -> re-verify
-    verify_result = run_verify(verify_depth)
-
-    IF verify_result == PASS OR verify_result == VERIFIED_WITH_GAPS:
-      IF verify_result == VERIFIED_WITH_GAPS:
-        log_to_audit("VERIFIED_WITH_GAPS: uncertain sub-reqs detected after fix")
-      TaskUpdate(taskId=verify_task, status="completed")
-      BREAK
-
-  IF verify_result != PASS AND verify_result != VERIFIED_WITH_GAPS:
-    log_to_audit("HALT: Verify failed after {MAX_FIX_LOOPS} fix attempts")
-    HALT
-```
-
----
-
-## Phase 2: Shutdown + Finalize
-
-### Graceful Shutdown
-
-```
-# Step 1: Verify completion
-# All work tasks and verify task must be completed
-
-# Step 2: Request shutdown from each worker
-FOR EACH worker in active_workers:
-  SendMessage(
-    type="shutdown_request",
-    recipient="worker-{i}",
-    content="All work complete, shutting down team"
+function handle_blocked(msg):
+  fix_task_json = derive_fix_task(msg)    # id, action, depends_on, fulfills
+  fix_id = fix_task_json.id
+  Bash("hoyeon-cli plan merge {spec_dir} --append --json '{fix_task_json}'")
+  TaskCreate(
+    subject="{fix_id}:Work — fix for {msg.task_id}",
+    description=WORKER_DESCRIPTION(
+      task_id=fix_id,
+      plan_path=plan_path,
+      contracts_path=contracts_path,
+      sub_req_ids=fix_task_json.fulfills,
+      spec_dir=spec_dir,
+      round=1,
+      prior_failure_context="BLOCKED by {msg.task_id}: {msg.blocked_reason}",
+      CONTEXT_DIR=CONTEXT_DIR
+    ),
+    owner=null
   )
+  Edit(CONTEXT_DIR + "/audit.md", append="BLOCKED {msg.task_id}: appended fix {fix_id}")
+  wake_standing_by_workers()
+```
 
-# Step 3: Wait for shutdown_response from all workers
-# 30s timeout per worker
-FOR EACH worker in active_workers:
-  WAIT for shutdown_response(approve=true) from worker
-  TIMEOUT 30s:
-    log_to_audit("WARNING: {worker} did not respond to shutdown within 30s")
+---
 
-# Step 4: Delete team
+## Phase 3: Finalize
+
+```
+# 1. Graceful shutdown — send shutdown_request to each worker, wait for responses
+FOR EACH worker in spawned_workers:
+  SendMessage(recipient=worker, type="shutdown_request",
+    content="team work complete")
+# (Each worker replies with shutdown_response approve=true per its preamble.)
+
+# 2. TeamDelete
 TeamDelete(team_name=team_name)
+
+# 3. Final residual commit (catches anything left uncommitted between rounds)
+IF work != "no-commit" AND `git status --porcelain` is not empty:
+  Agent(subagent_type="git-master",
+        description="Residual commit",
+        prompt="Residual commit after team execution. Spec: {spec_dir}.")
+
+# 4. Verify — route to ${baseDir}/references/verify.md (lead executes directly;
+#    verify may spawn sub-agents which team workers cannot).
+
+# 5. Report — stdout only (R-F13.4), sections per R-F14.1.
 ```
-
-### Commit
-
-```
-# TEAM mode uses round-level or end-of-execution commit (not per-task)
-IF work_mode != "no-commit":
-  git_status = Bash("git status --porcelain")
-  IF git_status is not empty:
-    Agent(subagent_type="git-master",
-          prompt="Commit all changes from spec: {spec.meta.goal}")
-```
-
-### Report
-
-```
-spec = Read(spec_path) -> parse JSON
-audit = Read("{CONTEXT_DIR}/audit.md")
-
-print("""
-===================================================
-              EXECUTE-V2 COMPLETE (TEAM)
-===================================================
-
-SPEC: {spec_path}
-GOAL: {spec.meta.goal}
-DISPATCH: team
-WORK: {work_mode}
-VERIFY: {verify_depth}
-WORKERS: {N} spawned
-
----------------------------------------------------
-TASKS
----------------------------------------------------
-{FOR EACH task in spec.tasks:}
-{task.id}: {task.action} -- {task.status}
-  {task.summary}
-
----------------------------------------------------
-VERIFICATION
----------------------------------------------------
-{Verify tier results}
-
----------------------------------------------------
-ADAPTATIONS
----------------------------------------------------
-{List any derived fix tasks from verify failures, or "None"}
-
----------------------------------------------------
-CONTEXT
----------------------------------------------------
-Learnings: {count} entries
-Issues: {count} entries
-Audit: {count} events
-
----------------------------------------------------
-MANUAL REVIEW (require human verification)
----------------------------------------------------
-{List any sub-requirements that require manual/visual verification
- based on their behavior description (e.g., UI appearance, UX flows)}
-
-{IF no manual items: "None"}
-
----------------------------------------------------
-POST-WORK (human actions after completion)
----------------------------------------------------
-{post_work = spec.external_dependencies.post_work ?? []}
-{FOR EACH item in post_work:}
-- [{item.id ?? ''}] {item.dependency}: {item.action}
-
-{IF no post_work: "None"}
-===================================================
-""")
-
-TaskUpdate(taskId=report_task, status="completed")
-```
-
----
-
-## Context File Management
-
-### File Structure
-
-```
-.hoyeon/specs/{name}/context/
-  learnings.json — structured learnings (lead creates empty [], workers append via hoyeon-cli spec learning)
-  issues.json   — structured issues (lead creates empty [], workers append via hoyeon-cli spec issue)
-  audit.md      — scope blockers, verify events, reassignments (lead creates empty, appends)
-```
-
-### Who reads/writes what
-
-| File | Created by | Written by | Read by |
-|------|-----------|-----------|---------|
-| `learnings.json` | lead (Phase 0.7, `[]`) | workers (via `spec learning` CLI) | workers (next worker reads prev learnings) |
-| `issues.json` | lead (Phase 0.7, `[]`) | workers (via `spec issue` CLI) | workers (avoid repeated failed approaches) |
-| `audit.md` | lead (Phase 0.7, empty) | **lead only** | lead (report generation) |
-| `history.json` | CLI auto | CLI auto (on merge/task/derive) | analysis only |
-
-### Worker Context Flow
-
-Workers self-read context files — lead does NOT read them during dispatch.
-This saves lead tokens and survives compaction.
-
-```
-Worker claims task → reads learnings.json + issues.json
-  → implements task
-  → writes learnings/issues via CLI
-  → reports to lead via SendMessage
-```
-
-### Lead Audit Log
-
-The lead writes to `audit.md` for:
-- Worker BLOCKED events (scope blocker detected, derived fix task created)
-- Worker FAILED events (task failure, reassignment)
-- Verify fix events (verify failure, fix tasks created)
-- Reassignment events (watchdog timeout, task moved to different worker)
-
-Format:
-```
-## {task_id} — {timestamp}
-Event: {BLOCKED|FAILED|VERIFY_FIX|REASSIGN}
-Worker: {worker_name}
-Reason: {reason}
-Action: {what was done — derive, reassign, halt}
-```
-
-### spec.json Update Responsibilities
-
-| Actor | Updates | Via |
-|-------|---------|-----|
-| lead | meta.mode (dispatch/work/verify) | `spec merge` |
-| lead | context.sandbox_capability | `spec merge` |
-| workers | tasks[].status → done | `spec task --status done` |
-| lead | tasks[].status → blocked | `spec task --status blocked` |
-| lead | new derived tasks | `spec derive` |
-| lead | final consistency check | `spec check` (read-only) |
-
----
-
-## Team-specific Rules
-
-1. **Workers are persistent** -- spawned once, they claim and execute multiple tasks. Do NOT spawn a new worker per task.
-2. **Claim-based dispatch** -- workers pick tasks from TaskList (unassigned, unblocked, pending). The lead does NOT assign tasks to specific workers.
-3. **FAILED tasks -> reassign** -- unlike AGENT mode which halts on worker failure, TEAM mode reassigns the failed task to a different worker. Halt only after 2+ failures on the same task.
-4. **SendMessage for all communication** -- workers report completion, failure, and standing-by status via SendMessage to "team-lead". Lead sends status checks and reassignments via SendMessage.
-5. **No per-task commit** -- TEAM mode uses end-of-execution commit (or round-level if configured). Workers MUST NOT run git commands.
-6. **Shutdown protocol is mandatory** -- always send shutdown_request to every worker and wait for shutdown_response before calling TeamDelete. No orphaned workers.
-7. **Two turns for task setup** -- Turn 1: all TaskCreate, Turn 2: all TaskUpdate (same as AGENT mode).
-8. **Workers self-read everything** -- workers use `hoyeon-cli spec task --get` and read context files themselves. Lead does NOT read spec.json or context files during dispatch.
-9. **Description = recipe** -- TaskCreate description contains the full self-read recipe. At dispatch time, the worker preamble plus description provide all instructions.
-10. **Adaptation updates spec.json** -- new fix tasks go through `spec derive` (handles ID generation, origin=derived, derived_from, depends_on automatically).
-11. **Max 5 workers** -- `N = min(ceil(parallel_tasks / 2), 5)`. More workers add coordination overhead without proportional throughput.
-12. **Verify stage runs by lead** -- TEAM mode loads the same verify recipes as other dispatch modes. The lead executes the recipe directly (not a team worker), because verify recipes internally spawn sub-agents (code-reviewer, qa-verifier) which team workers cannot do.
 
 ---
 
 ## Checklist
 
-- [ ] Worker count calculated: `N = min(ceil(parallel_tasks / 2), 5)`
-- [ ] TeamCreate called with `exec-{spec-name}` slug
-- [ ] All TaskCreate in single turn (Turn 1), all TaskUpdate in single turn (Turn 2)
-- [ ] Worker preamble includes: claim protocol, SendMessage, shutdown response, no-git rule
-- [ ] N workers spawned in parallel with `run_in_background=true`
-- [ ] Lead monitors via SendMessage (no polling)
-- [ ] Watchdog: 5min status check, 10min reassign
-- [ ] Failed tasks reassigned (not halted) -- halt after 2+ failures on same task
-- [ ] All spec tasks have `status: "done"` (via `hoyeon-cli spec task`)
-- [ ] `hoyeon-cli spec check` passes at end
-- [ ] Verify recipe executed by lead directly (not team worker — verify spawns sub-agents)
-- [ ] Fix loop bounded by max 3 attempts
-- [ ] Shutdown: shutdown_request sent to all workers, shutdown_response received
-- [ ] TeamDelete called after all workers confirmed shutdown
-- [ ] Commit handled (end-of-execution, not per-task)
-- [ ] Final report output with TEAM-specific fields (worker count, dispatch mode)
+- [ ] plan.json present on disk (team mode requires it as shared claim-board)
+- [ ] Pool size `N = min(max(#module_buckets, 1), 5)` computed from ready frontier
+- [ ] `TeamCreate("exec2-{spec_name}")` called; current session = team-lead
+- [ ] TURN 1 single message: `TaskCreate` per pending task + Verify + Report (all `owner=null`)
+- [ ] TURN 2 single message: all `TaskUpdate` dependency edges
+- [ ] `WORKER_DESCRIPTION` carries **paths + IDs only** — no inlined GWT / contracts prose (INV-2)
+- [ ] `WORKER_PREAMBLE` includes the persistent claim LOOP with MODULE_CACHE + CONTRACTS_SEEN
+- [ ] PICK step orders by longest-deps-first, then same-module bias (R-F5.1 + R-F5.2)
+- [ ] CLAIM via `hoyeon-cli plan task --status <id>=running` (cli flock = single winner)
+- [ ] Workers self-read GWT via `hoyeon-cli plan get` (never `requirements.md` / `spec.json`)
+- [ ] Worker runs internal self-verify / fix loop up to 2 rounds before reporting FAILED (R-F5.3)
+- [ ] Lead monitors via SendMessage; no sleep/poll (INV-4)
+- [ ] Standing-by workers woken via SendMessage when tasks unblock
+- [ ] Commit is round-level via `git-master` agent; workers never run git (C2)
+- [ ] audit.md / learnings.json / issues.json written via Edit (not cli — INV-5)
+- [ ] Graceful shutdown: shutdown_request → shutdown_response → TeamDelete
+- [ ] Verify + Report handled directly by lead (not by a team worker)

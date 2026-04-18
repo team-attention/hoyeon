@@ -1,9 +1,0 @@
-{
-  "tasks": [
-    {
-      "id": "T1",
-      "action": "Some task",
-      "type": "work"
-    }
-  ]
-}

@@ -26,7 +26,7 @@ fi
 
 # Initialize state file
 STATE_FILE="$CWD/.hoyeon/state.local.json"
-mkdir -p "$CWD/.dev"
+mkdir -p "$CWD/.hoyeon/specs"
 
 if [[ ! -f "$STATE_FILE" ]]; then
   echo '{}' > "$STATE_FILE"
@@ -50,7 +50,7 @@ jq --arg sid "$SESSION_ID" \
      "created_at": $ts,
      "agents": {},
      "ultrawork": {
-       "phase": "specify_interview",
+       "phase": "specify",
        "iteration": 0,
        "max_iterations": 10
      }

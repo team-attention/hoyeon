@@ -1,8 +1,8 @@
 {
   "name": "@team-attention/hoyeon-cli",
-  "version": "1.5.4",
+  "version": "1.6.0",
   "type": "module",
-  "description": "Developer CLI for managing dev workflow state",
+  "description": "Dedicated CLI for specify + blueprint workflow (requirements.md + plan.json)",
   "bin": {
     "hoyeon-cli": "./dist/cli.js"
   },

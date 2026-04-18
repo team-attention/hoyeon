@@ -8,7 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8'));
 
 await build({
-  entryPoints: ['bin/dev-cli.js'],
+  entryPoints: ['bin/cli.js'],
   bundle: true,
   platform: 'node',
   format: 'esm',
@@ -19,7 +19,6 @@ await build({
   banner: {
     js: '#!/usr/bin/env node',
   },
-  // Allow JSON imports with { type: 'json' } assertion
   loader: {
     '.json': 'json',
   },

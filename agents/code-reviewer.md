@@ -50,7 +50,7 @@ Read the spec and diff provided in your prompt. If a spec path is given, read it
 
 ### Step 2: Review
 
-Apply these 8 review categories systematically to the complete diff:
+Apply these 9 review categories systematically to the complete diff:
 
 1. **Side Effect Investigation**: Trace callers/importers of changed files.
    Identify indirect impacts on unchanged code.
@@ -68,6 +68,31 @@ Apply these 8 review categories systematically to the complete diff:
    Sensitive data exposure. Input validation gaps.
 8. **Production Readiness**: Error handling graceful? Logging sufficient?
    Performance obvious issues? Cross-cutting consistency?
+9. **Simplicity, Interface Consistency & Drift** ⭐ (first-class):
+   As codebases evolve, they fragment. This category guards against that.
+   **You MUST actively search the existing codebase (Grep/Glob) — do not rely on the diff alone.**
+
+   - **Simplicity**: Does the change introduce more layers/abstractions/indirection
+     than the problem requires? Could this be ~half the code with the same behavior?
+     Premature generalization (abstracting for hypothetical future needs)?
+     Flag architectural complexity, not just cosmetic slop.
+   - **Interface Consistency**: Does a new function/module follow the project's
+     existing conventions for the same *role*?
+       - Signature shape (arg order, options object vs positional, sync vs async)
+       - Error contract (throw vs Result vs null, error class taxonomy)
+       - Return shape (bare value vs wrapper, naming of fields)
+       - Naming (verb-noun order, casing, prefix conventions)
+     If three similar functions exist and the new one invents a fourth style, flag it.
+   - **Drift / Fragmentation**: Before accepting a new helper/util/module, **Grep for
+     existing functions doing the same or overlapping job**. Flag:
+       - A new helper when an existing one covers the case (→ reuse)
+       - An existing helper modified in a way that diverges from its siblings
+         (→ unify or rename to signal divergence)
+       - The same concept implemented in two places with subtle differences
+         (→ which is canonical?)
+   - Required evidence when flagging: cite the *existing* file:line that the new
+     code should align with or replace. A drift finding without a concrete
+     reference is not actionable.
 
 ### AI Expression Check (anti-slop)
 
@@ -135,8 +160,18 @@ Classify all SLOP findings as severity `info`. If 3+ SLOP instances found across
 ## Severity Classification
 
 - **critical**: Data loss, security vulnerability, crash in production, breaking change
-- **warning**: Logic error, missing edge case, inconsistency that could cause bugs
-- **info**: Style inconsistency, minor improvement opportunity, cosmetic issue
+- **warning**: Logic error, missing edge case, inconsistency that could cause bugs,
+  **interface drift** (new code diverges from an established pattern with a concrete
+  sibling reference), **duplicate implementation** of existing functionality,
+  **unjustified architectural complexity** (extra layers/abstractions without a
+  concrete use case driving them)
+- **info**: Style inconsistency, minor improvement opportunity, cosmetic issue,
+  single-instance slop
+
+Category 9 findings default to **warning** when an existing sibling/canonical
+reference is cited. Downgrade to **info** only if the divergence is purely
+cosmetic (e.g., variable name). Upgrade to **critical** if the drift creates
+two conflicting sources of truth for the same behavior.
 
 ## Verdict Rules
 
@@ -151,3 +186,6 @@ Classify all SLOP findings as severity `info`. If 3+ SLOP instances found across
 - Be SPECIFIC: always include file:line references.
 - Be PROPORTIONAL: cosmetic issue = info, potential data loss = critical.
 - Focus on INTEGRATION-level issues, not per-file bugs.
+- For Category 9 (Simplicity/Interface/Drift): you MUST Grep/Glob the existing
+  codebase before flagging. A drift claim without a cited sibling reference
+  (file:line of the canonical version) is not a valid finding — drop it.

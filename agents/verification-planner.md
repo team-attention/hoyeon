@@ -142,13 +142,13 @@ Append `[sandbox]` inline when `execution_env: sandbox` (e.g., Tier 2-3 items re
 Sub-requirements verifiable via behavior assertion (reading code, diffs, or sandbox agent infrastructure). These sub-requirements have NO `verify` field — the verifier reads the requirement's `behavior` and asserts against code.
 Append `[sandbox]` inline when `execution_env: sandbox`.
 
-**When sandbox infra exists** (`context.sandbox_capability` is set in spec.json — if `scaffold_required: true`, T_SANDBOX will set up the infra):
+**When sandbox infra exists** (`context.sandbox_capability` is set in plan.json — if `scaffold_required: true`, T_SANDBOX will set up the infra):
 - BDD scenario execution via persona agents
 - N-run aggregation (run 3-5 times, pass if >80% succeed)
 - LLM-as-Judge evaluation of agent test outcomes
 - Screenshot-based visual verification (see below)
 
-**When sandbox infra does NOT exist** (`context.sandbox_capability` is null/missing in spec.json):
+**When sandbox infra does NOT exist** (`context.sandbox_capability` is null/missing in plan.json):
 - Output the section with: "Agent: no sandbox infrastructure — Tier 4 verification not possible"
 - Move these items to Manual instead
 
