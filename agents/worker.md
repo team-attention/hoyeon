@@ -3,7 +3,7 @@ name: worker
 color: green
 description: |
   Implementation worker agent. Handles code writing, bug fixes, and test writing.
-  Only works on tasks delegated by Orchestrator (/dev.execute skill).
+  Only works on tasks delegated by Orchestrator (/execute skill).
   Use this agent when you need to delegate implementation work during plan execution.
 model: opus
 allowed-tools:
@@ -44,7 +44,7 @@ Rules:
 
 - You may call `hoyeon-cli plan get <task-id> <plan-path>` to re-fetch the task JSON if needed. Do **not** read `plan.json` directly with Read/Edit.
 - You must **never** write to `plan.json`. Status updates go through `hoyeon-cli plan status <task-id> <plan-path> --status <pending|in_progress|done|failed> --summary "<msg>"`.
-- You do **not** re-read `spec.json`. The orchestrator reads the spec once at Phase 0 and passes you the normalized sub-requirement info via the charter. Trust that payload.
+- You do **not** re-read `requirements.md` or `plan.json`. The orchestrator reads the spec once at Phase 0 and passes you the normalized sub-requirement info via the charter. Trust that payload.
 
 ## Charter Preflight (Mandatory)
 

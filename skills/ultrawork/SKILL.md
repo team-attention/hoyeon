@@ -19,8 +19,9 @@ allowed-tools:
 # /ultrawork Skill - Automated Development Pipeline
 
 You are initiating an **ultrawork** session — a fully automated pipeline that chains:
-1. `/specify` — Layer-based derivation (L0:Goal → L1:Context → L2:Decisions → L3:Requirements → L4:Verification) producing a `spec.json` (v2)
-2. `/execute` — Reads `spec.json`, derives `plan.json` (tasks), and implements
+1. `/specify` — Systematic requirements derivation producing `requirements.md`
+2. `/blueprint` — Contract-first planning producing `plan.json` from requirements
+3. `/execute` — Reads `plan.json`, dispatches workers, and implements
 
 ## How It Works
 

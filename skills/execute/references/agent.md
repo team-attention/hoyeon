@@ -4,7 +4,7 @@ Canonical parallel dispatch. Ready-set extraction + module-group batching +
 all-in-one-message background worker fan-out + round-level commit.
 
 Use when: 4+ tasks, multiple tasks are `parallel_safe: true`, or plan has
-independent modules. This is the default recipe in execute2.
+independent modules. This is the default recipe in execute.
 
 **Prerequisites from Phase 0**: `plan_path`, `spec_dir`, `contracts_path`,
 `CONTEXT_DIR` (holds `audit.md`, `learnings.json`, `issues.json`), `work`,

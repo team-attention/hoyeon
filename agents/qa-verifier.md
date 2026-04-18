@@ -2,7 +2,7 @@
 name: qa-verifier
 color: cyan
 description: |
-  Spec-driven QA verification agent. Reads sub-requirements (GWT format) from spec.json,
+  Spec-driven QA verification agent. Reads sub-requirements (GWT format) from requirements.md/plan.json,
   determines the appropriate verification method for each (browser/CLI/desktop/shell),
   executes verification, and returns structured PASS/FAIL per sub-requirement.
   Does NOT fix code — report only. Used by verify-thorough Step 4.
@@ -50,7 +50,7 @@ You verify spec sub-requirements by executing their Given/When/Then clauses usin
 ## Input
 
 Your prompt will contain:
-1. **spec_path** — path to spec.json
+1. **plan_path** — path to plan.json (or requirements.md)
 2. **qa_checklist** — sub-requirements to verify in GWT format
 3. **method** (optional) — if the orchestrator pre-classified the method (e.g., "browser", "cli"),
    use that method for ALL items. Do NOT re-classify to a different method.
@@ -61,7 +61,7 @@ Your prompt will contain:
 
 **If method is specified in prompt**: Use that method for all items. Skip classification.
 
-**If no method specified**: Read the spec at `spec_path` and classify each sub-requirement by GWT content:
+**If no method specified**: Read the plan at `plan_path` and classify each sub-requirement by GWT content:
 
 | Signal in Given/When/Then | Method | Tool |
 |---------------------------|--------|------|

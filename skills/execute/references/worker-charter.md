@@ -1,6 +1,6 @@
 # Worker Charter Recipe
 
-Canonical recipe for every worker dispatched by execute2 (direct / agent / team).
+Canonical recipe for every worker dispatched by execute (direct / agent / team).
 This file is the single source of truth for:
 
 1. What the charter (orchestrator → worker) MUST contain — and what it MUST NOT.
@@ -40,8 +40,8 @@ source files itself.
 ```json
 {
   "task_id": "T7",
-  "plan_path": "/abs/path/.hoyeon/specs/execute2/plan.json",
-  "contracts_path": "/abs/path/.hoyeon/specs/execute2/contracts.md",
+  "plan_path": "/abs/path/.hoyeon/specs/execute/plan.json",
+  "contracts_path": "/abs/path/.hoyeon/specs/execute/contracts.md",
   "sub_req_ids": ["R-F6.1", "R-F6.2", "R-F6.3", "R-F6.4", "R-N15.1", "R-N17.1"],
   "round": 1,
   "prior_failure_context": null
@@ -105,15 +105,15 @@ as GAP per R-F10.2 and trigger a re-dispatch per R-F10.3.
   "status": "done",
   "summary": "Implemented worker charter recipe with self-read + attribution + round>1 context read",
   "files_modified": [
-    "/abs/path/.claude/skills/execute2/references/worker-charter.md"
+    "/abs/path/.claude/skills/execute/references/worker-charter.md"
   ],
   "fulfills": [
-    {"sub_req_id": "R-F6.1", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "1.2"},
-    {"sub_req_id": "R-F6.2", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "2.2"},
-    {"sub_req_id": "R-F6.3", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "3.2"},
-    {"sub_req_id": "R-F6.4", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "3.5"},
-    {"sub_req_id": "R-N15.1", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "1.3"},
-    {"sub_req_id": "R-N17.1", "file_path": ".claude/skills/execute2/references/worker-charter.md", "line": "4"}
+    {"sub_req_id": "R-F6.1", "file_path": ".claude/skills/execute/references/worker-charter.md", "line": "1.2"},
+    {"sub_req_id": "R-F6.2", "file_path": ".claude/skills/execute/references/worker-charter.md", "line": "2.2"},
+    {"sub_req_id": "R-F6.3", "file_path": ".claude/skills/execute/references/worker-charter.md", "line": "3.2"},
+    {"sub_req_id": "R-F6.4", "file_path": ".claude/skills/execute/references/worker-charter.md", "line": "3.5"},
+    {"sub_req_id": "R-N15.1", "file_path": ".claude/skills/execute/references/worker-charter.md", "line": "1.3"},
+    {"sub_req_id": "R-N17.1", "file_path": ".claude/skills/execute/references/worker-charter.md", "line": "4"}
   ],
   "contract_mismatch": null
 }
@@ -201,7 +201,11 @@ Before reporting `done`, the worker:
 
 1. Confirms every sub_req GWT is satisfied by concrete code lines.
 2. Runs project build / lint / typecheck.
-3. Builds the `fulfills` array by locating the exact `file_path:line` for
+3. **Runs existing test suite** — if a test runner is detected (e.g., `npm test`,
+   `pytest`, `cargo test`), execute it. Existing test failures after code changes
+   are regression bugs and MUST be fixed before reporting done. If no test runner
+   is detected, skip this step (greenfield projects may not have tests yet).
+4. Builds the `fulfills` array by locating the exact `file_path:line` for
    each sub_req.
 
 ### 3.5 Step 5 — Append learning or issue
@@ -273,7 +277,7 @@ The worker and orchestrator both obey a strict tool boundary:
 | ------------------ | --------------- | --------------------------------------------- |
 | `plan.json`        | `cli2 plan get` | `cli2 plan task --status` (only)              |
 | `contracts.md`     | `Read` tool     | `Edit` / `Write` tool — **orchestrator only** |
-| `requirements.md`  | `Read` tool     | (not mutated by execute2)                     |
+| `requirements.md`  | `Read` tool     | (not mutated by execute)                     |
 | `learnings.json`   | `Read` tool     | `Read + Write` tool                           |
 | `issues.json`      | `Read` tool     | `Read + Write` tool                           |
 | `audit.md`         | `Read` tool     | `Edit` / `Write` tool                         |
@@ -336,7 +340,7 @@ contracts.md itself (or skips the read if `contracts_path` is null).
 
 **BANNED**:
 ```
-charter.action = "Write the worker charter recipe at .claude/skills/execute2/..."
+charter.action = "Write the worker charter recipe at .claude/skills/execute/..."
 charter.edit_targets = ["references/worker-charter.md:1-400"]
 ```
 

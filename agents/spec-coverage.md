@@ -2,7 +2,7 @@
 name: spec-coverage
 color: cyan
 description: |
-  Sub-requirement spec-coverage reviewer for the execute2 verify pipeline. Checks
+  Sub-requirement spec-coverage reviewer for the execute verify pipeline. Checks
   whether a single sub_req's Given/When/Then contract is semantically satisfied by
   the submitted diff and cites the file:line that satisfies each of given, when,
   and then. Complements code-reviewer at gate=2 (code-reviewer asks "is the code

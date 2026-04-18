@@ -1,10 +1,10 @@
-# Unified Verify Recipe (execute2)
+# Unified Verify Recipe (execute)
 
 Single recipe. Depth (`light | standard | thorough`) is a **parameter** that caps
 per-sub_req gates — it does NOT select a different recipe. The same three-phase
 pipeline runs every time; depth determines which gates are *effective*.
 
-**Consumers**: `execute2` `direct.md`, `agent.md`, `team.md` (Phase 3 finalize).
+**Consumers**: `execute` `direct.md`, `agent.md`, `team.md` (Phase 3 finalize).
 
 **Inputs** (from Phase 0 state):
 - `verify` — user-selected depth: `"light" | "standard" | "thorough"`

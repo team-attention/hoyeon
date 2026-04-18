@@ -148,25 +148,6 @@
     "hint": "Systematically discusses and brainstorms ideas or topics.",
     "isGeneral": false
   },
-  "execute": {
-    "keywords": [
-      "execute",
-      "/execute",
-      "run this",
-      "run spec",
-      "orchestrate",
-      "worker dispatch",
-      "spec.json",
-      "acceptance criteria",
-      "adaptation",
-      "run",
-      "run command",
-      "run task",
-      "spec-based execution"
-    ],
-    "hint": "Executes tasks according to the spec, verifies results, and handles adaptation.",
-    "isGeneral": false
-  },
   "google-search": {
     "keywords": [
       "google-search",
@@ -200,25 +181,6 @@
       "what did I ask?"
     ],
     "hint": "Confirms the user's question and explains the understood content.",
-    "isGeneral": false
-  },
-  "quick-plan": {
-    "keywords": [
-      "/quick-plan",
-      "quick plan",
-      "task planning",
-      "work planning",
-      "session planning",
-      "plan tasks",
-      "what should we do",
-      "organize tasks",
-      "create DAG",
-      "run in parallel",
-      "team mode",
-      "agent deployment",
-      "plan"
-    ],
-    "hint": "Quickly plans and organizes tasks to enable efficient execution.",
     "isGeneral": false
   },
   "ralph": {
@@ -309,26 +271,6 @@
       "log analysis"
     ],
     "hint": "Analyzes past Claude Code sessions to verify skill behavior.",
-    "isGeneral": false
-  },
-  "specify": {
-    "keywords": [
-      "specify",
-      "/specify",
-      "plan this",
-      "spec generator",
-      "create spec",
-      "generate spec",
-      "project planning",
-      "unified spec",
-      "plan",
-      "spec",
-      "create a plan",
-      "create a spec",
-      "write specification",
-      "project plan"
-    ],
-    "hint": "Creates a project plan and generates a specification through interview-based discovery.",
     "isGeneral": false
   },
   "tech-decision": {

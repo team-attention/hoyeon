@@ -5,7 +5,7 @@
 # Activation: Stop event + session has ultrawork state
 #
 # Flow (spec-v2):
-#   phase: specify  + spec.json has meta.approved_by → inject /execute <spec-path>
+#   phase: specify  + spec.json has meta.approved_by → inject /execute <spec-dir>
 #   phase: executing + plan.json all tasks done       → cleanup
 #
 # Hook Input Fields (Stop):
@@ -118,13 +118,13 @@ case "$PHASE" in
 
     if [[ -n "$APPROVED" ]]; then
       update_phase "executing"
-      echo "Ultrawork: Spec approved → /execute $SPEC_JSON" >&2
+      echo "Ultrawork: Spec approved → /execute $SPEC_DIR" >&2
 
       jq -n \
-        --arg spec "$SPEC_JSON" \
+        --arg spec_dir "$SPEC_DIR" \
         --arg reason "Spec approved! Start implementation.
 
-Execute: /execute $spec" \
+Execute: /execute $spec_dir" \
         '{"decision": "block", "reason": $reason}'
       exit 0
     fi

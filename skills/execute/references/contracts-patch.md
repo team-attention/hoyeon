@@ -232,8 +232,8 @@ from the next worker forward without any extra plumbing.
 {
   "status": "done",
   "fulfills": [
-    {"sub_req_id": "R-F4.3", "file_path": "skills/execute2/references/agent.md", "line": 78},
-    {"sub_req_id": "R-F4.4", "file_path": "skills/execute2/references/agent.md", "line": 142}
+    {"sub_req_id": "R-F4.3", "file_path": "skills/execute/references/agent.md", "line": 78},
+    {"sub_req_id": "R-F4.4", "file_path": "skills/execute/references/agent.md", "line": 142}
   ],
   "contract_mismatch": "WorkerOutput is missing a `round` echo field — agent mode cannot tell which round a background result belongs to when notifications arrive out of order."
 }
@@ -268,7 +268,7 @@ a new bullet **under the existing Required fields list**. The concrete Edit call
 
 ```
 Edit(
-  file_path=".hoyeon/specs/execute2/contracts.md",
+  file_path=".hoyeon/specs/execute/contracts.md",
   old_string="- `contract_mismatch` (optional) — free-text description of detected contract violation",
   new_string="- `contract_mismatch` (optional) — free-text description of detected contract violation\n- `round` (number, optional) — echo of the dispatch round for notification ordering (added by T5)"
 )

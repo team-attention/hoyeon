@@ -5,7 +5,7 @@ description: |
   "plan tasks from requirements", "contract-first planning"
   Turn requirements.md into an executable blueprint (plan.json + contracts.md).
   Five phases: Contracts → Tasks → Journeys → Verify Plan → Commit.
-  Sits between /specify2 and /execute. Scope-adaptive (greenfield → bugfix).
+  Sits between /specify and /execute. Scope-adaptive (greenfield → bugfix).
   Uses hoyeon-cli2 (plan.json only; requirements.md is read as-is via Read tool).
 ---
 
@@ -13,7 +13,7 @@ description: |
 
 ## Overview
 
-Transform `<spec_dir>/requirements.md` (from /specify2) into an executable blueprint that /execute can run without rework:
+Transform `<spec_dir>/requirements.md` (from /specify) into an executable blueprint that /execute can run without rework:
 
 1. **Contract Synthesis** — derive cross-module agreements (types, interfaces, invariants) that keep parallel work safe
 2. **Task Graph** — layered DAG (L0 Foundation → L1 Feature → L2 Integration → L3 Deploy) where every sub-requirement has ≥1 fulfilling task
@@ -23,12 +23,12 @@ Transform `<spec_dir>/requirements.md` (from /specify2) into an executable bluep
 
 **Contract-first principle**: lock "how modules talk" before anyone writes code. Parallel workers can't break each other's shapes; required invariants are called out explicitly.
 
-**Not blueprint's job**: writing source code, running tests, interviewing for missing requirements. If requirements are incomplete, run /specify2 first.
+**Not blueprint's job**: writing source code, running tests, interviewing for missing requirements. If requirements are incomplete, run /specify first.
 
 ## Input / Output
 
 ### Input
-- `<spec_dir>/requirements.md` — required (produced by /specify2)
+- `<spec_dir>/requirements.md` — required (produced by /specify)
 - Optional: existing `plan.json` — treated as prior state, patched additively
 
 ### Output
@@ -42,7 +42,7 @@ Transform `<spec_dir>/requirements.md` (from /specify2) into an executable bluep
 Only those three files. No rendered view file, no language-specific stubs.
 
 ### File role separation
-- **requirements.md** — specify2 owns. Human-editable markdown with sub-requirements (GWT).
+- **requirements.md** — specify owns. Human-editable markdown with sub-requirements (GWT).
 - **plan.json** — blueprint owns. Machine state. Schema: `plan/v1` (see `cli2/schemas/plan.schema.json`).
 - **contracts.md** — blueprint creates. Sibling artifact referenced by `plan.contracts.artifact`. Markdown, language-agnostic.
 
@@ -74,7 +74,7 @@ All `plan.json` operations go through `hoyeon-cli2` (NOT legacy `hoyeon-cli`):
 
 **`contracts.md` is content-driven, not type-driven.** Write it whenever `contract-deriver` finds any cross-module content (≥1 invariant or interface) — regardless of `meta.type`. Skip the file (return `artifact: null`) only when the agent genuinely has nothing to pin. A bugfix with 3 load-bearing invariants gets a file; a feature that only adds a config flag may not. `meta.type` decides the template shape, not the file's existence.
 
-`meta.type` normally comes from `/specify2` (written into requirements.md frontmatter). If the field is missing — manual authoring, legacy spec, etc. — infer it using this priority (stop at the first matching rule):
+`meta.type` normally comes from `/specify` (written into requirements.md frontmatter). If the field is missing — manual authoring, legacy spec, etc. — infer it using this priority (stop at the first matching rule):
 
 1. **Keywords in `goal`** (highest signal, author's stated intent)
    - Contains `refactor` / `migrate` / `restructure` / `rewrite` → `refactor`
@@ -97,7 +97,7 @@ All `plan.json` operations go through `hoyeon-cli2` (NOT legacy `hoyeon-cli`):
 ### Step 0.1: Resolve spec_dir
 
 - If user passed a path, use it. Otherwise ask: "Which spec_dir? (e.g., `.hoyeon/specs/my-thing/`)"
-- Error if `<spec_dir>/requirements.md` does not exist — tell user to run /specify2 first.
+- Error if `<spec_dir>/requirements.md` does not exist — tell user to run /specify first.
 
 ### Step 0.2: Read requirements.md
 
@@ -154,6 +154,16 @@ Agent(subagent_type="code-explorer",
   prompt="Goal: {meta.goal}. Find: existing test infrastructure (test runner, test dirs,
          fixture patterns) and build/lint commands. Report as file:line.",
   run_in_background=true)
+
+Agent(subagent_type="code-explorer",
+  prompt="Goal: {meta.goal}. Blast radius analysis:
+         1. Find all callers/consumers of the modules being changed
+         2. Find existing tests that cover these modules (test files + test names)
+         3. Identify existing user-facing or API flows that pass through these modules
+         4. Flag flows that have NO existing test coverage
+         Report as: affected_flows (name + file:line entry), existing_tests (file:line),
+         untested_flows (name + why no test found).",
+  run_in_background=true)
 ```
 
 ### Step 0.5.2: Build code context summary
@@ -164,11 +174,16 @@ code_context = {
   modules: ["src/api/", "src/storage/", "src/ui/"],
   existing_interfaces: ["StorageAPI (src/storage/types.ts:12)", ...],
   test_infra: "vitest, src/__tests__/, no E2E setup",
-  entry_points: ["src/main.ts", "src/api/router.ts"]
+  entry_points: ["src/main.ts", "src/api/router.ts"],
+  blast_radius: {
+    affected_flows: ["checkout flow (src/api/orders.ts:45 → src/payment/charge.ts:12)"],
+    existing_tests: ["test/checkout.test.ts", "test/payment.integration.ts"],
+    untested_flows: ["admin refund flow (no test found)"]
+  }
 }
 ```
 
-Pass `code_context` to Phase 1 (contract-deriver) and Phase 2 (taskgraph-planner) agent prompts alongside `requirements.md` content. This helps agents ground their output in actual file structure rather than inventing module names.
+Pass `code_context` to Phase 1 (contract-deriver), Phase 2 (taskgraph-planner), and **Phase 3 (journey detection)** agent prompts alongside `requirements.md` content. This helps agents ground their output in actual file structure rather than inventing module names.
 
 ---
 
@@ -314,6 +329,22 @@ Scan the sub-req list for clusters where:
 
 Not every spec has journeys. Bugfix specs usually have 0. Greenfield user-facing specs usually have 2-5.
 
+### Step 3.1b: Regression journey detection (non-greenfield only)
+
+> Skip if `meta.type == greenfield` or `code_context.blast_radius` is empty.
+
+Scan `code_context.blast_radius.affected_flows` for existing flows that pass through modules being changed. For each affected flow, generate a **regression journey** with `[regression]` prefix in the name:
+
+**Heuristic**: an affected flow becomes a regression journey when:
+- It passes through ≥1 module that a task in the task graph modifies
+- It represents a user-visible or API-facing behavior (not internal-only)
+
+**Link to tasks**: identify which tasks (`T1`, `T2`, ...) touch the affected modules, and list them in the journey's `composes` field alongside any related new sub-req IDs.
+
+**Prioritize untested flows**: flows from `blast_radius.untested_flows` are higher priority — they have no safety net and MUST become regression journeys if they are user-facing.
+
+Regression journeys use the same schema as regular journeys — no schema change needed.
+
 ### Step 3.2: Emit journey entries
 
 For each detected journey:
@@ -328,10 +359,23 @@ For each detected journey:
 }
 ```
 
+**Regression journey example** (from Step 3.1b):
+```json
+{
+  "id": "J3",
+  "name": "[regression] checkout flow preserved after payment module change",
+  "composes": ["R-T1.1", "R-T1.2"],
+  "given": "existing checkout flow works with valid payment",
+  "when": "user completes purchase after code changes from T3/T5",
+  "then": "checkout succeeds identically to pre-change behavior"
+}
+```
+
 Constraints (enforced by schema):
 - `id` matches `^J\d+$`
 - `composes` has ≥2 items, each is a valid `R-X.Y` id
 - `given`, `when`, `then` all non-empty strings
+- Regression journeys use `[regression]` prefix in `name` — same schema, no special type field
 
 ### Step 3.3: Merge journeys
 
@@ -361,6 +405,7 @@ hoyeon-cli2 plan merge <spec_dir> --append --json "$(cat /tmp/bp-journeys.json)"
 
 - **Every** sub-req and journey gets **Gate 1 + Gate 2** as minimum.
 - **Journeys** additionally get **Gate 3** by default (journeys exist precisely because E2E flow matters).
+- **Regression journeys** (name starts with `[regression]`) get **Gate 1** (run existing tests from `blast_radius.existing_tests`) **+ Gate 3** (E2E confirmation). Gate 1 is especially important here: if existing tests exist for the affected flow, running them IS the regression check. Gate 2 is optional for regression journeys (semantic review adds less value when the behavior should be identical to pre-change).
 
 ### Add Gate 3 (agent_e2e) when sub-req involves:
 - Visible UI behavior (`visible`, `rendered`, `displayed`, `shown`, `animation`, `screen shake`, `transition`)
@@ -538,7 +583,7 @@ Sources collected after each phase:
 | `taskgraph-planner` | 2 | Returns tasks[] + ambiguities |
 | `verify-planner` | 4 | Returns verify_plan[] + ambiguities |
 
-Agents are globally registered at plugin-root `/agents/{name}.md`. Dispatch via the `Task` tool with `subagent_type: "<name>"`.
+Agents are globally registered at plugin-root `/agents/{name}.md`. Dispatch via the `Agent` tool with `subagent_type: "<name>"`.
 
 ---
 
@@ -571,7 +616,7 @@ hoyeon-cli2 plan validate <spec_dir>
 
 | Failure | Recovery |
 |---|---|
-| `requirements.md` missing | Tell user to run /specify2; abort |
+| `requirements.md` missing | Tell user to run /specify; abort |
 | `plan validate` schema error | Diagnose (cli2 prints specific path + message), re-merge corrected JSON |
 | `plan validate` cross-ref error (e.g., task fulfills missing from verify_plan) | Re-dispatch verify-planner with the missing ids |
 | Uncovered sub-req after taskgraph-planner | Re-dispatch with uncovered list (max 2 retries), then surface to user |
@@ -587,7 +632,7 @@ When /execute is invoked without a `plan.json`, it may call this skill inline wi
 
 ## Non-Goals
 
-- Re-interviewing requirements (that's /specify2)
+- Re-interviewing requirements (that's /specify)
 - Implementation work in src/ (contracts.md at spec_dir/ is the only artifact blueprint produces)
 - Running verifications (that's /execute)
 - Parsing requirements.md inside cli2 (LLM reads directly via Read tool)

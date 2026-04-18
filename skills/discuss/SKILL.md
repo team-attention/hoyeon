@@ -3,8 +3,10 @@ name: discuss
 description: |
   "/discuss", "discuss this", "think with me", "is this a good idea?",
   "what do you think about", "problem definition", "explore this idea",
+  "/discuss --scored", "interview me", "clarify requirements",
+  "요구사항 정리", "인터뷰", "딥 인터뷰", "뭘 만들어야 할지 모르겠어",
   Korean triggers: "같이 생각해보자", "이거 어떻게 생각해?", "문제 정의",
-  "이게 좋은 아이디어야?", "이거 맞아?"
+  "이게 좋은 아이디어야?", "이거 맞아?", "요구사항이 불명확", "아이디어 구체화"
 allowed-tools:
   - Read
   - Grep
@@ -16,6 +18,7 @@ allowed-tools:
 validate_prompt: |
   Must contain all 3 stages: DIAGNOSE, PROBE, SYNTHESIZE.
   Must apply at least 1 Socratic probe (unless user opted to skip to /specify).
+  If scored mode: must calculate Ambiguity Score at least once (after 3+ turns).
   Must NOT generate PLAN.md, run git commands, or prescribe implementation.
 ---
 
@@ -48,8 +51,11 @@ User's idea
 
 | Flag | Effect |
 |------|--------|
+| `--scored` | Enable Ambiguity Scoring — track clarity quantitatively, auto-suggest wrap up at ≤ 0.2 |
 | `--deep` | Launch 1 Explore agent to gather codebase context before probing |
-| (no flag) | Pure conversation, no codebase exploration |
+| (no flag) | Pure conversation, no codebase exploration, no scoring |
+
+Flags combine: `--scored --deep` enables both. Scored mode can also be activated via Early Gate (see 1.3).
 
 ---
 
@@ -81,16 +87,18 @@ AskUserQuestion(
   header: "Intent",
   options: [
     { label: "Explore & discuss", description: "Think it through together — challenge assumptions, find blind spots" },
-    { label: "Already clear — plan it", description: "Skip discussion, go straight to /specify" },
-    { label: "Clarify requirements", description: "Need to refine what I want — go to /clarify" }
+    { label: "Explore with scoring", description: "Same, but track clarity with Ambiguity Score — good for requirement clarification" },
+    { label: "Already clear — plan it", description: "Skip discussion, go straight to /specify" }
   ]
 )
 ```
 
 **Based on selection:**
-- **Explore & discuss** → Continue to 1.4
+- **Explore & discuss** → Continue to 1.4 (scored = false)
+- **Explore with scoring** → Continue to 1.4 (scored = true)
 - **Already clear — plan it** → Say: `"Got it. Run /specify [your topic] to start planning."` → Stop
-- **Clarify requirements** → Say: `"Got it. Run /clarify to refine your requirements."` → Stop
+
+If `--scored` flag was passed, skip this gate and set scored = true directly.
 
 ### 1.4 Deep Mode (Conditional)
 
@@ -218,7 +226,42 @@ AskUserQuestion(
 - **Wrap up** → Proceed to Stage 3
 - **Keep going** → Continue current probe direction
 
-### 2.4 Auto-Synthesis Trigger
+### 2.4 Ambiguity Scoring (scored mode only)
+
+> Skip entirely if scored = false.
+
+After **every turn from turn 3 onward**, compute the Ambiguity Score:
+
+Evaluate the conversation across 3 dimensions, each scored 0.0 to 1.0:
+
+| Dimension | Weight | What to Assess |
+|-----------|--------|----------------|
+| **Goal Clarity** | 40% | Is the end goal specific and measurable? Can you state what "done" looks like? |
+| **Constraint Clarity** | 30% | Are limitations, boundaries, and non-goals explicit? |
+| **Success Criteria** | 30% | Are acceptance criteria defined? How will we know if this succeeded? |
+
+```
+ambiguity = 1 - ((goal × 0.4) + (constraints × 0.3) + (criteria × 0.3))
+```
+
+Display after each probe:
+```
+Ambiguity: [score] (Goal: [g], Constraints: [c], Criteria: [s])
+[progress bar ████████░░ ]
+```
+
+**Flow control:**
+- `ambiguity ≤ 0.2` → "Requirements are clear enough. Ready to wrap up?" → AskUserQuestion: "Wrap up" / "Keep refining"
+- `ambiguity > 0.2 AND turn < 10` → identify lowest-scoring dimension, focus next probe there
+- `turn == 10` (hard cap) → force synthesis regardless of score
+
+**Scoring rules:**
+- Be conservative — score low when uncertain
+- A dimension scores > 0.8 only with specific, concrete answers
+- "I don't know" → that dimension stays low (captured as Open Question)
+- Vague answers like "it should be fast" → Goal Clarity stays low until quantified
+
+### 2.5 Auto-Synthesis Trigger
 
 If the conversation reaches **7 turns** without the user choosing to wrap up, proactively suggest:
 
@@ -261,11 +304,29 @@ Present the summary directly in the conversation:
 
 **Maturity levels:**
 
-| Level | Meaning |
-|-------|---------|
-| **Exploratory** | Problem is still being defined; many open questions remain |
-| **Forming** | Problem is clear, direction is emerging, but key decisions are unresolved |
-| **Solid** | Problem, approach, and key tradeoffs are well-understood; ready for planning |
+| Level | Meaning | Scored mode mapping |
+|-------|---------|-------------------|
+| **Exploratory** | Problem is still being defined; many open questions remain | ambiguity > 0.5 |
+| **Forming** | Problem is clear, direction is emerging, but key decisions are unresolved | 0.2 < ambiguity ≤ 0.5 |
+| **Solid** | Problem, approach, and key tradeoffs are well-understood; ready for planning | ambiguity ≤ 0.2 |
+
+In scored mode, Maturity is **auto-derived from the final Ambiguity Score**. In unscored mode, assign subjectively.
+
+### 3.1a Clarity Assessment (scored mode only)
+
+> Skip if scored = false.
+
+Present the final Ambiguity Score breakdown before the insights summary:
+
+```markdown
+### Clarity Assessment
+Ambiguity Score: [score] [checkmark if ≤ 0.2, warning if 0.2-0.5, x if > 0.5]
+- Goal Clarity: [score] (40%)
+- Constraint Clarity: [score] (30%)
+- Success Criteria: [score] (30%)
+
+Maturity: [level] — [1-line justification]
+```
 
 ### 3.1b Crystallization (Concept Learning Only)
 
@@ -366,7 +427,7 @@ Stop.
 2. **No git operations** — No commits, branches, pushes, or any git commands.
 3. **No implementation** — Do not write code or prescribe specific implementation unless the user explicitly asks "how would you implement this?"
 4. **No `AskUserQuestion` for probes** — Socratic questions go in natural language. Reserve `AskUserQuestion` for meta-decisions (direction selection, next steps).
-5. **Max 7 turns before synthesis offer** — Prevent endless discussion without capture.
+5. **Max 7 turns before synthesis offer** (unscored) / **Max 10 turns** (scored, hard cap) — Prevent endless discussion without capture.
 6. **"I don't know" is valid** — Capture it as an Open Question, never force an answer.
 
 ---
@@ -390,15 +451,19 @@ The following do NOT count as turns:
 # With codebase context
 /discuss --deep Our auth system feels fragile
 
-# Korean
-/discuss Is this a good idea? I want to add a caching layer
+# Scored mode — track clarity quantitatively (replaces /deep-interview)
+/discuss --scored I want to build a todo management CLI
+/discuss --scored --deep Our auth system needs improvement
 
 # Vague exploration
 /discuss I feel like our API design is off but I can't pinpoint why
 
-# Concept learning (triggers Crig friction-based flow)
+# Concept learning (triggers friction-based flow)
 /discuss I want to understand how event sourcing works
 /discuss 이벤트 소싱이 그려지지 않아
+
+# Requirement clarification (scored mode recommended)
+/discuss --scored requirements are unclear — notification system refactoring
 ```
 
 ---

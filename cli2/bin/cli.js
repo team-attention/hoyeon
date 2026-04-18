@@ -1,15 +1,21 @@
 import reqHandler from '../src/commands/req.js';
 import planHandler from '../src/commands/plan.js';
+import learningHandler from '../src/commands/learning.js';
+import issueHandler from '../src/commands/issue.js';
+import sessionHandler from '../src/commands/session.js';
 
 const USAGE = `
-hoyeon-cli2 — CLI for specify2 + blueprint workflow
+hoyeon-cli2 — CLI for specify2 + blueprint + execute2 workflow
 
 Usage:
   hoyeon-cli2 <group> <command> [options]
 
 Groups:
-  req     requirements.md scaffolding (init only — cli2 does not parse .md)
-  plan    plan.json operations (init, merge, get, list, task, validate)
+  req       requirements.md scaffolding (init only — cli2 does not parse .md)
+  plan      plan.json operations (init, merge, get, list, task, validate)
+  learning  Add structured learning entries to context/learnings.json
+  issue     Add structured issue entries to context/issues.json
+  session   Session state management (set/get key-value in ~/.hoyeon/<sid>/state.json)
 
 Options:
   --help, -h    Show this help message
@@ -20,12 +26,17 @@ Examples:
   hoyeon-cli2 plan init .hoyeon/specs/my-spec --type greenfield
   hoyeon-cli2 plan merge .hoyeon/specs/my-spec --json '{"tasks":[...]}'
   hoyeon-cli2 plan task .hoyeon/specs/my-spec --status T1=running
-  hoyeon-cli2 plan validate .hoyeon/specs/my-spec
+  hoyeon-cli2 learning --task T1 --json '{"problem":"..."}' .hoyeon/specs/my-spec
+  hoyeon-cli2 issue --task T1 --json '{"type":"blocker","description":"..."}' .hoyeon/specs/my-spec
+  hoyeon-cli2 session set --sid abc123 --key spec_dir --value .hoyeon/specs/foo
 `;
 
 const GROUPS = {
   req: reqHandler,
   plan: planHandler,
+  learning: learningHandler,
+  issue: issueHandler,
+  session: sessionHandler,
 };
 
 async function main() {

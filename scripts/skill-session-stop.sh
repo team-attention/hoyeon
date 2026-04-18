@@ -3,10 +3,10 @@
 #
 # Reads: ~/.hoyeon/{session_id}/state.json
 # Behavior per skill:
-#   - execute: block if spec.json has incomplete tasks
+#   - execute: block if plan.json has incomplete tasks
 #   - specify: allow (cleanup only)
 #
-# Uses: cli spec status (exit 0=done, 1=incomplete)
+# Uses: plan.json task status (exit 0=done, 1=incomplete)
 # Circuit breaker: max 30 iterations to prevent infinite loops
 
 set -euo pipefail

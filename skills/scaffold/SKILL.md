@@ -84,7 +84,7 @@ hoyeon-cli spec init {name} --goal "{goal}" --type dev --schema v2 --interaction
 
 ```bash
 SESSION_ID="[from UserPromptSubmit hook]"
-hoyeon-cli session set --sid $SESSION_ID --spec ".hoyeon/specs/{name}/spec.json"
+hoyeon-cli2 session set --sid $SESSION_ID --spec ".hoyeon/specs/{name}/spec.json"
 ```
 
 ---

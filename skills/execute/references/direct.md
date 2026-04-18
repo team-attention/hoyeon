@@ -1,303 +1,312 @@
-# Direct Pipeline Reference
+# Direct Dispatch Mode
 
-This file contains all direct-dispatch execution logic for the `/execute` skill.
-It is loaded when the user selects `dispatch = direct` in Phase 0.5.
+Orchestrator executes every task itself, one at a time, in depends_on order.
+No worker subagents are spawned in this mode — the orchestrator holds the context.
 
-**Prerequisite**: Phase 0 (Find Spec, Derive Plan, Init Context, Confirm Pre-work, Work Mode Selection) is already done.
-`spec_path`, `plan_path`, `normalized_spec`, `CONTEXT_DIR`, `meta_type`, `work_mode`, and `WORK_DIR` are all established.
+Best for plans with 1–3 tasks, simple edits, or config-only changes.
 
-- `plan_path` = `<dirname(spec_path)>/plan.json` — all task state I/O goes through `hoyeon-cli plan` against this file.
-- `normalized_spec` = session-cached structured object (requirements + sub[] with GWT, verification). Use it for GWT lookup. Do NOT re-Read spec_path during dispatch.
-- `spec_path` is retained for reference only (e.g., goal printout in report).
-
-**When to use DIRECT**: 1-2 tasks, single-file edits, config changes, renames, simple additions.
-The orchestrator performs all work itself — no subagents are spawned.
+**Prerequisites from Phase 0**: `plan`, `requirements`, `contracts_path`, `spec_dir`,
+`CONTEXT_DIR`, `work`, `verify` are already established.
 
 ---
 
-## Phase 0.5: Create Tracking Tasks
+## Invariants direct mode must honor
 
-Create TaskCreate entries for tracking only. **No Worker or Commit tasks** — the orchestrator
-executes directly. Batch all in one turn.
-
-### Worktree Note
-
-When `work_mode == "worktree"`, the orchestrator has already called `EnterWorktree` in Phase 0.5.
-Session CWD is inside the worktree — all tools (Read, Edit, Write, Bash, Glob, Grep) automatically
-operate there. No `cd` is needed. `spec_path`, `plan_path`, and `CONTEXT_DIR` are absolute paths.
-
-### Task Creation
-
-```
-# ═══════════════════════════════════════════════════
-# TURN 1: Create ALL tasks in PARALLEL (single message)
-# ═══════════════════════════════════════════════════
-
-# Load pending tasks from plan.json (source of truth for task state)
-pending_tasks = Bash("hoyeon-cli plan list {plan_path} --status pending --json") → parse .tasks
-
-FOR EACH task in pending_tasks:
-  t = TaskCreate(subject="{task.id}:Direct — {task.action}",
-                 description="Orchestrator direct execution of {task.id}.",
-                 activeForm="{task.id}: Executing directly")
-
-# Finalize tasks
-fv = TaskCreate(subject="Finalize:Verify",
-     description="Run verification checks per selected verify depth.",
-     activeForm="Running verification")
-rp = TaskCreate(subject="Finalize:Report",
-     activeForm="Generating report")
-```
-
-### Set Dependencies (TURN 2)
-
-```
-# ═══════════════════════════════════════════════════
-# TURN 2: Set ALL dependencies in PARALLEL (single message)
-# ═══════════════════════════════════════════════════
-
-# Cross-task dependencies (from plan.json depends_on)
-FOR EACH task WHERE task.depends_on is not empty:
-  FOR EACH dep_id in task.depends_on:
-    producer = task_ids[dep_id].tracking
-    consumer = task_ids[task.id].tracking
-    TaskUpdate(taskId=producer, addBlocks=[consumer])
-
-# All task tracking entries → Finalize:Verify
-all_tracking = [task_ids[T].tracking for each T]
-FOR EACH tracking in all_tracking:
-  TaskUpdate(taskId=tracking, addBlocks=[fv])
-
-# Finalize chain: Verify → Report
-TaskUpdate(taskId=fv, addBlocks=[rp])
-```
-
-**Key rule**: NEVER create tasks one-by-one across multiple turns. All TaskCreate in Turn 1, all TaskUpdate in Turn 2.
+- **C2 / INV-1**: direct mode commits **ONCE** at the end of Phase 1 (after the
+  last task finishes). No per-task commits.
+- **INV-5**: only `hoyeon-cli2 plan` commands mutate `plan.json`. `audit.md`,
+  `learnings.json`, `issues.json`, and `contracts.md` are written via
+  `Edit` / `Write` directly.
+- **INV-9**: `status=done` is monotonic. A task that is already `done` is **skipped**,
+  never re-transitioned (idempotent restart — fulfills R-F3.2).
+- **INV-6**: total dispatch ceiling per task = **5** (1 initial + 2 retry
+  + 1 gap + 1 verify-fix). A 6th attempt triggers `DISPATCH_CEILING_EXCEEDED` abort
+  (fulfills R-F7.4).
 
 ---
 
-## Phase 1: Execute Loop
+## Dispatch Counter
 
-The orchestrator executes each task directly — no Agent spawning, no subagents.
-
-> **Compaction recovery**: `session-compact-hook.sh` re-injects skill name + state.json path.
-> Read state.json to get spec_path + plan_path, then use `hoyeon-cli plan list` to rebuild task state.
-
-### Execute Loop
+Direct mode re-uses the same per-task dispatch counter as agent/team modes so
+that subsequent phases (gap re-dispatch in `verify.md`, verify fix loop) share
+one budget per task.
 
 ```
-pending_tasks = Bash("hoyeon-cli plan list {plan_path} --status pending --json") → parse .tasks
-FOR EACH task in pending_tasks (dependency order):
+# Initialize once at entry to Phase 1
+dispatch_count = {}          # task_id → int (initial attempt counts as 1)
+blocked_set    = set()       # tasks flagged BLOCKED (and their descendants)
+done_this_run  = set()       # task_ids that transitioned to done during THIS run
+                             #   (used for the single end-of-phase commit message;
+                             #   excludes tasks that were already done on entry
+                             #   via the INV-9 idempotent skip)
 
-  # 1. Mark in progress (plan.json + Claude Code tracking)
-  Bash("hoyeon-cli plan status {task.id} {plan_path} --status in_progress")
-  TaskUpdate(taskId=task_ids[task.id].tracking, status="in_progress")
+function bump_dispatch(task_id) → ok:
+  dispatch_count[task_id] = dispatch_count.get(task_id, 0) + 1
+  IF dispatch_count[task_id] > 5:
+    audit_append("[DISPATCH_CEILING_EXCEEDED] task={task_id} \
+                  completed_attempts={dispatch_count[task_id]-1} \
+                  blocked_at=6th (INV-6)")
+    abort_all("DISPATCH_CEILING_EXCEEDED on {task_id}")
+    return false          # fulfills R-F7.4 / INV-6
+  return true
+```
 
-  # 2. Read task details from plan.json
-  task_spec = Bash("hoyeon-cli plan get {task.id} {plan_path}") → parse JSON
-  # Contains: action, fulfills, depends_on, type, status
+The same helper is called on every dispatch point: initial run (Phase 2, step 5),
+retries (step 8), and later by `verify.md` for gap re-dispatch / verify fix.
 
-  # 3. Look up GWT for fulfilled sub-requirements (from session-cached normalized_spec)
-  #    NO spec.json Read here — normalized_spec was cached in Phase 0.
-  #    If normalized_spec has no requirements (plain spec), use task.action as guidance.
-  sub_reqs = []
-  FOR EACH req_id in (task_spec.fulfills ?? []):
-    req = normalized_spec.requirements.find(r => r.id == req_id)
-    IF req: sub_reqs.extend(req.sub)   # each with given/when/then/behavior
+---
 
-  # 4. Read context files (if they exist)
-  learnings = Read("{CONTEXT_DIR}/learnings.json")   # may not exist yet
-  issues    = Read("{CONTEXT_DIR}/issues.json")       # may not exist yet
+## Phase 1: Topological Sequential Execution
 
-  # 5. Execute directly
-  #    Use Edit, Write, Bash, Read, Grep, Glob as needed.
-  #    Follow task_spec.action.
-  #    Respect constraints from normalized_spec.
-  #    Do NOT spawn any Agent or Task.
+*(fulfills R-F3.1 — topological sequential execution without worker spawn,
+ R-F3.2 — idempotent skip on done, R-F7.1/2/3/4 — retry + abort + BLOCKED + ceiling)*
+
+### 1.1 Build ordered work list
+
+```
+# Fetch tasks via cli2
+all_tasks = Bash("hoyeon-cli2 plan get {spec_dir} --path tasks").tasks
+
+# Topological sort honoring depends_on; ties broken by (layer asc, id asc).
+ordered = topo_sort(all_tasks, key=lambda t: (t.layer, t.id))
+
+# Sanity: verify no cycles (fatal if present — should have been caught by blueprint)
+IF has_cycle(all_tasks):
+  audit_append("ABORT cycle_detected in plan")
+  HALT with error
+```
+
+### 1.2 Main loop — one task per iteration, no subagents
+
+```
+FOR EACH task IN ordered:
+
+  # ───────────────────────────────────────────────────────────
+  # (A) Idempotent skip — fulfills R-F3.2 / INV-9
+  # ───────────────────────────────────────────────────────────
+  current = Bash("hoyeon-cli2 plan get {spec_dir} --path tasks")
+            .find(t => t.id == task.id)
+  IF current.status == "done":
+    audit_append("SKIP {task.id} (already done)")
+    CONTINUE              # do NOT re-transition — INV-9 monotonic
+
+  # ───────────────────────────────────────────────────────────
+  # (B) BLOCKED propagation — fulfills R-F7.3
+  # Independent tasks must keep running; only descendants of a
+  # BLOCKED task get marked BLOCKED. Ancestors / siblings proceed.
+  # ───────────────────────────────────────────────────────────
+  IF any(dep IN blocked_set for dep in task.depends_on):
+    blocked_set.add(task.id)
+    Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=blocked \
+          --summary 'upstream dep BLOCKED'")
+    audit_append("BLOCKED-PROPAGATE {task.id} (depends_on blocked ancestor)")
+    CONTINUE
+
+  # ───────────────────────────────────────────────────────────
+  # (C) Attempt loop: initial + up to 2 retries — fulfills R-F7.1
+  # Total attempts cap is 3 here (1 + 2 retry). Additional
+  # gap / verify-fix attempts happen later and share the ceiling (R-F7.4).
+  # ───────────────────────────────────────────────────────────
+  attempt = 0
+  prior_failure_context = null
+  task_outcome = null
+  contracts_text = null
+
+  # (C.0) Read contracts.md ONCE per task if present. Workers don't exist in
+  #       direct mode, so the orchestrator reads contracts itself. Hoisted
+  #       outside the retry loop so retries don't re-read the same file.
+  IF contracts_path:
+    contracts_text = Read(contracts_path)
+
+  WHILE attempt < 3:                          # 1 initial + 2 retry = 3
+    IF NOT bump_dispatch(task.id):            # R-F7.4 ceiling check
+      BREAK                                   # bump_dispatch already aborted
+
+    attempt += 1
+
+    # (C.1) Mark running via cli2 only (INV-5)
+    Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=running")
+    audit_append("DISPATCH {task.id} attempt={attempt} \
+                  total={dispatch_count[task.id]}")
+
+    # (C.2) Look up GWT for this task's fulfills[] from session-cached
+    #       requirements. Orchestrator already has this in memory — do NOT
+    #       re-read requirements.md (INV-3).
+    gwt = find_gwt_for_task(task, requirements)
+
+    # (C.4) If this is a retry, the prior_failure_context from the previous
+    #       iteration is kept in scope and factored into the implementation
+    #       strategy — fulfills R-F7.1 "직전 실패 컨텍스트를 charter에 주입".
+    #       In direct mode the "charter" is the orchestrator's own reasoning;
+    #       the prior_failure_context variable IS the injection.
+
+    # (C.5) Implement the task directly.
+    #       Use Read / Edit / Write / Bash tools.
+    #       Honor contracts interfaces + invariants.
+    #       Verify each sub-req's GWT is locally satisfied.
+    try:
+      result = implement_task_directly(
+        task            = task,
+        gwt             = gwt,
+        contracts       = contracts_text if contracts_path else null,
+        prior_failure   = prior_failure_context   # null on first attempt
+      )
+    except FatalError as e:
+      result = { status: "failed", reason: str(e), files: [] }
+
+    # (C.5b) Contracts auto-patch hook (C4 / R-F9.1 / R-F9.2).
+    # MUST run BEFORE we mark the task done or enqueue a retry. The recipe
+    # inline-edits contracts.md, appends to audit.md, and returns control — no
+    # user confirm (INV-7). See ${baseDir}/references/contracts-patch.md.
+    IF contracts_path AND (
+         result.contract_mismatch OR
+         (result.status == "blocked" AND
+          /contract|invariant|interface/i.test(result.blocked_reason or ""))
+       ):
+      run_recipe("contracts-patch",
+        worker_output  = result,
+        task_id        = task.id,
+        round          = attempt,
+        contracts_path = contracts_path,
+        audit_path     = {spec_dir}/audit.md)
+
+    # (C.6) Tier-1 mechanical checks
+    tier1 = run_mechanical_checks()            # build / lint / typecheck
+
+    # (C.7) Classify outcome
+    IF result.status == "blocked":
+      # fulfills R-F7.3 — mark this task BLOCKED in plan + audit, do NOT
+      # abort the whole run; dependents will be caught in step (B) above.
+      Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=blocked \
+            --summary '{result.reason}'")
+      audit_append("BLOCKED {task.id} reason='{result.reason}'")
+      issues_append({ task: task.id, type: "blocked", reason: result.reason })
+      blocked_set.add(task.id)
+      task_outcome = "blocked"
+      BREAK
+
+    ELIF result.status == "done" AND tier1.all_pass:
+      Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=done \
+            --summary '{result.summary}'")    # INV-9: only transition once
+      audit_append("DONE {task.id} attempt={attempt} files={result.files}")
+      learnings_append({ task: task.id, notes: result.learnings })
+      done_this_run.add(task.id)              # runtime set for commit message
+      task_outcome = "done"
+      BREAK
+
+    ELSE:
+      # Failure path — capture context for next retry (R-F7.1)
+      prior_failure_context = build_failure_context(result, tier1)
+      audit_append("FAIL {task.id} attempt={attempt} reason='{result.reason}'")
+      issues_append({ task: task.id, type: "fail", attempt: attempt,
+                      reason: result.reason })
+      # Loop continues → retry (until attempt == 3)
+
+  # END WHILE
+
+  # ───────────────────────────────────────────────────────────
+  # (D) Persistent failure — 3 attempts all failed
+  # fulfills R-F7.2: abort entire run, audit.md "ABORT"
+  # ───────────────────────────────────────────────────────────
+  IF task_outcome != "done" AND task_outcome != "blocked":
+    Bash("hoyeon-cli2 plan task {spec_dir} --status {task.id}=failed \
+          --summary 'persistent fail after {attempt} attempts'")
+    audit_append("ABORT task={task.id} reason=persistent_fail attempts={attempt}")
+    emit_partial_report()
+    HALT                                       # stop Phase 1 entirely
+
+  # CONTINUE outer FOR loop with next ordered task
+END FOR
+```
+
+### 1.3 End-of-phase single commit
+
+*(fulfills C2 / INV-1 — direct mode commits once, not per task)*
+
+```
+IF work != "no-commit":
+  # Only ONE commit for the whole direct-mode Phase 1.
+  # Use `done_this_run` (runtime set populated on the DONE branch above),
+  # NOT the stale `ordered` snapshot — `ordered[i].status` is from the
+  # initial fetch and does not reflect transitions made during this run.
+  Agent(subagent_type="git-master",
+        description="Commit direct-mode phase 1",
+        prompt="Commit all changes produced by direct-mode execution of plan \
+                {spec_dir}. Single commit covering tasks: \
+                {', '.join(sorted(done_this_run))}.")
+  audit_append("COMMIT phase1 single-commit (direct mode, INV-1) \
+                tasks={sorted(done_this_run)}")
+```
+
+---
+
+## Phase 2: Hand off to verify
+
+Direct mode does not run verification itself. After Phase 1 completes (or after a
+BLOCKED-but-not-aborted run), route to the verify recipe:
+
+```
+Read: ${baseDir}/references/verify.md
+Follow instructions for the selected verify depth.
+```
+
+`verify.md` reuses `dispatch_count` / `bump_dispatch` so that gap re-dispatch
+(R-F10.3) and verify fix (R-F11.5) stay inside the 5-attempt ceiling per task
+(R-F7.4 / INV-6).
+
+---
+
+## Helper contracts
+
+Helpers referenced above. Each is a plain function in the orchestrator's
+context (no new subagents).
+
+```
+function audit_append(line):
+  # INV-5: audit.md via Edit, not cli2
+  Edit({spec_dir}/audit.md, append="- [{ISO timestamp}] {line}\n")
+
+function learnings_append(entry):
+  Edit({CONTEXT_DIR}/learnings.json, append_json_array=entry)
+
+function issues_append(entry):
+  Edit({CONTEXT_DIR}/issues.json, append_json_array=entry)
+
+function run_mechanical_checks():
+  # project-appropriate build/lint/typecheck — see verify.md Tier 1
   #
-  #    Code quality — avoid AI expression patterns:
-  #    - No comments restating code, no catch-rethrow without context
-  #    - No assign-then-return, no defensive over-checking for type-guaranteed values
-  #    - No single-use helpers, no vacuous JSDoc, no leftover debug code
-  IMPLEMENT(task_spec)
+  # IMPLEMENTATION NOTE: when this helper runs, it MUST issue its internal
+  # Bash calls with `run_in_background: true` in a SINGLE message (all
+  # checks dispatched in parallel), mirroring the verify.md Tier 1 pattern.
+  # Then wait for the background tasks to finish and aggregate results.
+  # Do NOT run build / lint / typecheck sequentially — that wastes wall time
+  # and breaks parity with verify.md.
+  return { all_pass: bool, results: [...] }
 
-  # 6. Verify before marking done
-  #    a) Behavioral check: for each sub_req, verify given/when/then (or behavior).
-  #    b) Build/lint/typecheck: run the project's build, lint, type-check commands.
-  behavioral_check(sub_reqs)
-  build_check()
+function build_failure_context(result, tier1):
+  return {
+    prior_reason     : result.reason,
+    prior_diff_hint  : result.files,
+    tier1_failures   : tier1.failures,
+    guidance         : "address the concrete failure above; do not regress \
+                        passing checks."
+  }
 
-  # 7. Update plan task status
-  Bash("hoyeon-cli plan status {task.id} {plan_path} --status done --summary '...'")
-  TaskUpdate(taskId=task_ids[task.id].tracking, status="completed")
-
-  # 8. Write learnings/issues via CLI if any discovered
-  #    hoyeon-cli spec learning --task {task.id} --stdin {spec_path} << 'EOF'
-  #    {"problem":"...","cause":"...","rule":"...","tags":[...]}
-  #    EOF
-  #
-  #    hoyeon-cli spec issue --task {task.id} --stdin {spec_path} << 'EOF'
-  #    {"type":"...","description":"..."}
-  #    EOF
-```
-
-### On Failure
-
-```
-IF build/lint check fails:
-  # Fix directly — orchestrator has full context, no need to derive a new task.
-  # Re-run the failing command after applying the fix.
-  # If the fix requires changes outside the current task's scope, record as issue.
-  FIX_DIRECTLY()
-  RE_VERIFY()
-
-IF fix cannot be applied (out of scope):
-  Bash("hoyeon-cli plan status {task.id} {plan_path} --status blocked --summary 'out-of-scope blocker'")
-  Bash("""hoyeon-cli spec issue --task {task.id} --stdin {spec_path} << 'EOF'
-  {"type":"blocker","description":"..."}
-  EOF""")
-  TaskUpdate(taskId=task_ids[task.id].tracking, status="completed")
-  # Continue to next task — do not HALT for DIRECT mode single-task blocks
+function abort_all(reason):
+  # Graceful halt — emit report then raise
+  emit_partial_report()
+  HALT
 ```
 
 ---
 
-## Phase 2: Finalize
+## Sub-requirement loci (for coverage matrix)
 
-After all tasks complete, run verification and report.
-
-### 2a. Commit (if applicable)
-
-```
-IF work_mode != "no-commit":
-  git_status = Bash("git status --porcelain")
-  IF git_status is not empty:
-    # Orchestrator commits directly — no git-master agent needed.
-    # Single commit for all DIRECT mode changes.
-    Bash("git add -A && git commit -m '{normalized_spec.meta.goal} — direct execution'")
-```
-
-### 2b. Verify
-
-Route to the appropriate verify recipe based on user's verify depth selection from Phase 0.5.
-
-```
-verify_depth = normalized_spec.meta.mode.verify   # "light" | "standard" | "thorough"
-
-IF verify_depth == "light":
-  Read: ${baseDir}/references/verify-light.md
-ELIF verify_depth == "standard":
-  Read: ${baseDir}/references/verify-standard.md
-ELIF verify_depth == "thorough":
-  Read: ${baseDir}/references/verify-thorough.md
-ELIF verify_depth == "ralph":
-  Read: ${baseDir}/references/verify-ralph.md
-
-Follow the verify recipe instructions.
-```
-
-**DIRECT mode verify note**: The orchestrator executes all verification checks directly.
-No separate verify agent is needed — the orchestrator already has full context from
-executing all tasks itself.
-
-```
-On completion:
-
-IF all checks PASS:
-  TaskUpdate(taskId=fv, status="completed")
-ELSE:
-  # Fix issues directly (orchestrator has full context)
-  FOR EACH failure:
-    FIX_DIRECTLY(failure)
-  RE_VERIFY()  # max 2 attempts
-
-  IF still failing after 2 attempts:
-    print("Verification failed after 2 fix attempts. HALT.")
-    HALT
-```
-
-### 2c. Report
-
-Simplified report for DIRECT mode.
-
-```
-all_tasks = Bash("hoyeon-cli plan list {plan_path} --json") → parse .tasks
-
-print("""
-═══════════════════════════════════════════════════
-            EXECUTE COMPLETE (DIRECT)
-═══════════════════════════════════════════════════
-
-SPEC: {spec_path}
-PLAN: {plan_path}
-GOAL: {normalized_spec.meta.goal}
-DISPATCH: direct
-WORK: {work_mode}
-VERIFY: {verify_depth}
-
-───────────────────────────────────────────────────
-TASKS
-───────────────────────────────────────────────────
-{FOR EACH task in all_tasks:}
-{task.id}: {task.action} — {task.status}
-  {task.summary}
-
-───────────────────────────────────────────────────
-VERIFICATION
-───────────────────────────────────────────────────
-{verify recipe results}
-
-───────────────────────────────────────────────────
-CONTEXT
-───────────────────────────────────────────────────
-Learnings: {count} entries
-Issues: {count} entries
-
-───────────────────────────────────────────────────
-POST-WORK (human actions after completion)
-───────────────────────────────────────────────────
-{post_work = normalized_spec.external_dependencies.post_work ?? []}
-{FOR EACH item in post_work:}
-- [{item.id ?? ''}] {item.dependency}: {item.action}
-  {IF item.command:} Run: `{item.command}`
-
-{IF no post_work: "None"}
-═══════════════════════════════════════════════════
-""")
-
-TaskUpdate(taskId=rp, status="completed")
-```
-
----
-
-## Direct-specific Rules
-
-1. **Orchestrator does ALL work directly** — use Edit, Write, Bash, Read, Grep, Glob. No Agent(), no TaskCreate for workers.
-2. **NO subagent spawning** — no Worker agents, no git-master agents, no code-reviewer agents. The orchestrator is the sole executor.
-3. **plan.json is the source of truth for task state** — always use `hoyeon-cli plan status` / `plan get` / `plan list`. Never Read/Write plan.json directly.
-4. **spec.json is NOT re-read during dispatch** — use the session-cached `normalized_spec` for requirements/GWT lookup. Spec is referenced only by path for reporting.
-5. **Context files still used** — read `learnings.json` and `issues.json` before each task, write learnings/issues via CLI after.
-6. **Direct fix pattern** — when build/lint fails, fix directly instead of deriving new tasks. The orchestrator already has full context.
-7. **Single commit** — all changes committed together (not per-task). Only one commit for the entire DIRECT execution.
-8. **Verify executed directly** — the orchestrator runs all verify checks itself. No verify agent needed.
-9. **Two turns for task setup** — Turn 1: all TaskCreate, Turn 2: all TaskUpdate (same as other modes).
-10. **Suitable for**: config changes, single-file edits, renames, simple additions, documentation updates, 1-2 task specs.
-11. **NOT suitable for**: multi-file refactors, complex features, specs with 3+ tasks, tasks requiring parallel execution.
-
----
-
-## Checklist
-
-- [ ] All TaskCreate tracking entries created in single turn (Turn 1)
-- [ ] All TaskUpdate dependencies set in single turn (Turn 2)
-- [ ] Each task read via `hoyeon-cli plan get {id} {plan_path}`
-- [ ] Task statuses updated via `hoyeon-cli plan status {id} {plan_path} --status ...`
-- [ ] Context files read before execution (learnings.json, issues.json)
-- [ ] All work done directly (Edit/Write/Bash/Read/Grep/Glob) — no Agent spawning
-- [ ] Behavioral check against fulfills[] sub-requirements GWT (from normalized_spec)
-- [ ] Build/lint/typecheck passes
-- [ ] All plan tasks have `status: "done"` (via `hoyeon-cli plan status`)
-- [ ] Changes committed (if work_mode != "no-commit")
-- [ ] Verify recipe executed per selected depth
-- [ ] Learnings/issues written via CLI
-- [ ] Final report output
+| Sub-req   | Locus in this file                                                     |
+|-----------|------------------------------------------------------------------------|
+| R-F3.1    | Phase 1.1 (topo_sort) + Phase 1.2 FOR EACH loop — no subagent spawn    |
+| R-F3.2    | Phase 1.2 (A) — `current.status == "done" → CONTINUE`                  |
+| R-F7.1    | Phase 1.2 (C) attempt loop + `prior_failure_context` injection in (C.4)|
+| R-F7.2    | Phase 1.2 (D) — abort + audit `ABORT` on 3rd fail                      |
+| R-F7.3    | Phase 1.2 (B) dep-check + (C.7) BLOCKED branch — descendants only      |
+| R-F7.4    | `bump_dispatch` helper + call sites in (C); DISPATCH_CEILING_EXCEEDED  |

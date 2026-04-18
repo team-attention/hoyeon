@@ -196,7 +196,7 @@ Display the panelist table before asking:
 
 ```bash
 SESSION_ID="[session ID]"
-hoyeon-cli session set --sid $SESSION_ID --json '{"council": {"phase": 1, "mode": "[selected]", "topic": "[topic summary]", "status": "active"}}'
+hoyeon-cli2 session set --sid $SESSION_ID --json '{"council": {"phase": 1, "mode": "[selected]", "topic": "[topic summary]", "status": "active"}}'
 ```
 
 ---
@@ -561,7 +561,7 @@ TeamDelete()
 | All panelists fail | Fall back to main agent self-analysis |
 
 ```bash
-hoyeon-cli session set --sid $SESSION_ID --json '{"council": {"phase": 2, "status": "active", "cycle": [N]}}'
+hoyeon-cli2 session set --sid $SESSION_ID --json '{"council": {"phase": 2, "status": "active", "cycle": [N]}}'
 ```
 
 ---
@@ -753,7 +753,7 @@ All supporting detail goes here — readers expand only what they need.
 ### 3.6 State Completion
 
 ```bash
-hoyeon-cli session set --sid $SESSION_ID --json '{"council": {"phase": 3, "status": "completed"}}'
+hoyeon-cli2 session set --sid $SESSION_ID --json '{"council": {"phase": 3, "status": "completed"}}'
 ```
 
 ---
