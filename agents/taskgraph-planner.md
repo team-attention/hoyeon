@@ -4,7 +4,7 @@ description: |
   Produce a layered task DAG (L0 Foundation → L1 Feature → L2 Integration → L3 Deploy)
   where every sub-requirement is fulfilled by ≥1 task. Marks parallelism explicitly.
   Called by /blueprint Phase 2.
-model: sonnet
+model: opus
 ---
 
 # taskgraph-planner

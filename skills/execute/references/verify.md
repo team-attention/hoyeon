@@ -339,11 +339,12 @@ Inputs:
   journey_id:     {j.id}
   plan_path:      {plan_path}
   contracts_path: {contracts_path or "null"}
+  evidence_dir:   {spec_dir}/verify-evidence
 
 Procedure:
   1. Read plan.journeys[{j.id}] for name/given/when/then and composed sub_req IDs.
   2. Execute given → when → then end to end.
-  3. Capture evidence (screenshot path / stdout excerpt / exit codes).
+  3. Capture evidence (screenshot path / stdout excerpt / exit codes) under evidence_dir.
 
 Output JSON:
 {
