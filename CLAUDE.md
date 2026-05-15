@@ -121,6 +121,23 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
+## Recent Changes (v1.7.0)
+
+### Codex CLI Parity
+- New `.codex-plugin/plugin.json` — Codex runtime adapter package alongside the Claude Code plugin
+- `codex/agents/*.toml` adapters (9): `hoyeon-{browser-explorer, clarity-auditor, code-explorer, code-reviewer, docs-researcher, external-researcher, gap-auditor, verifier, worker}` — dispatch Hoyeon logical subagents via Codex
+- `codex/skills/hoyeon-*/SKILL.md` bridges (10): blueprint, browser-work, clarify, deep-research, dev-scan, discuss, execute, google-search, reference-seek, specify
+- `skills/{blueprint, browser-work, deep-research, dev-scan, execute, google-search, reference-seek, specify}/SKILL.md` — added **Runtime Surface** sections documenting Claude Code vs Codex dispatch semantics (Bash-first state, JSON-payload files, no MCP/hooks in v1)
+- Installers: `scripts/install-codex-{agent,skill}-adapters.sh`
+- Smoke tests: `scripts/codex-{blueprint, execute, research}-smoke.sh`
+- Migration reference: `docs/codex-migration.md` + `fixtures/codex-migration/todo-toggle/`
+
+### New `clarify` Skill
+- Relentless ambiguity-resolution interview that records Q&A under `.hoyeon/clarify/<topic>/`
+- Templates: `qa-log.md`, `clarity-summary.md`
+- New `clarity-auditor` agent (Claude + Codex adapter)
+- Hands off to specify/blueprint/docs when clear
+
 ## Recent Changes (v1.6.0)
 
 ### CLI Rename (hoyeon-cli2 → hoyeon-cli)

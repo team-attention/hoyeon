@@ -377,7 +377,7 @@ Twenty-one agents, each a different mode of thinking. You never interact with th
 
 ## Under the Hood
 
-**28 skills · 21 agents · 18 hooks**
+**29 skills · 22 agents · 18 hooks**
 
 ```
 .claude/
