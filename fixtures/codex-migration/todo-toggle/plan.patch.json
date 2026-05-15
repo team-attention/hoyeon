@@ -1,0 +1,100 @@
+{
+  "meta": {
+    "type": "feature",
+    "goal": "Add a visible todo completion toggle with persistent state.",
+    "non_goals": [
+      "Add authentication or cross-device sync."
+    ],
+    "mode": {
+      "dispatch": "agent",
+      "work": "no-commit",
+      "verify": "standard"
+    }
+  },
+  "contracts": {
+    "artifact": "contracts.md",
+    "interfaces": [
+      "TodoItem.completed:boolean",
+      "TodoStore.save(todo)"
+    ],
+    "invariants": [
+      "Completion changes must update visible UI state and local persistence together."
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "layer": "L1",
+      "action": "Add a todo completion toggle and wire visible completed state.",
+      "fulfills": [
+        "R-U1.1"
+      ],
+      "depends_on": [],
+      "parallel_safe": false,
+      "status": "pending"
+    },
+    {
+      "id": "T2",
+      "layer": "L1",
+      "action": "Persist todo completion state and restore it on reload.",
+      "fulfills": [
+        "R-U1.2",
+        "R-T1.1"
+      ],
+      "depends_on": [
+        "T1"
+      ],
+      "parallel_safe": false,
+      "status": "pending"
+    }
+  ],
+  "journeys": [
+    {
+      "id": "J1",
+      "name": "Complete todo and reload",
+      "composes": [
+        "R-U1.1",
+        "R-U1.2"
+      ],
+      "given": "A user has an incomplete todo item.",
+      "when": "The user completes the todo and reloads the app.",
+      "then": "The todo remains visibly complete after reload."
+    }
+  ],
+  "verify_plan": [
+    {
+      "target": "R-U1.1",
+      "type": "sub_req",
+      "gates": [
+        1,
+        2
+      ]
+    },
+    {
+      "target": "R-U1.2",
+      "type": "sub_req",
+      "gates": [
+        1,
+        2
+      ]
+    },
+    {
+      "target": "R-T1.1",
+      "type": "sub_req",
+      "gates": [
+        1,
+        2
+      ]
+    },
+    {
+      "target": "J1",
+      "type": "journey",
+      "gates": [
+        1,
+        2,
+        3
+      ]
+    }
+  ]
+}
+

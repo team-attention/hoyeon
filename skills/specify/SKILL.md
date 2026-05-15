@@ -30,6 +30,27 @@ The final deliverable is `<spec_dir>/requirements.md` in the format that `/bluep
 
 All intermediate files (qa-log.md, reqs-business.md, reqs-interaction.md, reqs-tech.md) stay in `<spec_dir>/` for traceability but are NOT read by /blueprint.
 
+## Runtime Surface
+
+### Claude Code
+
+- Use `AskUserQuestion` for the structured interview forms described below.
+- Use `Agent(subagent_type="...")` for brownfield research and extractor
+  subagents.
+- Claude hooks may initialize skill session state, but the durable output remains
+  `<spec_dir>/requirements.md`.
+
+### Codex
+
+- Keep the same interview protocol and output format, but use Codex-native
+  structured input when available; otherwise ask one concise plain-text question
+  at a time.
+- Use Bash-first CLI setup through `hoyeon-cli req init`.
+- Use logical Hoyeon subagent names in prompts, mapped to Codex adapters when
+  installed. If adapters are not loaded in the current session, perform the
+  smallest direct research pass needed to complete `requirements.md`.
+- Do not rely on hooks for session initialization or cleanup in Codex v1.
+
 ## Phase 0: WHERE Grounding
 
 The **WHERE** is the combination of current situation and intended scope. It calibrates how deep the interview goes on each axis — without it, every project gets the same heavyweight treatment, which over-engineers toys and under-specs production systems.
@@ -71,65 +92,85 @@ AskUserQuestion(
 - Max 2 revision rounds. If still unclear, proceed and record residual ambiguities for Phase 1
 - On Approve: extract `goal` and `non_goals` from the mirror (no need to re-ask in free-text)
 
-### Step 0.2: PROJECT_TYPE + SITUATION + AMBITION (batched AskUserQuestion)
+### Step 0.2: WHERE Inference (infer-first, ask-only-on-uncertainty)
 
-Use **one AskUserQuestion call with 3 questions batched**:
+**Default behavior: infer from the working directory and the user's goal. Only ask the user about dimensions you genuinely cannot determine from evidence.**
 
-```
-questions: [
-  {
-    question: "What kind of thing are you building?",
-    header: "Project type",
-    options: [
-      { label: "User-facing app", description: "Web, mobile, or desktop app with end-user UI" },
-      { label: "API / Service", description: "Backend API, data pipeline, or background service" },
-      { label: "Dev tool / Library", description: "CLI tool, SDK, library, automation script" },
-      { label: "Infrastructure", description: "Infra change, deployment config, platform work" }
-    ]
-  },
-  {
-    question: "What's the current codebase situation?",
-    header: "Situation",
-    options: [
-      { label: "Greenfield", description: "Brand new project, no existing code" },
-      { label: "Brownfield extension", description: "Adding to an existing codebase, minimal changes to what's there" },
-      { label: "Brownfield refactor", description: "Reworking existing code; structural changes expected" },
-      { label: "Hybrid", description: "New module inside existing project, both new and integration work" }
-    ]
-  },
-  {
-    question: "What's the ambition level?",
-    header: "Ambition",
-    options: [
-      { label: "Toy / Experiment", description: "Days of work, personal/internal, failure acceptable" },
-      { label: "Feature / MVP", description: "1-2 weeks, real users, core functionality only" },
-      { label: "Product", description: "Long-term, external customers, reliability and security matter" }
-    ]
-  }
-]
-```
+Don't burn 4 cold-start questions on facts the codebase already answers. Most of `PROJECT_TYPE`, `SITUATION`, and risk factors are visible to you. Only `AMBITION` is reliably user-intent-driven.
 
-### Step 0.2b: Risk Modifiers (multiSelect AskUserQuestion)
+#### Step 0.2.a: Gather signals (read-only)
 
-Some projects are "small but dangerous" — a toy that handles real money, a refactor that touches a public API. Risk modifiers catch these cases by forcing relevant axes to `deep` regardless of Ambition.
+Inspect the repo. Use evidence — file paths, not vibes:
 
-```
-questions: [
-  {
-    question: "Select any that apply to this project (pick none if none apply):",
-    header: "Risk factors",
-    multiSelect: true,
-    options: [
-      { label: "Sensitive data", description: "Handles PII, payments, health, secrets, or regulated data" },
-      { label: "External exposure", description: "Accessible from public internet or external customers" },
-      { label: "Irreversible ops", description: "Migrations, destructive actions, public contract changes" },
-      { label: "High scale", description: "High traffic, large data volumes, or strict latency targets" }
-    ]
-  }
-]
+- **PROJECT_TYPE signals**:
+  - `package.json` + frontend deps (react, vue, svelte, vite) / `app/`, `src/components/` → user-facing
+  - `package.json` + backend deps (express, fastify, nest) / `routes/`, `api/`, `controllers/` → api-service
+  - `bin/`, `cli.ts`, `pyproject.toml` with `[project.scripts]`, single-binary Cargo project → dev-tool
+  - `terraform/`, `k8s/`, `helm/`, `Dockerfile` + no app code → infrastructure
+- **SITUATION signals**:
+  - Empty repo or only scaffolding (single README, no src) → greenfield
+  - Existing src tree, many files, established conventions → brownfield (extension or refactor depends on user's goal verb)
+  - User's goal mentions a new module/feature inside existing project → hybrid
+- **RISK signals**:
+  - `auth/`, `session`, `passport`, `oauth`, `cookie`, `jwt` references → sensitive-data candidate
+  - `prisma/schema.prisma` / `migrations/` with PII columns (email, phone, ssn) → sensitive-data
+  - Payment SDKs (stripe, toss, iamport, paypal) → sensitive-data + external-exposure
+  - Public route definitions (no auth middleware), webhooks, `/api/public` → external-exposure
+  - `migrations/`, destructive scripts, public SDK exports → irreversible
+  - Load balancers, queues (kafka, sqs, redis streams), CDN config → high-scale
+
+If brownfield, you may dispatch a quick `code-explorer` here — but a cheap `ls` + `Read README.md` + `Glob` is often enough for inference. Don't over-spend on Phase 0.
+
+#### Step 0.2.b: Construct tentative WHERE and present
+
+Build a single block in the Mirror (extend Step 0.1's mirror, or send as follow-up):
+
+```markdown
+**Inferred Context** (confirm or override)
+
+- **PROJECT_TYPE**: <inferred value>
+  - Evidence: <file:line or path that supports this>
+- **SITUATION**: <inferred value>
+  - Evidence: <...>
+- **AMBITION**: <best guess, mark confidence>
+  - Confidence: low/medium/high — <why>
+- **RISK factors**: [<inferred list, or "none detected">]
+  - Evidence: <...>
 ```
 
-If the user picks none, proceed with base calibration. Otherwise, modifiers will escalate specific nodes to `deep` in Step 0.4.
+Mark each dimension with confidence:
+- **high**: evidence is unambiguous (e.g., `package.json` with react = user-facing)
+- **medium**: evidence is suggestive but could be wrong
+- **low**: little to no signal — needs user input
+
+#### Step 0.2.c: Confirm or drill (single AskUserQuestion)
+
+If ALL dimensions are medium/high confidence:
+
+```
+AskUserQuestion(
+  question: "Confirm inferred context?",
+  options: [
+    { label: "Approve all", description: "Use inferred WHERE as-is" },
+    { label: "Override some", description: "Correct one or more dimensions" }
+  ]
+)
+```
+
+On Override: ask follow-up only for the dimensions the user flags. Use the original option lists below as the menu for those targeted questions.
+
+If ANY dimension is **low confidence** (typically AMBITION on truly new projects), skip the confirm-or-drill choice and ask **only the low-confidence dimensions directly**, batched in one AskUserQuestion. Do not re-ask high-confidence dimensions.
+
+#### Option menus (for targeted drills)
+
+Use these when the user picks "Override some" or when a dimension is low-confidence:
+
+- **PROJECT_TYPE**: User-facing app / API or Service / Dev tool or Library / Infrastructure
+- **SITUATION**: Greenfield / Brownfield extension / Brownfield refactor / Hybrid
+- **AMBITION**: Toy or Experiment / Feature or MVP / Product
+- **RISK factors** (multiSelect): Sensitive data / External exposure / Irreversible ops / High scale
+
+Definitions match the originals: Toy = days, failure ok; Feature/MVP = 1-2 weeks, core only; Product = long-term, reliability + security matter. Risk factors escalate specific nodes to `deep` in Step 0.4.
 
 ### Step 0.3: Spec Name & Output Setup
 

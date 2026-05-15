@@ -18,6 +18,31 @@ WebFetch, chromux browser-explorer, and the Gemini CLI as research tools.
 
 ultrathink before every major decision point.
 
+## Runtime Surface
+
+### Claude Code
+
+- Use `Agent(...)` with background dispatch, `WebSearch`, `WebFetch`, chromux,
+  and Gemini CLI as described below.
+- Use hook-provided session IDs for durable research directories.
+
+### Codex
+
+- Use Codex native subagents when their adapters are loaded:
+  `hoyeon-external-researcher`, `hoyeon-docs-researcher`, and
+  `hoyeon-browser-explorer`.
+- If the Hoyeon adapters are unavailable, use built-in Codex `researcher` for
+  external docs/web research and direct chromux Bash calls for browser
+  extraction.
+- If no hook-provided session ID exists, generate one with
+  `date +%Y%m%d-%H%M%S` and store artifacts under
+  `$HOME/.hoyeon/codex-research-$RUN_ID/research/`.
+- Keep Gemini and chromux as Bash-first optional channels. Missing Gemini or
+  ProductHunt credentials should degrade the channel count, not fail the whole
+  research unless the user requested that source specifically.
+- Do not add Hoyeon MCP for v1. Use available Codex web search/fetch tools
+  directly when needed.
+
 ## Invoke
 
 ```

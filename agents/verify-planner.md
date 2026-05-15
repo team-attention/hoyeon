@@ -4,7 +4,7 @@ description: |
   Assign verification gates (1=machine, 2=agent_semantic, 3=agent_e2e, 4=human) to every
   sub-requirement and every journey. Uses semantic reading of given/when/then — not keyword matching.
   Called by /blueprint Phase 4.
-model: sonnet
+model: opus
 ---
 
 # verify-planner

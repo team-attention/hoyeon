@@ -6,7 +6,7 @@ description: |
   determines the appropriate verification method for each (browser/CLI/desktop/shell),
   executes verification, and returns structured PASS/FAIL per sub-requirement.
   Does NOT fix code — report only. Used by verify-thorough Step 4.
-model: sonnet
+model: opus
 allowed-tools:
   - Bash
   - Read
@@ -54,6 +54,9 @@ Your prompt will contain:
 2. **qa_checklist** — sub-requirements to verify in GWT format
 3. **method** (optional) — if the orchestrator pre-classified the method (e.g., "browser", "cli"),
    use that method for ALL items. Do NOT re-classify to a different method.
+4. **evidence_dir** (optional) — absolute or relative directory for evidence files.
+   When provided (e.g., from `/execute` verify), write all evidence under this path.
+   When omitted (e.g., standalone `/qa` invocation), default to `.qa-reports/verify-evidence/`.
 
 ## Process
 
@@ -155,14 +158,18 @@ Run the protocol in `spec-drift-check.md` once. Append `SPEC_DRIFT` and
 
 ## Evidence Directory
 
+Resolve `EVIDENCE_DIR` once at the start:
+- If `evidence_dir` was supplied in the prompt → use it as-is.
+- Otherwise → fall back to `.qa-reports/verify-evidence` (CWD-relative).
+
 ```bash
-mkdir -p .qa-reports/verify-evidence
+mkdir -p "$EVIDENCE_DIR"
 ```
 
-- Browser screenshots: `.qa-reports/verify-evidence/{sub_req_id}.png`
-- CLI captures: `.qa-reports/verify-evidence/{sub_req_id}.txt`
+- Browser screenshots: `$EVIDENCE_DIR/{sub_req_id}.png`
+- CLI captures: `$EVIDENCE_DIR/{sub_req_id}.txt`
 - Desktop screenshots: saved by `save_to_disk: true` (path from tool result)
-- Shell output: inline in report (short) or `.qa-reports/verify-evidence/{sub_req_id}.txt` (long)
+- Shell output: inline in report (short) or `$EVIDENCE_DIR/{sub_req_id}.txt` (long)
 
 ## Output Format
 

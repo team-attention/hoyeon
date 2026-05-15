@@ -1,0 +1,26 @@
+{
+  "name": "hoyeon",
+  "version": "1.6.1",
+  "description": "Spec-first development workflow automation for Codex and Claude Code",
+  "author": {
+    "name": "team-attention"
+  },
+  "homepage": "https://github.com/team-attention/hoyeon",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "claude-code",
+    "specification",
+    "planning",
+    "agents",
+    "workflow"
+  ],
+  "skills": "./codex/skills/",
+  "interface": {
+    "displayName": "hoyeon",
+    "shortDescription": "Spec-first workflow automation for requirements, blueprinting, execution, and verification.",
+    "longDescription": "Hoyeon derives requirements from intent, turns them into a validated plan.json via hoyeon-cli, and coordinates agent execution. The Codex adapter is Bash-first in v1: it exposes skills and native-agent adapters while leaving hooks and MCP out of the initial migration slice.",
+    "developerName": "team-attention",
+    "category": "Developer Tools"
+  }
+}
