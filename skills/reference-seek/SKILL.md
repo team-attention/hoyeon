@@ -27,6 +27,23 @@ When building a feature, find what you can **reuse** or **learn from**:
 - Official Docs: context7-powered library documentation
 - External: Blog posts, tutorials, best practices
 
+## Runtime Surface
+
+### Claude Code
+
+- Use `Task(Explore)`, `gh`, context7 MCP when available, and `WebSearch` as
+  described below.
+
+### Codex
+
+- Map internal codebase search to `hoyeon-code-explorer` when installed.
+- Use Bash-first `gh api` and `curl` for GitHub discovery and code excerpts.
+- Do not require context7 MCP for v1; use it only if already available in the
+  current runtime. Otherwise, use official docs via the available Codex web
+  search/fetch surface and label that fallback.
+- If no native subagent adapter is loaded, perform the internal search directly
+  with `rg` and targeted file reads.
+
 ## Use Cases
 
 - "Looking to implement OAuth login — any good references?"

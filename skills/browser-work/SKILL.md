@@ -17,6 +17,26 @@ Recon-first browser automation: explore → document → delegate.
 To reliably execute browser tasks on the user's behalf, the orchestrator first scouts the site directly,
 creates a pitfall-prevention guide, then delegates execution to the browser-explorer agent.
 
+## Runtime Surface
+
+### Claude Code
+
+- Use hook-provided `CLAUDE_SESSION_ID` for `~/.hoyeon/{session}/` paths.
+- Delegate with the logical browser agent described below.
+
+### Codex
+
+- Use Bash-first chromux operations. Do not add Hoyeon MCP for v1.
+- If no hook-provided session ID exists, generate one with
+  `date +%Y%m%d-%H%M%S` and store guides under
+  `$HOME/.hoyeon/codex-browser-$RUN_ID/`.
+- Map the logical browser agent to the Codex adapter
+  `hoyeon-browser-explorer` when installed.
+- If the current Codex session has not loaded that adapter, complete the
+  smallest safe browser pass directly with chromux and report the fallback.
+- Use the Browser Use plugin only when the user explicitly asks for Codex
+  in-app browser behavior; this skill's canonical browser runtime is chromux.
+
 ## Why Recon First?
 
 When an agent sees a site for the first time, there's a lot of trial and error (snapshot vs. screenshot confusion, clicking wrong elements, unfamiliar site structure).

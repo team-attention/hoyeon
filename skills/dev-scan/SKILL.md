@@ -16,6 +16,28 @@ Quickly understand **diverse perspectives** on technical topics:
 - Hidden concerns or advantages
 - Unique or notable perspectives
 
+## Runtime Surface
+
+### Claude Code
+
+- Use the vendor scripts, `WebSearch` fallback, and hook-provided session ID as
+  described below.
+- Claude Code may use multiple Bash calls, but shell-level parallelism must
+  happen inside one Bash invocation with `&` and `wait`.
+
+### Codex
+
+- Use Bash-first vendor scripts. Do not add Hoyeon MCP for v1.
+- If no hook-provided session ID exists, generate one with
+  `date +%Y%m%d-%H%M%S` and store run artifacts under
+  `$HOME/.hoyeon/codex-$RUN_ID/tmp/`.
+- Prefer `node skills/dev-scan/vendor/chromux-search/web-search.mjs` and the
+  bundled Python API scripts before using generic web search fallback.
+- Treat ProductHunt as optional when `PRODUCT_HUNT_TOKEN` is missing.
+- If dispatching internal research helpers, use Codex adapters when installed:
+  `hoyeon-external-researcher`, `hoyeon-docs-researcher`, or
+  `hoyeon-browser-explorer`.
+
 ## Data Sources
 
 | Platform | Method |
@@ -391,4 +413,3 @@ Calculate sentiment from **comment-level tags** (Step 3-0). The bar uses block c
 | ph-search failure / token missing | Skip ProductHunt, proceed with other sources |
 | Output too large for stdout | Results are in files — use Read tool (already the default approach) |
 | Topic too new | Note insufficient results, suggest related keywords |
-

@@ -18,6 +18,21 @@ Search Google and optionally extract full page content using a real Chrome brows
 Unlike WebSearch, this uses an actual Chrome instance — same results a human would see, with
 JavaScript-rendered content and no bot detection.
 
+## Runtime Surface
+
+### Claude Code
+
+- Use the bundled chromux search script and fall back to `WebSearch` when
+  chromux is unavailable.
+
+### Codex
+
+- Use Bash-first chromux operations. Do not add Hoyeon MCP for v1.
+- Resolve the script relative to the Hoyeon plugin root:
+  `skills/google-search/vendor/web-search.mjs`.
+- If chromux is unavailable, use the current Codex web search surface when
+  available and state that enrichment/body/comment extraction is degraded.
+
 ## When to Use
 
 - User asks to search Google or the web for something

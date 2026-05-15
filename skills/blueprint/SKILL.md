@@ -27,6 +27,26 @@ Transform `<spec_dir>/requirements.md` (from /specify) into an executable bluepr
 
 **Not blueprint's job**: writing source code, running tests, interviewing for missing requirements. If requirements are incomplete, run /specify first.
 
+## Runtime Surface
+
+### Claude Code
+
+- Use `Agent(subagent_type="...")` for Hoyeon logical subagents such as
+  `code-explorer`, `contract-deriver`, and `taskgraph-planner`.
+- Use `AskUserQuestion` only for user-owned decisions described by this skill.
+- Claude hooks may add session context, but blueprint must still leave a valid
+  `plan.json` on disk through `hoyeon-cli`.
+
+### Codex
+
+- Use the same Hoyeon logical subagent names in prompts, but dispatch through
+  Codex adapters when installed: `hoyeon-code-explorer`, `hoyeon-worker`,
+  `hoyeon-verifier`, and `hoyeon-code-reviewer`.
+- Use Bash-first state operations. Do not use MCP in v1.
+- Mutate `plan.json` only through `hoyeon-cli plan init|merge|validate`.
+- Prefer temporary JSON payload files or fixture files over inline complex JSON.
+- Do not rely on hooks for session guards or stop transitions.
+
 ## Input / Output
 
 ### Input

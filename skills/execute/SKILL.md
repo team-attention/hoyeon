@@ -46,6 +46,34 @@ Delegate to workers, manage parallelization, verify the result.
 
 ---
 
+## Runtime Surface
+
+### Claude Code
+
+- Use the existing `Agent`, `Task*`, `Team*`, and `AskUserQuestion` surfaces
+  described below when they are available.
+- Claude hooks may enforce orchestration guards and stop transitions.
+- Logical subagent names remain the canonical Hoyeon names, for example
+  `worker`, `verifier`, and `code-reviewer`.
+
+### Codex
+
+- Codex v1 is Bash-first and no-MCP. Use `hoyeon-cli` for all plan state.
+- Do not edit `plan.json` directly; use `hoyeon-cli plan task` for every status
+  transition.
+- Use logical Hoyeon subagent names in the charter, mapped to Codex adapters when
+  installed:
+  - `worker` -> `hoyeon-worker`
+  - `verifier` -> `hoyeon-verifier`
+  - `code-reviewer` -> `hoyeon-code-reviewer`
+- If the current Codex session has not loaded the adapter names, fall back to
+  direct single-worker execution and keep the same charter/output contract.
+- Do not rely on hooks, `TeamCreate`, or automatic stop transitions in Codex v1.
+- Parallel execution is disabled until single-worker state transitions are
+  stable under `scripts/codex-execute-smoke.sh`.
+
+---
+
 ## Phase 0: Initialize
 
 Phase 0 is **plan-first**. The orchestrator resolves an input to a valid `plan.json`, asks two questions (dispatch + verify depth), and prepares a worker charter template. **Phase 0 never reads `requirements.md` or `contracts.md` body** — only `plan.json` structural fields (INV-3).
