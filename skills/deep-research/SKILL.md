@@ -337,7 +337,7 @@ Visit these URLs in order:
 
 For each URL:
 1. Open the URL: `/path/to/chromux open exp-XXXX <url>`
-2. Wait for dynamic content: `/path/to/chromux wait exp-XXXX 2000`
+2. Wait for dynamic content: `sleep 2` (or use `run` with `await sleep(2000)` if mid-script)
 3. Snapshot to see page structure: `/path/to/chromux snapshot exp-XXXX`
 4. Navigate to relevant sections (scroll, click "Load more" buttons if needed)
 5. Re-snapshot after each interaction to get fresh @ref numbers

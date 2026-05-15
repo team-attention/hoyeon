@@ -42,13 +42,19 @@ CX=$(command -v chromux 2>/dev/null || echo "") && [ -n "$CX" ] && echo "CHROMUX
 1. Inline the full chromux command (e.g., `/Users/you/.local/bin/chromux` or `npx @team-attention/chromux`)
 2. Inline the session ID as a literal string (e.g., `exp-ab12`)
 
-Launch Chrome in headless mode (skip if already running):
+Launch Chrome with **`--headless`** so no window pops up. Bare `chromux launch`
+defaults to headed (visible Chrome) — always pass `--headless` for agent work
+unless the caller explicitly asks for a visible tab:
 
 ```bash
 /path/to/chromux launch default --headless 2>/dev/null || true
 ```
 
-Headless is the default — no visible window, but fully functional. If the caller or user needs to see the live tab, use `show` to open DevTools in their browser (no restart needed):
+(Auto-launch via `chromux open` defaults to headless already; the explicit
+`launch` above is belt-and-suspenders in case the caller's environment differs.)
+
+If the caller or user needs to watch the live tab, use `show` to open DevTools
+in their browser — no restart needed:
 
 ```bash
 /path/to/chromux show exp-ab12   # Opens DevTools — user sees the live tab in real time
@@ -64,28 +70,17 @@ openssl rand -hex 2
 # Example output: ab12 → your session ID is exp-ab12
 ```
 
-Then in every subsequent Bash call, inline both the chromux path and session ID:
+Then in every subsequent Bash call, inline both the chromux path and session ID.
 
-```bash
-/path/to/chromux open exp-ab12 <url>              # Navigate (auto-creates tab + Chrome if needed)
-/path/to/chromux snapshot exp-ab12                # Accessibility tree with @ref numbers
-/path/to/chromux click exp-ab12 @<N>              # Click by @ref number
-/path/to/chromux click exp-ab12 "css-selector"   # Click by CSS selector (AVOID — use @ref instead)
-/path/to/chromux fill exp-ab12 @<N> "text"       # Fill input by @ref
-/path/to/chromux type exp-ab12 "Enter"           # Keyboard input (Enter, Tab, etc.)
-/path/to/chromux eval exp-ab12 "js expression"   # Run JavaScript expression
-/path/to/chromux screenshot exp-ab12 [path]      # Take screenshot (for VERIFICATION only)
-/path/to/chromux scroll exp-ab12 down|up         # Scroll page
-/path/to/chromux wait exp-ab12 <ms>              # Wait milliseconds
-/path/to/chromux console exp-ab12                # Capture console logs (errors, warnings, info)
-/path/to/chromux console exp-ab12 --off          # Disable console capture
-/path/to/chromux network exp-ab12                # Capture failed requests (4xx/5xx/errors)
-/path/to/chromux network exp-ab12 --all          # Capture all network requests
-/path/to/chromux network exp-ab12 --off          # Disable network capture
-/path/to/chromux show exp-ab12                   # Open DevTools in user's browser (live inspect)
-/path/to/chromux close exp-ab12                  # Close tab
-/path/to/chromux list                            # List all active sessions
-```
+The full chromux command surface (open / snapshot / click / fill / type / run /
+cdp / watch / screenshot / show / close / list) is documented in the canonical
+`chromux` skill — run `chromux help` for current syntax. Day-to-day:
+
+- **Action**: `open`, `snapshot`, `click exp-XX @<N>`, `fill exp-XX @<N> "text"`, `type exp-XX "Enter"`
+- **JS / CDP**: prefer `run` (multi-step async with `cdp`/`js`/`sleep`/`waitLoad`) and `cdp` (single raw protocol call). Legacy aliases `eval`, `scroll`, `wait`, `scroll-until` still work but are hidden.
+- **Diagnostics**: `watch exp-XX console` and `watch exp-XX network` (with `--all` / `--off`). Legacy `console` / `network` verbs still work.
+- **Verification**: `screenshot exp-XX [path]`, `show exp-XX` (DevTools)
+- **Cleanup**: `close exp-XX`, `list`
 
 ## Core Rules
 
@@ -97,7 +92,7 @@ Then in every subsequent Bash call, inline both the chromux path and session ID:
 6. **Retry on element not found** — Wait 2 seconds and re-snapshot (up to 3 times)
 7. **Always close the session when done** — Run `close` to clean up
 8. **Inline everything** — Never rely on shell variables (`$CX`, `$S`) from previous Bash calls. Always use literal strings.
-9. **Use console/network for debugging** — When something looks broken (blank page, missing data, unexpected behavior), run `console` to check for JS errors and `network` to check for failed API calls before continuing.
+9. **Use watch for debugging** — When something looks broken (blank page, missing data, unexpected behavior), run `watch console` to check for JS errors and `watch network` to check for failed API calls before continuing.
 
 ## Workflow
 
@@ -141,9 +136,9 @@ After `open`, do a `snapshot` and look for dismiss buttons. Click them before pr
 ## Anti-patterns (DO NOT)
 
 - **DO NOT** take a screenshot and try to guess which CSS selector to click
-- **DO NOT** use `eval` with complex DOM queries to find elements — use snapshot @ref instead
+- **DO NOT** use `run`/`js` (or legacy `eval`) with DOM queries to *find* elements — `snapshot` @ref is the source of truth
 - **DO NOT** use `$CX` or `$S` across separate Bash calls — inline literal strings
-- **DO NOT** launch without `--headless` unless the caller explicitly requests headed mode
+- **DO NOT** launch without `--headless` unless the caller explicitly requests headed mode (bare `launch` is headed by default)
 
 ## Output
 

@@ -1,6 +1,9 @@
 # Browser Mode (chromux/CDP)
 
-Use this mode for web applications. Chromux gives DOM-level access via CDP protocol — faster and more precise than pixel-based interaction.
+Use this mode for web applications. Chromux gives DOM-level access via CDP —
+faster and more precise than pixel-based interaction. The full chromux command
+surface lives in the canonical `chromux` skill (run `chromux help` for current
+syntax). **This file only documents QA-specific decisions on top.**
 
 ## Setup
 
@@ -12,13 +15,15 @@ CX=$(command -v chromux 2>/dev/null || echo "") && [ -n "$CX" ] && echo "CHROMUX
 
 If `MISSING`, fall back to computer mode or report error.
 
-Launch Chrome in headless mode (uses `default` profile):
+Launch Chrome **headless** (bare `chromux launch` is headed by default — always
+pass `--headless` for QA work unless the user explicitly wants to watch):
 
 ```bash
 /path/to/chromux launch default --headless 2>/dev/null || true
 ```
 
-To watch live, open `http://localhost:<port>` (from `chromux ps`) in your regular Chrome.
+To watch live without restarting, use `chromux show qa-XXXX` (opens DevTools in
+the user's browser).
 
 Generate session ID:
 
@@ -28,53 +33,55 @@ openssl rand -hex 2
 
 Session ID format: `qa-XXXX`. **Inline chromux path and session ID literally in every command** — shell variables do NOT persist across Bash calls.
 
-## Interaction Patterns
+## Interaction Patterns (QA-specific)
 
-### Navigate
+For commands and exact syntax, see the canonical `chromux` skill. Below are the
+patterns QA leans on:
+
+### Navigate + read structure
 ```bash
 /path/to/chromux open qa-XXXX <url>
+/path/to/chromux snapshot qa-XXXX        # Always snapshot before acting
 ```
 
-### Get Element References (for clicking)
-```bash
-/path/to/chromux snapshot qa-XXXX
-```
-Returns accessibility tree with `@ref` numbers. Always snapshot before acting.
-
-### Click, Fill, Type
+### Click / fill / type by @ref
 ```bash
 /path/to/chromux click qa-XXXX @<N>
 /path/to/chromux fill qa-XXXX @<N> "text"
 /path/to/chromux type qa-XXXX "Enter"
 ```
 
-### Screenshot (evidence)
+### Screenshot (QA evidence — save under `.qa-reports/`)
 ```bash
 /path/to/chromux screenshot qa-XXXX .qa-reports/screenshots/name.png
 ```
-After every screenshot, use Read on the file so the user can see it inline.
+After every screenshot, use `Read` on the file so the user can see it inline.
 
-### JavaScript Evaluation
+### JavaScript / CDP evaluation
+
+Prefer `run` (multi-step async with `cdp`/`js`/`sleep`/`waitLoad` helpers) or a
+single `cdp` call. Legacy `eval` still works but is hidden:
+
 ```bash
-/path/to/chromux eval qa-XXXX "document.title"
-/path/to/chromux eval qa-XXXX "JSON.stringify(performance.getEntriesByType('navigation')[0])"
+/path/to/chromux run qa-XXXX - <<'JS'
+return await js('document.title');
+JS
+
+/path/to/chromux cdp qa-XXXX Runtime.evaluate '{"expression":"location.href","returnByValue":true}'
 ```
+
+See `browser-verify.md` for the canonical patterns QA uses for computed-style
+visibility and overlay-stacking checks.
 
 ### Console & Network Diagnostics (on-demand)
 ```bash
-/path/to/chromux console qa-XXXX              # Enable + read console logs (errors, warnings, info)
-/path/to/chromux network qa-XXXX              # Failed requests only (4xx/5xx/connection errors)
-/path/to/chromux network qa-XXXX --all        # All requests with status and duration
+/path/to/chromux watch qa-XXXX console              # Enable + read console logs
+/path/to/chromux watch qa-XXXX network              # Failed requests only (4xx/5xx)
+/path/to/chromux watch qa-XXXX network --all        # All requests with status + duration
 ```
 
-First call enables capture; subsequent calls return new entries since last read.
-Disable when done to preserve stealth: `console qa-XXXX --off` / `network qa-XXXX --off`
-
-### Scroll
-```bash
-/path/to/chromux scroll qa-XXXX down
-/path/to/chromux scroll qa-XXXX up
-```
+First call enables capture; subsequent calls return new entries. Disable when
+done: `watch qa-XXXX console --off` / `watch qa-XXXX network --off`.
 
 ### Close
 ```bash
@@ -83,10 +90,13 @@ Disable when done to preserve stealth: `console qa-XXXX --off` / `network qa-XXX
 
 ## Core Rules
 
-1. **Snapshot for action, screenshot for evidence** — `snapshot` gives @ref numbers, `screenshot` saves visual proof
+1. **Snapshot for action, screenshot for evidence** — `snapshot` gives @ref
+   numbers, `screenshot` saves visual proof
 2. **Always snapshot before acting** — get @ref numbers first
-3. **Re-snapshot after every action** — @ref numbers go stale after page changes
-4. **Click by @ref only** — never use CSS selectors or eval DOM queries
+3. **Re-snapshot after every action** — @ref numbers go stale after page
+   changes
+4. **Click by @ref only** — never use CSS selectors or `run`/`js`/`eval` DOM
+   queries to *find* elements
 5. **Inline everything** — shell vars don't persist across Bash calls
 
 ## Diff-Aware Mode (feature branch, no URL)
