@@ -121,6 +121,19 @@ Hooks are registered in `.claude/settings.json` and automate pipeline transition
 - **Bump all three files** in a single commit on `develop` before merging to `main`
 - CLI version (`@team-attention/hoyeon-cli`) is always synced with plugin version
 
+## Recent Changes (v1.7.1)
+
+### chromux skill/agent sync
+- Drop duplicated chromux command tables across 5 consumer files; delegate to the canonical chromux skill loaded via global agent context
+- `agents/browser-explorer.md`: replace 18-line command catalog with category summary; switch debug rule and anti-patterns from legacy `eval`/`console`/`network` to `run`/`watch`
+- `skills/browser-work/references/chromux-guide.md`: rewrite as a thin browser-work-specific overlay; document `--headless`/`--hidden` semantics + auto-launch default; add `snippets/_builtin/scroll-until.js` pattern
+- `skills/qa/references/browser-mode.md`: keep `qa-XXXX` / `.qa-reports` conventions only; convert `eval`/`console`/`network` examples to `run` + `watch`
+- `skills/qa/references/browser-verify.md`: 4 `eval` blocks → `run` + `js()`; `console` → `watch console`
+- `skills/qa/references/spec-drift-check.md`: same conversion
+- `skills/deep-research/SKILL.md`: `chromux wait` → `sleep`
+- Codex adapters inherit the fix automatically (already point to canonical files)
+- Legacy chromux aliases remain supported per upstream policy; we just stop teaching them as the primary surface
+
 ## Recent Changes (v1.7.0)
 
 ### Codex CLI Parity
