@@ -23,13 +23,15 @@ Method-specific extraction — pick the one matching the project:
 After setup, collect observable surface from the running app:
 
 ```bash
-/path/to/chromux eval qa-XXXX "(() => {
+/path/to/chromux run qa-XXXX - <<'JS'
+return await js(`(() => {
   const buttons = Array.from(document.querySelectorAll('button, [role=button]')).map(b => b.textContent.trim()).filter(Boolean);
   const links   = Array.from(document.querySelectorAll('a[href]')).map(a => ({text: a.textContent.trim(), href: a.getAttribute('href')})).filter(a => a.text);
   const inputs  = Array.from(document.querySelectorAll('input, select, textarea')).map(i => i.name || i.id || i.placeholder || i.type).filter(Boolean);
   const overlays = Array.from(document.querySelectorAll('.overlay, [role=dialog], .modal')).map(el => el.id || el.className);
-  return JSON.stringify({buttons, links, inputs, overlays});
-})()"
+  return {buttons, links, inputs, overlays};
+})()`);
+JS
 ```
 
 Iterate through each state the spec enumerates (start / playing / paused / gameover)

@@ -24,18 +24,20 @@ visible if CSS overrides its display rule. Common offenders:
 For each element the GWT says should be hidden:
 
 ```bash
-/path/to/chromux eval qa-XXXX "(() => {
+/path/to/chromux run qa-XXXX - <<'JS'
+return await js(`(() => {
   const el = document.querySelector('#start-overlay');
   if (!el) return 'MISSING';
   const s = getComputedStyle(el);
-  return JSON.stringify({
+  return {
     hidden_attr: el.hasAttribute('hidden'),
     display:     s.display,
     visibility:  s.visibility,
     opacity:     s.opacity,
     effective_visible: s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity) > 0
-  });
-})()"
+  };
+})()`);
+JS
 ```
 
 Rule: **`effective_visible` is the source of truth**, not `hidden_attr`.
@@ -55,14 +57,16 @@ any state.
 ### Check (run on every state transition the GWT tests)
 
 ```bash
-/path/to/chromux eval qa-XXXX "(() => {
-  const overlays = Array.from(document.querySelectorAll('.overlay, [role=\"dialog\"], .modal'));
-  return JSON.stringify(overlays.map(el => {
+/path/to/chromux run qa-XXXX - <<'JS'
+return await js(`(() => {
+  const overlays = Array.from(document.querySelectorAll('.overlay, [role="dialog"], .modal'));
+  return overlays.map(el => {
     const s = getComputedStyle(el);
     const visible = s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity) > 0;
     return { id: el.id || el.className, visible };
-  }));
-})()"
+  });
+})()`);
+JS
 ```
 
 Rule: `overlays.filter(o => o.visible).length <= 1`. If >1 → FAIL with reason
@@ -132,7 +136,9 @@ can be in an unexpected focus state.
 ### Check
 
 ```bash
-/path/to/chromux eval qa-XXXX "({hasFocus: document.hasFocus(), visibilityState: document.visibilityState})"
+/path/to/chromux run qa-XXXX - <<'JS'
+return await js(`({hasFocus: document.hasFocus(), visibilityState: document.visibilityState})`);
+JS
 ```
 
 For any assertion that depends on focus state (pause overlay, animation pause),
@@ -145,7 +151,7 @@ first confirm `document.hasFocus()` matches the GWT's Given.
 Even when the GWT passes, console errors are red flags.
 
 ```bash
-/path/to/chromux console qa-XXXX
+/path/to/chromux watch qa-XXXX console
 ```
 
 If errors appeared DURING the verification actions (not pre-existing) → demote
