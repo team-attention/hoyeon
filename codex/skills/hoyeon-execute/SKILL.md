@@ -26,6 +26,15 @@ When this skill is invoked:
    - `worker` -> `hoyeon-worker`
    - `verifier` -> `hoyeon-verifier`
    - `code-reviewer` -> `hoyeon-code-reviewer`
+7. In Codex, dispatch those adapters with the native `spawn_agent` tool:
+   - `spawn_agent(agent_type="hoyeon-worker", message="<worker charter>")`
+   - `spawn_agent(agent_type="hoyeon-verifier", message="<verification charter>")`
+   - `spawn_agent(agent_type="hoyeon-code-reviewer", message="<review charter>")`
+8. Treat canonical `Agent(...)`, `TaskCreate`, `TaskUpdate`, `TaskOutput`, and
+   `TeamCreate` examples as Claude Code protocol notes, not literal Codex calls.
+9. Parallel worker dispatch is allowed for disjoint `parallel_safe` tasks when
+   the relevant adapter is prompt-visible. `scripts/codex-execute-smoke.sh`
+   validates plan state transitions only, not parallel subagent behavior.
 
 The output contract remains the canonical Hoyeon contract:
 all executable tasks completed or blocked with evidence, followed by plan

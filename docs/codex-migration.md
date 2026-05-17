@@ -124,17 +124,19 @@ Validation:
 
 ### Phase 5: Execute parity
 
-- Start with single-worker execution.
-- Use `hoyeon-worker` for one task and `hoyeon-verifier` for final checks.
-- Add parallel execution only after single-worker task state transitions are
-  stable.
+- Keep single-worker execution as the baseline smoke path.
+- Use `hoyeon-worker` for task execution and `hoyeon-verifier` for final checks.
+- Parallel execution may use `spawn_agent(agent_type="hoyeon-worker")` for
+  disjoint `parallel_safe` tasks when the adapter is prompt-visible.
+- Treat `scripts/codex-execute-smoke.sh` as plan-state validation only; it does
+  not prove parallel subagent behavior.
 
 Validation:
 
 - Pending/running/done/blocked state changes happen only through `hoyeon-cli`.
 - A failed worker leaves a recoverable `failed` or `blocked` task status.
-- `scripts/codex-execute-smoke.sh` exits 0 and validates the plan after task
-  completion.
+- `scripts/codex-execute-smoke.sh` exits 0 and validates the plan after
+  single-worker task completion.
 
 ### Phase 6: Native adapter install
 

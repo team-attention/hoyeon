@@ -66,11 +66,27 @@ Delegate to workers, manage parallelization, verify the result.
   - `worker` -> `hoyeon-worker`
   - `verifier` -> `hoyeon-verifier`
   - `code-reviewer` -> `hoyeon-code-reviewer`
+- In Codex, translate every logical `Agent(...)` dispatch in the references to
+  the native `spawn_agent` tool:
+  - `Agent(subagent_type="worker", ...)` -> `spawn_agent(agent_type="hoyeon-worker", ...)`
+  - `Agent(subagent_type="verifier", ...)` -> `spawn_agent(agent_type="hoyeon-verifier", ...)`
+  - `Agent(subagent_type="code-reviewer", ...)` -> `spawn_agent(agent_type="hoyeon-code-reviewer", ...)`
+  Pass the worker charter as the agent message, and keep the charter's
+  path-and-ID-only contract unchanged.
+- Treat `TaskCreate`, `TaskUpdate`, `TaskOutput`, and `TeamCreate` examples in
+  the reference recipes as Claude Code protocol notes, not literal Codex calls.
+  Codex execute state is tracked through `hoyeon-cli plan task` plus returned
+  subagent messages.
 - If the current Codex session has not loaded the adapter names, fall back to
   direct single-worker execution and keep the same charter/output contract.
 - Do not rely on hooks, `TeamCreate`, or automatic stop transitions in Codex v1.
-- Parallel execution is disabled until single-worker state transitions are
-  stable under `scripts/codex-execute-smoke.sh`.
+- Parallel Codex worker dispatch is allowed for disjoint `parallel_safe` tasks
+  when the `hoyeon-worker` adapter is prompt-visible. Use `spawn_agent` for
+  dispatch, `hoyeon-cli plan task` for state, and returned subagent messages for
+  evidence.
+- `scripts/codex-execute-smoke.sh` validates only single-worker plan state
+  transitions. It does not prove parallel subagent behavior; verify parallel
+  changes with a bounded live `spawn_agent` smoke.
 
 ---
 
